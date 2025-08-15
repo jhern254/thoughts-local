@@ -1,0 +1,256 @@
+Project Thoughts_App_with_Cadence {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Extends MVP with goal cadence & optional persisted rollups.
+  Facts remain append-only; rollups are materialized aggregates per period.
+  '''
+}
+
+/* ===== Enums ===== */
+Enum goal_cadence { 
+  daily 
+  weekly 
+  monthly 
+  mtd
+  quarterly 
+  yearly 
+  }
+
+
+Enum day_of_week  { 
+  mon 
+  tue 
+  wed 
+  thu 
+  fri 
+  sat 
+  sun }
+
+/* ========== Tables ========== */
+
+Table users {
+  user_id    text [pk]
+  handle     text [unique]
+  email      text [unique]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table subjects {
+  subject_id  text [pk]
+  user_id     text [not null]
+  name        text [not null] // curated single category
+  created_at  timestamptz [not null, default: `now()`]
+  updated_at  timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (user_id, name) [unique, name: 'uq_subjects_user_name']
+  }
+}
+
+Table tags {
+  tag_id     text [pk]
+  user_id    text [not null]
+  name       text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (user_id, name) [unique, name: 'uq_tags_user_name']
+  }
+}
+
+Table events {
+  event_id      text [pk]
+  user_id       text [not null]
+  activity_type text
+  started_at    timestamptz [not null]
+  ended_at      timestamptz
+  created_at    timestamptz [not null, default: `now()`]
+  updated_at    timestamptz [not null, default: `now()`]
+
+  Note: 'CHECK (ended_at IS NULL OR ended_at >= started_at)'
+
+  Indexes {
+    (user_id, started_at) [name: 'idx_events_user_started_at']
+  }
+}
+
+Table thoughts {
+  thought_id   text [pk]
+  user_id      text [not null]
+  subject_id   text               // nullable FK to curated category
+  event_id     text               // nullable FK to time window
+  body         text [not null]    // the thought text
+  observed_at  timestamptz [not null]  // actual moment of thought
+  created_at   timestamptz [not null, default: `now()`]
+  updated_at   timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (user_id, observed_at) [name: 'idx_thoughts_user_observed_at']
+    subject_id [name: 'idx_thoughts_subject']       // NEW
+    event_id   [name: 'idx_thoughts_event']         // NEW
+  }
+  Note: 'If event_id IS NOT NULL, enforce observed_at ∈ [started_at, ended_at] in service layer.'
+}
+
+Table thought_tags {
+  thought_id text [not null]
+  tag_id     text [not null]
+  created_at timestamptz [not null, default: `now()`] // link audit
+
+  Indexes {
+    (thought_id, tag_id) [pk, name: 'pk_thought_tags']
+    (tag_id) [name: 'idx_thought_tags_tag']
+  }
+}
+
+
+Table goal_progress {
+  progress_id    text [pk]
+  goal_id        text [not null]
+  user_id        text [not null]
+  occurred_at    timestamptz [not null]
+  time_spent_sec int  [not null]    // materialized contribution (derived or manual)
+  event_id       text               // optional provenance
+  thought_id     text               // optional provenance
+  note           text
+  created_at     timestamptz [not null, default: `now()`] // append-only
+
+  Indexes {
+    (goal_id, occurred_at) [name: 'idx_progress_goal_time']
+    (user_id, occurred_at) [name: 'idx_progress_user_time']
+    event_id   [name: 'idx_progress_event']         // NEW (if you show event details)
+    thought_id [name: 'idx_progress_thought']       // NEW (if you show thought details)
+  }
+  Note: 'Invariant: time_spent_sec > 0 (enforced in service layer first).'
+}
+
+/* ===== Amend GOALS to include cadence & anchoring ===== */
+Table goals {
+  goal_id        text [pk]
+  user_id        text [not null]
+  name           text [not null]
+  target_seconds int  [not null]
+  start_date     date
+  end_date       date
+  is_active      boolean [not null, default: true]
+
+  /* NEW: cadence + period anchoring + storage preference */
+  cadence        goal_cadence [not null, default: 'weekly']
+  tz             text [not null, default: 'UTC']     // timezone to compute period boundaries
+  week_start     day_of_week [not null, default: 'mon']
+// -- Optional UI preference: which cadence to highlight
+  default_cadence goal_cadence                       // nullable
+
+  created_at     timestamptz [not null, default: `now()`]
+  updated_at     timestamptz [not null, default: `now()`]
+
+  Indexes { (user_id, name) [unique, name: 'uq_goals_user_name'] }
+}
+
+/* ===== Period Rollups (optional, persisted) =====
+   Grain: (goal_id, cadence, period_start) — one row per goal per period.
+   period_start is computed in goal.tz with goal.week_start.
+*/
+Table goal_time_rollups {
+  goal_id        text [not null]
+  cadence        goal_cadence [not null]
+  period_start   date [not null]       // boundary start in goal.tz
+  total_seconds  int  [not null]       // sum for this period
+  computed_at    timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (goal_id, cadence, period_start) [pk, name: 'pk_goal_time_rollups']
+  }
+
+  ...
+  Note: '''
+  Compute in goal.tz:
+   - daily: start of local calendar day
+   - weekly: start-of-week per goals.week_start
+   - mtd: first day of the month (same row updated all month)
+  '''
+}
+
+/* ===== Lifetime Rollup (optional, persisted) =====
+   One row per goal for fast lifetime queries. Otherwise compute on the fly.
+*/
+Table goal_time_totals {
+  goal_id          text [pk]
+  lifetime_seconds bigint [not null, default: 0]
+  computed_at      timestamptz [not null, default: `now()`]
+}
+
+/* ===== Subject Rollups (optional) =====
+   Only needed if you want stored (not on-the-fly) subject totals.
+   Define your chosen derivation rule (e.g., from goal_progress joined via thought_id → subject_id).
+*/
+Table subject_time_rollups {
+  user_id       text [not null]
+  subject_id    text [not null]
+  cadence       goal_cadence [not null]
+  period_start  date [not null]
+  total_seconds int  [not null]
+  computed_at   timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (user_id, subject_id, cadence, period_start) [pk, name: 'pk_subject_time_rollups']
+  }
+
+  Note: '''
+  Derivation choice:
+   A) Sum goal_progress.time_spent_sec for rows linked to thoughts with subject_id
+      (recommended: precise "time towards subject" when progress references thoughts).
+   B) Or, if you later classify events by subject, roll up event durations.
+  Pick one rule; stay consistent.
+  '''
+}
+
+Table subject_time_totals {
+  user_id          text [not null]
+  subject_id       text [not null]
+  lifetime_seconds bigint [not null, default: 0]
+  computed_at      timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (user_id, subject_id) [pk, name: 'pk_subject_time_totals']
+  }
+}
+
+/* ========== Relationships ========== */
+
+/* Ownership (per-user scoping) */
+Ref: users.user_id < subjects.user_id         [delete: cascade]
+Ref: users.user_id < tags.user_id             [delete: cascade]
+Ref: users.user_id < events.user_id           [delete: cascade]
+Ref: users.user_id < thoughts.user_id         [delete: cascade]
+Ref: users.user_id < goals.user_id            [delete: cascade]
+Ref: users.user_id < goal_progress.user_id    [delete: cascade]
+
+/* Thoughts classification and timing */
+Ref: subjects.subject_id < thoughts.subject_id   [delete: set null]
+Ref: events.event_id   < thoughts.event_id       [delete: set null]
+
+/* Tagging M:N */
+Ref: thoughts.thought_id < thought_tags.thought_id [delete: cascade]
+Ref: tags.tag_id         < thought_tags.tag_id     [delete: cascade]
+
+/* Goals & progress */
+Ref: goals.goal_id < goal_progress.goal_id [delete: cascade]
+
+/* Optional provenance for progress rows */
+Ref: events.event_id    < goal_progress.event_id    [delete: set null]
+Ref: thoughts.thought_id < goal_progress.thought_id [delete: set null]
+
+
+/* Existing ownership & FKs from MVP are assumed present. Add: */
+Ref: goals.goal_id < goal_time_rollups.goal_id [delete: cascade]
+Ref: goals.goal_id < goal_time_totals.goal_id  [delete: cascade]
+
+Ref: users.user_id   < subject_time_rollups.user_id   [delete: cascade]
+Ref: subjects.subject_id < subject_time_rollups.subject_id [delete: cascade]
+
+Ref: users.user_id   < subject_time_totals.user_id    [delete: cascade]
+Ref: subjects.subject_id < subject_time_totals.subject_id  [delete: cascade]
+
