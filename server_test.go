@@ -34,6 +34,7 @@ func TestGETThoughts(t *testing.T) {
 
         server.ServeHTTP(response, request)
 
+        assertCorrect(t, response.Code, http.StatusOK)
         assertCorrect(t, response.Body.String(), "I'm learning go!")
     })
     t.Run("return ai thoughts", func(t *testing.T) {
@@ -42,6 +43,7 @@ func TestGETThoughts(t *testing.T) {
 
         server.ServeHTTP(response, request)
 
+        assertCorrect(t, response.Code, http.StatusOK)
         assertCorrect(t, response.Body.String(), "agi 2025!")
     })
     t.Run("return 404 on missing subject", func(t *testing.T) {
@@ -70,6 +72,7 @@ func assertCorrect[T comparable](t testing.TB, got, want T) {
         t.Errorf("\ngot %+v, \nwant %+v", got, want)
     }
 }
+
 
 // generic using reflect, not type safe
 //func assertCorrect[T any](t testing.TB, got, want T) {
