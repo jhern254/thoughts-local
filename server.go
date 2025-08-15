@@ -6,6 +6,7 @@ import (
     "os"
     "net/http"
 //    "errors"
+    "strings"
 
     "github.com/rs/zerolog" 
 )
@@ -52,7 +53,18 @@ import (
 
 // Public methods
 func ThoughtServer(w http.ResponseWriter, r *http.Request) {
-    fmt.Fprint(w, "I'm learning go!")
+    subject := strings.TrimPrefix(r.URL.Path, "/subjects/")   
+
+    if subject == "coding" {
+        fmt.Fprint(w, "I'm learning go!")
+        return
+    }
+
+    if subject == "ai" {
+        fmt.Fprint(w, "agi 2025!")
+        return
+    }
+
 }
 
 

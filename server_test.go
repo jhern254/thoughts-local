@@ -72,14 +72,25 @@ import (
 //}
 
 func TestGETThoughts(t *testing.T) {
-    t.Run("test name", func(t *testing.T) {
-        request, _ := http.NewRequest(http.MethodGet, "/thoughts/coding", nil)
+    t.Run("returns coding thoughts", func(t *testing.T) {
+        request, _ := http.NewRequest(http.MethodGet, "/subjects/coding", nil)
         response := httptest.NewRecorder()
 
         ThoughtServer(response, request)
 
         got := response.Body.String()
         want := "I'm learning go!"
+
+        assertCorrect(t, got, want)
+    })
+    t.Run("return ai thoughts", func(t *testing.T) {
+        request, _ := http.NewRequest(http.MethodGet, "/subjects/ai", nil)
+        response := httptest.NewRecorder()
+
+        ThoughtServer(response, request)
+
+        got := response.Body.String()
+        want := "agi 2025!"
 
         assertCorrect(t, got, want)
     })
