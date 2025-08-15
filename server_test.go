@@ -44,6 +44,15 @@ func TestGETThoughts(t *testing.T) {
 
         assertCorrect(t, response.Body.String(), "agi 2025!")
     })
+    t.Run("return 404 on missing subject", func(t *testing.T) {
+        request := newGetThoughtRequest("physics")
+        response := httptest.NewRecorder()
+
+        server.ServeHTTP(response, request)
+
+        assertCorrect(t, response.Code, http.StatusNotFound)
+
+    })
 
 }
 

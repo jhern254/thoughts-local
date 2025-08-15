@@ -63,6 +63,7 @@ type ThoughtServer struct {
 // method needs pointer as input
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
+    w.WriteHeader(http.StatusNotFound)
     fmt.Fprint(w, s.store.GetThought(subject))
 }
 
