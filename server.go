@@ -63,18 +63,26 @@ type ThoughtServer struct {
 // method needs pointer as input
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-    if r.Method == http.MethodPost {
-        w.WriteHeader(http.StatusAccepted)
-        return
+    switch r.Method {
+    case http.MethodPost:
+        s.processThought(w)
+    case http.MethodGet:
+        s.showThought(w, r)
     }
+}
 
+func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
     subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
 
     thoughts := s.store.GetThought(subject)
     if thoughts == "" {
         w.WriteHeader(http.StatusNotFound)
     }
-    fmt.Fprint(w, s.store.GetThought(subject))
+    fmt.Fprint(w, thoughts)
+}
+
+func (s *ThoughtServer) processThought(w http.ResponseWriter) {
+    w.WriteHeader(http.StatusAccepted)
 }
 
 // doesn't do anything for now
