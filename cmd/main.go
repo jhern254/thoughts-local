@@ -23,10 +23,10 @@ func main() {
         Logger().
         Level(zerolog.InfoLevel) // set log level 
 
-	handler := http.HandlerFunc(server.ThoughtServer)
+    server := &server.ThoughtServer{}
 
 	logger.Info().Str("addr", ":5000").Msg("starting server")
-	if err := http.ListenAndServe(":5000", handler); err != nil {
+	if err := http.ListenAndServe(":5000", server); err != nil {
 		// same intent as log.Fatal: log and exit non-zero
 		logger.Fatal().Err(err).Msg("ListenAndServe failed")
 	}
