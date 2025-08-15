@@ -55,7 +55,21 @@ func TestGETThoughts(t *testing.T) {
         assertCorrect(t, response.Code, http.StatusNotFound)
 
     })
+}
 
+func TestStoreThoughts(t *testing.T) {
+    store := StubThoughtStore{
+        map[string]string{},
+    }
+    server := &ThoughtServer{&store}
+
+    t.Run("it returns accepted on POST", func(t *testing.T) {
+        request, _ := http.NewRequest(http.MethodPost, "/subjects/coding", nil)
+        response := httptest.NewRecorder()
+
+        server.ServeHTTP(response, request)
+        assertCorrect(t, response.Code, http.StatusAccepted)
+    })
 }
 
 func newGetThoughtRequest(subject string) *http.Request {

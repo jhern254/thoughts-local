@@ -62,6 +62,12 @@ type ThoughtServer struct {
 
 // method needs pointer as input
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+    if r.Method == http.MethodPost {
+        w.WriteHeader(http.StatusAccepted)
+        return
+    }
+
     subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
 
     thoughts := s.store.GetThought(subject)
@@ -71,6 +77,7 @@ func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     fmt.Fprint(w, s.store.GetThought(subject))
 }
 
+// doesn't do anything for now
 func GetThought(subject string) string {
     if subject == "coding" {
         return "I'm learning go!"
