@@ -4,10 +4,16 @@ import (
 //    "fmt"
     "os"
     "net/http"
-    server "github.com/jhern254/go-thoughts"
+//    server "github.com/jhern254/go-thoughts"
 
     "github.com/rs/zerolog" 
 )
+
+type InMemoryThoughtStore struct{}
+
+func (i *InMemoryThoughtStore) GetThought(subject string) string {
+    return "temp"
+}
 
 func main() {
         // configure package zerolog
@@ -23,7 +29,7 @@ func main() {
         Logger().
         Level(zerolog.InfoLevel) // set log level 
 
-    server := &server.ThoughtServer{}
+    server := &ThoughtServer{&InMemoryThoughtStore{}}
 
 	logger.Info().Str("addr", ":5000").Msg("starting server")
 	if err := http.ListenAndServe(":5000", server); err != nil {

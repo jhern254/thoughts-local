@@ -1,5 +1,5 @@
 // server.go 
-package server
+package main
 
 import (
     "fmt"
@@ -60,6 +60,7 @@ type ThoughtServer struct {
     store ThoughtStore
 }
 
+// method needs pointer as input
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
     fmt.Fprint(w, s.store.GetThought(subject))
