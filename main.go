@@ -11,8 +11,11 @@ import (
 
 type InMemoryThoughtStore struct{}
 
-func (i *InMemoryThoughtStore) GetThought(subject string) string {
-    return "temp"
+func (i *InMemoryThoughtStore) GetThoughts(subject string) []string {
+    return []string{"temp"}
+}
+
+func (s *InMemoryThoughtStore) CaptureThought(subject, thought string) {
 }
 
 func main() {

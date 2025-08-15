@@ -11,19 +11,26 @@ import (
 )
 
 type StubThoughtStore struct {
-    thoughts map[string]string
+    thoughts map[string][]string
 }
 
-func (s *StubThoughtStore) GetThought(subject string) string {
-    thought := s.thoughts[subject]
-    return thought
+func (s *StubThoughtStore) GetThoughts(subject string) []string {
+    return s.thoughts[subject]
+}
+
+func (s *StubThoughtStore) CaptureThought(subject, thought string) {
+    s.thoughts[subject] = append(s.thoughts[subject], thought)            
+}
+
+func (s *StubThoughtStore) Count() int {
+    return len(s.thoughts)
 }
 
 func TestGETThoughts(t *testing.T) {
     store := StubThoughtStore{
-        map[string]string{
-            "coding": "I'm learning go!",
-            "ai": "agi 2025!",
+        map[string][]string{
+            "coding": {"I'm learning go!"},
+            "ai": {"agi 2025!"},
         },
     }
     server := &ThoughtServer{&store}
@@ -53,13 +60,12 @@ func TestGETThoughts(t *testing.T) {
         server.ServeHTTP(response, request)
 
         assertCorrect(t, response.Code, http.StatusNotFound)
-
     })
 }
 
 func TestStoreThoughts(t *testing.T) {
     store := StubThoughtStore{
-        map[string]string{},
+        map[string][]string{},
     }
     server := &ThoughtServer{&store}
 
@@ -69,6 +75,7 @@ func TestStoreThoughts(t *testing.T) {
 
         server.ServeHTTP(response, request)
         assertCorrect(t, response.Code, http.StatusAccepted)
+        assertCorrect(t, store.Count(), 1)
     })
 }
 

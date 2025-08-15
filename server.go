@@ -53,7 +53,8 @@ import (
 
 // Public methods
 type ThoughtStore interface {
-    GetThought(subject string) string
+    GetThoughts(subject string) []string
+    CaptureThought(subject, thought string)
 }
 
 type ThoughtServer struct {
@@ -62,7 +63,6 @@ type ThoughtServer struct {
 
 // method needs pointer as input
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
     switch r.Method {
     case http.MethodPost:
         s.processThought(w)
@@ -74,19 +74,21 @@ func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
     subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
 
-    thoughts := s.store.GetThought(subject)
-    if thoughts == "" {
+    thoughts := s.store.GetThoughts(subject)
+    if thoughts == nil {
         w.WriteHeader(http.StatusNotFound)
     }
-    fmt.Fprint(w, thoughts)
+    fmt.Fprint(w, strings.Join(thoughts, "\n"))
 }
 
 func (s *ThoughtServer) processThought(w http.ResponseWriter) {
+    s.store.CaptureThought("physics", "Idk physics")
     w.WriteHeader(http.StatusAccepted)
+    
 }
 
 // doesn't do anything for now
-func GetThought(subject string) string {
+func GetThoughts(subject string) string {
     if subject == "coding" {
         return "I'm learning go!"
         
