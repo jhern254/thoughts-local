@@ -62,7 +62,7 @@ type ThoughtServer struct {
 
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
-    fmt.Fprint(w, GetThought(subject))
+    fmt.Fprint(w, s.store.GetThought(subject))
 }
 
 func GetThought(subject string) string {

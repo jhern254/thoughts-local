@@ -10,8 +10,23 @@ import (
     "fmt"
 )
 
+type StubThoughtStore struct {
+    thoughts map[string]string
+}
+
+func (s *StubThoughtStore) GetThought(subject string) string {
+    thought := s.thoughts[subject]
+    return thought
+}
+
 func TestGETThoughts(t *testing.T) {
-    server := &ThoughtServer{}
+    store := StubThoughtStore{
+        map[string]string{
+            "coding": "I'm learning go!",
+            "ai": "agi 2025!",
+        },
+    }
+    server := &ThoughtServer{&store}
 
     t.Run("returns coding thoughts", func(t *testing.T) {
         request := newGetThoughtRequest("coding")
