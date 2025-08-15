@@ -52,11 +52,17 @@ import (
 
 
 // Public methods
-func ThoughtServer(w http.ResponseWriter, r *http.Request) {
+type ThoughtStore interface {
+    GetThought(subject string) string
+}
+
+type ThoughtServer struct {
+    store ThoughtStore
+}
+
+func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
-
     fmt.Fprint(w, GetThought(subject))
-
 }
 
 func GetThought(subject string) string {
