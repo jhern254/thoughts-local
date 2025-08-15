@@ -7,7 +7,7 @@ import (
     "net/http"
     "net/http/httptest"
 //    "reflect"
-//    "fmt"
+    "fmt"
 )
 
 // NOTE: methods need same fn signature, else use anon inline fns in struct
@@ -73,28 +73,27 @@ import (
 
 func TestGETThoughts(t *testing.T) {
     t.Run("returns coding thoughts", func(t *testing.T) {
-        request, _ := http.NewRequest(http.MethodGet, "/subjects/coding", nil)
+        request := newGetThoughtRequest("coding")
         response := httptest.NewRecorder()
 
         ThoughtServer(response, request)
 
-        got := response.Body.String()
-        want := "I'm learning go!"
-
-        assertCorrect(t, got, want)
+        assertCorrect(t, response.Body.String(), "I'm learning go!")
     })
     t.Run("return ai thoughts", func(t *testing.T) {
-        request, _ := http.NewRequest(http.MethodGet, "/subjects/ai", nil)
+        request := newGetThoughtRequest("ai")
         response := httptest.NewRecorder()
 
         ThoughtServer(response, request)
 
-        got := response.Body.String()
-        want := "agi 2025!"
-
-        assertCorrect(t, got, want)
+        assertCorrect(t, response.Body.String(), "agi 2025!")
     })
 
+}
+
+func newGetThoughtRequest(subject string) *http.Request {
+    req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/subjects/%s", subject), nil)
+    return req
 }
 
 // generic

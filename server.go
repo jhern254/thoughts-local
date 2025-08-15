@@ -53,18 +53,21 @@ import (
 
 // Public methods
 func ThoughtServer(w http.ResponseWriter, r *http.Request) {
-    subject := strings.TrimPrefix(r.URL.Path, "/subjects/")   
+    subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
 
+    fmt.Fprint(w, GetThought(subject))
+
+}
+
+func GetThought(subject string) string {
     if subject == "coding" {
-        fmt.Fprint(w, "I'm learning go!")
-        return
+        return "I'm learning go!"
+        
     }
-
     if subject == "ai" {
-        fmt.Fprint(w, "agi 2025!")
-        return
+        return "agi 2025!"
     }
-
+    return ""
 }
 
 
