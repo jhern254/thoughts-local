@@ -75,7 +75,9 @@ func TestStoreThoughts(t *testing.T) {
     server := &ThoughtServer{&store}
 
     t.Run("it returns accepted on POST", func(t *testing.T) {
-        request, _ := http.NewRequest(http.MethodPost, "/subjects/coding", strings.NewReader("I'm learning go!"))
+        subj := "coding"
+        th := "I'm learning go!"
+        request := newPostThoughtRequest(subj, th)
         response := httptest.NewRecorder()
 
         server.ServeHTTP(response, request)
@@ -85,11 +87,21 @@ func TestStoreThoughts(t *testing.T) {
         if len(store.subjectCalls) != 1 {
             t.Errorf("got %d calls to CaptureThought() want %d", len(store.subjectCalls), 1)
         }
+
+        if store.subjectCalls[0] != subj {
+            t.Errorf("did not store correct subj got %q want %q", store.subjectCalls[0], subj)
+        }
+
     })
 }
 
 func newGetThoughtRequest(subject string) *http.Request {
     req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/subjects/%s", subject), nil)
+    return req
+}
+
+func newPostThoughtRequest(subject, thought string) *http.Request {
+    req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("/subjects/%s", subject), strings.NewReader(thought))
     return req
 }
 
