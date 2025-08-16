@@ -7,6 +7,7 @@ import (
     "net/http"
 //    "errors"
     "strings"
+    "io"
 
     "github.com/rs/zerolog" 
 )
@@ -60,12 +61,13 @@ type ThoughtStore interface {
 type ThoughtServer struct {
     store ThoughtStore
 }
+// NOTE: pattern is server fns here, store interface done on test, main
 
 // method needs pointer as input
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     switch r.Method {
     case http.MethodPost:
-        s.processThought(w)
+        s.processThought(w, r)
     case http.MethodGet:
         s.showThought(w, r)
     }
@@ -81,10 +83,24 @@ func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
     fmt.Fprint(w, strings.Join(thoughts, "\n"))
 }
 
-func (s *ThoughtServer) processThought(w http.ResponseWriter) {
-    s.store.CaptureThought("physics", "Idk physics")
+func (s *ThoughtServer) processThought(w http.ResponseWriter, r *http.Request) {
+    subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
+
+    body, err := io.ReadAll(r.Body)
+    if err != nil {
+        http.Error(w, "failed to read body", http.StatusBadRequest) 
+        return
+    }
+    defer r.Body.Close()
+
+    thought := strings.TrimSpace(string(body))
+    if thought == "" {
+        http.Error(w, "empty thought", http.StatusBadRequest)
+        return
+    }
+
+    s.store.CaptureThought(subject, thought)
     w.WriteHeader(http.StatusAccepted)
-    
 }
 
 // doesn't do anything for now

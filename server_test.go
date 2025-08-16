@@ -8,6 +8,7 @@ import (
     "net/http/httptest"
 //    "reflect"
     "fmt"
+    "strings"
 )
 
 type StubThoughtStore struct {
@@ -70,12 +71,14 @@ func TestStoreThoughts(t *testing.T) {
     server := &ThoughtServer{&store}
 
     t.Run("it returns accepted on POST", func(t *testing.T) {
-        request, _ := http.NewRequest(http.MethodPost, "/subjects/coding", nil)
+        request, _ := http.NewRequest(http.MethodPost, "/subjects/coding", strings.NewReader("I'm learning go!"))
         response := httptest.NewRecorder()
 
         server.ServeHTTP(response, request)
         assertCorrect(t, response.Code, http.StatusAccepted)
         assertCorrect(t, store.Count(), 1)
+//        assertCorrect(t, store["coding"], "I'm learning go!")
+//        fmt.Printf("store is %+v", store)
     })
 }
 
