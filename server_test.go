@@ -13,6 +13,7 @@ import (
 
 type StubThoughtStore struct {
     thoughts map[string][]string
+    subjectCalls    []string       // spy
 }
 
 func (s *StubThoughtStore) GetThoughts(subject string) []string {
@@ -21,6 +22,7 @@ func (s *StubThoughtStore) GetThoughts(subject string) []string {
 
 func (s *StubThoughtStore) CaptureThought(subject, thought string) {
     s.thoughts[subject] = append(s.thoughts[subject], thought)            
+    s.subjectCalls = append(s.subjectCalls, subject)
 }
 
 func (s *StubThoughtStore) Count() int {
@@ -33,6 +35,7 @@ func TestGETThoughts(t *testing.T) {
             "coding": {"I'm learning go!"},
             "ai": {"agi 2025!"},
         },
+        nil,
     }
     server := &ThoughtServer{&store}
 
@@ -67,6 +70,7 @@ func TestGETThoughts(t *testing.T) {
 func TestStoreThoughts(t *testing.T) {
     store := StubThoughtStore{
         map[string][]string{},
+        nil,
     }
     server := &ThoughtServer{&store}
 
@@ -76,9 +80,11 @@ func TestStoreThoughts(t *testing.T) {
 
         server.ServeHTTP(response, request)
         assertCorrect(t, response.Code, http.StatusAccepted)
-        assertCorrect(t, store.Count(), 1)
-//        assertCorrect(t, store["coding"], "I'm learning go!")
+//        assertCorrect(t, store.Count(), 1)
 //        fmt.Printf("store is %+v", store)
+        if len(store.subjectCalls) != 1 {
+            t.Errorf("got %d calls to CaptureThought() want %d", len(store.subjectCalls), 1)
+        }
     })
 }
 
