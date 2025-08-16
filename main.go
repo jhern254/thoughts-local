@@ -9,15 +9,6 @@ import (
     "github.com/rs/zerolog" 
 )
 
-type InMemoryThoughtStore struct{}
-
-func (i *InMemoryThoughtStore) GetThoughts(subject string) []string {
-    return []string{"temp"}
-}
-
-func (s *InMemoryThoughtStore) CaptureThought(subject, thought string) {
-}
-
 func main() {
         // configure package zerolog
     output := zerolog.ConsoleWriter{
@@ -32,7 +23,8 @@ func main() {
         Logger().
         Level(zerolog.InfoLevel) // set log level 
 
-    server := &ThoughtServer{&InMemoryThoughtStore{}}
+    
+    server := &ThoughtServer{NewInMemoryThoughtStore()}
 
 	logger.Info().Str("addr", ":5000").Msg("starting server")
 	if err := http.ListenAndServe(":5000", server); err != nil {
