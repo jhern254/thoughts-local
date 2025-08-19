@@ -43,7 +43,7 @@ func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
-    subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
+    subject := subjectFromPath(r.URL.Path)
 
     thoughts := s.store.GetThoughts(subject)
     if thoughts == nil {
@@ -53,18 +53,11 @@ func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ThoughtServer) processThought(w http.ResponseWriter, r *http.Request) {
-    subject := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/subjects/"))
+    subject := subjectFromPath(r.URL.Path)
 
-    body, err := io.ReadAll(r.Body)
+    thought, err:= readThought(r.Body)
     if err != nil {
-        http.Error(w, "failed to read body", http.StatusBadRequest) 
-        return
-    }
-    defer r.Body.Close()
-
-    thought := strings.TrimSpace(string(body))
-    if thought == "" {
-        http.Error(w, "empty thought", http.StatusBadRequest)
+        http.Error(w, err.Error() , http.StatusBadRequest) 
         return
     }
 
@@ -72,10 +65,29 @@ func (s *ThoughtServer) processThought(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(http.StatusAccepted)
 }
 
+
 //func (s *ThoughtServer) Stats(w http.ResponseWriter, r *http.Request) {
 //    w.WriteHeader(http.StatusAccepted)
 //}
 
+// helper fns
+func subjectFromPath(path string) string {
+    return strings.ToLower(strings.TrimPrefix(path, "/subjects/"))
+}
+
+func readThought(body io.ReadCloser) (string, error) {
+    defer body.Close()
+    b, err := io.ReadAll(body)
+    if err != nil {
+        return "", fmt.Errorf("failed to read body")
+    }
+    thought := strings.TrimSpace(string(b))
+    if thought == "" {
+        return "", fmt.Errorf("empty thought")
+    }
+
+    return thought, nil
+} 
 
 func Run() {
     // configure package zerolog
