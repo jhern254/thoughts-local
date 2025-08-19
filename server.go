@@ -26,20 +26,26 @@ type ThoughtServer struct {
 // method needs pointer as input
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     router := http.NewServeMux()
-    router.Handle("/stats", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        w.WriteHeader(http.StatusOK)
-    }))
 
-    router.Handle("/subjects/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        switch r.Method {
-        case http.MethodPost:
-            s.processThought(w, r)
-        case http.MethodGet:
-            s.showThought(w, r)
-        }
-    }))
+    router.Handle("/stats", http.HandlerFunc(s.statsHandler))
+    router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
 
     router.ServeHTTP(w, r)
+}
+
+func (s *ThoughtServer)statsHandler(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+}
+
+func (s *ThoughtServer)subjectsHandler(w http.ResponseWriter, r *http.Request) {
+    switch r.Method {
+    case http.MethodPost:
+        s.processThought(w, r)
+    case http.MethodGet:
+        s.showThought(w, r)
+    default:
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+    }
 }
 
 func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
@@ -64,11 +70,6 @@ func (s *ThoughtServer) processThought(w http.ResponseWriter, r *http.Request) {
     s.store.CaptureThought(subject, thought)
     w.WriteHeader(http.StatusAccepted)
 }
-
-
-//func (s *ThoughtServer) Stats(w http.ResponseWriter, r *http.Request) {
-//    w.WriteHeader(http.StatusAccepted)
-//}
 
 // helper fns
 func subjectFromPath(path string) string {
