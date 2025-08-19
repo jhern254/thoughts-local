@@ -10,7 +10,7 @@ import (
 
 func TestPostingThoughtsAndGettingThem(t *testing.T) {
     store := NewInMemoryThoughtStore()
-    server := ThoughtServer{store}
+    server := NewThoughtServer(store)
     subject := "ai"
 
     server.ServeHTTP(httptest.NewRecorder(), newPostThoughtRequest(subject, "neural networks"))

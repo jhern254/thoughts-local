@@ -37,7 +37,7 @@ func TestGETThoughts(t *testing.T) {
         },
         nil,
     }
-    server := &ThoughtServer{&store}
+    server := NewThoughtServer(&store)
 
     t.Run("returns coding thoughts", func(t *testing.T) {
         request := newGetThoughtRequest("coding")
@@ -72,7 +72,7 @@ func TestStoreThoughts(t *testing.T) {
         map[string][]string{},
         nil,
     }
-    server := &ThoughtServer{&store}
+    server := NewThoughtServer(&store)
 
     t.Run("it returns accepted on POST", func(t *testing.T) {
         subj := "coding"
@@ -97,7 +97,7 @@ func TestStoreThoughts(t *testing.T) {
 
 func TestStats(t *testing.T) {
     store := StubThoughtStore{}
-    server := &ThoughtServer{&store}
+    server := NewThoughtServer(&store)
 
     t.Run("it returns a 200 on /stats", func(t *testing.T) {
         request, _ := http.NewRequest(http.MethodGet, "/stats", nil)

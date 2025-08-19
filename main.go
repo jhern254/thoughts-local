@@ -24,7 +24,7 @@ func main() {
         Level(zerolog.InfoLevel) // set log level 
 
     
-    server := &ThoughtServer{NewInMemoryThoughtStore()}
+    server := NewThoughtServer(NewInMemoryThoughtStore())
 
 	logger.Info().Str("addr", ":5000").Msg("starting server")
 	if err := http.ListenAndServe(":5000", server); err != nil {

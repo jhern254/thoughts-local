@@ -20,24 +20,34 @@ type ThoughtStore interface {
 
 type ThoughtServer struct {
     store ThoughtStore
+    router *http.ServeMux
 }
 // NOTE: pattern is server fns here, store interface done on test, main
 
-// method needs pointer as input
-func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    router := http.NewServeMux()
+// ctor
+// NOTE: store interface already reference value, impl needs pointer
+func NewThoughtServer(store ThoughtStore) *ThoughtServer {
+    s := &ThoughtServer{
+        store,
+        http.NewServeMux(),
+    }
 
-    router.Handle("/stats", http.HandlerFunc(s.statsHandler))
-    router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
+    s.router.Handle("/stats", http.HandlerFunc(s.statsHandler))
+    s.router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
 
-    router.ServeHTTP(w, r)
+    return s
 }
 
-func (s *ThoughtServer)statsHandler(w http.ResponseWriter, r *http.Request) {
+// method needs pointer as input
+func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    s.router.ServeHTTP(w, r)
+}
+
+func (s *ThoughtServer) statsHandler(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(http.StatusOK)
 }
 
-func (s *ThoughtServer)subjectsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) {
     switch r.Method {
     case http.MethodPost:
         s.processThought(w, r)
