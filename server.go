@@ -25,12 +25,21 @@ type ThoughtServer struct {
 
 // method needs pointer as input
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    switch r.Method {
-    case http.MethodPost:
-        s.processThought(w, r)
-    case http.MethodGet:
-        s.showThought(w, r)
-    }
+    router := http.NewServeMux()
+    router.Handle("/stats", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    }))
+
+    router.Handle("/subjects/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        switch r.Method {
+        case http.MethodPost:
+            s.processThought(w, r)
+        case http.MethodGet:
+            s.showThought(w, r)
+        }
+    }))
+
+    router.ServeHTTP(w, r)
 }
 
 func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
@@ -63,18 +72,9 @@ func (s *ThoughtServer) processThought(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(http.StatusAccepted)
 }
 
-// doesn't do anything for now
-func GetThoughts(subject string) string {
-    if subject == "coding" {
-        return "I'm learning go!"
-        
-    }
-    if subject == "ai" {
-        return "agi 2025!"
-    }
-    return ""
-}
-
+//func (s *ThoughtServer) Stats(w http.ResponseWriter, r *http.Request) {
+//    w.WriteHeader(http.StatusAccepted)
+//}
 
 
 func Run() {

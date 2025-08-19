@@ -95,6 +95,21 @@ func TestStoreThoughts(t *testing.T) {
     })
 }
 
+func TestStats(t *testing.T) {
+    store := StubThoughtStore{}
+    server := &ThoughtServer{&store}
+
+    t.Run("it returns a 200 on /stats", func(t *testing.T) {
+        request, _ := http.NewRequest(http.MethodGet, "/stats", nil)
+        response := httptest.NewRecorder()
+
+        server.ServeHTTP(response, request)
+
+        assertCorrect(t, response.Code, http.StatusOK)
+    })
+}
+
+// helper fns
 func newGetThoughtRequest(subject string) *http.Request {
     req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/subjects/%s", subject), nil)
     return req
