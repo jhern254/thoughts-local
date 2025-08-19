@@ -8,9 +8,16 @@ import (
 //    "errors"
     "strings"
     "io"
+    "encoding/json"
 
     "github.com/rs/zerolog" 
 )
+
+type Subject struct {
+    Name string
+    Thought string
+    // TODO: add tags yet?
+}
 
 // Public methods
 type ThoughtStore interface {
@@ -44,7 +51,12 @@ func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ThoughtServer) statsHandler(w http.ResponseWriter, r *http.Request) {
-        w.WriteHeader(http.StatusOK)
+    statsTable := []Subject{
+        {"Physics", "Idk physics"},
+    }
+
+    json.NewEncoder(w).Encode(statsTable)
+    w.WriteHeader(http.StatusOK)
 }
 
 func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) {

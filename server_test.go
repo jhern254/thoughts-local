@@ -9,6 +9,7 @@ import (
 //    "reflect"
     "fmt"
     "strings"
+    "encoding/json"
 )
 
 type StubThoughtStore struct {
@@ -104,6 +105,14 @@ func TestStats(t *testing.T) {
         response := httptest.NewRecorder()
 
         server.ServeHTTP(response, request)
+
+        var got []Subject
+
+        err := json.NewDecoder(response.Body).Decode(&got)
+
+        if err != nil {
+            t.Fatalf("Unable to parse response from server %q into slice of Subject, '%v'", response.Body, err)
+        }
 
         assertCorrect(t, response.Code, http.StatusOK)
     })
