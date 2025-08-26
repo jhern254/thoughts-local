@@ -13,15 +13,15 @@ func TestFileSystemStore(t *testing.T) {
   "Subjects": [
     {
       "Name": "Physics",
-      "Thought": ["Idk physics"]
+      "Thoughts": ["Idk physics"]
     },
     {
       "Name": "Code",
-      "Thought": ["I'm learning go!"]
+      "Thoughts": ["I'm learning go!"]
     },
     {
       "Name": "AI",
-      "Thought": ["Neural Networks work incredible!"]
+      "Thoughts": ["Neural Networks work incredible!"]
     }
   ]
 }

@@ -36,7 +36,7 @@ func TestPostingThoughtsAndGettingThem(t *testing.T) {
             Subjects: []Subject{
                 {
                     Name:    "ai",
-                    Thought: []string{
+                    Thoughts: []string{
                         "neural networks",
                         "are",
                         "black magic!",

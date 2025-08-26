@@ -35,7 +35,7 @@ func (i *InMemoryThoughtStore) GetUserState(userID string) UserState {
     for name, ths := range i.thoughts {
         subjects = append(subjects, Subject{
             Name:     name,
-            Thought: ths,
+            Thoughts: ths,
         })
     }
     return UserState{UserID: userID, Subjects: subjects}
