@@ -27,6 +27,7 @@ func TestPostingThoughtsAndGettingThem(t *testing.T) {
     })
     t.Run("get userState", func(t *testing.T) {
         response := httptest.NewRecorder()
+        // NOTE: 1 is passed to GetUserState
         server.ServeHTTP(response, newUserStateRequest("1"))
 
         got := getUserStateFromResponse(t, response.Body)

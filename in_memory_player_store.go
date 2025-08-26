@@ -27,6 +27,7 @@ func (i *InMemoryThoughtStore) CaptureThought(subject, thought string) {
     i.thoughts[subject] = append(i.thoughts[subject], thought)            
 }
 
+// NOTE: userID is echod back for now
 func (i *InMemoryThoughtStore) GetUserState(userID string) UserState {
     i.lock.Lock()
     defer i.lock.Unlock()
