@@ -10,6 +10,7 @@ import (
     "fmt"
     "strings"
     "encoding/json"
+    "io"
 )
 
 type StubThoughtStore struct {
@@ -109,7 +110,7 @@ func TestUserState(t *testing.T) {
     server := NewThoughtServer(&store)
 
     t.Run("it returns a 200 on /users/{id}/state", func(t *testing.T) {
-        request, _ := http.NewRequest(http.MethodGet, "/users/1/state", nil)
+        request := newUserStateRequest("1")
         response := httptest.NewRecorder()
 
         server.ServeHTTP(response, request)
@@ -135,17 +136,16 @@ func TestUserState(t *testing.T) {
         store = StubThoughtStore{nil, nil, wantedState}
         server = NewThoughtServer(&store)
 
-
-        request, _ := http.NewRequest(http.MethodGet, "/users/2/state", nil)
+        request := newUserStateRequest("2")
         response := httptest.NewRecorder()
         
         server.ServeHTTP(response, request)
 
-        var got UserState
-        err := json.NewDecoder(response.Body).Decode(&got)
-        if err != nil {
-            t.Fatalf("Unable to parse response from server %q into UserState, '%v'", response.Body, err)
-        }
+        // old way
+//        var got UserState
+//        err := json.NewDecoder(response.Body).Decode(&got)
+        // injected store state JSON
+        got := getUserStateFromResponse(t, response.Body)
 
         assertCorrect(t, response.Code, http.StatusOK)
         assertCorrectStruct(t, got, wantedState)
@@ -162,6 +162,22 @@ func newGetThoughtRequest(subject string) *http.Request {
 func newPostThoughtRequest(subject, thought string) *http.Request {
     req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("/subjects/%s", subject), strings.NewReader(thought))
     return req
+}
+
+func newUserStateRequest(userID string) *http.Request {
+    req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/users/%s/state", userID), nil)
+    return req
+}
+
+// decode raw JSON userState from handler and return 
+func getUserStateFromResponse(t testing.TB, body io.Reader) (userState UserState) {
+    t.Helper()
+    err := json.NewDecoder(body).Decode(&userState)
+    if err != nil {
+        t.Fatalf("Unable to parse response from server %q into UserState, '%v'", body, err)
+    }
+
+    return
 }
 
 // generic
