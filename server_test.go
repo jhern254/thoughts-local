@@ -15,7 +15,8 @@ import (
 type StubThoughtStore struct {
     thoughts map[string][]string
     subjectCalls    []string       // spy
-//    userState       UserState
+    // NOTE: temporarily holds thoughts as well
+    userState       UserState
 }
 
 func (s *StubThoughtStore) GetThoughts(subject string) []string {
@@ -25,6 +26,10 @@ func (s *StubThoughtStore) GetThoughts(subject string) []string {
 func (s *StubThoughtStore) CaptureThought(subject, thought string) {
     s.thoughts[subject] = append(s.thoughts[subject], thought)            
     s.subjectCalls = append(s.subjectCalls, subject)
+}
+
+func (s *StubThoughtStore) GetUserState(userID string) UserState {
+    return s.userState
 }
 
 func (s *StubThoughtStore) Count() int {
@@ -38,6 +43,7 @@ func TestGETThoughts(t *testing.T) {
             "ai": {"agi 2025!"},
         },
         nil,
+        UserState{},
     }
     server := NewThoughtServer(&store)
 
@@ -73,6 +79,7 @@ func TestStoreThoughts(t *testing.T) {
     store := StubThoughtStore{
         map[string][]string{},
         nil,
+        UserState{},
     }
     server := NewThoughtServer(&store)
 
@@ -115,8 +122,21 @@ func TestUserState(t *testing.T) {
 
         assertCorrect(t, response.Code, http.StatusOK)
     })
-    t.Run("it parses the user id from the URL and returns state", func(t *testing.T) {
-        request, _ := http.NewRequest(http.MethodGet, "/users/42/state", nil)
+    t.Run("it returns thought userState as JSON", func(t *testing.T) {
+        wantedState := UserState{
+            UserID: "2",
+            Subjects: []Subject{
+                {"Physics", "Idk physics"},
+                {"Code", "I'm learning go!"},
+                {"AI", "Neural Networks work!"},
+            },
+        }
+
+        store = StubThoughtStore{nil, nil, wantedState}
+        server = NewThoughtServer(&store)
+
+
+        request, _ := http.NewRequest(http.MethodGet, "/users/2/state", nil)
         response := httptest.NewRecorder()
         
         server.ServeHTTP(response, request)
@@ -127,20 +147,10 @@ func TestUserState(t *testing.T) {
             t.Fatalf("Unable to parse response from server %q into UserState, '%v'", response.Body, err)
         }
 
-        want := UserState{
-            UserID: "42",
-            Subjects: []Subject{
-                {"Physics", "Idk physics"},
-            },
-        }
-
         assertCorrect(t, response.Code, http.StatusOK)
-        assertCorrectStruct(t, got, want)
+        assertCorrectStruct(t, got, wantedState)
 
     })
-//    t.Run("it returns thought userState as JSON", func(t *testing.T) {
-//
-//    }
 }
 
 // helper fns

@@ -28,6 +28,7 @@ type UserState struct {
 type ThoughtStore interface {
     GetThoughts(subject string) []string
     CaptureThought(subject, thought string)
+    GetUserState(userID string) UserState
 }
 
 type ThoughtServer struct {
@@ -65,14 +66,14 @@ func (s *ThoughtServer) usersHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("content-type", "application/json")
     w.WriteHeader(http.StatusOK)
     
-    userTable := UserState{
-        UserID: userID,
-        Subjects: []Subject{
-            {"Physics", "Idk physics"},
-        },
-    }
+//    userTable := UserState{
+//        UserID: userID,
+//        Subjects: []Subject{
+//            {"Physics", "Idk physics"},
+//        },
+//    }
 
-    _ = json.NewEncoder(w).Encode(userTable)
+    _ = json.NewEncoder(w).Encode(s.store.GetUserState(userID))
 }
 
 func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) {
