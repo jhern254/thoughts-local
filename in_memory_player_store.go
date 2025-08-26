@@ -28,5 +28,14 @@ func (i *InMemoryThoughtStore) CaptureThought(subject, thought string) {
 }
 
 func (i *InMemoryThoughtStore) GetUserState(userID string) UserState {
-    return UserState{}
+    i.lock.Lock()
+    defer i.lock.Unlock()
+    var subjects []Subject
+    for name, ths := range i.thoughts {
+        subjects = append(subjects, Subject{
+            Name:     name,
+            Thought: ths,
+        })
+    }
+    return UserState{UserID: userID, Subjects: subjects}
 }

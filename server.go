@@ -17,7 +17,7 @@ const jsonContentType = "application/json"
 
 type Subject struct {
     Name string
-    Thought string
+    Thought []string
     // TODO: add tags yet?
 }
 

@@ -127,9 +127,9 @@ func TestUserState(t *testing.T) {
         wantedState := UserState{
             UserID: "2",
             Subjects: []Subject{
-                {"Physics", "Idk physics"},
-                {"Code", "I'm learning go!"},
-                {"AI", "Neural Networks work!"},
+                {"Physics", []string{"Idk physics"}, },
+                {"Code", []string{"I'm learning go!"}, },
+                {"AI", []string{"Neural Networks work!"}, },
             },
         }
 
