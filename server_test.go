@@ -15,6 +15,7 @@ import (
 type StubThoughtStore struct {
     thoughts map[string][]string
     subjectCalls    []string       // spy
+//    userState       UserState
 }
 
 func (s *StubThoughtStore) GetThoughts(subject string) []string {
@@ -96,26 +97,27 @@ func TestStoreThoughts(t *testing.T) {
     })
 }
 
-func TestStats(t *testing.T) {
+func TestUserState(t *testing.T) {
     store := StubThoughtStore{}
     server := NewThoughtServer(&store)
 
-    t.Run("it returns a 200 on /stats", func(t *testing.T) {
-        request, _ := http.NewRequest(http.MethodGet, "/stats", nil)
+    t.Run("it returns a 200 on /users/{id}/state", func(t *testing.T) {
+        request, _ := http.NewRequest(http.MethodGet, "/users/1/state", nil)
         response := httptest.NewRecorder()
 
         server.ServeHTTP(response, request)
 
-        var got []Subject
-
+        var got UserState
         err := json.NewDecoder(response.Body).Decode(&got)
-
         if err != nil {
             t.Fatalf("Unable to parse response from server %q into slice of Subject, '%v'", response.Body, err)
         }
 
         assertCorrect(t, response.Code, http.StatusOK)
     })
+//    t.Run("it returns thought userState as JSON", func(t *testing.T) {
+//
+//    }
 }
 
 // helper fns

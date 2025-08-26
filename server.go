@@ -19,6 +19,11 @@ type Subject struct {
     // TODO: add tags yet?
 }
 
+type UserState struct {
+    UserID  string
+    Subjects []Subject
+}
+
 // Public methods
 type ThoughtStore interface {
     GetThoughts(subject string) []string
@@ -39,7 +44,7 @@ func NewThoughtServer(store ThoughtStore) *ThoughtServer {
         http.NewServeMux(),
     }
 
-    s.router.Handle("/stats", http.HandlerFunc(s.statsHandler))
+    s.router.Handle("/users/", http.HandlerFunc(s.usersHandler)) // TODO: change to better handle for id
     s.router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
 
     return s
@@ -50,13 +55,18 @@ func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     s.router.ServeHTTP(w, r)
 }
 
-func (s *ThoughtServer) statsHandler(w http.ResponseWriter, r *http.Request) {
-    statsTable := []Subject{
-        {"Physics", "Idk physics"},
+func (s *ThoughtServer) usersHandler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("content-type", "application/json")
+    w.WriteHeader(http.StatusOK)
+
+    userTable := UserState{
+        UserID: "1",
+        Subjects: []Subject{
+            {"Physics", "Idk physics"},
+        },
     }
 
-    json.NewEncoder(w).Encode(statsTable)
-    w.WriteHeader(http.StatusOK)
+    _ = json.NewEncoder(w).Encode(userTable)
 }
 
 func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) {
