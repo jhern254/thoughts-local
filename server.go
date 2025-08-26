@@ -59,8 +59,15 @@ func (s *ThoughtServer) usersHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("content-type", "application/json")
     w.WriteHeader(http.StatusOK)
 
+    parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+    // expect /users/{id}/state
+    userID := ""
+    if len(parts) >= 3 && parts[0] == "users" && parts[2] == "state" {
+        userID = parts[1]
+    }
+
     userTable := UserState{
-        UserID: "1",
+        UserID: userID,
         Subjects: []Subject{
             {"Physics", "Idk physics"},
         },

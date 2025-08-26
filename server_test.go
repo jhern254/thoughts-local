@@ -6,7 +6,7 @@ import (
     "errors"
     "net/http"
     "net/http/httptest"
-//    "reflect"
+    "reflect"
     "fmt"
     "strings"
     "encoding/json"
@@ -110,10 +110,33 @@ func TestUserState(t *testing.T) {
         var got UserState
         err := json.NewDecoder(response.Body).Decode(&got)
         if err != nil {
-            t.Fatalf("Unable to parse response from server %q into slice of Subject, '%v'", response.Body, err)
+            t.Fatalf("Unable to parse response from server %q into UserState, '%v'", response.Body, err)
         }
 
         assertCorrect(t, response.Code, http.StatusOK)
+    })
+    t.Run("it parses the user id from the URL and returns state", func(t *testing.T) {
+        request, _ := http.NewRequest(http.MethodGet, "/users/42/state", nil)
+        response := httptest.NewRecorder()
+        
+        server.ServeHTTP(response, request)
+
+        var got UserState
+        err := json.NewDecoder(response.Body).Decode(&got)
+        if err != nil {
+            t.Fatalf("Unable to parse response from server %q into UserState, '%v'", response.Body, err)
+        }
+
+        want := UserState{
+            UserID: "42",
+            Subjects: []Subject{
+                {"Physics", "Idk physics"},
+            },
+        }
+
+        assertCorrect(t, response.Code, http.StatusOK)
+        assertCorrectStruct(t, got, want)
+
     })
 //    t.Run("it returns thought userState as JSON", func(t *testing.T) {
 //
@@ -143,12 +166,12 @@ func assertCorrect[T comparable](t testing.TB, got, want T) {
 
 
 // generic using reflect, not type safe
-//func assertCorrect[T any](t testing.TB, got, want T) {
-//	t.Helper()
-//	if !reflect.DeepEqual(got, want) {
-//		t.Errorf("\ngot  %+v,\nwant %+v", got, want)
-//	}
-//}
+func assertCorrectStruct[T any](t testing.TB, got, want T) {
+	t.Helper()
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("\ngot  %+v,\nwant %+v", got, want)
+	}
+}
 
 func assertNoError(t testing.TB, err error) {
     t.Helper()
