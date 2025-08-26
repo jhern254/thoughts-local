@@ -26,6 +26,8 @@ type UserState struct {
     Subjects []Subject
 }
 
+type UserStates []UserState
+
 // Public methods
 type ThoughtStore interface {
     GetThoughts(subject string) []string

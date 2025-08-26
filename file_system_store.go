@@ -8,20 +8,21 @@ import (
 //    "net/http"
 //    "errors"
 //    "strings"
-    "encoding/json"
+//    "encoding/json"
 )
 
 type FileSystemThoughtStore struct {
     database io.Reader
 }
 
-func (f *FileSystemThoughtStore) GetUserState(userID string) UserState {
-    var users []UserState
-    if err := json.NewDecoder(f.database).Decode(&users); err != nil {
-        return UserState{} // handle errors properly later
-    }
+// GetAllUserStates is GetLeague() []Players equivalent
+func (f *FileSystemThoughtStore) GetAllUserStates() UserStates {
+    users, _ := NewUserStates(f.database) 
+    return users
+}
 
-    for _, u := range users {
+func (f *FileSystemThoughtStore) GetUserState(userID string) UserState {
+    for _, u := range f.GetAllUserStates() {
         if u.UserID == userID {
             return u
         }
