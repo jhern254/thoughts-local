@@ -44,7 +44,7 @@ func NewThoughtServer(store ThoughtStore) *ThoughtServer {
         http.NewServeMux(),
     }
 
-    s.router.Handle("/users/", http.HandlerFunc(s.usersHandler)) // TODO: change to better handle for id
+    s.router.Handle("/users/", http.HandlerFunc(s.usersHandler)) 
     s.router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
 
     return s
@@ -56,16 +56,15 @@ func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ThoughtServer) usersHandler(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("content-type", "application/json")
-    w.WriteHeader(http.StatusOK)
-
-    parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-    // expect /users/{id}/state
-    userID := ""
-    if len(parts) >= 3 && parts[0] == "users" && parts[2] == "state" {
-        userID = parts[1]
+    userID, ok := parseUserStatePath(r.URL.Path)
+    if !ok {
+        http.NotFound(w, r)
+        return
     }
 
+    w.Header().Set("content-type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    
     userTable := UserState{
         UserID: userID,
         Subjects: []Subject{
@@ -128,6 +127,15 @@ func readThought(body io.ReadCloser) (string, error) {
 
     return thought, nil
 } 
+
+func parseUserStatePath(path string) (string, bool) {
+    parts := strings.Split(strings.Trim(path, "/"), "/")
+    // expect /users/{id}/state
+    if len(parts) >= 3 && parts[0] == "users" && parts[2] == "state" {
+        return parts[1], true
+    }
+    return "", false
+}
 
 func Run() {
     // configure package zerolog
