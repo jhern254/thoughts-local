@@ -13,6 +13,8 @@ import (
     "github.com/rs/zerolog" 
 )
 
+const jsonContentType = "application/json"
+
 type Subject struct {
     Name string
     Thought string
@@ -63,7 +65,7 @@ func (s *ThoughtServer) usersHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    w.Header().Set("content-type", "application/json")
+    w.Header().Set("content-type", jsonContentType)
     w.WriteHeader(http.StatusOK)
     
 //    userTable := UserState{

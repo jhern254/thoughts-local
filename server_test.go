@@ -149,7 +149,7 @@ func TestUserState(t *testing.T) {
 
         assertCorrect(t, response.Code, http.StatusOK)
         assertCorrectStruct(t, got, wantedState)
-
+        assertContentType(t, response, jsonContentType)
     })
 }
 
@@ -197,6 +197,13 @@ func assertCorrectStruct[T any](t testing.TB, got, want T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("\ngot  %+v,\nwant %+v", got, want)
 	}
+}
+
+func assertContentType(t testing.TB, response *httptest.ResponseRecorder, want string) {
+    t.Helper()
+    if response.Result().Header.Get("content-type") != want {
+        t.Errorf("response did not have content-type of got %s, want %v", want, response.Result().Header)
+    }
 }
 
 func assertNoError(t testing.TB, err error) {
