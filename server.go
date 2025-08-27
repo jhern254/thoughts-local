@@ -30,6 +30,7 @@ type UserStates []UserState
 
 // Public methods
 type ThoughtStore interface {
+    // TODO: refactor add userID 
     GetThoughts(subject string) []string
     CaptureThought(subject, thought string)
     GetUserState(userID string) UserState

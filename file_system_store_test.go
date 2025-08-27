@@ -1,13 +1,14 @@
 package main
 
 import (
-	"strings"
 	"testing"
+    "io"
+    "os"
 )
 
 func TestFileSystemStore(t *testing.T) {
     t.Run("UserStates from a reader", func(t *testing.T) {
-        database := strings.NewReader(`[
+        database, cleanDatabase := createTempFile(t, `[
 {
   "UserID": "1",
   "Subjects": [
@@ -39,6 +40,7 @@ func TestFileSystemStore(t *testing.T) {
 ]
 }
 ]`)
+        defer cleanDatabase()
 
         store := FileSystemThoughtStore{database}
 
@@ -69,7 +71,7 @@ func TestFileSystemStore(t *testing.T) {
 
     })
     t.Run("Get Thoughts from a reader", func(t *testing.T) {
-        database := strings.NewReader(`[
+        database, cleanDatabase := createTempFile(t, `[
     {
     "UserID": "2",
     "Subjects": [
@@ -84,6 +86,7 @@ func TestFileSystemStore(t *testing.T) {
     ]
     }
         ]`)
+        defer cleanDatabase()
 
         store := FileSystemThoughtStore{database}
         got := store.GetThoughts("AI")
@@ -92,6 +95,27 @@ func TestFileSystemStore(t *testing.T) {
         assertCorrectStruct(t, got, want)
     })
 
+
+}
+
+
+func createTempFile(t testing.TB, initialData string) (io.ReadWriteSeeker, func()) {
+    t.Helper()
+
+    tmpfile, err := os.CreateTemp("", "db")
+
+    if err != nil {
+        t.Fatalf("could not create temp file %v", err)
+    }
+
+    tmpfile.Write([]byte(initialData))
+
+    removeFile := func() {
+        tmpfile.Close()
+        os.Remove(tmpfile.Name())
+    }
+
+    return tmpfile, removeFile
 
 }
 

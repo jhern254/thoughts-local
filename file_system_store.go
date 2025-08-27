@@ -12,7 +12,7 @@ import (
 )
 
 type FileSystemThoughtStore struct {
-    database io.ReadSeeker
+    database io.ReadWriteSeeker
 }
 
 // GetAllUserStates is GetLeague() []Players equivalent
@@ -32,6 +32,20 @@ func (f *FileSystemThoughtStore) GetUserState(userID string) UserState {
 }
 
 func (f *FileSystemThoughtStore) GetThoughts(subject string) []string {
-    return []string{"Transformers changed the world!", }
+    for _, u := range f.GetAllUserStates() {
+        for _, s := range u.Subjects {
+            if s.Name == subject {
+                // Return a copy so callers can't mutate the underlying slice.
+                out := make([]string, len(s.Thoughts))
+                copy(out, s.Thoughts)
+                return out
+            }
+        }
+    }
+    return nil
 }
+
+
+
+
 
