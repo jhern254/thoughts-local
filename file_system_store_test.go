@@ -42,10 +42,7 @@ func TestFileSystemStore(t *testing.T) {
 
         store := FileSystemThoughtStore{database}
 
-        // TODO: fix
-//        got := store.GetUserState("1")
         got := store.GetAllUserStates()
-
         want := []UserState{
             {
                 UserID: "1",
@@ -64,7 +61,10 @@ func TestFileSystemStore(t *testing.T) {
             },
         }
 
+        assertCorrectStruct(t, got, want)
 
+        // read twice
+        got = store.GetAllUserStates()
         assertCorrectStruct(t, got, want)
 
     })

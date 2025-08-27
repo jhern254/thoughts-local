@@ -12,11 +12,12 @@ import (
 )
 
 type FileSystemThoughtStore struct {
-    database io.Reader
+    database io.ReadSeeker
 }
 
 // GetAllUserStates is GetLeague() []Players equivalent
 func (f *FileSystemThoughtStore) GetAllUserStates() UserStates {
+    f.database.Seek(0, 0)
     users, _ := NewUserStates(f.database) 
     return users
 }
