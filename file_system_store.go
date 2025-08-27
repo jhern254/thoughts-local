@@ -31,4 +31,7 @@ func (f *FileSystemThoughtStore) GetUserState(userID string) UserState {
     return UserState{}
 }
 
+func (f *FileSystemThoughtStore) GetThoughts(subject string) []string {
+    return []string{"Transformers changed the world!", }
+}
 

@@ -6,7 +6,7 @@ import (
 )
 
 func TestFileSystemStore(t *testing.T) {
-    t.Run("UserStore from a reader", func(t *testing.T) {
+    t.Run("UserStates from a reader", func(t *testing.T) {
         database := strings.NewReader(`[
 {
   "UserID": "1",
@@ -68,5 +68,30 @@ func TestFileSystemStore(t *testing.T) {
         assertCorrectStruct(t, got, want)
 
     })
+    t.Run("Get Thoughts from a reader", func(t *testing.T) {
+        database := strings.NewReader(`[
+    {
+    "UserID": "2",
+    "Subjects": [
+      {
+        "Name": "Art",
+        "Thoughts": ["Ye is so talented"]
+      },
+      {
+        "Name": "AI",
+        "Thoughts": ["Transformers changed the world!"]
+      }
+    ]
+    }
+        ]`)
+
+        store := FileSystemThoughtStore{database}
+        got := store.GetThoughts("AI")
+        want := []string{"Transformers changed the world!", }
+
+        assertCorrectStruct(t, got, want)
+    })
+
+
 }
 
