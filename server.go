@@ -30,8 +30,9 @@ type ThoughtStore interface {
 }
 
 type ThoughtServer struct {
-    store ThoughtStore
-    router *http.ServeMux
+    store       ThoughtStore
+    router      *http.ServeMux
+    userFromReq func(*http.Request) string
 }
 // NOTE: pattern is server fns here, store interface done on test, main
 
@@ -39,8 +40,9 @@ type ThoughtServer struct {
 // NOTE: store interface already reference value, impl needs pointer
 func NewThoughtServer(store ThoughtStore) *ThoughtServer {
     s := &ThoughtServer{
-        store,
-        http.NewServeMux(),
+        store:      store,
+        router:     http.NewServeMux(),
+        userFromReq: func(*http.Request) string { return "test-user" }, // NOTE: default for now
     }
 
     s.router.Handle("/users/", http.HandlerFunc(s.usersHandler)) 
@@ -87,8 +89,7 @@ func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) 
 
 func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
     subject := subjectFromPath(r.URL.Path)
-//    userID := s.userFromReq(r)
-    userID := ""
+    userID := s.userFromReq(r)
 
     thoughts := s.store.GetThoughts(userID, subject)
     if thoughts == nil {

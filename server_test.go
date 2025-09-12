@@ -16,12 +16,12 @@ import (
 type StubThoughtStore struct {
     thoughts map[string][]string
     subjectCalls    []string       // spy
-    // NOTE: temporarily holds thoughts as well
+    // NOTE: temporary to disk impl
     userState       UserState
 }
 
 // TODO: add userID impl 
-func (s *StubThoughtStore) GetThoughts(userID, subject string) []string {
+func (s *StubThoughtStore) GetThoughts(_, subject string) []string {
     return s.thoughts[subject]
 }
 
