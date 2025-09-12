@@ -25,7 +25,8 @@ func (s *StubThoughtStore) GetThoughts(_, subject string) []string {
     return s.thoughts[subject]
 }
 
-func (s *StubThoughtStore) CaptureThought(subject, thought string) {
+// TODO: add userID impl 
+func (s *StubThoughtStore) CaptureThought(userID, subject, thought string) {
     s.thoughts[subject] = append(s.thoughts[subject], thought)            
     s.subjectCalls = append(s.subjectCalls, subject)
 }

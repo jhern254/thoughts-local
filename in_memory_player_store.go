@@ -15,13 +15,15 @@ type InMemoryThoughtStore struct {
     lock     sync.RWMutex
 }
 
+// TODO: add userID impl
 func (i *InMemoryThoughtStore) GetThoughts(userID, subject string) []string {
     i.lock.Lock()
     defer i.lock.Unlock()
     return i.thoughts[subject]
 }
 
-func (i *InMemoryThoughtStore) CaptureThought(subject, thought string) {
+// TODO: add userID impl
+func (i *InMemoryThoughtStore) CaptureThought(userID, subject, thought string) {
     i.lock.Lock()
     defer i.lock.Unlock()
     i.thoughts[subject] = append(i.thoughts[subject], thought)            
