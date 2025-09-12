@@ -21,13 +21,6 @@ type Subject struct {
     // TODO: add tags yet?
 }
 
-type UserState struct {
-    UserID  string
-    Subjects []Subject
-}
-
-type UserStates []UserState
-
 // Public methods
 type ThoughtStore interface {
     // TODO: refactor add userID 

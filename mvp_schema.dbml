@@ -164,7 +164,6 @@ Table goal_time_rollups {
     (goal_id, cadence, period_start) [pk, name: 'pk_goal_time_rollups']
   }
 
-  ...
   Note: '''
   Compute in goal.tz:
    - daily: start of local calendar day

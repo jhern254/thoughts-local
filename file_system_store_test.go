@@ -94,7 +94,27 @@ func TestFileSystemStore(t *testing.T) {
 
         assertCorrectStruct(t, got, want)
     })
+    t.Run("store thoughts for existing user", func(t *testing.T) {
+        database, cleanDatabase := createTempFile(t, `[
+    {
+      "UserID": "1",
+      "Subjects": [
+        {
+          "Name": "Code",
+          "Thoughts": ["I'm learning go!"]
+        }
+      ]
+    }
+        ]`)
+        defer cleanDatabase()
 
+        store := FileSystemThoughtStore{database}
+        store.CaptureThought("AI", "Transformers go brr")
+        got := store.GetThoughts("AI")
+        want := []string{"Transformers go brr", }
+
+        assertCorrectStruct(t, got, want)
+    })
 
 }
 
