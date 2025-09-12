@@ -15,7 +15,7 @@ type InMemoryThoughtStore struct {
     lock     sync.RWMutex
 }
 
-func (i *InMemoryThoughtStore) GetThoughts(subject string) []string {
+func (i *InMemoryThoughtStore) GetThoughts(userID, subject string) []string {
     i.lock.Lock()
     defer i.lock.Unlock()
     return i.thoughts[subject]

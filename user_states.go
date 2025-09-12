@@ -25,3 +25,5 @@ func NewUserStates(rdr io.Reader) (UserStates, error){
     }
     return users, nil
 }
+
+

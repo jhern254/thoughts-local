@@ -20,7 +20,8 @@ type StubThoughtStore struct {
     userState       UserState
 }
 
-func (s *StubThoughtStore) GetThoughts(subject string) []string {
+// TODO: add userID impl 
+func (s *StubThoughtStore) GetThoughts(userID, subject string) []string {
     return s.thoughts[subject]
 }
 

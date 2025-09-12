@@ -24,7 +24,7 @@ type Subject struct {
 // Public methods
 type ThoughtStore interface {
     // TODO: refactor add userID 
-    GetThoughts(subject string) []string
+    GetThoughts(userID, subject string) []string
     CaptureThought(subject, thought string)
     GetUserState(userID string) UserState
 }
@@ -87,10 +87,13 @@ func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) 
 
 func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
     subject := subjectFromPath(r.URL.Path)
+//    userID := s.userFromReq(r)
+    userID := ""
 
-    thoughts := s.store.GetThoughts(subject)
+    thoughts := s.store.GetThoughts(userID, subject)
     if thoughts == nil {
         w.WriteHeader(http.StatusNotFound)
+        return
     }
     fmt.Fprint(w, strings.Join(thoughts, "\n"))
 }
