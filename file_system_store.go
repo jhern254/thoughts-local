@@ -15,65 +15,105 @@ type FileSystemThoughtStore struct {
     database io.ReadWriteSeeker
 }
 
-// GetAllUserStates is GetLeague() []Players equivalent
-func (f *FileSystemThoughtStore) GetAllUserStates() UserStates {
-    f.database.Seek(0, 0)
-    // TODO: handle err
-    users, _ := NewUserStates(f.database) 
-//    fmt.Printf("users (+v): %+v", users)
-    return users
+// -- private DTOs only used for JSON <-> disk --
+type subjectRow struct {
+    Name     string   `json:"Name"`
+    Thoughts []string `json:"Thoughts"`
 }
 
-func (f *FileSystemThoughtStore) GetUserState(userID string) UserState {
-    for _, u := range f.GetAllUserStates() {
-        if u.UserID == userID {
-            return u
-        }
+type userRow struct {
+    UserID   string      `json:"UserID"`
+    Subjects []subjectRow `json:"Subjects"`
+}
+
+type dbFile []userRow
+
+func (f *FileSystemThoughtStore) load() (dbFile, error) {
+    if _, err := f.database.Seek(0, 0); err != nil {
+        return nil, err
     }
-    return UserState{}
+    var db dbFile
+    if err := json.NewDecoder(f.database).Decode(&db); err != nil {
+        return nil, err
+    }
+    return db, nil
 }
 
-func (f *FileSystemThoughtStore) GetThoughts(subject string) []string {
-    for _, u := range f.GetAllUserStates() {
+// GetAllUserStates is GetLeague() []Players equivalent
+//func (f *FileSystemThoughtStore) GetAllUserStates() UserStates {
+//    f.database.Seek(0, 0)
+//    users, _ := NewUserStates(f.database) 
+////    fmt.Printf("users (+v): %+v", users)
+//    return users
+//}
+
+//func (f *FileSystemThoughtStore) GetUserState(userID string) UserState {
+//    for _, u := range f.GetAllUserStates() {
+//        if u.UserID == userID {
+//            return u
+//        }
+//    }
+//    return UserState{}
+//}
+
+func (f *FileSystemThoughtStore) GetThoughts(userID, subject string) []string {
+    db, err := f.load()
+    if err != nil { return nil }
+    for _, u := range db {
+        if u.UserID != userID { continue }
         for _, s := range u.Subjects {
             if s.Name == subject {
-                // Return a copy so callers can't mutate the underlying slice.
                 out := make([]string, len(s.Thoughts))
                 copy(out, s.Thoughts)
                 return out
             }
         }
+        return nil // user found, subject missing
     }
-    return nil
+    return nil // user missing
 }
 
 // TODO: fix. base impl, still unsafe since not truncating
-func (f *FileSystemThoughtStore) CaptureThought(subject, thought string) {
-    users := f.GetAllUserStates()
-
-    // 1) Update existing subject (first match wins)
-    for ui := range users {
-        for si := range users[ui].Subjects {
-            if users[ui].Subjects[si].Name == subject {
-                users[ui].Subjects[si].Thoughts = append(users[ui].Subjects[si].Thoughts, thought)
-                // write at beginnning of file
-                f.database.Seek(0, 0)
-                _ = json.NewEncoder(f.database).Encode(users) // Tape comes later in the chapter
-                // NOTE: doesn't handle multiple writes? 
-                return
-            }
-        }
+func (f *FileSystemThoughtStore) CaptureThought(userID, subject, thought string) {
+    // 1) load current state
+    db, err := f.load()
+    if err != nil {
+        return // keep simple for now; you’ll add error returns later
     }
 
-    // 2) No subject found: append new subject to the first user (mirrors "append new Player")
-    if len(users) > 0 {
-        users[0].Subjects = append(users[0].Subjects, Subject{
+    // 2) find or create the user row
+    ui := -1
+    for i := range db {
+        if db[i].UserID == userID {
+            ui = i
+            break
+        }
+    }
+    if ui == -1 {
+        db = append(db, userRow{UserID: userID})
+        ui = len(db) - 1
+    }
+
+    // 3) find or create the subject row for that user
+    si := -1
+    for i := range db[ui].Subjects {
+        if db[ui].Subjects[i].Name == subject {
+            si = i
+            break
+        }
+    }
+    if si == -1 {
+        db[ui].Subjects = append(db[ui].Subjects, subjectRow{
             Name:     subject,
             Thoughts: []string{thought},
         })
-        f.database.Seek(0, 0)
-        _ = json.NewEncoder(f.database).Encode(users)
+    } else {
+        db[ui].Subjects[si].Thoughts = append(db[ui].Subjects[si].Thoughts, thought)
     }
+
+    // 4) write back (seek→encode). No truncation yet; fine for growing JSON.
+    _, _ = f.database.Seek(0, 0)
+    _ = json.NewEncoder(f.database).Encode(db)
 }
 
 

@@ -8,7 +8,7 @@ import (
 //    "errors"
     "strings"
     "io"
-    "encoding/json"
+//    "encoding/json"
 
     "github.com/rs/zerolog" 
 )
@@ -23,11 +23,8 @@ type Subject struct {
 
 // Public methods
 type ThoughtStore interface {
-    // TODO: refactor add userID 
     GetThoughts(userID, subject string) []string
     CaptureThought(userID, subject, thought string)
-    // NOTE: temp data snapshot, will move later
-    GetUserState(userID string) UserState
 }
 
 type ThoughtServer struct {
@@ -46,7 +43,6 @@ func NewThoughtServer(store ThoughtStore) *ThoughtServer {
         userFromReq: func(*http.Request) string { return "test-user" }, // NOTE: default for now
     }
 
-    s.router.Handle("/users/", http.HandlerFunc(s.usersHandler)) 
     s.router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
 
     return s
@@ -55,26 +51,6 @@ func NewThoughtServer(store ThoughtStore) *ThoughtServer {
 // method needs pointer as input
 func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     s.router.ServeHTTP(w, r)
-}
-
-func (s *ThoughtServer) usersHandler(w http.ResponseWriter, r *http.Request) {
-    userID, ok := parseUserStatePath(r.URL.Path)
-    if !ok {
-        http.NotFound(w, r)
-        return
-    }
-
-    w.Header().Set("content-type", jsonContentType)
-    w.WriteHeader(http.StatusOK)
-    
-//    userTable := UserState{
-//        UserID: userID,
-//        Subjects: []Subject{
-//            {"Physics", "Idk physics"},
-//        },
-//    }
-
-    _ = json.NewEncoder(w).Encode(s.store.GetUserState(userID))
 }
 
 func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) {
@@ -133,14 +109,14 @@ func readThought(body io.ReadCloser) (string, error) {
     return thought, nil
 } 
 
-func parseUserStatePath(path string) (string, bool) {
-    parts := strings.Split(strings.Trim(path, "/"), "/")
-    // expect /users/{id}/state
-    if len(parts) >= 3 && parts[0] == "users" && parts[2] == "state" {
-        return parts[1], true
-    }
-    return "", false
-}
+//func parseUserStatePath(path string) (string, bool) {
+//    parts := strings.Split(strings.Trim(path, "/"), "/")
+//    // expect /users/{id}/state
+//    if len(parts) >= 3 && parts[0] == "users" && parts[2] == "state" {
+//        return parts[1], true
+//    }
+//    return "", false
+//}
 
 func Run() {
     // configure package zerolog

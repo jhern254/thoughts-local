@@ -25,28 +25,6 @@ func TestPostingThoughtsAndGettingThem(t *testing.T) {
         assertCorrect(t, response.Code, http.StatusOK)
         assertCorrect(t, response.Body.String(), "neural networks\nare\nblack magic!")
     })
-    t.Run("get userState", func(t *testing.T) {
-        response := httptest.NewRecorder()
-        // NOTE: 1 is passed to GetUserState
-        server.ServeHTTP(response, newUserStateRequest("1"))
-
-        got := getUserStateFromResponse(t, response.Body)
-        want := UserState{
-            UserID: "1",
-            Subjects: []Subject{
-                {
-                    Name:    "ai",
-                    Thoughts: []string{
-                        "neural networks",
-                        "are",
-                        "black magic!",
-                    },
-                },
-            },
-        }
-
-        assertCorrectStruct(t, got, want)
-    })
 }
 
 

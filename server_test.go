@@ -9,15 +9,13 @@ import (
     "reflect"
     "fmt"
     "strings"
-    "encoding/json"
-    "io"
+//    "encoding/json"
+//    "io"
 )
 
 type StubThoughtStore struct {
     thoughts map[string][]string
     subjectCalls    []string       // spy
-    // NOTE: temporary to disk impl
-    userState       UserState
 }
 
 // TODO: add userID impl 
@@ -31,10 +29,6 @@ func (s *StubThoughtStore) CaptureThought(userID, subject, thought string) {
     s.subjectCalls = append(s.subjectCalls, subject)
 }
 
-func (s *StubThoughtStore) GetUserState(userID string) UserState {
-    return s.userState
-}
-
 func (s *StubThoughtStore) Count() int {
     return len(s.thoughts)
 }
@@ -46,7 +40,6 @@ func TestGETThoughts(t *testing.T) {
             "ai": {"agi 2025!"},
         },
         nil,
-        UserState{},
     }
     server := NewThoughtServer(&store)
 
@@ -82,7 +75,6 @@ func TestStoreThoughts(t *testing.T) {
     store := StubThoughtStore{
         map[string][]string{},
         nil,
-        UserState{},
     }
     server := NewThoughtServer(&store)
 
@@ -107,53 +99,31 @@ func TestStoreThoughts(t *testing.T) {
     })
 }
 
-func TestUserState(t *testing.T) {
-    store := StubThoughtStore{}
-    server := NewThoughtServer(&store)
-
-    t.Run("it returns a 200 on /users/{id}/state", func(t *testing.T) {
-        request := newUserStateRequest("1")
-        response := httptest.NewRecorder()
-
-        server.ServeHTTP(response, request)
-
-        var got UserState
-        err := json.NewDecoder(response.Body).Decode(&got)
-        if err != nil {
-            t.Fatalf("Unable to parse response from server %q into UserState, '%v'", response.Body, err)
-        }
-
-        assertCorrect(t, response.Code, http.StatusOK)
-    })
-    t.Run("it returns thought userState as JSON", func(t *testing.T) {
-        wantedState := UserState{
-            UserID: "2",
-            Subjects: []Subject{
-                {"Physics", []string{"Idk physics"}, },
-                {"Code", []string{"I'm learning go!"}, },
-                {"AI", []string{"Neural Networks work!"}, },
-            },
-        }
-
-        store = StubThoughtStore{nil, nil, wantedState}
-        server = NewThoughtServer(&store)
-
-        request := newUserStateRequest("2")
-        response := httptest.NewRecorder()
-        
-        server.ServeHTTP(response, request)
-
-        // old way
-//        var got UserState
-//        err := json.NewDecoder(response.Body).Decode(&got)
-        // injected store state JSON
-        got := getUserStateFromResponse(t, response.Body)
-
-        assertCorrect(t, response.Code, http.StatusOK)
-        assertCorrectStruct(t, got, wantedState)
-        assertContentType(t, response, jsonContentType)
-    })
-}
+//    t.Run("it returns thought userState as JSON", func(t *testing.T) {
+//        wantedState := UserState{
+//            UserID: "2",
+//            Subjects: []Subject{
+//                {"Physics", []string{"Idk physics"}, },
+//                {"Code", []string{"I'm learning go!"}, },
+//                {"AI", []string{"Neural Networks work!"}, },
+//            },
+//        }
+//
+//        store = StubThoughtStore{nil, nil, wantedState}
+//        server = NewThoughtServer(&store)
+//
+//        request := newUserStateRequest("2")
+//        response := httptest.NewRecorder()
+//        
+//        server.ServeHTTP(response, request)
+//
+//        // injected store state JSON
+//        got := getUserStateFromResponse(t, response.Body)
+//
+//        assertCorrect(t, response.Code, http.StatusOK)
+//        assertCorrectStruct(t, got, wantedState)
+//        assertContentType(t, response, jsonContentType)
+//    })
 
 // helper fns
 func newGetThoughtRequest(subject string) *http.Request {
@@ -164,22 +134,6 @@ func newGetThoughtRequest(subject string) *http.Request {
 func newPostThoughtRequest(subject, thought string) *http.Request {
     req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("/subjects/%s", subject), strings.NewReader(thought))
     return req
-}
-
-func newUserStateRequest(userID string) *http.Request {
-    req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/users/%s/state", userID), nil)
-    return req
-}
-
-// decode raw JSON userState from handler and return 
-func getUserStateFromResponse(t testing.TB, body io.Reader) (userState UserState) {
-    t.Helper()
-    err := json.NewDecoder(body).Decode(&userState)
-    if err != nil {
-        t.Fatalf("Unable to parse response from server %q into UserState, '%v'", body, err)
-    }
-
-    return
 }
 
 // generic
