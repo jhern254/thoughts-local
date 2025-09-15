@@ -9,8 +9,10 @@ import (
     "github.com/rs/zerolog" 
 )
 
+const dbFileName = "thoughts.db.json"
+
 func main() {
-        // configure package zerolog
+    // configure package zerolog
     output := zerolog.ConsoleWriter{
         Out: os.Stdout,     // for stdout 
         TimeFormat: "2006-01-02 15:04:05",
@@ -23,13 +25,23 @@ func main() {
         Logger().
         Level(zerolog.InfoLevel) // set log level 
 
-    
-    server := NewThoughtServer(NewInMemoryThoughtStore())
+    db, err := os.OpenFile(dbFileName, os.O_RDWR|os.O_CREATE, 0666)
 
-	logger.Info().Str("addr", ":5000").Msg("starting server")
-	if err := http.ListenAndServe(":5000", server); err != nil {
-		// same intent as log.Fatal: log and exit non-zero
-		logger.Fatal().Err(err).Msg("ListenAndServe failed")
+    if err != nil {
+        logger.Fatal().
+            Err(err).
+            Str("dbfile", dbFileName).
+            Msg("problem opening dbfile")
+    }
+
+    store :=&FileSystemThoughtStore{db}
+    server := NewThoughtServer(store)
+
+    addr := ":7777"
+	logger.Info().Str("addr", addr).Msg("starting server")
+
+	if err := http.ListenAndServe(addr, server); err != nil {
+		logger.Fatal().Err(err).Str("addr", addr).Msg("ListenAndServe failed")
 	}
     logger.Debug().Msg("Program ended.")
 
