@@ -1,3 +1,4 @@
+// server_integration_test.go
 package main
 
 import (
@@ -7,9 +8,11 @@ import (
 //    "reflect"
 )
 
-
 func TestPostingThoughtsAndGettingThem(t *testing.T) {
-    store := NewInMemoryThoughtStore()
+//    store := NewInMemoryThoughtStore()
+    database, cleanDatabase := createTempFile(t, "")
+    defer cleanDatabase()
+    store := &FileSystemThoughtStore{database}
     server := NewThoughtServer(store)
     subject := "ai"
 
