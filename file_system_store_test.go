@@ -88,7 +88,7 @@ func TestFileSystemStore(t *testing.T) {
         ]`)
         defer cleanDatabase()
 
-        store := FileSystemThoughtStore{database}
+        store, _ := NewFileSystemThoughtStore(database)
         got := store.GetThoughts("2", "AI")
         want := []string{"Transformers changed the world!", }
 
@@ -108,7 +108,7 @@ func TestFileSystemStore(t *testing.T) {
         ]`)
         defer cleanDatabase()
 
-        store := FileSystemThoughtStore{database}
+        store, _ := NewFileSystemThoughtStore(database)
         store.CaptureThought("1", "AI", "Transformers go brr")
         got := store.GetThoughts("1", "AI")
         want := []string{"Transformers go brr", }

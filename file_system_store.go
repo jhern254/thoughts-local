@@ -2,7 +2,7 @@
 package main
 
 import (
-//    "fmt"
+    "fmt"
     "io"
 //    "os"
 //    "net/http"
@@ -51,6 +51,22 @@ func (f *FileSystemThoughtStore) load() (dbFile, error) {
 		return nil, err
 	}
 }
+
+func NewFileSystemThoughtStore(db io.ReadWriteSeeker) (*FileSystemThoughtStore, error) {
+    s := &FileSystemThoughtStore{database: db}
+    // Validate we can read/parse whatever is there (including empty file).
+    if _, err := s.load(); err != nil {
+        return nil, fmt.Errorf("problem parsing thought store file: %w", err)
+    }
+
+    // optional clean rewind for next operation
+    if _, err := db.Seek(0, 0); err != nil {
+        return nil, fmt.Errorf("rewind after validation: %w", err)
+    }
+
+    return s, nil
+}
+
 
 func (f *FileSystemThoughtStore) GetThoughts(userID, subject string) []string {
     db, err := f.load()
