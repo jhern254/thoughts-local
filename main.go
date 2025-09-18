@@ -34,8 +34,11 @@ func main() {
             Msg("problem opening dbfile")
     }
 
-    // TODO: handle err
-    store, _ := NewFileSystemThoughtStore(db)
+    store, err := NewFileSystemThoughtStore(db)
+    if err != nil {
+		logger.Fatal().Err(err).Msg("problem creating file system thought store")
+    }
+
     server := NewThoughtServer(store)
 
     addr := ":7777"

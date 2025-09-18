@@ -10,9 +10,11 @@ import (
 
 func TestPostingThoughtsAndGettingThem(t *testing.T) {
 //    store := NewInMemoryThoughtStore()
-    database, cleanDatabase := createTempFile(t, "")
+    database, cleanDatabase := createTempFile(t, `[]`)
     defer cleanDatabase()
-    store, _ := NewFileSystemThoughtStore(database)
+    store, err := NewFileSystemThoughtStore(database)
+    assertNoError(t, err)
+
     server := NewThoughtServer(store)
     subject := "ai"
 

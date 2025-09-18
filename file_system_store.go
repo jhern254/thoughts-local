@@ -33,18 +33,31 @@ type userRow struct {
 
 type dbFile []userRow
 
-func loadFrom(file *os.File) (dbFile, error) {
+// populate cache from file
+func loadFrom(file *os.File) (cache dbFile, err error) {
     if _, err := file.Seek(0, 0); err != nil {
         return nil, err
 	}
 
+    info, err := file.Stat()
+
+    if err != nil {
+        return nil, fmt.Errorf("problem getting file info from file %s %v", file.Name(), err)
+    }
+
+    // create empty json file if file is empty
+    if info.Size() == 0 {
+        file.Write([]byte("[]"))
+        file.Seek(0, 0)
+    }
+
 	var c dbFile
-	err := json.NewDecoder(file).Decode(&c)
+	err = json.NewDecoder(file).Decode(&c)
     switch err {
 	case nil:
 		// Decoded OK. If the JSON was "null" somehow, normalize to [].
-		if c== nil {
-			c= dbFile{}
+		if c == nil {
+			c = dbFile{}
 		}
 		return c, nil
 	case io.EOF:
