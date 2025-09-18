@@ -12,7 +12,7 @@ func TestPostingThoughtsAndGettingThem(t *testing.T) {
 //    store := NewInMemoryThoughtStore()
     database, cleanDatabase := createTempFile(t, "")
     defer cleanDatabase()
-    store := &FileSystemThoughtStore{database}
+    store, _ := NewFileSystemThoughtStore(database)
     server := NewThoughtServer(store)
     subject := "ai"
 

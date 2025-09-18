@@ -34,7 +34,8 @@ func main() {
             Msg("problem opening dbfile")
     }
 
-    store :=&FileSystemThoughtStore{db}
+    // TODO: handle err
+    store, _ := NewFileSystemThoughtStore(db)
     server := NewThoughtServer(store)
 
     addr := ":7777"

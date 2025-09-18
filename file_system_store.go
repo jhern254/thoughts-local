@@ -4,6 +4,7 @@ package main
 import (
     "fmt"
     "io"
+    "sync"
 //    "os"
 //    "net/http"
 //    "errors"
@@ -12,7 +13,9 @@ import (
 )
 
 type FileSystemThoughtStore struct {
-    database io.ReadWriteSeeker
+    writer  io.Writer
+    db      dbFile      // cache
+    lock    sync.RWMutex
 }
 
 // -- private DTOs only used for JSON <-> disk --
@@ -29,13 +32,13 @@ type userRow struct {
 
 type dbFile []userRow
 
-func (f *FileSystemThoughtStore) load() (dbFile, error) {
-    if _, err := f.database.Seek(0, 0); err != nil {
+func loadFrom(rws io.ReadWriteSeeker) (dbFile, error) {
+    if _, err := rws.Seek(0, 0); err != nil {
         return nil, err
 	}
 
 	var db dbFile
-	err := json.NewDecoder(f.database).Decode(&db)
+	err := json.NewDecoder(rws).Decode(&db)
     switch err {
 	case nil:
 		// Decoded OK. If the JSON was "null" somehow, normalize to [].
@@ -52,78 +55,71 @@ func (f *FileSystemThoughtStore) load() (dbFile, error) {
 	}
 }
 
-func NewFileSystemThoughtStore(db io.ReadWriteSeeker) (*FileSystemThoughtStore, error) {
-    s := &FileSystemThoughtStore{database: db}
+func NewFileSystemThoughtStore(rws io.ReadWriteSeeker) (*FileSystemThoughtStore, error) {
     // Validate we can read/parse whatever is there (including empty file).
-    if _, err := s.load(); err != nil {
+    rows, err := loadFrom(rws)
+    if err != nil {
         return nil, fmt.Errorf("problem parsing thought store file: %w", err)
     }
 
-    // optional clean rewind for next operation
-    if _, err := db.Seek(0, 0); err != nil {
-        return nil, fmt.Errorf("rewind after validation: %w", err)
-    }
-
-    return s, nil
+    return &FileSystemThoughtStore{
+        writer: rws,
+        db:     rows,
+    }, nil
 }
 
-
 func (f *FileSystemThoughtStore) GetThoughts(userID, subject string) []string {
-    db, err := f.load()
-    if err != nil { 
-        return nil 
-    }
-    // Scan users → subjects and return the first match.
-    for _, u := range db {
+    f.lock.RLock()
+    defer f.lock.RUnlock()
+
+    for _, u := range f.db {
+        if u.UserID != userID { continue }
         for _, s := range u.Subjects {
-			if s.Name == subject {
-				out := make([]string, len(s.Thoughts))
-				copy(out, s.Thoughts)
-				return out
-			}
-		}
-	}
-    // Not found → nil signals 404 to the handler in your tests.
-	return nil
+            if s.Name == subject {
+                out := make([]string, len(s.Thoughts))
+                copy(out, s.Thoughts) // protect internal slice
+                return out
+            }
+        }
+        return nil // user found, subject missing
+    }
+    return nil // user missing
 }
 
 // TODO: fix. base impl, still unsafe since not truncating
 func (f *FileSystemThoughtStore) CaptureThought(userID, subject, thought string) {
-    db, err := f.load()
-    if err != nil {
-    	return 
+    f.lock.Lock()
+    defer f.lock.Unlock()
+
+    // Ensure the user row exists (prefer the provided userID)
+    // writes to user
+    ui := -1
+    for i := range f.db {
+        if f.db[i].UserID == userID {
+            ui = i
+            break
+        }
+    }
+    if ui == -1 {
+        f.db = append(f.db, userRow{UserID: userID})
+        ui = len(f.db) - 1
     }
 
-    // Ensure at least one user so we have a place to attach a subject.
-    if len(db) == 0 {
-    	db = append(db, userRow{UserID: "1"})
+    // Update existing subject or add a new one
+    for si := range f.db[ui].Subjects {
+        if f.db[ui].Subjects[si].Name == subject {
+            f.db[ui].Subjects[si].Thoughts =
+                append(f.db[ui].Subjects[si].Thoughts, thought)
+            _ = json.NewEncoder(f.writer).Encode(f.db) // persist
+            return
+        }
     }
 
-    // Try to find the subject on any user (first match wins).
-    for ui := range db {
-    	for si := range db[ui].Subjects {
-    		if db[ui].Subjects[si].Name == subject {
-    			db[ui].Subjects[si].Thoughts =
-    				append(db[ui].Subjects[si].Thoughts, thought)
-
-    			// Rewind and write the updated JSON back.
-    			// (No truncate yet; safe for growing JSON.)
-    			_, _ = f.database.Seek(0, 0)
-    			_ = json.NewEncoder(f.database).Encode(db)
-    			return
-    		}
-    	}
-    }
-
-    // Subject not found → create it on the first user.
-    db[0].Subjects = append(db[0].Subjects, subjectRow{
-    	Name:     subject,
-    	Thoughts: []string{thought},
+    f.db[ui].Subjects = append(f.db[ui].Subjects, subjectRow{
+        Name:     subject,
+        Thoughts: []string{thought},
     })
-
-    // Rewind and write the updated JSON.
-    _, _ = f.database.Seek(0, 0)
-    _ = json.NewEncoder(f.database).Encode(db)
+    _ = json.NewEncoder(f.writer).Encode(f.db) // persist
 }
 
 
