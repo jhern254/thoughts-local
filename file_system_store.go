@@ -5,7 +5,7 @@ import (
     "fmt"
     "io"
     "sync"
-//    "os"
+    "os"
 //    "net/http"
 //    "errors"
 //    "strings"
@@ -13,8 +13,9 @@ import (
 )
 
 type FileSystemThoughtStore struct {
-    writer  io.Writer
-    db      dbFile      // cache
+    database   *json.Encoder
+    cache      dbFile      // cache
+
     lock    sync.RWMutex
 }
 
@@ -32,20 +33,20 @@ type userRow struct {
 
 type dbFile []userRow
 
-func loadFrom(rws io.ReadWriteSeeker) (dbFile, error) {
-    if _, err := rws.Seek(0, 0); err != nil {
+func loadFrom(file *os.File) (dbFile, error) {
+    if _, err := file.Seek(0, 0); err != nil {
         return nil, err
 	}
 
-	var db dbFile
-	err := json.NewDecoder(rws).Decode(&db)
+	var c dbFile
+	err := json.NewDecoder(file).Decode(&c)
     switch err {
 	case nil:
 		// Decoded OK. If the JSON was "null" somehow, normalize to [].
-		if db == nil {
-			db = dbFile{}
+		if c== nil {
+			c= dbFile{}
 		}
-		return db, nil
+		return c, nil
 	case io.EOF:
 		// Empty file → treat as empty dataset.
 		return dbFile{}, nil
@@ -55,16 +56,16 @@ func loadFrom(rws io.ReadWriteSeeker) (dbFile, error) {
 	}
 }
 
-func NewFileSystemThoughtStore(rws io.ReadWriteSeeker) (*FileSystemThoughtStore, error) {
+func NewFileSystemThoughtStore(file *os.File) (*FileSystemThoughtStore, error) {
     // Validate we can read/parse whatever is there (including empty file).
-    rows, err := loadFrom(rws)
+    rows, err := loadFrom(file)
     if err != nil {
         return nil, fmt.Errorf("problem parsing thought store file: %w", err)
     }
 
     return &FileSystemThoughtStore{
-        writer: rws,
-        db:     rows,
+        database: json.NewEncoder(&tape{file}),
+        cache:     rows,
     }, nil
 }
 
@@ -72,7 +73,7 @@ func (f *FileSystemThoughtStore) GetThoughts(userID, subject string) []string {
     f.lock.RLock()
     defer f.lock.RUnlock()
 
-    for _, u := range f.db {
+    for _, u := range f.cache {
         if u.UserID != userID { continue }
         for _, s := range u.Subjects {
             if s.Name == subject {
@@ -94,32 +95,32 @@ func (f *FileSystemThoughtStore) CaptureThought(userID, subject, thought string)
     // Ensure the user row exists (prefer the provided userID)
     // writes to user
     ui := -1
-    for i := range f.db {
-        if f.db[i].UserID == userID {
+    for i := range f.cache {
+        if f.cache[i].UserID == userID {
             ui = i
             break
         }
     }
     if ui == -1 {
-        f.db = append(f.db, userRow{UserID: userID})
-        ui = len(f.db) - 1
+        f.cache = append(f.cache, userRow{UserID: userID})
+        ui = len(f.cache) - 1
     }
 
     // Update existing subject or add a new one
-    for si := range f.db[ui].Subjects {
-        if f.db[ui].Subjects[si].Name == subject {
-            f.db[ui].Subjects[si].Thoughts =
-                append(f.db[ui].Subjects[si].Thoughts, thought)
-            _ = json.NewEncoder(f.writer).Encode(f.db) // persist
+    for si := range f.cache[ui].Subjects {
+        if f.cache[ui].Subjects[si].Name == subject {
+            f.cache[ui].Subjects[si].Thoughts =
+                append(f.cache[ui].Subjects[si].Thoughts, thought)
+            _ = f.database.Encode(f.cache) // persist
             return
         }
     }
 
-    f.db[ui].Subjects = append(f.db[ui].Subjects, subjectRow{
+    f.cache[ui].Subjects = append(f.cache[ui].Subjects, subjectRow{
         Name:     subject,
         Thoughts: []string{thought},
     })
-    _ = json.NewEncoder(f.writer).Encode(f.db) // persist
+    _ = f.database.Encode(f.cache) // persist
 }
 
 
