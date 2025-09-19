@@ -1,4 +1,3 @@
-cmd/thoughts
-design_docs.md
+/internal_docs
 ./thoughts
 thoughts.db.json
