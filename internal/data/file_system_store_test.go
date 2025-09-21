@@ -1,14 +1,15 @@
-package main
+package data
 
 import (
 	"testing"
 //    "io"
     "os"
+    "github.com/jhern254/go-thoughts/internal/testutils"
 )
 
 func TestFileSystemStore(t *testing.T) {
     t.Run("get thoughts from a reader", func(t *testing.T) {
-        database, cleanDatabase := createTempFile(t, `[
+        database, cleanDatabase := CreateTempFile(t, `[
     {
     "UserID": "2",
     "Subjects": [
@@ -29,11 +30,11 @@ func TestFileSystemStore(t *testing.T) {
         got := store.GetThoughts("2", "AI")
         want := []string{"Transformers changed the world!", }
 
-        assertCorrectStruct(t, got, want)
-        assertNoError(t, err)
+        testutils.AssertCorrectStruct(t, got, want)
+        testutils.AssertNoError(t, err)
     })
     t.Run("store thoughts for existing user", func(t *testing.T) {
-        database, cleanDatabase := createTempFile(t, `[
+        database, cleanDatabase := CreateTempFile(t, `[
     {
       "UserID": "1",
       "Subjects": [
@@ -51,22 +52,22 @@ func TestFileSystemStore(t *testing.T) {
         got := store.GetThoughts("1", "AI")
         want := []string{"Transformers go brr", }
 
-        assertCorrectStruct(t, got, want)
-        assertNoError(t, err)
+        testutils.AssertCorrectStruct(t, got, want)
+        testutils.AssertNoError(t, err)
     })
     t.Run("works with an empty file", func(t *testing.T) {
-        database, cleanDatabase := createTempFile(t, "")
+        database, cleanDatabase := CreateTempFile(t, "")
         defer cleanDatabase()
 
         _, err := NewFileSystemThoughtStore(database)
 
-        assertNoError(t, err)
+        testutils.AssertNoError(t, err)
     })
 
 }
 
 
-func createTempFile(t testing.TB, initialData string) (*os.File, func()) {
+func CreateTempFile(t testing.TB, initialData string) (*os.File, func()) {
     t.Helper()
 
     tmpfile, err := os.CreateTemp("", "db")

@@ -7,6 +7,7 @@ import (
 //    server "github.com/jhern254/go-thoughts"
 
     "github.com/rs/zerolog" 
+    "github.com/jhern254/go-thoughts/internal/data"
 )
 
 const dbFileName = "thoughts.db.json"
@@ -34,7 +35,7 @@ func main() {
             Msg("problem opening dbfile")
     }
 
-    store, err := NewFileSystemThoughtStore(db)
+    store, err := data.NewFileSystemThoughtStore(db)
     if err != nil {
 		logger.Fatal().Err(err).Msg("problem creating file system thought store")
     }

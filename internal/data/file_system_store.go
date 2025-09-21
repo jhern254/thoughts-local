@@ -1,5 +1,5 @@
 // file_system_store.go 
-package main
+package data
 
 import (
     "fmt"

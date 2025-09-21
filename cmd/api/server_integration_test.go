@@ -6,14 +6,16 @@ import (
     "net/http"
     "net/http/httptest"
 //    "reflect"
+    "github.com/jhern254/go-thoughts/internal/testutils"
+    "github.com/jhern254/go-thoughts/internal/data"
 )
 
 func TestPostingThoughtsAndGettingThem(t *testing.T) {
 //    store := NewInMemoryThoughtStore()
-    database, cleanDatabase := createTempFile(t, `[]`)
+    database, cleanDatabase := testutils.CreateTempFile(t, `[]`)
     defer cleanDatabase()
-    store, err := NewFileSystemThoughtStore(database)
-    assertNoError(t, err)
+    store, err := data.NewFileSystemThoughtStore(database)
+    testutils.AssertNoError(t, err)
 
     server := NewThoughtServer(store)
     subject := "ai"
@@ -27,8 +29,8 @@ func TestPostingThoughtsAndGettingThem(t *testing.T) {
         response := httptest.NewRecorder()
         server.ServeHTTP(response, newGetThoughtRequest(subject))
 
-        assertCorrect(t, response.Code, http.StatusOK)
-        assertCorrect(t, response.Body.String(), "neural networks\nare\nblack magic!")
+        testutils.AssertCorrect(t, response.Code, http.StatusOK)
+        testutils.AssertCorrect(t, response.Body.String(), "neural networks\nare\nblack magic!")
     })
 }
 

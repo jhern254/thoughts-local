@@ -1,5 +1,5 @@
 // tape.go 
-package main
+package data
 
 import (
 //    "fmt"

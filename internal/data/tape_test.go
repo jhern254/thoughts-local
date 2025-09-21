@@ -1,5 +1,5 @@
 // tape_test.go 
-package main
+package data
 
 import (
 //    "fmt"
@@ -13,7 +13,7 @@ import (
 )
 
 func TestTape_Write(t *testing.T) {
-    file, clean := createTempFile(t, "12345")
+    file, clean := CreateTempFile(t, "12345")
     defer clean()
 
     tape := &tape{file}
