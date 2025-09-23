@@ -100,6 +100,19 @@ func TestStoreThoughts(t *testing.T) {
     })
 }
 
+// helper fns
+func newGetThoughtRequest(subject string) *http.Request {
+    req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/subjects/%s", subject), nil)
+    return req
+}
+
+func newPostThoughtRequest(subject, thought string) *http.Request {
+    req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("/subjects/%s", subject), strings.NewReader(thought))
+    return req
+}
+
+
+
 //    t.Run("it returns thought userState as JSON", func(t *testing.T) {
 //        wantedState := UserState{
 //            UserID: "2",
@@ -126,13 +139,3 @@ func TestStoreThoughts(t *testing.T) {
 //        assertContentType(t, response, jsonContentType)
 //    })
 
-// helper fns
-func newGetThoughtRequest(subject string) *http.Request {
-    req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/subjects/%s", subject), nil)
-    return req
-}
-
-func newPostThoughtRequest(subject, thought string) *http.Request {
-    req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("/subjects/%s", subject), strings.NewReader(thought))
-    return req
-}

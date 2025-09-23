@@ -55,6 +55,7 @@ func NewThoughtServer(store ThoughtStore, cfg config, logger zerolog.Logger) *Th
 // TODO: refactor to return *httprouter.Router
 func (s *ThoughtServer) routes() {
     s.router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
+    s.router.Handle("/healthcheck", http.HandlerFunc(s.healthcheckHandler))
 }
 
 // method needs pointer as input
