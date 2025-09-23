@@ -17,7 +17,7 @@ import (
 
 func TestHealthcheck(t *testing.T) {
     store := data.NewInMemoryThoughtStore()
-    server := NewThoughtServer(store, config{}, zerolog.New(os.Stdout))
+    server := NewThoughtServer(store, config{env: "development"}, zerolog.New(os.Stdout))
 
     t.Run("returns heatlh check info", func(t *testing.T) {
         request :=  httptest.NewRequest(http.MethodGet, "/healthcheck", nil)
@@ -25,7 +25,10 @@ func TestHealthcheck(t *testing.T) {
 
         server.ServeHTTP(response, request)
 
+        want := `{"status":"available","environment":"development","version":"0.1.0"}` + "\n"
+
         testutils.AssertCorrect(t, response.Code, http.StatusOK)
+        testutils.AssertCorrect(t, response.Body.String(), want)
     })
 }
 
