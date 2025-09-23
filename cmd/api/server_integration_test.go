@@ -3,11 +3,13 @@ package main
 
 import (
     "testing"
+    "os"
     "net/http"
     "net/http/httptest"
 //    "reflect"
     "github.com/jhern254/go-thoughts/internal/testutils"
     "github.com/jhern254/go-thoughts/internal/data"
+    "github.com/rs/zerolog" 
 )
 
 func TestPostingThoughtsAndGettingThem(t *testing.T) {
@@ -17,7 +19,7 @@ func TestPostingThoughtsAndGettingThem(t *testing.T) {
     store, err := data.NewFileSystemThoughtStore(database)
     testutils.AssertNoError(t, err)
 
-    server := NewThoughtServer(store)
+    server := NewThoughtServer(store, config{}, zerolog.New(os.Stdout))
     subject := "ai"
 
     server.ServeHTTP(httptest.NewRecorder(), newPostThoughtRequest(subject, "neural networks"))

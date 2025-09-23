@@ -7,9 +7,11 @@ import (
     "net/http/httptest"
     "fmt"
     "strings"
+    "os"
 //    "encoding/json"
 //    "io"
     "github.com/jhern254/go-thoughts/internal/testutils"
+    "github.com/rs/zerolog" 
 )
 
 type StubThoughtStore struct {
@@ -40,7 +42,7 @@ func TestGETThoughts(t *testing.T) {
         },
         nil,
     }
-    server := NewThoughtServer(&store)
+    server := NewThoughtServer(&store, config{}, zerolog.New(os.Stdout))
 
     t.Run("returns coding thoughts", func(t *testing.T) {
         request := newGetThoughtRequest("coding")
@@ -75,7 +77,7 @@ func TestStoreThoughts(t *testing.T) {
         map[string][]string{},
         nil,
     }
-    server := NewThoughtServer(&store)
+    server := NewThoughtServer(&store, config{}, zerolog.New(os.Stdout))
 
     t.Run("it returns accepted on POST", func(t *testing.T) {
         subj := "coding"

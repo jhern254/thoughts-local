@@ -27,25 +27,34 @@ type ThoughtStore interface {
     CaptureThought(userID, subject, thought string)
 }
 
+// main DI container
 type ThoughtServer struct {
     store       ThoughtStore
     router      *http.ServeMux
     userFromReq func(*http.Request) string
+    config      config
+    logger      zerolog.Logger     
 }
 // NOTE: pattern is server fns here, store interface done on test, main
 
 // ctor
 // NOTE: store interface already reference value, impl needs pointer
-func NewThoughtServer(store ThoughtStore) *ThoughtServer {
+func NewThoughtServer(store ThoughtStore, cfg config, logger zerolog.Logger) *ThoughtServer {
     s := &ThoughtServer{
         store:      store,
         router:     http.NewServeMux(),
         userFromReq: func(*http.Request) string { return "test-user" }, // NOTE: default for now
+        config: cfg,
+        logger: logger,
     }
-
-    s.router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
+    s.routes()
 
     return s
+}
+
+// TODO: refactor to return *httprouter.Router
+func (s *ThoughtServer) routes() {
+    s.router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
 }
 
 // method needs pointer as input
