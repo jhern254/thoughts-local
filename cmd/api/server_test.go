@@ -48,7 +48,7 @@ func TestGETThoughts(t *testing.T) {
         request := newGetThoughtRequest("coding")
         response := httptest.NewRecorder()
 
-        server.ServeHTTP(response, request)
+        server.routes().ServeHTTP(response, request)
 
         testutils.AssertCorrect(t, response.Code, http.StatusOK)
         testutils.AssertCorrect(t, response.Body.String(), "I'm learning go!")
@@ -57,7 +57,7 @@ func TestGETThoughts(t *testing.T) {
         request := newGetThoughtRequest("ai")
         response := httptest.NewRecorder()
 
-        server.ServeHTTP(response, request)
+        server.routes().ServeHTTP(response, request)
 
         testutils.AssertCorrect(t, response.Code, http.StatusOK)
         testutils.AssertCorrect(t, response.Body.String(), "agi 2025!")
@@ -66,7 +66,7 @@ func TestGETThoughts(t *testing.T) {
         request := newGetThoughtRequest("physics")
         response := httptest.NewRecorder()
 
-        server.ServeHTTP(response, request)
+        server.routes().ServeHTTP(response, request)
 
         testutils.AssertCorrect(t, response.Code, http.StatusNotFound)
     })
@@ -85,7 +85,7 @@ func TestStoreThoughts(t *testing.T) {
         request := newPostThoughtRequest(subj, th)
         response := httptest.NewRecorder()
 
-        server.ServeHTTP(response, request)
+        server.routes().ServeHTTP(response, request)
         testutils.AssertCorrect(t, response.Code, http.StatusAccepted)
 //        assertCorrect(t, store.Count(), 1)
 //        fmt.Printf("store is %+v", store)

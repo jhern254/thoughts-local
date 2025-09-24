@@ -22,14 +22,14 @@ func TestPostingThoughtsAndGettingThem(t *testing.T) {
     server := NewThoughtServer(store, config{}, zerolog.New(os.Stdout))
     subject := "ai"
 
-    server.ServeHTTP(httptest.NewRecorder(), newPostThoughtRequest(subject, "neural networks"))
-    server.ServeHTTP(httptest.NewRecorder(), newPostThoughtRequest(subject, "are"))
-    server.ServeHTTP(httptest.NewRecorder(), newPostThoughtRequest(subject, "black magic!"))
+    server.routes().ServeHTTP(httptest.NewRecorder(), newPostThoughtRequest(subject, "neural networks"))
+    server.routes().ServeHTTP(httptest.NewRecorder(), newPostThoughtRequest(subject, "are"))
+    server.routes().ServeHTTP(httptest.NewRecorder(), newPostThoughtRequest(subject, "black magic!"))
 
 
     t.Run("get thought", func(t *testing.T) {
         response := httptest.NewRecorder()
-        server.ServeHTTP(response, newGetThoughtRequest(subject))
+        server.routes().ServeHTTP(response, newGetThoughtRequest(subject))
 
         testutils.AssertCorrect(t, response.Code, http.StatusOK)
         testutils.AssertCorrect(t, response.Body.String(), "neural networks\nare\nblack magic!")

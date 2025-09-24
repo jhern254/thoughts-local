@@ -23,7 +23,7 @@ func TestHealthcheck(t *testing.T) {
         request :=  httptest.NewRequest(http.MethodGet, "/healthcheck", nil)
         response := httptest.NewRecorder()
 
-        server.ServeHTTP(response, request)
+        server.routes().ServeHTTP(response, request)
 
         want := `{"status":"available","environment":"development","version":"0.1.0"}` + "\n"
 

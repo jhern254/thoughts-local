@@ -13,6 +13,7 @@ import (
 //    "github.com/rs/zerolog" 
 )
 
+// NOTE: exported vars for json encoding
 type healthcheckResponse struct {
     Status      string `json:"status"`
     Environment string `json:"environment"`

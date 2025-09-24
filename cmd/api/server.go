@@ -11,6 +11,7 @@ import (
 //    "encoding/json"
 
     "github.com/rs/zerolog" 
+    "github.com/julienschmidt/httprouter" 
 )
 
 const jsonContentType = "application/json"
@@ -30,7 +31,6 @@ type ThoughtStore interface {
 // main DI container
 type ThoughtServer struct {
     store       ThoughtStore
-    router      *http.ServeMux
     userFromReq func(*http.Request) string
     config      config
     logger      zerolog.Logger     
@@ -40,42 +40,29 @@ type ThoughtServer struct {
 // ctor
 // NOTE: store interface already reference value, impl needs pointer
 func NewThoughtServer(store ThoughtStore, cfg config, logger zerolog.Logger) *ThoughtServer {
-    s := &ThoughtServer{
+    return &ThoughtServer{
         store:      store,
-        router:     http.NewServeMux(),
         userFromReq: func(*http.Request) string { return "test-user" }, // NOTE: default for now
         config: cfg,
         logger: logger,
     }
-    s.routes()
-
-    return s
-}
-
-// TODO: refactor to return *httprouter.Router
-func (s *ThoughtServer) routes() {
-    s.router.Handle("/subjects/", http.HandlerFunc(s.subjectsHandler))
-    s.router.Handle("/healthcheck", http.HandlerFunc(s.healthcheckHandler))
-}
-
-// method needs pointer as input
-func (s *ThoughtServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    s.router.ServeHTTP(w, r)
 }
 
 func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) {
+    params := httprouter.ParamsFromContext(r.Context())
+    subject := params.ByName("subject")
+
     switch r.Method {
     case http.MethodPost:
-        s.processThought(w, r)
+        s.processThought(w, r, subject)
     case http.MethodGet:
-        s.showThought(w, r)
+        s.showThought(w, r, subject)
     default:
         http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
     }
 }
 
-func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
-    subject := subjectFromPath(r.URL.Path)
+func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request, subject string) {
     userID := s.userFromReq(r)
 
     thoughts := s.store.GetThoughts(userID, subject)
@@ -86,8 +73,7 @@ func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request) {
     fmt.Fprint(w, strings.Join(thoughts, "\n"))
 }
 
-func (s *ThoughtServer) processThought(w http.ResponseWriter, r *http.Request) {
-    subject := subjectFromPath(r.URL.Path)
+func (s *ThoughtServer) processThought(w http.ResponseWriter, r *http.Request, subject string) {
     userID := s.userFromReq(r)
 
     thought, err:= readThought(r.Body)
@@ -98,11 +84,6 @@ func (s *ThoughtServer) processThought(w http.ResponseWriter, r *http.Request) {
 
     s.store.CaptureThought(userID, subject, thought)
     w.WriteHeader(http.StatusAccepted)
-}
-
-// helper fns
-func subjectFromPath(path string) string {
-    return strings.ToLower(strings.TrimPrefix(path, "/subjects/"))
 }
 
 func readThought(body io.ReadCloser) (string, error) {

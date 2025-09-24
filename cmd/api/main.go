@@ -60,8 +60,8 @@ func main() {
 
     addr := fmt.Sprintf("%d", cfg.port)
     srv := &http.Server{
-        Addr:           ":7777",
-        Handler:        ts,         
+        Addr:           addr,
+        Handler:        ts.routes(),         
         IdleTimeout:    time.Minute,
         ReadTimeout:    10 * time.Second,
         WriteTimeout:   30 * time.Second,
