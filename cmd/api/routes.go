@@ -20,8 +20,8 @@ func (s *application) routes() *httprouter.Router {
     router := httprouter.New()
 
     // REST endpoints
-    router.HandlerFunc(http.MethodGet, "/subjects/:subject", s.subjectsHandler)
-    router.HandlerFunc(http.MethodPost, "/subjects/:subject", s.subjectsHandler)
+    router.HandlerFunc(http.MethodGet, "/subjects/:subject", s.showSubjectHandler)
+    router.HandlerFunc(http.MethodPost, "/subjects/:subject", s.createSubjectsHandler)
     router.HandlerFunc(http.MethodGet, "/healthcheck", s.healthcheckHandler)
 
     return router

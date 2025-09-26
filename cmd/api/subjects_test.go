@@ -112,31 +112,3 @@ func newPostThoughtRequest(subject, thought string) *http.Request {
     return req
 }
 
-
-
-//    t.Run("it returns thought userState as JSON", func(t *testing.T) {
-//        wantedState := UserState{
-//            UserID: "2",
-//            Subjects: []Subject{
-//                {"Physics", []string{"Idk physics"}, },
-//                {"Code", []string{"I'm learning go!"}, },
-//                {"AI", []string{"Neural Networks work!"}, },
-//            },
-//        }
-//
-//        store = StubThoughtStore{nil, nil, wantedState}
-//        server = NewApplication(&store)
-//
-//        request := newUserStateRequest("2")
-//        response := httptest.NewRecorder()
-//        
-//        server.ServeHTTP(response, request)
-//
-//        // injected store state JSON
-//        got := getUserStateFromResponse(t, response.Body)
-//
-//        assertCorrect(t, response.Code, http.StatusOK)
-//        assertCorrectStruct(t, got, wantedState)
-//        assertContentType(t, response, jsonContentType)
-//    })
-

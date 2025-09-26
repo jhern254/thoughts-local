@@ -15,6 +15,11 @@ import (
 //    "github.com/julienschmidt/httprouter" 
 )
 
+type config struct {
+    port int
+    env string
+}
+
 // main DI container
 type application struct {
     store       ThoughtStore

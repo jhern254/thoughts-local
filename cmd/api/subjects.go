@@ -13,6 +13,7 @@ import (
 
 //    "github.com/rs/zerolog" 
     "github.com/julienschmidt/httprouter" 
+//    "github.com/jhern254/go-thoughts/internal/data"
 )
 
 type Subject struct {
@@ -27,21 +28,10 @@ type ThoughtStore interface {
     CaptureThought(userID, subject, thought string)
 }
 
-func (s *application) subjectsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request) {
     params := httprouter.ParamsFromContext(r.Context())
     subject := params.ByName("subject")
 
-    switch r.Method {
-    case http.MethodPost:
-        s.processThought(w, r, subject)
-    case http.MethodGet:
-        s.showThought(w, r, subject)
-    default:
-        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-    }
-}
-
-func (s *application) showThought(w http.ResponseWriter, r *http.Request, subject string) {
     userID := s.userFromReq(r)
 
     thoughts := s.store.GetThoughts(userID, subject)
@@ -52,7 +42,10 @@ func (s *application) showThought(w http.ResponseWriter, r *http.Request, subjec
     fmt.Fprint(w, strings.Join(thoughts, "\n"))
 }
 
-func (s *application) processThought(w http.ResponseWriter, r *http.Request, subject string) {
+func (s *application) createSubjectsHandler(w http.ResponseWriter, r *http.Request) {
+    params := httprouter.ParamsFromContext(r.Context())
+    subject := params.ByName("subject")
+
     userID := s.userFromReq(r)
 
     thought, err:= readThought(r.Body)
@@ -65,6 +58,7 @@ func (s *application) processThought(w http.ResponseWriter, r *http.Request, sub
     w.WriteHeader(http.StatusAccepted)
 }
 
+// helper fns
 func readThought(body io.ReadCloser) (string, error) {
     defer body.Close()
     b, err := io.ReadAll(body)
@@ -78,13 +72,4 @@ func readThought(body io.ReadCloser) (string, error) {
 
     return thought, nil
 } 
-
-//func parseUserStatePath(path string) (string, bool) {
-//    parts := strings.Split(strings.Trim(path, "/"), "/")
-//    // expect /users/{id}/state
-//    if len(parts) >= 3 && parts[0] == "users" && parts[2] == "state" {
-//        return parts[1], true
-//    }
-//    return "", false
-//}
 
