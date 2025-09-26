@@ -16,7 +16,7 @@ import (
 
 
 // TODO: refactor to return *httprouter.Router
-func (s *ThoughtServer) routes() *httprouter.Router {
+func (s *application) routes() *httprouter.Router {
     router := httprouter.New()
 
     // REST endpoints

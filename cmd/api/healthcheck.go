@@ -20,7 +20,7 @@ type healthcheckResponse struct {
     Version     string `json:"version"`
 }
 
-func (s *ThoughtServer) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
+func (s *application) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("content-Type", jsonContentType)
     w.WriteHeader(http.StatusOK)
 

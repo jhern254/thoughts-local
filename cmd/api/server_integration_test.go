@@ -19,7 +19,7 @@ func TestPostingThoughtsAndGettingThem(t *testing.T) {
     store, err := data.NewFileSystemThoughtStore(database)
     testutils.AssertNoError(t, err)
 
-    server := NewThoughtServer(store, config{}, zerolog.New(os.Stdout))
+    server := NewApplication(store, config{}, zerolog.New(os.Stdout))
     subject := "ai"
 
     server.routes().ServeHTTP(httptest.NewRecorder(), newPostThoughtRequest(subject, "neural networks"))

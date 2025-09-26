@@ -43,7 +43,7 @@ func TestGETThoughts(t *testing.T) {
         },
         nil,
     }
-    server := NewThoughtServer(&store, config{}, zerolog.New(os.Stdout))
+    server := NewApplication(&store, config{}, zerolog.New(os.Stdout))
 
     t.Run("returns coding thoughts", func(t *testing.T) {
         request := newGetThoughtRequest("coding")
@@ -78,7 +78,7 @@ func TestStoreThoughts(t *testing.T) {
         map[string][]string{},
         nil,
     }
-    server := NewThoughtServer(&store, config{}, zerolog.New(os.Stdout))
+    server := NewApplication(&store, config{}, zerolog.New(os.Stdout))
 
     t.Run("it returns accepted on POST", func(t *testing.T) {
         subj := "coding"
@@ -125,7 +125,7 @@ func newPostThoughtRequest(subject, thought string) *http.Request {
 //        }
 //
 //        store = StubThoughtStore{nil, nil, wantedState}
-//        server = NewThoughtServer(&store)
+//        server = NewApplication(&store)
 //
 //        request := newUserStateRequest("2")
 //        response := httptest.NewRecorder()

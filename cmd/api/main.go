@@ -56,7 +56,7 @@ func main() {
     }
 
     // set up server
-    ts := NewThoughtServer(store, cfg, logger)
+    ts := NewApplication(store, cfg, logger)
 
     addr := fmt.Sprintf("%d", cfg.port)
     srv := &http.Server{

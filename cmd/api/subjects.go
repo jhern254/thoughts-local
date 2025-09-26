@@ -1,4 +1,5 @@
 // subjects.go 
+// handler logic
 package main
 
 import (
@@ -29,7 +30,7 @@ type ThoughtStore interface {
 }
 
 // main DI container
-type ThoughtServer struct {
+type application struct {
     store       ThoughtStore
     userFromReq func(*http.Request) string
     config      config
@@ -39,8 +40,8 @@ type ThoughtServer struct {
 
 // ctor
 // NOTE: store interface already reference value, impl needs pointer
-func NewThoughtServer(store ThoughtStore, cfg config, logger zerolog.Logger) *ThoughtServer {
-    return &ThoughtServer{
+func NewApplication(store ThoughtStore, cfg config, logger zerolog.Logger) *application {
+    return &application{
         store:      store,
         userFromReq: func(*http.Request) string { return "test-user" }, // NOTE: default for now
         config: cfg,
@@ -48,7 +49,7 @@ func NewThoughtServer(store ThoughtStore, cfg config, logger zerolog.Logger) *Th
     }
 }
 
-func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *application) subjectsHandler(w http.ResponseWriter, r *http.Request) {
     params := httprouter.ParamsFromContext(r.Context())
     subject := params.ByName("subject")
 
@@ -62,7 +63,7 @@ func (s *ThoughtServer) subjectsHandler(w http.ResponseWriter, r *http.Request) 
     }
 }
 
-func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request, subject string) {
+func (s *application) showThought(w http.ResponseWriter, r *http.Request, subject string) {
     userID := s.userFromReq(r)
 
     thoughts := s.store.GetThoughts(userID, subject)
@@ -73,7 +74,7 @@ func (s *ThoughtServer) showThought(w http.ResponseWriter, r *http.Request, subj
     fmt.Fprint(w, strings.Join(thoughts, "\n"))
 }
 
-func (s *ThoughtServer) processThought(w http.ResponseWriter, r *http.Request, subject string) {
+func (s *application) processThought(w http.ResponseWriter, r *http.Request, subject string) {
     userID := s.userFromReq(r)
 
     thought, err:= readThought(r.Body)
