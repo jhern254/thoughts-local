@@ -4,14 +4,14 @@ package main
 
 import (
     "fmt"
-    "os"
+//    "os"
     "net/http"
 //    "errors"
     "strings"
     "io"
 //    "encoding/json"
 
-    "github.com/rs/zerolog" 
+//    "github.com/rs/zerolog" 
     "github.com/julienschmidt/httprouter" 
 )
 
@@ -25,26 +25,6 @@ type Subject struct {
 type ThoughtStore interface {
     GetThoughts(userID, subject string) []string
     CaptureThought(userID, subject, thought string)
-}
-
-// main DI container
-type application struct {
-    store       ThoughtStore
-    userFromReq func(*http.Request) string
-    config      config
-    logger      zerolog.Logger     
-}
-// NOTE: pattern is server fns here, store interface done on test, main
-
-// ctor
-// NOTE: store interface already reference value, impl needs pointer
-func NewApplication(store ThoughtStore, cfg config, logger zerolog.Logger) *application {
-    return &application{
-        store:      store,
-        userFromReq: func(*http.Request) string { return "test-user" }, // NOTE: default for now
-        config: cfg,
-        logger: logger,
-    }
 }
 
 func (s *application) subjectsHandler(w http.ResponseWriter, r *http.Request) {
@@ -107,15 +87,4 @@ func readThought(body io.ReadCloser) (string, error) {
 //    }
 //    return "", false
 //}
-
-func Run() {
-    // configure package zerolog
-    output := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"}
-    logger := zerolog.New(output).With().
-        Timestamp().
-        Caller().   // adds file and line number
-        Logger().Level(zerolog.ErrorLevel) // set log level 
-
-    logger.Debug().Msg("Program ended.")
-}
 
