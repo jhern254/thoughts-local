@@ -8,7 +8,7 @@ import (
 //    "errors"
 //    "strings"
 //    "io"
-    "encoding/json"
+//    "encoding/json"
 
 //    "github.com/rs/zerolog" 
 )
@@ -21,9 +21,6 @@ type healthcheckResponse struct {
 }
 
 func (s *application) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("content-Type", jsonContentType)
-    w.WriteHeader(http.StatusOK)
-
     resp := healthcheckResponse{
         Status:      "available",
         Environment: s.config.env,
@@ -31,14 +28,11 @@ func (s *application) healthcheckHandler(w http.ResponseWriter, r *http.Request)
     }
 
 //    json.NewEncoder(w).Encode(resp)
-    js, err := json.Marshal(resp)
+    err := s.writeJSON(w, http.StatusOK, resp, nil)
     if err != nil {
         s.logger.Println(err)
         http.Error(w, "The server encountered a problem and could not proccess your request", http.StatusInternalServerError)
         return
     }
-
-    js = append(js, '\n')
-    w.Write(js)
 }
 
