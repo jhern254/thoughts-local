@@ -13,6 +13,7 @@ import (
 
 const dbFileName = "thoughts.db.json"
 const version    = "0.1.0"
+const jsonContentType = "application/json"
 
 type config struct {
     port int

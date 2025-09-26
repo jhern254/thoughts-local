@@ -15,8 +15,6 @@ import (
     "github.com/julienschmidt/httprouter" 
 )
 
-const jsonContentType = "application/json"
-
 type Subject struct {
     Name string
     Thoughts []string

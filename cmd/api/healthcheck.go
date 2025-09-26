@@ -30,6 +30,15 @@ func (s *application) healthcheckHandler(w http.ResponseWriter, r *http.Request)
         Version:     version,
     }
 
-    json.NewEncoder(w).Encode(resp)
+//    json.NewEncoder(w).Encode(resp)
+    js, err := json.Marshal(resp)
+    if err != nil {
+        s.logger.Println(err)
+        http.Error(w, "The server encountered a problem and could not proccess your request", http.StatusInternalServerError)
+        return
+    }
+
+    js = append(js, '\n')
+    w.Write(js)
 }
 
