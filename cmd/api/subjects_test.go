@@ -9,11 +9,13 @@ import (
 //    "fmt"
     "strings"
     "os"
-//    "encoding/json"
+    "encoding/json"
+    "time"
 //    "io"
     "github.com/jhern254/go-thoughts/internal/testutils"
     "github.com/rs/zerolog" 
 )
+
 
 type StubThoughtStore struct {
     thoughts map[string][]string
@@ -53,7 +55,23 @@ func TestGETSubject(t *testing.T) {
 
         server.routes().ServeHTTP(response, request)
 
+            // shape that matches your handler’s envelope
+        var got struct {
+            Subject struct {
+                SubjectID int64     `json:"subject_id"`
+                UserID    string    `json:"user_id"`
+                Name      string    `json:"name"`
+                CreatedAt time.Time `json:"created_at"`
+                UpdatedAt time.Time `json:"updated_at"`
+                Thoughts  []string  `json:"thoughts,omitempty"` // if you include it temporarily
+            } `json:"subject"`
+        }
+        if err := json.NewDecoder(response.Body).Decode(&got); err != nil {
+            t.Fatalf("decode: %v", err)
+        }
         testutils.AssertCorrect(t, response.Code, http.StatusOK)
+        testutils.AssertCorrect(t, got.Subject.Name, "coding")
+
     })
 
 }

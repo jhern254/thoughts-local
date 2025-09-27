@@ -17,6 +17,8 @@ import (
     "github.com/jhern254/go-thoughts/internal/data"
 )
 
+type envelope map[string]any
+
 // Public methods
 // NOTE: for temporary thought functionality
 type ThoughtStore interface {
@@ -25,12 +27,27 @@ type ThoughtStore interface {
     CaptureThought(userID, subject, thought string)
 }
 
+// TODO: implement userID and subjectID
 func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request) {
-//    params := httprouter.ParamsFromContext(r.Context())
-//    subject := params.ByName("subject")
+    params := httprouter.ParamsFromContext(r.Context())
+    subject := params.ByName("subject")
 
-//    userID := s.userFromReq(r)
-    w.WriteHeader(http.StatusOK)
+    userID := s.userFromReq(r)
+
+    subj := data.Subject{
+        SubjectID:  0,   // TODO: temp, replace
+        UserID:     userID,
+        Name:       subject,
+        CreatedAt:  time.Now(),
+        UpdatedAt:  time.Now(),
+        Thoughts:   nil,
+    }
+
+    err := s.writeJSON(w, http.StatusOK, envelope{"subject": subj}, nil)
+    if err != nil {
+        s.logger.Println(err)
+        http.Error(w, "The server encountered a problem and could not process your request", http.StatusInternalServerError)
+    }
 }
 
 
