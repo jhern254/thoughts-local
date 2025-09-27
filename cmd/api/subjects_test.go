@@ -6,7 +6,7 @@ import (
     "testing"
     "net/http"
     "net/http/httptest"
-    "fmt"
+//    "fmt"
     "strings"
     "os"
 //    "encoding/json"
@@ -34,6 +34,26 @@ func (s *StubThoughtStore) CaptureThought(userID, subject, thought string) {
 func (s *StubThoughtStore) Count() int {
     return len(s.thoughts)
 }
+
+// TODO: implement
+//func TestGETSubject(t *testing.T) {
+//    store := StubThoughtStore{
+//        map[string][]string{
+//            "coding": {"I'm learning go!"},
+//            "ai": {"agi 2025!"},
+//        },
+//        nil,
+//    }
+//    server := NewApplication(&store, config{}, zerolog.New(os.Stdout))
+//
+//    // test return ok
+//    t.Run("returns 200", func(t *testing.T) {
+//        request :=  httptest.NewRequest(http.MethodGet, "/subjects", nil)
+//        response := httptest.NewRecorder()
+//
+//    })
+//
+//}
 
 func TestGETThoughts(t *testing.T) {
     store := StubThoughtStore{
@@ -103,12 +123,22 @@ func TestStoreThoughts(t *testing.T) {
 
 // helper fns
 func newGetThoughtRequest(subject string) *http.Request {
-    req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/subjects/%s", subject), nil)
-    return req
+    return httptest.NewRequest(
+        http.MethodGet,
+        "/subjects/"+subject+"/thoughts",
+        nil,
+    )
 }
 
 func newPostThoughtRequest(subject, thought string) *http.Request {
-    req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("/subjects/%s", subject), strings.NewReader(thought))
+//    req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("/subjects/%s/thoughts", subject), strings.NewReader(thought))
+//    return req
+        req := httptest.NewRequest(
+        http.MethodPost,
+        "/subjects/"+subject+"/thoughts",
+        strings.NewReader(thought),
+    )
+    req.Header.Set("Content-Type", "text/plain; charset=utf-8")
     return req
 }
 

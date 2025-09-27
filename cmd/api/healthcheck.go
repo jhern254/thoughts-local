@@ -27,7 +27,6 @@ func (s *application) healthcheckHandler(w http.ResponseWriter, r *http.Request)
         Version:     version,
     }
 
-//    json.NewEncoder(w).Encode(resp)
     err := s.writeJSON(w, http.StatusOK, resp, nil)
     if err != nil {
         s.logger.Println(err)

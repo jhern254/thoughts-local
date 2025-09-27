@@ -9,26 +9,25 @@ import (
 //    "errors"
     "strings"
     "io"
+    "time"
 //    "encoding/json"
 
 //    "github.com/rs/zerolog" 
     "github.com/julienschmidt/httprouter" 
-//    "github.com/jhern254/go-thoughts/internal/data"
+    "github.com/jhern254/go-thoughts/internal/data"
 )
-
-type Subject struct {
-    Name string
-    Thoughts []string
-    // TODO: add tags yet?
-}
 
 // Public methods
 type ThoughtStore interface {
+    // NOTE: will be db wrapper fn
     GetThoughts(userID, subject string) []string
     CaptureThought(userID, subject, thought string)
 }
 
-func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request) {
+// NOTE: for all subject thoughts 
+// TODO: make id GET
+// TODO: implement with thoughts model
+func (s *application) showSubjectThoughtsHandler(w http.ResponseWriter, r *http.Request) {
     params := httprouter.ParamsFromContext(r.Context())
     subject := params.ByName("subject")
 
@@ -39,10 +38,19 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
         w.WriteHeader(http.StatusNotFound)
         return
     }
-    fmt.Fprint(w, strings.Join(thoughts, "\n"))
+
+    subj := data.Subject{
+        SubjectID:  0,   // TODO: temp, replace
+        UserID:     userID,
+        Name:       subject,
+        CreatedAt:  time.Now(),
+        UpdatedAt:  time.Now(),
+        Thoughts:   thoughts,
+    }
+    fmt.Fprint(w, strings.Join(subj.Thoughts, "\n"))
 }
 
-func (s *application) createSubjectsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *application) createSubjectThoughtHandler(w http.ResponseWriter, r *http.Request) {
     params := httprouter.ParamsFromContext(r.Context())
     subject := params.ByName("subject")
 

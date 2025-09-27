@@ -18,4 +18,7 @@ type Subject struct {
     Name      string    `json:"name"`
     CreatedAt time.Time `json:"created_at"`
     UpdatedAt time.Time `json:"updated_at"`
+
+    // TODO: TEMP, refactor out to model
+    Thoughts []string   `json:"thoughts,omitempty"`
 }
