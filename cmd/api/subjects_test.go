@@ -60,7 +60,7 @@ func TestGETSubject(t *testing.T) {
             Subject struct {
                 SubjectID int64     `json:"subject_id"`
                 UserID    string    `json:"user_id"`
-                Name      string    `json:"name"`
+                SubjectName string    `json:"subject_name"`
                 CreatedAt time.Time `json:"created_at"`
                 UpdatedAt time.Time `json:"updated_at"`
                 Thoughts  []string  `json:"thoughts,omitempty"` // if you include it temporarily
@@ -70,7 +70,7 @@ func TestGETSubject(t *testing.T) {
             t.Fatalf("decode: %v", err)
         }
         testutils.AssertCorrect(t, response.Code, http.StatusOK)
-        testutils.AssertCorrect(t, got.Subject.Name, "coding")
+        testutils.AssertCorrect(t, got.Subject.SubjectName, "coding")
 
     })
 

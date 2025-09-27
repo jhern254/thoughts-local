@@ -13,11 +13,11 @@ import (
 )
 
 type Subject struct {
-    SubjectID int64     `json:"subject_id"`
-    UserID    string    `json:"user_id"`
-    Name      string    `json:"name"`
-    CreatedAt time.Time `json:"created_at"`
-    UpdatedAt time.Time `json:"updated_at"`
+    SubjectID   int64     `json:"subject_id"`
+    UserID      string    `json:"user_id"`
+    SubjectName string    `json:"subject_name"`
+    CreatedAt   time.Time `json:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at"`
 
     // TODO: TEMP, refactor out to model
     Thoughts []string   `json:"thoughts,omitempty"`

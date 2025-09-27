@@ -43,7 +43,7 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
     subj := data.Subject{
         SubjectID:  0,          // TODO: replace, temp    
         UserID:     userID,
-        Name:       subject,
+        SubjectName: subject,
         CreatedAt:  time.Now(),
         UpdatedAt:  time.Now(),
         Thoughts:   nil,
@@ -75,7 +75,7 @@ func (s *application) showSubjectThoughtsHandler(w http.ResponseWriter, r *http.
     subj := data.Subject{
         SubjectID:  0,   // TODO: temp, replace
         UserID:     userID,
-        Name:       subject,
+        SubjectName: subject,
         CreatedAt:  time.Now(),
         UpdatedAt:  time.Now(),
         Thoughts:   thoughts,
