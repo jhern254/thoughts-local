@@ -54,7 +54,7 @@ func main() {
     // set up server
     ts := NewApplication(store, cfg, logger)
 
-    addr := fmt.Sprintf("%d", cfg.port)
+    addr := fmt.Sprintf(":%d", cfg.port)
     srv := &http.Server{
         Addr:           addr,
         Handler:        ts.routes(),         

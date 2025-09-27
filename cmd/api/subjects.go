@@ -27,15 +27,21 @@ type ThoughtStore interface {
     CaptureThought(userID, subject, thought string)
 }
 
-// TODO: implement userID and subjectID
+// TODO: implement auth for userID and db for subjectID
 func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request) {
+    // NOTE: better have with db
+//    id, err := s.readIDParam(r)
+//    if err != nil {
+//        http.NotFound(w, r)
+//        return
+//    }
     params := httprouter.ParamsFromContext(r.Context())
     subject := params.ByName("subject")
 
     userID := s.userFromReq(r)
 
     subj := data.Subject{
-        SubjectID:  0,   // TODO: temp, replace
+        SubjectID:  0,          // TODO: replace, temp    
         UserID:     userID,
         Name:       subject,
         CreatedAt:  time.Now(),
