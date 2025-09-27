@@ -18,11 +18,21 @@ import (
 )
 
 // Public methods
+// NOTE: for temporary thought functionality
 type ThoughtStore interface {
     // NOTE: will be db wrapper fn
     GetThoughts(userID, subject string) []string
     CaptureThought(userID, subject, thought string)
 }
+
+func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request) {
+//    params := httprouter.ParamsFromContext(r.Context())
+//    subject := params.ByName("subject")
+
+//    userID := s.userFromReq(r)
+    w.WriteHeader(http.StatusOK)
+}
+
 
 // NOTE: for all subject thoughts 
 // TODO: make id GET

@@ -36,24 +36,27 @@ func (s *StubThoughtStore) Count() int {
 }
 
 // TODO: implement
-//func TestGETSubject(t *testing.T) {
-//    store := StubThoughtStore{
-//        map[string][]string{
-//            "coding": {"I'm learning go!"},
-//            "ai": {"agi 2025!"},
-//        },
-//        nil,
-//    }
-//    server := NewApplication(&store, config{}, zerolog.New(os.Stdout))
-//
-//    // test return ok
-//    t.Run("returns 200", func(t *testing.T) {
-//        request :=  httptest.NewRequest(http.MethodGet, "/subjects", nil)
-//        response := httptest.NewRecorder()
-//
-//    })
-//
-//}
+func TestGETSubject(t *testing.T) {
+    store := StubThoughtStore{
+        map[string][]string{
+            "coding": {"I'm learning go!"},
+            "ai": {"agi 2025!"},
+        },
+        nil,
+    }
+    server := NewApplication(&store, config{}, zerolog.New(os.Stdout))
+
+    // test return ok
+    t.Run("returns 200 on subject name", func(t *testing.T) {
+        request :=  newGetSubjectRequest("coding")
+        response := httptest.NewRecorder()
+
+        server.routes().ServeHTTP(response, request)
+
+        testutils.AssertCorrect(t, response.Code, http.StatusOK)
+    })
+
+}
 
 func TestGETThoughts(t *testing.T) {
     store := StubThoughtStore{
@@ -122,6 +125,14 @@ func TestStoreThoughts(t *testing.T) {
 }
 
 // helper fns
+func newGetSubjectRequest(subject string) *http.Request {
+    return httptest.NewRequest(
+        http.MethodGet,
+        "/subjects/"+subject,
+        nil,
+    )
+}
+
 func newGetThoughtRequest(subject string) *http.Request {
     return httptest.NewRequest(
         http.MethodGet,
