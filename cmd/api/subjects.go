@@ -10,7 +10,7 @@ import (
     "strings"
     "io"
     "time"
-//    "encoding/json"
+    "encoding/json"
 
 //    "github.com/rs/zerolog" 
     "github.com/julienschmidt/httprouter" 
@@ -53,21 +53,33 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
     }
 }
 
-func (s *application) createSubjectHandler(w http.ResponseWriter, r *http.Request) {
+func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Request) {
+    var input struct {
+        SubjectID   int64     `json:"subject_id"`
+        UserID      string    `json:"user_id"`
+        SubjectName string    `json:"subject_name"`
+        CreatedAt   time.Time `json:"created_at"`
+        UpdatedAt   time.Time `json:"-"`
+
+        // TODO: TEMP, refactor out to model
+        Thoughts []string   `json:"thoughts,omitempty"`
+    }
+
 //    params := httprouter.ParamsFromContext(r.Context())
 //    subject := params.ByName("subject")
     
     // stub
- //   userID := s.userFromReq(r)
+//    userID := a.userFromReq(r)
  
 //    thought, err:= readThought(r.Body)
-//    if err != nil {
-//        http.Error(w, err.Error() , http.StatusBadRequest) 
-//        return
-//    }
-
+    err := json.NewDecoder(r.Body).Decode(&input)
+    if err != nil {
+        a.errorResponse(w, r, http.StatusBadRequest, err.Error())
+        return
+    }
 //    s.store.CaptureThought(userID, )
     w.WriteHeader(http.StatusAccepted)
+    fmt.Fprintf(w, "%+v\n", input)
 }
 
 // NOTE: for all subject thoughts 

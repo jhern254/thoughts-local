@@ -20,6 +20,7 @@ type envelope map[string]any
 
 // NOTE: handler helpers should be methods
 func (a *application) writeJSON(w http.ResponseWriter, status int, data envelope, headers http.Header) error { // Encode data to json
+    // pass map to fn, returns []byte slice of encoded json
     js, err := json.MarshalIndent(data, "", "\t")
     if err != nil {
         return err
