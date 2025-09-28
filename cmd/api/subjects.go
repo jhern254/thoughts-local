@@ -53,6 +53,22 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
     }
 }
 
+func (s *application) createSubjectHandler(w http.ResponseWriter, r *http.Request) {
+//    params := httprouter.ParamsFromContext(r.Context())
+//    subject := params.ByName("subject")
+    
+    // stub
+ //   userID := s.userFromReq(r)
+ 
+//    thought, err:= readThought(r.Body)
+//    if err != nil {
+//        http.Error(w, err.Error() , http.StatusBadRequest) 
+//        return
+//    }
+
+//    s.store.CaptureThought(userID, )
+    w.WriteHeader(http.StatusAccepted)
+}
 
 // NOTE: for all subject thoughts 
 // TODO: make id GET
@@ -84,6 +100,7 @@ func (s *application) createSubjectThoughtHandler(w http.ResponseWriter, r *http
     params := httprouter.ParamsFromContext(r.Context())
     subject := params.ByName("subject")
 
+    // mock
     userID := s.userFromReq(r)
 
     thought, err:= readThought(r.Body)
@@ -97,6 +114,7 @@ func (s *application) createSubjectThoughtHandler(w http.ResponseWriter, r *http
 }
 
 // helper fns
+// cleans input
 func readThought(body io.ReadCloser) (string, error) {
     defer body.Close()
     b, err := io.ReadAll(body)

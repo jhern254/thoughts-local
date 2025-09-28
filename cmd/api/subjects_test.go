@@ -6,7 +6,7 @@ import (
     "testing"
     "net/http"
     "net/http/httptest"
-//    "fmt"
+    "fmt"
     "strings"
     "os"
     "encoding/json"
@@ -77,6 +77,31 @@ func TestGETSubject(t *testing.T) {
 
 }
 
+func TestPOSTSubject(t *testing.T) {
+    store := StubThoughtStore{
+        map[string][]string{
+            "coding": {"I'm learning go!"},
+            "ai": {"agi 2025!"},
+        },
+        nil,
+    }
+    server := NewApplication(&store, config{}, zerolog.New(os.Stdout))
+
+    t.Run("it returns accepted subject on POST", func(t *testing.T) {
+        subj := "coding"
+//        th := "I'm learning go!"
+        request := newPostSubjectRequest(subj)
+        response := httptest.NewRecorder()
+
+        server.routes().ServeHTTP(response, request)
+        testutils.AssertCorrect(t, response.Code, http.StatusAccepted)
+
+        //TODO: implement red test here
+    })
+
+}
+
+
 func TestGETThoughts(t *testing.T) {
     store := StubThoughtStore{
         map[string][]string{
@@ -115,6 +140,8 @@ func TestGETThoughts(t *testing.T) {
     })
 }
 
+
+
 func TestStoreThoughts(t *testing.T) {
     store := StubThoughtStore{
         map[string][]string{},
@@ -122,7 +149,7 @@ func TestStoreThoughts(t *testing.T) {
     }
     server := NewApplication(&store, config{}, zerolog.New(os.Stdout))
 
-    t.Run("it returns accepted on POST", func(t *testing.T) {
+    t.Run("it returns accepted thoughts on POST", func(t *testing.T) {
         subj := "coding"
         th := "I'm learning go!"
         request := newPostThoughtRequest(subj, th)
@@ -168,7 +195,19 @@ func newPostThoughtRequest(subject, thought string) *http.Request {
         "/subjects/"+subject+"/thoughts",
         strings.NewReader(thought),
     )
+    // TODO: is this a bug?
     req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+    return req
+}
+
+func newPostSubjectRequest(subject string) *http.Request {
+    payload := fmt.Sprintf(`{"subject_name":%q}`, subject)
+    req := httptest.NewRequest(
+        http.MethodPost,
+        "/subjects",
+        strings.NewReader(payload),
+    )
+    req.Header.Set("Content-Type", "application/json")
     return req
 }
 

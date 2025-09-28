@@ -26,6 +26,7 @@ func (s *application) routes() *httprouter.Router {
 
     // REST endpoints
     router.HandlerFunc(http.MethodGet, "/subjects/:subject", s.showSubjectHandler)
+    router.HandlerFunc(http.MethodPost, "/subjects", s.createSubjectHandler)
     router.HandlerFunc(http.MethodGet, "/subjects/:subject/thoughts", s.showSubjectThoughtsHandler)
     router.HandlerFunc(http.MethodPost, "/subjects/:subject/thoughts", s.createSubjectThoughtHandler)
     router.HandlerFunc(http.MethodGet, "/healthcheck", s.healthcheckHandler)
