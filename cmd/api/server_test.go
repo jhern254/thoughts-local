@@ -8,7 +8,7 @@ import (
 //    "fmt"
 //    "strings"
     "os"
-//    "encoding/json"
+    "encoding/json"
 //    "io"
     "github.com/jhern254/go-thoughts/internal/data"
     "github.com/jhern254/go-thoughts/internal/testutils"
@@ -25,10 +25,22 @@ func TestHealthcheck(t *testing.T) {
 
         server.routes().ServeHTTP(response, request)
 
-        want := `{"status":"available","environment":"development","version":"0.1.0"}` + "\n"
-
         testutils.AssertCorrect(t, response.Code, http.StatusOK)
-        testutils.AssertCorrect(t, response.Body.String(), want)
+
+        var got struct {
+            Status     string `json:"status"`
+            SystemInfo struct {
+                Environment string `json:"environment"`
+                Version     string `json:"version"`
+            } `json:"system_info"`
+        }
+
+        if err := json.NewDecoder(response.Body).Decode(&got); err != nil {
+            t.Fatalf("decode error: %v", err)
+        }
+        testutils.AssertCorrect(t, got.Status, "available")
+        testutils.AssertCorrect(t, got.SystemInfo.Environment, "development")
+        testutils.AssertCorrect(t, got.SystemInfo.Version, "0.1.0")
     })
 }
 

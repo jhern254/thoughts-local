@@ -17,8 +17,6 @@ import (
     "github.com/jhern254/go-thoughts/internal/data"
 )
 
-type envelope map[string]any
-
 // Public methods
 // NOTE: for temporary thought functionality
 type ThoughtStore interface {

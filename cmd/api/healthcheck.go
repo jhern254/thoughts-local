@@ -13,21 +13,16 @@ import (
 //    "github.com/rs/zerolog" 
 )
 
-// NOTE: exported vars for json encoding
-type healthcheckResponse struct {
-    Status      string `json:"status"`
-    Environment string `json:"environment"`
-    Version     string `json:"version"`
-}
-
 func (s *application) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
-    resp := healthcheckResponse{
-        Status:      "available",
-        Environment: s.config.env,
-        Version:     version,
+    env := envelope{
+        "status": "available",
+        "system_info":      map[string]string{
+            "environment":  s.config.env,
+            "version":      version,
+        },
     }
 
-    err := s.writeJSON(w, http.StatusOK, resp, nil)
+    err := s.writeJSON(w, http.StatusOK, env, nil)
     if err != nil {
         s.logger.Println(err)
         http.Error(w, "The server encountered a problem and could not proccess your request", http.StatusInternalServerError)

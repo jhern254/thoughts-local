@@ -17,7 +17,7 @@ type Subject struct {
     UserID      string    `json:"user_id"`
     SubjectName string    `json:"subject_name"`
     CreatedAt   time.Time `json:"created_at"`
-    UpdatedAt   time.Time `json:"updated_at"`
+    UpdatedAt   time.Time `json:"-"`
 
     // TODO: TEMP, refactor out to model
     Thoughts []string   `json:"thoughts,omitempty"`
