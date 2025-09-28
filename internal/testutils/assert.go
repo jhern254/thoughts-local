@@ -33,6 +33,13 @@ func AssertContentType(t testing.TB, response *httptest.ResponseRecorder, want s
     }
 }
 
+func AssertStatusCode(t *testing.T, got, want int) {
+    t.Helper()
+    if got != want {
+        t.Errorf("wrong status code: got %d, want %d", got, want)
+    }
+}
+
 func AssertNoError(t testing.TB, err error) {
     t.Helper()
     if err != nil {

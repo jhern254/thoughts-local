@@ -55,7 +55,7 @@ func TestGETSubject(t *testing.T) {
 
         server.routes().ServeHTTP(response, request)
 
-            // shape that matches your handler’s envelope
+        // shape that matches envelope
         var got struct {
             Subject struct {
                 SubjectID int64     `json:"subject_id"`
@@ -66,8 +66,9 @@ func TestGETSubject(t *testing.T) {
                 Thoughts  []string  `json:"thoughts,omitempty"` // if you include it temporarily
             } `json:"subject"`
         }
+
         if err := json.NewDecoder(response.Body).Decode(&got); err != nil {
-            t.Fatalf("decode: %v", err)
+            t.Fatalf("decode error: %v", err)
         }
         testutils.AssertCorrect(t, response.Code, http.StatusOK)
         testutils.AssertCorrect(t, got.Subject.SubjectName, "coding")
