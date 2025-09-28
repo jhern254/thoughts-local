@@ -49,8 +49,7 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
 
     err := s.writeJSON(w, http.StatusOK, envelope{"subject": subj}, nil)
     if err != nil {
-        s.logger.Println(err)
-        http.Error(w, "The server encountered a problem and could not process your request", http.StatusInternalServerError)
+        s.serverErrorResponse(w, r, err)
     }
 }
 
