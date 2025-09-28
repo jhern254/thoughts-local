@@ -19,6 +19,11 @@ import (
 func (s *application) routes() *httprouter.Router {
     router := httprouter.New()
 
+    // turn notFoundResopnse() to http.Handler then set as custom 404 err handler
+    router.NotFound = http.HandlerFunc(s.notFoundResponse)
+    // 405 err
+    router.MethodNotAllowed = http.HandlerFunc(s.methodNotAllowedResponse)
+
     // REST endpoints
     router.HandlerFunc(http.MethodGet, "/subjects/:subject", s.showSubjectHandler)
     router.HandlerFunc(http.MethodGet, "/subjects/:subject/thoughts", s.showSubjectThoughtsHandler)
