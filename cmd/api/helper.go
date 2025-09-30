@@ -2,15 +2,14 @@
 package main
 
 import (
-//    "fmt"
+    "fmt"
 //    "os"
     "net/http"
-//    "errors"
+    "errors"
 //    "strings"
-//    "io"
+    "io"
     "encoding/json"
     "strconv"
-    "errors"
 
 //    "github.com/rs/zerolog" 
     "github.com/julienschmidt/httprouter" 
@@ -52,3 +51,42 @@ func (a *application) readIDParam(r *http.Request) (int64, error) {
 
     return id, nil
 }
+
+func (a *application) readJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+    // decode body
+    err := json.NewDecoder(r.Body).Decode(dst)
+    if err != nil {
+        var syntaxError *json.SyntaxError
+        var unmarshalTypeError *json.UnmarshalTypeError
+        var invalidUnmarshalError *json.InvalidUnmarshalError
+
+        switch {
+        // check err type
+        case errors.As(err, &syntaxError):
+            return fmt.Errorf("body contains badly-formed JSON (at character %d)", syntaxError.Offset)
+
+        case errors.Is(err, io.ErrUnexpectedEOF):
+            return errors.New("body contains badly-formed JSON")
+
+        case errors.As(err, &unmarshalTypeError):
+            if unmarshalTypeError.Field != "" {
+                return fmt.Errorf("body cointains incorrect JSON type for field %q", unmarshalTypeError.Field) 
+            }
+            return fmt.Errorf("body cointains incorrect JSON type (at character %d)", unmarshalTypeError.Offset) 
+
+        // return plain english err
+        case errors.Is(err, io.EOF):
+            return errors.New("body must not be empty")
+
+        // pass non-nil pointer to Decode()
+        case errors.As(err, &invalidUnmarshalError):
+            panic(err) 
+            
+        default:
+            return err
+        }
+    }
+    return nil
+}
+
+

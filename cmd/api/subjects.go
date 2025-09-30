@@ -10,7 +10,7 @@ import (
     "strings"
     "io"
     "time"
-    "encoding/json"
+//    "encoding/json"
 
 //    "github.com/rs/zerolog" 
     "github.com/julienschmidt/httprouter" 
@@ -72,12 +72,11 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
 //    userID := a.userFromReq(r)
  
 //    thought, err:= readThought(r.Body)
-    err := json.NewDecoder(r.Body).Decode(&input)
+    err := a.readJSON(w, r, &input)
     if err != nil {
-        a.errorResponse(w, r, http.StatusBadRequest, err.Error())
+        a.badRequestResponse(w, r, err)
         return
     }
-//    s.store.CaptureThought(userID, )
     w.WriteHeader(http.StatusAccepted)
     fmt.Fprintf(w, "%+v\n", input)
 }
