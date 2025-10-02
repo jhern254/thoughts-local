@@ -15,6 +15,7 @@ import (
 //    "github.com/rs/zerolog" 
     "github.com/julienschmidt/httprouter" 
     "github.com/jhern254/go-thoughts/internal/data"
+//    "github.com/jhern254/go-thoughts/internal/validator"
 )
 
 // Public methods
@@ -38,47 +39,87 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
 
     userID := s.userFromReq(r)
 
+    // `map to domain
+    now := time.Now().UTC()
     subj := data.Subject{
-        SubjectID:  0,          // TODO: replace, temp    
-        UserID:     userID,
-        SubjectName: subject,
-        CreatedAt:  time.Now(),
-        UpdatedAt:  time.Now(),
-        Thoughts:   nil,
+        SubjectID:      0,      // TODO: replace with db process   
+        UserID:         userID,
+        SubjectName:    subject,
+        CreatedAt:      now,  
+        UpdatedAt:      now,  
+        Thoughts:       nil,
     }
 
-    err := s.writeJSON(w, http.StatusOK, envelope{"subject": subj}, nil)
+    // response view model
+    resp := subjectResponse{
+        SubjectID:  subj.SubjectID,          
+        UserID:     subj.UserID,
+        SubjectName: subj.SubjectName,
+        CreatedAt:  subj.CreatedAt.Format(time.RFC3339),
+        UpdatedAt:  subj.UpdatedAt.Format(time.RFC3339),
+    }
+
+    err := s.writeJSON(w, http.StatusOK, envelope{"subject": resp}, nil)
+    // handle err to json
     if err != nil {
         s.serverErrorResponse(w, r, err)
+        return
     }
 }
 
+// TODO: finish and test
 func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Request) {
-    var input struct {
-        SubjectID   int64     `json:"subject_id"`
-        UserID      string    `json:"user_id"`
-        SubjectName string    `json:"subject_name"`
-        CreatedAt   time.Time `json:"created_at"`
-        UpdatedAt   time.Time `json:"-"`
+    // endpoint-specific DTO
+    var inputSubj subjectCreateRequest
 
-        // TODO: TEMP, refactor out to model
-        Thoughts []string   `json:"thoughts,omitempty"`
-    }
-
-//    params := httprouter.ParamsFromContext(r.Context())
-//    subject := params.ByName("subject")
-    
-    // stub
-//    userID := a.userFromReq(r)
- 
-//    thought, err:= readThought(r.Body)
-    err := a.readJSON(w, r, &input)
+    err := a.readJSON(w, r, &inputSubj)
     if err != nil {
         a.badRequestResponse(w, r, err)
         return
     }
-    w.WriteHeader(http.StatusAccepted)
-    fmt.Fprintf(w, "%+v\n", input)
+
+    // init validator
+//    v := validator.New
+//    // TODO: write validations
+//    // Check input validate subject 
+//    Validator.ValidateSubject(v, &in, time.Now.UTC(), /*requireIDs=*/false)
+//    if !v.Valid() {
+//        a.failedValidationResponse(w, r, v.Errors)
+//    }
+
+    	// set server timestamps
+//    now := time.Now().UTC()
+//    in.CreatedAt = now.Format(time.RFC3339)
+//    in.UpdatedAt = now.Format(time.RFC3339)
+//
+    // continue: persist to SQLite...
+
+    // Map to domain
+    now := time.Now().UTC()
+    subj := &data.Subject{
+        // SubjectID from DB
+        SubjectID:   0,          // TODO: temp
+        UserID:      inputSubj.UserID,
+        SubjectName: inputSubj.SubjectName,
+        CreatedAt:   now, 
+        UpdatedAt:   now, 
+    }
+
+    // respond
+    resp := subjectResponse{
+        SubjectID:   subj.SubjectID,
+        UserID:      subj.UserID,
+        SubjectName: subj.SubjectName,
+        CreatedAt:   subj.CreatedAt.Format(time.RFC3339),
+        UpdatedAt:   subj.UpdatedAt.Format(time.RFC3339),
+    }
+
+    err = a.writeJSON(w, http.StatusAccepted, envelope{"subject": resp}, nil)
+    // handle err to json
+    if err != nil {
+        a.serverErrorResponse(w, r, err)
+        return
+    }
 }
 
 // NOTE: for all subject thoughts 
@@ -90,23 +131,44 @@ func (s *application) showSubjectThoughtsHandler(w http.ResponseWriter, r *http.
 
     userID := s.userFromReq(r)
 
+    // TODO: temp mock thoughts model
     thoughts := s.store.GetThoughts(userID, subject)
     if thoughts == nil {
-        w.WriteHeader(http.StatusNotFound)
+//        w.WriteHeader(http.StatusNotFound)
+        s.notFoundResponse(w, r)
         return
     }
 
+    // `map to domain
+    now := time.Now().UTC()
     subj := data.Subject{
+        SubjectID:      0,      // TODO: replace with db process   
+        UserID:         userID,
+        SubjectName:    subject,
+        CreatedAt:      now,  
+        UpdatedAt:      now,  
+        Thoughts:       nil,
+    }
+
+    // response view model
+    resp := subjectThoughtResponse{
         SubjectID:  0,   // TODO: temp, replace
         UserID:     userID,
         SubjectName: subject,
-        CreatedAt:  time.Now(),
-        UpdatedAt:  time.Now(),
+        CreatedAt:  subj.CreatedAt.Format(time.RFC3339),
+        UpdatedAt:  subj.UpdatedAt.Format(time.RFC3339),
         Thoughts:   thoughts,
     }
-    fmt.Fprint(w, strings.Join(subj.Thoughts, "\n"))
+    // TODO: test
+    err := s.writeJSON(w, http.StatusOK, envelope{"subject": resp}, nil)
+    // handle err to json
+    if err != nil {
+        s.serverErrorResponse(w, r, err)
+        return
+    }
 }
 
+// TODO: refactor 
 func (s *application) createSubjectThoughtHandler(w http.ResponseWriter, r *http.Request) {
     params := httprouter.ParamsFromContext(r.Context())
     subject := params.ByName("subject")
@@ -122,9 +184,22 @@ func (s *application) createSubjectThoughtHandler(w http.ResponseWriter, r *http
 
     s.store.CaptureThought(userID, subject, thought)
     w.WriteHeader(http.StatusAccepted)
+    // response view model
+//    subj := subjectThoughtResponse{
+//        SubjectID:  0,   // TODO: temp, replace
+//        UserID:     userID,
+//        SubjectName: subject,
+//        CreatedAt:  time.Now(),
+//        UpdatedAt:  time.Now(),
+//        Thoughts:   thought,
+//    }
+//    fmt.Fprint(w, strings.Join(subj.Thoughts, "\n"))
 }
 
-// helper fns
+
+// helper code
+// --------------
+
 // cleans input
 func readThought(body io.ReadCloser) (string, error) {
     defer body.Close()
@@ -139,4 +214,6 @@ func readThought(body io.ReadCloser) (string, error) {
 
     return thought, nil
 } 
+
+
 

@@ -1,3 +1,5 @@
+// subjects.go
+// domain model
 package data
 
 import (
