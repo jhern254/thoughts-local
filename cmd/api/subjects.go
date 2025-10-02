@@ -6,7 +6,7 @@ import (
     "fmt"
 //    "os"
     "net/http"
-//    "errors"
+    "errors"
     "strings"
     "io"
     "time"
@@ -17,7 +17,6 @@ import (
     "github.com/jhern254/go-thoughts/internal/data"
 //    "github.com/jhern254/go-thoughts/internal/validator"
 )
-
 
 // Public methods
 // TODO: implement auth for userID and db for subjectID
@@ -30,19 +29,17 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
 //    }
     params := httprouter.ParamsFromContext(r.Context())
     subject := params.ByName("subject")
-
     userID := s.userFromReq(r)
 
-    // TODO: refactor? not sure if needed for GET
-    // `map to domain
-    now := time.Now().UTC()
-    subj := data.Subject{
-        SubjectID:      0,      // TODO: replace with db process   
-        UserID:         userID,
-        SubjectName:    subject,
-        CreatedAt:      now,  
-        UpdatedAt:      now,  
-        Thoughts:       nil,
+    // query store w/ context
+    subj, err := s.store.GetSubject(r.Context(), userID, subject)
+    if err != nil {
+        if errors.Is(err, data.ErrRecordNotFound) {
+            s.notFoundResponse(w, r)    // 404
+            return
+        }
+        s.serverErrorResponse(w, r, err) // 500
+        return
     }
 
     // response view model
@@ -50,13 +47,12 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
         SubjectID:  subj.SubjectID,          
         UserID:     subj.UserID,
         SubjectName: subj.SubjectName,
-        CreatedAt:  subj.CreatedAt.Format(time.RFC3339),
-        UpdatedAt:  subj.UpdatedAt.Format(time.RFC3339),
+        CreatedAt:  subj.CreatedAt.UTC().Format(time.RFC3339),
+        UpdatedAt:  subj.UpdatedAt.UTC().Format(time.RFC3339),
     }
 
-    err := s.writeJSON(w, http.StatusOK, envelope{"subject": resp}, nil)
     // handle err to json
-    if err != nil {
+    if err := s.writeJSON(w, http.StatusOK, envelope{"subject": resp}, nil); err != nil { 
         s.serverErrorResponse(w, r, err)
         return
     }

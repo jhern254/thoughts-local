@@ -114,7 +114,6 @@ func TestGETSubject(t *testing.T) {
     }
     server := NewApplication(st, config{}, zerolog.New(os.Stdout))
 
-    // test return ok
     t.Run("returns 200 on subject name", func(t *testing.T) {
         request :=  newGetSubjectRequest("coding")
         response := httptest.NewRecorder()
@@ -139,15 +138,14 @@ func TestGETSubject(t *testing.T) {
         testutils.AssertCorrect(t, response.Code, http.StatusOK)
         testutils.AssertCorrect(t, got.Subject.SubjectName, "coding")
     })
-    // TODO: fix
-//    t.Run("return 404 on missing subject", func(t *testing.T) {
-//        request := newGetSubjectRequest("physics")
-//        response := httptest.NewRecorder()
-//
-//        server.routes().ServeHTTP(response, request)
-//
-//        testutils.AssertCorrect(t, response.Code, http.StatusNotFound)
-//    })
+    t.Run("return 404 on missing subject", func(t *testing.T) {
+        request := newGetSubjectRequest("physics")
+        response := httptest.NewRecorder()
+
+        server.routes().ServeHTTP(response, request)
+
+        testutils.AssertCorrect(t, response.Code, http.StatusNotFound)
+    })
 }
 
 //func TestPOSTSubject(t *testing.T) {
