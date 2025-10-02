@@ -8,12 +8,14 @@ import (
     "net/http/httptest"
     "fmt"
     "strings"
-    "os"
+//    "os"
     "encoding/json"
     "time"
-//    "io"
+    "io"
     "context"
+    "errors"
 
+    "github.com/julienschmidt/httprouter" 
     "github.com/jhern254/go-thoughts/internal/testutils"
     "github.com/jhern254/go-thoughts/internal/data"
     "github.com/rs/zerolog" 
@@ -112,7 +114,7 @@ func TestGETSubject(t *testing.T) {
             }, nil
         },
     }
-    server := NewApplication(st, config{}, zerolog.New(os.Stdout))
+    server := NewApplication(st, config{}, zerolog.New(io.Discard))
 
     t.Run("returns 200 on subject name", func(t *testing.T) {
         request :=  newGetSubjectRequest("coding")
@@ -135,7 +137,7 @@ func TestGETSubject(t *testing.T) {
         if err := json.NewDecoder(response.Body).Decode(&got); err != nil {
             t.Fatalf("decode error: %v", err)
         }
-        testutils.AssertCorrect(t, response.Code, http.StatusOK)
+        testutils.AssertStatusCode(t, response.Code, http.StatusOK)
         testutils.AssertCorrect(t, got.Subject.SubjectName, "coding")
     })
     t.Run("return 404 on missing subject", func(t *testing.T) {
@@ -144,8 +146,70 @@ func TestGETSubject(t *testing.T) {
 
         server.routes().ServeHTTP(response, request)
 
-        testutils.AssertCorrect(t, response.Code, http.StatusNotFound)
+        testutils.AssertStatusCode(t, response.Code, http.StatusNotFound)
     })
+    t.Run("return 500 when store returns generic error", func(t *testing.T) {
+		st = StoreStub{
+			getSubjectFunc: func(ctx context.Context, uid, name string) (*data.Subject, error) {
+				return nil, errors.New("boom")
+			},
+		}
+		server := NewApplication(st, config{}, zerolog.New(io.Discard))
+
+		response := httptest.NewRecorder()
+		server.routes().ServeHTTP(response, newGetSubjectRequest("coding"))
+
+        testutils.AssertStatusCode(t, response.Code, http.StatusInternalServerError)
+	})
+}
+
+// TODO: understand
+func TestGETSubject_ContextAndErrors(t *testing.T) {
+    t.Run("context is propagated: canceled => handler returns 500 (current behavior)", func(t *testing.T) {
+		// Stub that observes ctx and returns ctx.Err()
+		st := StoreStub{
+			getSubjectFunc: func(ctx context.Context, uid, name string) (*data.Subject, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+		}
+		server := NewApplication(st, config{}, zerolog.New(io.Discard))
+
+		// Build request with a cancelable context and cancel it before serving.
+		request := newGetSubjectRequest("coding")
+		ctx, cancel := context.WithCancel(request.Context())
+		cancel() // simulate client disconnect or upstream cancel
+		request = request.WithContext(ctx)
+
+		response := httptest.NewRecorder()
+		server.routes().ServeHTTP(response, request)
+
+		// With your current helpers, any non-ErrRecordNotFound error maps to 500.
+		// If you later special-case context errors, adjust the expectation (e.g., 499/504).
+        testutils.AssertStatusCode(t, response.Code, http.StatusInternalServerError)
+	})
+
+	t.Run("context is propagated: deadline exceeded => 500 (current behavior)", func(t *testing.T) {
+		st := StoreStub{
+			getSubjectFunc: func(ctx context.Context, uid, name string) (*data.Subject, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+		}
+		server := NewApplication(st, config{}, zerolog.New(io.Discard))
+
+		request := newGetSubjectRequest("coding")
+		ctx, cancel := context.WithTimeout(request.Context(), 1*time.Nanosecond)
+		defer cancel()
+		// Give it a tick so the deadline trips.
+		time.Sleep(2 * time.Nanosecond)
+		request = request.WithContext(ctx)
+
+		response := httptest.NewRecorder()
+		server.routes().ServeHTTP(response, request)
+
+        testutils.AssertStatusCode(t, response.Code, http.StatusInternalServerError)
+	})
 }
 
 //func TestPOSTSubject(t *testing.T) {
@@ -156,7 +220,7 @@ func TestGETSubject(t *testing.T) {
 //        },
 //        nil,
 //    }
-//    server := NewApplication(&store, config{}, zerolog.New(os.Stdout))
+//    server := NewApplication(&store, config{}, zerolog.New(io.Discard))
 //
 //    t.Run("it returns accepted subject on POST", func(t *testing.T) {
 //        subj := "coding"
@@ -164,7 +228,7 @@ func TestGETSubject(t *testing.T) {
 //        response := httptest.NewRecorder()
 //
 //        server.routes().ServeHTTP(response, request)
-//        testutils.AssertCorrect(t, response.Code, http.StatusAccepted)
+//        testutils.AssertStatusCode(t, response.Code, http.StatusAccepted)
 //
 //        //TODO: implement red test here
 //    })
@@ -180,7 +244,7 @@ func TestGETThoughts(t *testing.T) {
         },
         nil,
     }
-    server := NewApplication(thoughtsAdapter{&store}, config{}, zerolog.New(os.Stdout))
+    server := NewApplication(thoughtsAdapter{&store}, config{}, zerolog.New(io.Discard))
 
     t.Run("returns coding thoughts", func(t *testing.T) {
         request := newGetThoughtRequest("coding")
@@ -188,7 +252,7 @@ func TestGETThoughts(t *testing.T) {
 
         server.routes().ServeHTTP(response, request)
 
-        testutils.AssertCorrect(t, response.Code, http.StatusOK)
+        testutils.AssertStatusCode(t, response.Code, http.StatusOK)
         testutils.AssertContentType(t, response, jsonContentType)
 
         // decode JSON body
@@ -207,7 +271,7 @@ func TestGETThoughts(t *testing.T) {
 
         server.routes().ServeHTTP(response, request)
 
-        testutils.AssertCorrect(t, response.Code, http.StatusOK)
+        testutils.AssertStatusCode(t, response.Code, http.StatusOK)
         testutils.AssertContentType(t, response, jsonContentType)
 
         // decode JSON body
@@ -226,7 +290,7 @@ func TestGETThoughts(t *testing.T) {
 
         server.routes().ServeHTTP(response, request)
 
-        testutils.AssertCorrect(t, response.Code, http.StatusNotFound)
+        testutils.AssertStatusCode(t, response.Code, http.StatusNotFound)
     })
 }
 
@@ -238,7 +302,7 @@ func TestStoreThoughts(t *testing.T) {
         map[string][]string{},
         nil,
     }
-    server := NewApplication(thoughtsAdapter{&store}, config{}, zerolog.New(os.Stdout))
+    server := NewApplication(thoughtsAdapter{&store}, config{}, zerolog.New(io.Discard))
 
     t.Run("it returns accepted thoughts on POST", func(t *testing.T) {
         subj := "coding"
@@ -247,7 +311,7 @@ func TestStoreThoughts(t *testing.T) {
         response := httptest.NewRecorder()
 
         server.routes().ServeHTTP(response, request)
-        testutils.AssertCorrect(t, response.Code, http.StatusAccepted)
+        testutils.AssertStatusCode(t, response.Code, http.StatusAccepted)
 //        assertCorrect(t, store.Count(), 1)
 //        fmt.Printf("store is %+v", store)
 
@@ -265,11 +329,11 @@ func TestStoreThoughts(t *testing.T) {
 
 // helper fns
 func newGetSubjectRequest(subject string) *http.Request {
-    return httptest.NewRequest(
-        http.MethodGet,
-        "/subjects/"+subject,
-        nil,
-    )
+    req := httptest.NewRequest(http.MethodGet, "/subjects/"+subject, nil)
+    // attach httprouter params like a router would
+    params := httprouter.Params{ httprouter.Param{Key: "subject", Value: subject} }
+    ctx := context.WithValue(req.Context(), httprouter.ParamsKey, params)
+    return req.WithContext(ctx)
 }
 
 func newGetThoughtRequest(subject string) *http.Request {
