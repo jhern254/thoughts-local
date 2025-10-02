@@ -1,4 +1,6 @@
 // errors.go 
+// http level error helpers
+// translate go errors into json http responses (4xx, 5xx errs)
 package main
 
 import (

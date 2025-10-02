@@ -10,6 +10,7 @@ import (
 //    "errors"
 //    "strings"
     "encoding/json"
+    "context"
 )
 
 type FileSystemThoughtStore struct {
@@ -136,6 +137,14 @@ func (f *FileSystemThoughtStore) CaptureThought(userID, subject, thought string)
     _ = f.database.Encode(f.cache) // persist
 }
 
+// Dummy implementations for SubjectStore
+func (f *FileSystemThoughtStore) GetSubject(ctx context.Context, userID, subject string) (*Subject, error) {
+    return nil, ErrRecordNotFound // minimal: always “not found”
+}
+
+func (f *FileSystemThoughtStore) CaptureSubject(ctx context.Context, userID, subject string) (int64, error) {
+    return 0, nil // do nothing
+}
 
 
 

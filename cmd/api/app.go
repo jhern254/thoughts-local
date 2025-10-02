@@ -13,6 +13,7 @@ import (
 
     "github.com/rs/zerolog" 
 //    "github.com/julienschmidt/httprouter" 
+    "github.com/jhern254/go-thoughts/internal/data"
 )
 
 type config struct {
@@ -22,7 +23,7 @@ type config struct {
 
 // main DI container
 type application struct {
-    store       ThoughtStore
+    store       data.Store
     userFromReq func(*http.Request) string
     config      config
     logger      zerolog.Logger     
@@ -31,7 +32,7 @@ type application struct {
 
 // ctor
 // NOTE: store interface already reference value, impl needs pointer
-func NewApplication(store ThoughtStore, cfg config, logger zerolog.Logger) *application {
+func NewApplication(store data.Store, cfg config, logger zerolog.Logger) *application {
     return &application{
         store:      store,
         userFromReq: func(*http.Request) string { return "test-user" }, // NOTE: default for now

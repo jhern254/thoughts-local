@@ -18,14 +18,8 @@ import (
 //    "github.com/jhern254/go-thoughts/internal/validator"
 )
 
-// Public methods
-// NOTE: for temporary thought functionality
-type ThoughtStore interface {
-    // NOTE: will be db wrapper fn
-    GetThoughts(userID, subject string) []string
-    CaptureThought(userID, subject, thought string)
-}
 
+// Public methods
 // TODO: implement auth for userID and db for subjectID
 func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request) {
     // NOTE: better have with db
@@ -39,6 +33,7 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
 
     userID := s.userFromReq(r)
 
+    // TODO: refactor? not sure if needed for GET
     // `map to domain
     now := time.Now().UTC()
     subj := data.Subject{

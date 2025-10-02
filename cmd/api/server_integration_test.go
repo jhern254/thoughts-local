@@ -13,12 +13,6 @@ import (
     "github.com/rs/zerolog" 
 )
 
-// TODO: move(?)
-//type subjectEnvelope struct {
-//    Subject subjectThoughtResponse `json:"subject"`
-//}
-
-
 func TestPostingThoughtsAndGettingThem(t *testing.T) {
 //    store := NewInMemoryThoughtStore()
     database, cleanDatabase := testutils.CreateTempFile(t, `[]`)

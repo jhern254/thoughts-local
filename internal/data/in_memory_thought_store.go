@@ -1,6 +1,9 @@
 package data
 
-import "sync"
+import (
+    "sync"
+    "context"
+)
 
 func NewInMemoryThoughtStore() *InMemoryThoughtStore {
     return &InMemoryThoughtStore{
@@ -27,5 +30,14 @@ func (i *InMemoryThoughtStore) CaptureThought(userID, subject, thought string) {
     i.lock.Lock()
     defer i.lock.Unlock()
     i.thoughts[subject] = append(i.thoughts[subject], thought)            
+}
+
+// Dummy implementations for SubjectStore
+func (i *InMemoryThoughtStore) GetSubject(ctx context.Context, userID, subject string) (*Subject, error) {
+    return nil, ErrRecordNotFound // minimal: always “not found”
+}
+
+func (i *InMemoryThoughtStore) CaptureSubject(ctx context.Context, userID, subject string) (int64, error) {
+    return 0, nil // do nothing
 }
 

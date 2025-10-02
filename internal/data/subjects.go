@@ -9,6 +9,7 @@ import (
 //    "errors"
 //    "strings"
 //    "io"
+    "context"
 
 //    "github.com/rs/zerolog" 
 //    "github.com/julienschmidt/httprouter" 
@@ -24,3 +25,16 @@ type Subject struct {
     // TODO: TEMP, refactor out to model
     Thoughts []string   `json:"thoughts,omitempty"`
 }
+
+// Stub test interfaces
+type ThoughtStore interface {
+    // NOTE: will be db wrapper fn
+    GetThoughts(userID, subject string) []string
+    CaptureThought(userID, subject, thought string)
+}
+
+type SubjectStore interface {
+    GetSubject(ctx context.Context, userID, subject string) (*Subject, error)
+    CaptureSubject(ctx context.Context, userID, subject string) (int64, error)
+}
+
