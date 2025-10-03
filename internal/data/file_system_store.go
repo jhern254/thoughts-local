@@ -142,7 +142,7 @@ func (f *FileSystemThoughtStore) GetSubject(ctx context.Context, userID, subject
     return nil, ErrRecordNotFound // minimal: always “not found”
 }
 
-func (f *FileSystemThoughtStore) CaptureSubject(ctx context.Context, userID, subject string) (int64, error) {
+func (f *FileSystemThoughtStore) CaptureSubject(ctx context.Context, userID string, subject *Subject) (int64, error) {
     return 0, nil // do nothing
 }
 

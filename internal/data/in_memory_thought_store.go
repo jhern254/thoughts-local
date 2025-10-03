@@ -37,7 +37,7 @@ func (i *InMemoryThoughtStore) GetSubject(ctx context.Context, userID, subject s
     return nil, ErrRecordNotFound // minimal: always “not found”
 }
 
-func (i *InMemoryThoughtStore) CaptureSubject(ctx context.Context, userID, subject string) (int64, error) {
+func (i *InMemoryThoughtStore) CaptureSubject(ctx context.Context, userID string, subject *Subject) (int64, error) {
     return 0, nil // do nothing
 }
 

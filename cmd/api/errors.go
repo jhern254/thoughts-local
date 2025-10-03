@@ -63,3 +63,14 @@ func (a *application) failedValidationResponse(w http.ResponseWriter, r *http.Re
     a.errorResponse(w, r, http.StatusUnprocessableEntity, errors)
 }
 
+// 409 Conflict (generic)
+func (a *application) conflictResponse(w http.ResponseWriter, r *http.Request, msg any) {
+    a.errorResponse(w, r, http.StatusConflict, msg)
+}
+
+// 409 Conflict (duplicate record convenience)
+// example use: a.duplicateRecordResponse(w, r, "subject")
+func (a *application) duplicateRecordResponse(w http.ResponseWriter, r *http.Request, resource string) {
+    a.conflictResponse(w, r, resource+" already exists")
+}
+

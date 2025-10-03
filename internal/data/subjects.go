@@ -35,6 +35,6 @@ type ThoughtStore interface {
 
 type SubjectStore interface {
     GetSubject(ctx context.Context, userID, subject string) (*Subject, error)
-    CaptureSubject(ctx context.Context, userID, subject string) (int64, error)
+    CaptureSubject(ctx context.Context, userID string, subject *Subject) (int64, error)
 }
 

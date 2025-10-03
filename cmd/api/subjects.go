@@ -62,12 +62,11 @@ func (s *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
 func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Request) {
     // endpoint-specific DTO
     var inputSubj subjectCreateRequest
-
-    err := a.readJSON(w, r, &inputSubj)
-    if err != nil {
+    if err := a.readJSON(w, r, &inputSubj); err != nil {
         a.badRequestResponse(w, r, err)
         return
     }
+    userID := a.userFromReq(r)
 
     // init validator
 //    v := validator.New
@@ -85,29 +84,38 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
 //
     // continue: persist to SQLite...
 
-    // Map to domain
+    // Map to domain 
     now := time.Now().UTC()
     subj := &data.Subject{
         // SubjectID from DB
-        SubjectID:   0,          // TODO: temp
-        UserID:      inputSubj.UserID,
+        UserID:      userID,
         SubjectName: inputSubj.SubjectName,
         CreatedAt:   now, 
         UpdatedAt:   now, 
     }
+    subjID, storeErr := a.store.CaptureSubject(r.Context(), userID, subj)
+    if storeErr != nil {
+        switch {
+        case errors.Is(storeErr, data.ErrDuplicateRecord):  
+            a.duplicateRecordResponse(w, r, subj.SubjectName)   // 409
+            return
+        default:
+            a.serverErrorResponse(w, r, storeErr) // 500
+            return
+        }
+    }
 
     // respond
     resp := subjectResponse{
-        SubjectID:   subj.SubjectID,
+        SubjectID:   subjID,
         UserID:      subj.UserID,
         SubjectName: subj.SubjectName,
         CreatedAt:   subj.CreatedAt.Format(time.RFC3339),
         UpdatedAt:   subj.UpdatedAt.Format(time.RFC3339),
     }
 
-    err = a.writeJSON(w, http.StatusAccepted, envelope{"subject": resp}, nil)
     // handle err to json
-    if err != nil {
+    if err := a.writeJSON(w, http.StatusCreated, envelope{"subject": resp}, nil); err != nil {
         a.serverErrorResponse(w, r, err)
         return
     }
@@ -163,7 +171,6 @@ func (s *application) showSubjectThoughtsHandler(w http.ResponseWriter, r *http.
 func (s *application) createSubjectThoughtHandler(w http.ResponseWriter, r *http.Request) {
     params := httprouter.ParamsFromContext(r.Context())
     subject := params.ByName("subject")
-
     // mock
     userID := s.userFromReq(r)
 

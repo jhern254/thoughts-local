@@ -6,7 +6,7 @@ import (
     "testing"
     "net/http"
     "net/http/httptest"
-    "fmt"
+//    "fmt"
     "strings"
 //    "os"
     "encoding/json"
@@ -29,7 +29,7 @@ type subjectEnvelope struct {
 type StoreStub struct {
     // subjects
     getSubjectFunc  func(ctx context.Context, userID, subject string) (*data.Subject, error)
-    captureSubjectFunc func(ctx context.Context, userID, subject string) (int64, error)
+    captureSubjectFunc func(ctx context.Context, userID string, subject *data.Subject) (int64, error)
     // thoughts
     // TODO: refactor to add ctx, err
     getThoughtsFunc func(userID, subject string) []string
@@ -41,7 +41,7 @@ func (s StoreStub) GetSubject(ctx context.Context, userID, subject string) (*dat
     return s.getSubjectFunc(ctx, userID, subject)
 }
 
-func (s StoreStub) CaptureSubject(ctx context.Context, userID, subject string) (int64, error) {
+func (s StoreStub) CaptureSubject(ctx context.Context, userID string, subject *data.Subject) (int64, error) {
     if s.captureSubjectFunc == nil { panic("CaptureSubject not stubbed") } 
     return s.captureSubjectFunc(ctx, userID, subject)
 }
@@ -79,26 +79,21 @@ func (s *StubThoughtStore) Count() int {
     return len(s.thoughts)
 }
 
+// TODO: refactor out
 type thoughtsAdapter struct { *StubThoughtStore }
 
-// Provide no-op subject methods to satisfy the composite:
+// dummy 
 func (a thoughtsAdapter) GetSubject(ctx context.Context, u, n string) (*data.Subject, error) {
     return nil, data.ErrRecordNotFound
 }
 
-func (a thoughtsAdapter) CaptureSubject(ctx context.Context, u, n string) (int64, error) {
+func (a thoughtsAdapter) CaptureSubject(ctx context.Context, u string, s *data.Subject) (int64, error) {
     return 0, nil
 }
 
+
+// tests
 func TestGETSubject(t *testing.T) {
-    // old stub that passed test
-//    store := StubThoughtStore{
-//        map[string][]string{
-//            "coding": {"I'm learning go!"},
-//            "ai": {"agi 2025!"},
-//        },
-//        nil,
-//    }
     st := StoreStub{
         getSubjectFunc: func(ctx context.Context, uid, name string) (*data.Subject, error) {
             // GET handler needs a subject to exist:
@@ -212,29 +207,67 @@ func TestGETSubject_ContextAndErrors(t *testing.T) {
 	})
 }
 
-//func TestPOSTSubject(t *testing.T) {
-//    store := StubThoughtStore{
-//        map[string][]string{
-//            "coding": {"I'm learning go!"},
-//            "ai": {"agi 2025!"},
-//        },
-//        nil,
-//    }
-//    server := NewApplication(&store, config{}, zerolog.New(io.Discard))
-//
-//    t.Run("it returns accepted subject on POST", func(t *testing.T) {
-//        subj := "coding"
-//        request := newPostSubjectRequest(subj)
-//        response := httptest.NewRecorder()
-//
-//        server.routes().ServeHTTP(response, request)
-//        testutils.AssertStatusCode(t, response.Code, http.StatusAccepted)
-//
-//        //TODO: implement red test here
-//    })
-//
-//}
+// TODO: finish
+func TestPOSTSubject(t *testing.T) {
+    st := StoreStub{
+        captureSubjectFunc: func(ctx context.Context, uid string, subj *data.Subject) (int64, error) {
+            // assert handler mapped DTO -> domain correctly before hitting store.
+//            if uid != "test-user" { t.Fatalf("userID: got %q", uid) }
+            if subj.SubjectName != "coding" { t.Fatalf("subject_name: got %q", subj.SubjectName) }
+            // return a fake DB id.
+            return 123, nil
+        },
+    }
+    server := NewApplication(&st, config{}, zerolog.New(io.Discard))
 
+    t.Run("returns accepted 201 subject on POST", func(t *testing.T) {
+        subj := "coding"
+        request := newPostSubjectRequest(subj)
+        response := httptest.NewRecorder()
+
+        server.routes().ServeHTTP(response, request)
+        testutils.AssertStatusCode(t, response.Code, http.StatusCreated)
+        testutils.AssertContentType(t, response, jsonContentType)
+
+        // GET to assert
+        // decode JSON body
+        var env subjectEnvelope
+        if err := json.NewDecoder(response.Body).Decode(&env); err != nil {
+            t.Fatalf("decode json: %v\nbody:\n%s", err, response.Body.String())
+        }
+        got := env.Subject
+        testutils.AssertCorrect(t, got.SubjectName, "coding")
+        testutils.AssertCorrect(t, got.SubjectID, 123)
+    })
+    t.Run("returns 409 when duplicate record", func(t *testing.T) {
+    	st := StoreStub{
+    		captureSubjectFunc: func(ctx context.Context, uid string, subj *data.Subject) (int64, error) {
+    			return 0, data.ErrDuplicateRecord
+    		},
+    	}
+    	server := NewApplication(st, config{}, zerolog.New(io.Discard))
+
+    	response := httptest.NewRecorder()
+    	server.routes().ServeHTTP(response, newPostSubjectRequest("coding"))
+
+        testutils.AssertStatusCode(t, response.Code, http.StatusConflict)
+	})
+    t.Run("returns 500 when store returns generic error", func(t *testing.T) {
+		st := StoreStub{
+			captureSubjectFunc: func(ctx context.Context, uid string, subj *data.Subject) (int64, error) {
+				return 0, errors.New("boom")
+			},
+		}
+		server := NewApplication(st, config{}, zerolog.New(io.Discard))
+
+		response := httptest.NewRecorder()
+		server.routes().ServeHTTP(response, newPostSubjectRequest("coding"))
+
+        testutils.AssertStatusCode(t, response.Code, http.StatusInternalServerError)
+	})
+}
+
+// TODO: test context and err for POST subject
 
 func TestGETThoughts(t *testing.T) {
     store := StubThoughtStore{
@@ -293,7 +326,6 @@ func TestGETThoughts(t *testing.T) {
         testutils.AssertStatusCode(t, response.Code, http.StatusNotFound)
     })
 }
-
 
 
 // Refactor to JSON
@@ -358,7 +390,7 @@ func newPostThoughtRequest(subject, thought string) *http.Request {
 }
 
 func newPostSubjectRequest(subject string) *http.Request {
-    payload := fmt.Sprintf(`{"subject_name":%q}`, subject)
+    payload := `{"subject_name":"` + subject + `"}`
     req := httptest.NewRequest(
         http.MethodPost,
         "/subjects",
