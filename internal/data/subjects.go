@@ -30,7 +30,8 @@ type Subject struct {
 type ThoughtStore interface {
     // NOTE: will be db wrapper fn
     GetThoughts(userID, subject string) []string
-    CaptureThought(userID, subject, thought string)
+    // TODO: Rename to create
+    CaptureThought(ctx context.Context, userID, subject, thought string) (int64, error)
 }
 
 type SubjectStore interface {

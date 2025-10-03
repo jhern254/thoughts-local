@@ -2,8 +2,10 @@ package data
 
 import (
 	"testing"
+    "context"
 //    "io"
     "os"
+//    "time"
     "github.com/jhern254/go-thoughts/internal/testutils"
 )
 
@@ -48,7 +50,11 @@ func TestFileSystemStore(t *testing.T) {
         defer cleanDatabase()
 
         store, err := NewFileSystemThoughtStore(database)
-        store.CaptureThought("1", "AI", "Transformers go brr")
+        id, err := store.CaptureThought(context.Background(), "1", "AI", "Transformers go brr")
+        testutils.AssertNoError(t, err)
+        if id <= 0 {
+            t.Fatalf("got id %d, want >0", id)
+        }
         got := store.GetThoughts("1", "AI")
         want := []string{"Transformers go brr", }
 

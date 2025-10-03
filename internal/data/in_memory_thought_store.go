@@ -26,10 +26,20 @@ func (i *InMemoryThoughtStore) GetThoughts(userID, subject string) []string {
 }
 
 // TODO: add userID impl
-func (i *InMemoryThoughtStore) CaptureThought(userID, subject, thought string) {
+func (i *InMemoryThoughtStore) CaptureThought(ctx context.Context, userID, subject, thought string) (int64, error) { i.lock.Lock()
     i.lock.Lock()
     defer i.lock.Unlock()
-    i.thoughts[subject] = append(i.thoughts[subject], thought)            
+    // Init map if needed
+    if i.thoughts == nil {
+        i.thoughts = make(map[string][]string)
+    }
+
+    // Append thought
+    i.thoughts[subject] = append(i.thoughts[subject], thought)
+
+    // "ID" = 1-based index in this subject's slice (matches the filesystem stub pattern)
+    newID := int64(len(i.thoughts[subject]))
+    return newID, nil
 }
 
 // Dummy implementations for SubjectStore

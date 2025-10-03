@@ -33,7 +33,7 @@ type StoreStub struct {
     // thoughts
     // TODO: refactor to add ctx, err
     getThoughtsFunc func(userID, subject string) []string
-    captureThoughtFunc func(userID, subject, thought string)
+    captureThoughtFunc func(ctx context.Context, userID, subject, thought string) (int64, error)
 }
 
 func (s StoreStub) GetSubject(ctx context.Context, userID, subject string) (*data.Subject, error) {
@@ -51,10 +51,10 @@ func (s StoreStub) GetThoughts(userID, subject string) []string {
     return s.getThoughtsFunc(userID, subject)
 }
 
-func (s StoreStub) CaptureThought(userID, subject, thought string) {
+func (s StoreStub) CaptureThought(ctx context.Context, userID, subject, thought string) (int64, error) {
     if s.captureThoughtFunc == nil { panic("CaptureThoughts not stubbed") } 
     // NOTE: temp, has no return value
-    s.captureThoughtFunc(userID, subject, thought)
+    return s.captureThoughtFunc(ctx, userID, subject, thought)
 }
 
 
@@ -70,9 +70,15 @@ func (s *StubThoughtStore) GetThoughts(_, subject string) []string {
 }
 
 // TODO: add userID impl 
-func (s *StubThoughtStore) CaptureThought(userID, subject, thought string) {
-    s.thoughts[subject] = append(s.thoughts[subject], thought)            
+func (s *StubThoughtStore) CaptureThought(ctx context.Context, userID, subject, thought string) (int64, error) {
+    if s.thoughts == nil {
+        s.thoughts = make(map[string][]string)
+    }
+    s.thoughts[subject] = append(s.thoughts[subject], thought)
     s.subjectCalls = append(s.subjectCalls, subject)
+
+    newID := int64(len(s.thoughts[subject])) // 1-based ID
+    return newID, nil
 }
 
 func (s *StubThoughtStore) Count() int {
@@ -327,14 +333,24 @@ func TestGETThoughts(t *testing.T) {
     })
 }
 
-
 // Refactor to JSON
-func TestStoreThoughts(t *testing.T) {
-    store := StubThoughtStore{
-        map[string][]string{},
-        nil,
+func TestPOSTThoughts(t *testing.T) {
+//    store := StubThoughtStore{
+//        map[string][]string{},
+//        nil,
+//    }
+    store := StoreStub{
+        captureThoughtFunc: func(ctx context.Context, userID, subject, thought string) (int64, error) {
+            // assert handler mapped DTO -> domain correctly before hitting store.
+//            if uid != "test-user" { t.Fatalf("userID: got %q", uid) }
+            if subject != "coding" { t.Fatalf("subject_name: got %q", subject) }
+            // return a fake DB id.
+            return 123, nil
+        },
     }
-    server := NewApplication(thoughtsAdapter{&store}, config{}, zerolog.New(io.Discard))
+    // TODO: not sure if correct
+//    server := NewApplication(thoughtsAdapter{&store}, config{}, zerolog.New(io.Discard))
+    server := NewApplication(store, config{}, zerolog.New(io.Discard))
 
     t.Run("it returns accepted thoughts on POST", func(t *testing.T) {
         subj := "coding"
@@ -344,17 +360,8 @@ func TestStoreThoughts(t *testing.T) {
 
         server.routes().ServeHTTP(response, request)
         testutils.AssertStatusCode(t, response.Code, http.StatusAccepted)
-//        assertCorrect(t, store.Count(), 1)
-//        fmt.Printf("store is %+v", store)
 
-        // fix
-//        if len(store.subjectCalls) != 1 {
-//            t.Errorf("got %d calls to CaptureThought() want %d", len(store.subjectCalls), 1)
-//        }
-//
-//        if store.subjectCalls[0] != subj {
-//            t.Errorf("did not store correct subj got %q want %q", store.subjectCalls[0], subj)
-//        }
+        // TODO: implement tests
 
     })
 }

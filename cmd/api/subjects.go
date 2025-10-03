@@ -180,7 +180,7 @@ func (s *application) createSubjectThoughtHandler(w http.ResponseWriter, r *http
         return
     }
 
-    s.store.CaptureThought(userID, subject, thought)
+    s.store.CaptureThought(r.Context(), userID, subject, thought)
     w.WriteHeader(http.StatusAccepted)
     // response view model
 //    subj := subjectThoughtResponse{

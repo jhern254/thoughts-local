@@ -16,7 +16,6 @@ import (
 type FileSystemThoughtStore struct {
     database   *json.Encoder
     cache      dbFile      // cache
-
     lock    sync.RWMutex
 }
 
@@ -102,7 +101,7 @@ func (f *FileSystemThoughtStore) GetThoughts(userID, subject string) []string {
 }
 
 // TODO: fix. base impl, still unsafe since not truncating
-func (f *FileSystemThoughtStore) CaptureThought(userID, subject, thought string) {
+func (f *FileSystemThoughtStore) CaptureThought(ctx context.Context, userID, subject, thought string) (int64, error) {
     f.lock.Lock()
     defer f.lock.Unlock()
 
@@ -123,18 +122,26 @@ func (f *FileSystemThoughtStore) CaptureThought(userID, subject, thought string)
     // Update existing subject or add a new one
     for si := range f.cache[ui].Subjects {
         if f.cache[ui].Subjects[si].Name == subject {
-            f.cache[ui].Subjects[si].Thoughts =
-                append(f.cache[ui].Subjects[si].Thoughts, thought)
-            _ = f.database.Encode(f.cache) // persist
-            return
+            f.cache[ui].Subjects[si].Thoughts = append(f.cache[ui].Subjects[si].Thoughts, thought)
+            // new ID is 1-based index in the slice
+            newID := int64(len(f.cache[ui].Subjects[si].Thoughts))
+            if err := f.database.Encode(f.cache); err != nil {
+                return 0, err
+            }
+            return newID, nil
         }
     }
 
+    // subject doesn't exist
     f.cache[ui].Subjects = append(f.cache[ui].Subjects, subjectRow{
         Name:     subject,
         Thoughts: []string{thought},
     })
-    _ = f.database.Encode(f.cache) // persist
+    // persist data
+    if err := f.database.Encode(f.cache); err != nil {
+        return 0, err
+    }
+    return 1, nil   // first thought in subject
 }
 
 // Dummy implementations for SubjectStore
@@ -145,6 +152,4 @@ func (f *FileSystemThoughtStore) GetSubject(ctx context.Context, userID, subject
 func (f *FileSystemThoughtStore) CaptureSubject(ctx context.Context, userID string, subject *Subject) (int64, error) {
     return 0, nil // do nothing
 }
-
-
 
