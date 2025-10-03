@@ -1,3 +1,6 @@
 /internal_docs
 ./thoughts
-thoughts.db.json
+*.db.json
+*.db
+/bin/
+.env
