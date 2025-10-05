@@ -25,6 +25,19 @@ type subjectEnvelope struct {
     Subject subjectThoughtResponse `json:"subject"`
 }
 
+// TODO: refactor to domain response 
+type thoughtEnvelope struct {
+    Thought struct {
+        ThoughtID   int64       `json:"thought_id"`
+        UserID      string      `json:"user_id"`
+        SubjectID   int64       `json:"subject_id"`
+        EventID     int64       `json:"event_id"`
+        Thought     string      `json:"thought"`
+        CreatedAt   string      `json:"created_at"`
+        UpdatedAt   string      `json:"-"`
+    }   `json:"thought"`
+}
+
 // per test fn stub
 type StoreStub struct {
     // subjects
@@ -213,7 +226,6 @@ func TestGETSubject_ContextAndErrors(t *testing.T) {
 	})
 }
 
-// TODO: finish
 func TestPOSTSubject(t *testing.T) {
     st := StoreStub{
         captureSubjectFunc: func(ctx context.Context, uid string, subj *data.Subject) (int64, error) {
@@ -226,7 +238,7 @@ func TestPOSTSubject(t *testing.T) {
     }
     server := NewApplication(&st, config{}, zerolog.New(io.Discard))
 
-    t.Run("returns accepted 201 subject on POST", func(t *testing.T) {
+    t.Run("returns created 201 subject on POST", func(t *testing.T) {
         subj := "coding"
         request := newPostSubjectRequest(subj)
         response := httptest.NewRecorder()
@@ -274,6 +286,7 @@ func TestPOSTSubject(t *testing.T) {
 }
 
 // TODO: test context and err for POST subject
+
 
 func TestGETThoughts(t *testing.T) {
     store := StubThoughtStore{
@@ -341,9 +354,6 @@ func TestPOSTThoughts(t *testing.T) {
 //    }
     store := StoreStub{
         captureThoughtFunc: func(ctx context.Context, userID, subject, thought string) (int64, error) {
-            // assert handler mapped DTO -> domain correctly before hitting store.
-//            if uid != "test-user" { t.Fatalf("userID: got %q", uid) }
-            if subject != "coding" { t.Fatalf("subject_name: got %q", subject) }
             // return a fake DB id.
             return 123, nil
         },
@@ -352,18 +362,39 @@ func TestPOSTThoughts(t *testing.T) {
 //    server := NewApplication(thoughtsAdapter{&store}, config{}, zerolog.New(io.Discard))
     server := NewApplication(store, config{}, zerolog.New(io.Discard))
 
-    t.Run("it returns accepted thoughts on POST", func(t *testing.T) {
+    t.Run("returns created 201 thoughts on POST", func(t *testing.T) {
         subj := "coding"
         th := "I'm learning go!"
         request := newPostThoughtRequest(subj, th)
         response := httptest.NewRecorder()
 
         server.routes().ServeHTTP(response, request)
-        testutils.AssertStatusCode(t, response.Code, http.StatusAccepted)
+        testutils.AssertStatusCode(t, response.Code, http.StatusCreated)
+        testutils.AssertContentType(t, response, jsonContentType)
 
-        // TODO: implement tests
-
+        // GET to assert
+        // decode JSON body
+        var env thoughtEnvelope
+        if err := json.NewDecoder(response.Body).Decode(&env); err != nil {
+            t.Fatalf("decode json: %v\nbody:\n%s", err, response.Body.String())
+        }
+        got := env.Thought
+        testutils.AssertCorrect(t, got.Thought, "I'm learning go!")
+        testutils.AssertCorrect(t, got.ThoughtID, 123)
     })
+    t.Run("returns 500 when store returns generic error", func(t *testing.T) {
+    	st := StoreStub{
+            captureThoughtFunc: func(ctx context.Context, userID, subject, thought string) (int64, error) {
+    			return 0, errors.New("boom")
+    		},
+    	}
+    	server := NewApplication(st, config{}, zerolog.New(io.Discard))
+
+    	response := httptest.NewRecorder()
+    	server.routes().ServeHTTP(response, newPostThoughtRequest("coding", "hello world"))
+
+        testutils.AssertStatusCode(t, response.Code, http.StatusInternalServerError)
+	})
 }
 
 // helper fns

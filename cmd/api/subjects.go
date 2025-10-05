@@ -174,24 +174,63 @@ func (s *application) createSubjectThoughtHandler(w http.ResponseWriter, r *http
     // mock
     userID := s.userFromReq(r)
 
-    thought, err:= readThought(r.Body)
+    thought, err := readThought(r.Body)
     if err != nil {
-        http.Error(w, err.Error() , http.StatusBadRequest) 
+        s.serverErrorResponse(w, r, err) // 500
         return
     }
 
-    s.store.CaptureThought(r.Context(), userID, subject, thought)
-    w.WriteHeader(http.StatusAccepted)
-    // response view model
-//    subj := subjectThoughtResponse{
-//        SubjectID:  0,   // TODO: temp, replace
-//        UserID:     userID,
-//        SubjectName: subject,
-//        CreatedAt:  time.Now(),
-//        UpdatedAt:  time.Now(),
-//        Thoughts:   thought,
-//    }
-//    fmt.Fprint(w, strings.Join(subj.Thoughts, "\n"))
+    thID, tErr := s.store.CaptureThought(r.Context(), userID, subject, thought)
+    if tErr != nil {
+        s.serverErrorResponse(w, r, tErr) // 500
+        return
+    }
+
+    // temp domain mapping
+    now := time.Now().UTC()
+    th := struct {
+        ThoughtID   int64      
+        UserID      string  
+        SubjectID   int64   
+        EventID     int64   
+        Thought     string  
+        CreatedAt   time.Time 
+        UpdatedAt   time.Time 
+    }{
+        ThoughtID:  thID,
+        UserID:     userID,
+        SubjectID:  0,      // NOTE: temp
+        EventID:    0,   
+        Thought:    thought, 
+        CreatedAt:  now,
+        UpdatedAt:  now,
+    }
+//    w.WriteHeader(http.StatusAccepted)
+
+    // temp response mapping
+    resp := struct {
+        ThoughtID   int64       `json:"thought_id"`
+        UserID      string      `json:"user_id"`
+        SubjectID   int64       `json:"subject_id"`
+        EventID     int64       `json:"event_id"`
+        Thought     string      `json:"thought"`
+        CreatedAt   string      `json:"created_at"`
+        UpdatedAt   string      `json:"-"`
+    }{
+        ThoughtID:  th.ThoughtID,
+        UserID:     th.UserID,
+        SubjectID:  th.SubjectID,
+        EventID:    th.EventID,
+        Thought:    th.Thought,
+        CreatedAt:  th.CreatedAt.Format(time.RFC3339),
+        UpdatedAt:  th.UpdatedAt.Format(time.RFC3339),
+    }
+
+    // handle err to json
+    if err = s.writeJSON(w, http.StatusCreated, envelope{"thought": resp}, nil); err != nil {
+        s.serverErrorResponse(w, r, err)
+        return
+    }
 }
 
 
