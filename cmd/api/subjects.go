@@ -15,7 +15,7 @@ import (
 //    "github.com/rs/zerolog" 
     "github.com/julienschmidt/httprouter" 
     "github.com/jhern254/go-thoughts/internal/data"
-//    "github.com/jhern254/go-thoughts/internal/validator"
+    "github.com/jhern254/go-thoughts/internal/validator"
 )
 
 // Public methods
@@ -68,22 +68,6 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
     }
     userID := a.userFromReq(r)
 
-    // init validator
-//    v := validator.New
-//    // TODO: write validations
-//    // Check input validate subject 
-//    Validator.ValidateSubject(v, &in, time.Now.UTC(), /*requireIDs=*/false)
-//    if !v.Valid() {
-//        a.failedValidationResponse(w, r, v.Errors)
-//    }
-
-    	// set server timestamps
-//    now := time.Now().UTC()
-//    in.CreatedAt = now.Format(time.RFC3339)
-//    in.UpdatedAt = now.Format(time.RFC3339)
-//
-    // continue: persist to SQLite...
-
     // Map to domain 
     now := time.Now().UTC()
     subj := &data.Subject{
@@ -104,6 +88,23 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
             return
         }
     }
+    subj.SubjectID = subjID 
+
+//    // init validator
+    v := validator.NewValidator()
+    // Check input validate subject 
+    data.ValidateSubjectCreate(v, subj)
+    if !v.Valid() {
+        a.failedValidationResponse(w, r, v.Errors)
+        return 
+    }
+
+    	// set server timestamps
+//    now := time.Now().UTC()
+//    in.CreatedAt = now.Format(time.RFC3339)
+//    in.UpdatedAt = now.Format(time.RFC3339)
+//
+    // continue: persist to SQLite...
 
     // respond
     resp := subjectResponse{
@@ -206,6 +207,8 @@ func (s *application) createSubjectThoughtHandler(w http.ResponseWriter, r *http
         UpdatedAt:  now,
     }
 //    w.WriteHeader(http.StatusAccepted)
+
+    // TODO: add validator
 
     // temp response mapping
     resp := struct {

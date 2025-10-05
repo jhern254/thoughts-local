@@ -244,6 +244,8 @@ func TestPOSTSubject(t *testing.T) {
         response := httptest.NewRecorder()
 
         server.routes().ServeHTTP(response, request)
+        // NOTE: need if checking logs
+//        t.Logf("body: %s", response.Body.String())
         testutils.AssertStatusCode(t, response.Code, http.StatusCreated)
         testutils.AssertContentType(t, response, jsonContentType)
 
