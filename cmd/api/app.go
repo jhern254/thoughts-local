@@ -19,6 +19,12 @@ import (
 type config struct {
     port int
     env string
+    db struct {
+        dsn string
+        maxOpenConns int
+        maxIdleConns int
+        maxIdleTime string
+    }
 }
 
 // main DI container

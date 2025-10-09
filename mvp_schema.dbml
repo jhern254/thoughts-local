@@ -116,6 +116,7 @@ Table goal_progress {
   thought_id     text               // optional provenance
   note           text
   created_at     timestamptz [not null, default: `now()`] // append-only
+  // subject_id     // for QOL 
 
   Indexes {
     (goal_id, occurred_at) [name: 'idx_progress_goal_time']

@@ -4,3 +4,4 @@
 *.db
 /bin/
 .env
+/data
