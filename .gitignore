@@ -3,5 +3,11 @@
 *.db.json
 *.db
 /bin/
-.env
 /data
+
+# Env / secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
