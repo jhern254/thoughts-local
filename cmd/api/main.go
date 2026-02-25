@@ -90,11 +90,16 @@ func main() {
 
 }
 
+// TODO: add epoch fns 
 func openDB(cfg config) (*sql.DB, error) {
     db, err := sql.Open("sqlite", cfg.db.dsn)
     if err != nil {
         return nil, err
     }
+
+	if err := data.EnableSQLiteFK(db); err != nil {
+		return nil, err
+	}
 
     // set db config
     db.SetMaxOpenConns(cfg.db.maxOpenConns)

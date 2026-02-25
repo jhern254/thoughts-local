@@ -1,6 +1,7 @@
 Project Thoughts_App_with_Cadence {
-  database_type: 'PostgreSQL'
+  database_type: 'SQLite'
   Note: '''
+  Surrogate keys should be int in sql.
   Extends MVP with goal cadence & optional persisted rollups.
   Facts remain append-only; rollups are materialized aggregates per period.
   '''
@@ -31,45 +32,64 @@ Enum day_of_week  {
 Table users {
   user_id    text [pk]
   handle     text [unique]
+  alt_handle text       
   email      text [unique]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+    CHECK (length(trim(user_id)) BETWEEN 1 AND 255)
+    CHECK (handle IS NULL OR length(trim(handle)) BETWEEN 1 AND 512)
+    CHECK (alt_handle IS NULL OR length(trim(alt_handle)) BETWEEN 1 AND 512)
+    CHECK (created_at <= updated_at)
+  '''
 }
 
 Table subjects {
-  subject_id  text [pk]
-  user_id     text [not null]
-  name        text [not null] // curated single category
-  created_at  timestamptz [not null, default: `now()`]
-  updated_at  timestamptz [not null, default: `now()`]
+  subject_id   integer [pk]
+  user_id      text [not null]
+  subject_name text [not null] // user curated single category
+  created_at   timestamptz [not null, default: `now()`]
+  updated_at   timestamptz [not null, default: `now()`]
+
+  Note: '''
+    CHECK (length(trim(subject_name)) BETWEEN 1 AND 255)
+    CHECK (created_at <= updated_at)
+  '''
 
   Indexes {
-    (user_id, name) [unique, name: 'uq_subjects_user_name']
+    (user_id, subject_name) [unique, name: 'uq_subjects_user_name']
+    user_id [name: 'idx_subjects_user']
   }
 }
 
 Table tags {
   tag_id     text [pk]
   user_id    text [not null]
-  name       text [not null]
+  tag_name   text [not null]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
 
   Indexes {
-    (user_id, name) [unique, name: 'uq_tags_user_name']
+    (user_id, tag_name) [unique, name: 'uq_tags_user_name']
+    user_id [name: 'idx_tags_user']
   }
 }
 
 Table events {
-  event_id      text [pk]
+  event_id      integer [pk]    // SQLite surr key
   user_id       text [not null]
   activity_type text
-  started_at    timestamptz [not null]
+  started_at    timestamptz [not null, default: `now()`]
   ended_at      timestamptz
   created_at    timestamptz [not null, default: `now()`]
   updated_at    timestamptz [not null, default: `now()`]
 
-  Note: 'CHECK (ended_at IS NULL OR ended_at >= started_at)'
+  Note: '''
+    CHECK (activity_type IS NULL OR length(trim(activity_type)) BETWEEN 1 AND 4096)
+    CHECK (ended_at IS NULL OR ended_at >= started_at)
+    CHECK (created_at <= updated_at)
+  '''
 
   Indexes {
     (user_id, started_at) [name: 'idx_events_user_started_at']
@@ -77,26 +97,31 @@ Table events {
 }
 
 Table thoughts {
-  thought_id   text [pk]
+  thought_id   integer [pk]
   user_id      text [not null]
-  subject_id   text               // nullable FK to curated category
-  event_id     text               // nullable FK to time window
-  body         text [not null]    // the thought text
-  observed_at  timestamptz [not null]  // actual moment of thought
+  subject_id   integer               // nullable FK to curated category
+  event_id     integer               // nullable FK to time window
+  thought      text [not null]    // the thought text
+  observed_at  timestamptz [not null, default: `now()`]  // actual moment of thought
   created_at   timestamptz [not null, default: `now()`]
   updated_at   timestamptz [not null, default: `now()`]
 
+  Note: '''
+    CHECK (length(trim(thought)) > 0 AND length(thought) <= 1000000)    // 1 MB
+    CHECK (created_at <= updated_at)
+    If event_id IS NOT NULL, enforce observed_at ∈ [started_at, ended_at] in service layer.
+  '''
+  
   Indexes {
     (user_id, observed_at) [name: 'idx_thoughts_user_observed_at']
     subject_id [name: 'idx_thoughts_subject']       // NEW
     event_id   [name: 'idx_thoughts_event']         // NEW
   }
-  Note: 'If event_id IS NOT NULL, enforce observed_at ∈ [started_at, ended_at] in service layer.'
 }
 
 Table thought_tags {
-  thought_id text [not null]
-  tag_id     text [not null]
+  thought_id integer [not null]
+  tag_id     integer [not null]
   created_at timestamptz [not null, default: `now()`] // link audit
 
   Indexes {
@@ -107,16 +132,20 @@ Table thought_tags {
 
 
 Table goal_progress {
-  progress_id    text [pk]
-  goal_id        text [not null]
+  progress_id    integer [pk]
+  goal_id        integer [not null, default: `now()`]
   user_id        text [not null]
   occurred_at    timestamptz [not null]
-  time_spent_sec int  [not null]    // materialized contribution (derived or manual)
-  event_id       text               // optional provenance
-  thought_id     text               // optional provenance
-  note           text
+  time_spent_sec integer  [not null]    // materialized contribution (derived or manual)
+  event_id       integer               // optional 
+  thought_id     integer               // optional 
+  progress_note  text 
   created_at     timestamptz [not null, default: `now()`] // append-only
-  // subject_id     // for QOL 
+
+  Note: '''
+    CHECK (time_spent_sec > 0)
+    CHECK (progress_note IS NULL OR length(progress_note) <= 1000000) // 1 MB
+  '''
 
   Indexes {
     (goal_id, occurred_at) [name: 'idx_progress_goal_time']
@@ -124,18 +153,17 @@ Table goal_progress {
     event_id   [name: 'idx_progress_event']         // NEW (if you show event details)
     thought_id [name: 'idx_progress_thought']       // NEW (if you show thought details)
   }
-  Note: 'Invariant: time_spent_sec > 0 (enforced in service layer first).'
 }
 
 /* ===== Amend GOALS to include cadence & anchoring ===== */
 Table goals {
-  goal_id        text [pk]
+  goal_id        integer [pk]
   user_id        text [not null]
-  name           text [not null]
-  target_seconds int  [not null]
-  start_date     date
-  end_date       date
-  is_active      boolean [not null, default: true]
+  goal_name      text [not null]
+  target_seconds integer  [not null]
+  goal_start_date     date
+  goal_end_date       date
+  goal_is_active      boolean [not null, default: true]
 
   /* NEW: cadence + period anchoring + storage preference */
   cadence        goal_cadence [not null, default: 'weekly']
@@ -147,7 +175,24 @@ Table goals {
   created_at     timestamptz [not null, default: `now()`]
   updated_at     timestamptz [not null, default: `now()`]
 
-  Indexes { (user_id, name) [unique, name: 'uq_goals_user_name'] }
+  Note: '''
+    CHECK (length(trim(goal_name)) BETWEEN 1 AND 512)
+    CHECK (target_seconds > 0)
+    CHECK (goal_is_active IN (0, 1))
+    CHECK (cadence IN ('daily','weekly','monthly','mtd','quarterly','yearly'))
+    CHECK (default_cadence IS NULL OR default_cadence IN ('daily','weekly','monthly','mtd','quarterly','yearly'))
+    CHECK (week_start IN ('mon','tue','wed','thu','fri','sat','sun'))
+    CHECK (length(trim(tz)) BETWEEN 1 AND 64)
+    CHECK (goal_start_date IS NULL OR goal_start_date GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]')
+    CHECK (goal_end_date IS NULL OR goal_end_date GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]')
+    CHECK (goal_start_date IS NULL OR goal_end_date IS NULL OR goal_end_date >= goal_start_date)
+    CHECK (created_at <= updated_at)
+  '''
+
+  Indexes { 
+      (user_id, goal_name) [unique, name: 'uq_goals_user_name'] 
+      user_id [name: 'idx_goals_user']
+  }
 }
 
 /* ===== Period Rollups (optional, persisted) =====
@@ -155,7 +200,8 @@ Table goals {
    period_start is computed in goal.tz with goal.week_start.
 */
 Table goal_time_rollups {
-  goal_id        text [not null]
+  goal_id        integer [not null]
+  user_id        text [not null]
   cadence        goal_cadence [not null]
   period_start   date [not null]       // boundary start in goal.tz
   total_seconds  int  [not null]       // sum for this period
@@ -177,7 +223,8 @@ Table goal_time_rollups {
    One row per goal for fast lifetime queries. Otherwise compute on the fly.
 */
 Table goal_time_totals {
-  goal_id          text [pk]
+  goal_id          integer [pk]
+  user_id        text [not null]
   lifetime_seconds bigint [not null, default: 0]
   computed_at      timestamptz [not null, default: `now()`]
 }
@@ -247,6 +294,8 @@ Ref: thoughts.thought_id < goal_progress.thought_id [delete: set null]
 /* Existing ownership & FKs from MVP are assumed present. Add: */
 Ref: goals.goal_id < goal_time_rollups.goal_id [delete: cascade]
 Ref: goals.goal_id < goal_time_totals.goal_id  [delete: cascade]
+Ref: users.user_id   < goal_time_rollups.user_id    [delete: cascade]
+Ref: users.user_id   < goal_time_totals.user_id    [delete: cascade]
 
 Ref: users.user_id   < subject_time_rollups.user_id   [delete: cascade]
 Ref: subjects.subject_id < subject_time_rollups.subject_id [delete: cascade]
