@@ -13,7 +13,7 @@ func TimeFromUnixSec(sec int64) time.Time {
 }
 
 // UnixSec returns epoch seconds for a time (UTC).
-// If t is zero, it returns "now" to simplify INSERT defaults from Go when needed.
+// TODO: add to insert, update logic
 func UnixSec(t time.Time) int64 {
 	if t.IsZero() {
 		return time.Now().UTC().Unix()
