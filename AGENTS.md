@@ -88,5 +88,37 @@ A good PR should be:
 * consistent with existing style,
 * and easy to review.
 
-When uncertain, choose the simplest implementation that preserves the architecture.
+## Git Workflow
 
+- Work on feature branches for new features.
+- Open pull requests for review.
+- Never merge into `master`; the project owner handles final merges.
+- Keep commits small and focused when practical.
+- Do not commit failing or red states.
+- Prefer clear commit messages that describe the actual change.
+
+### Commit Message Conventions
+
+Use short, plain commit prefixes:
+
+- `test:` for adding or changing tests.
+- `add:` for simple new behavior, files, routes, structs, or green-path additions.
+- `fix:` for bug fixes or failing behavior corrections.
+- `refactor:` for restructuring existing implementation without changing behavior.
+- `docs:` for documentation-only changes.
+- `schema:` for SQLite migrations or schema changes.
+- `chore:` for maintenance, tooling, formatting, dependency updates, or cleanup.
+
+Examples:
+
+```text
+test: add subject creation handler test
+add: implement subject creation endpoint
+fix: return not found for missing subject
+refactor: move subject validation into data package
+schema: add goals table migration
+docs: add project agent instructions
+chore: format go files
+```
+
+When uncertain, choose the simplest implementation that preserves the architecture.
