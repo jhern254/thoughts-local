@@ -24,7 +24,7 @@ The core philosophy is:
 * The database is the canonical source of truth.
 * Markdown should be treated as a projection, import/export format, or editing surface, not the hidden domain model.
 * Keep domain/application behavior separate from delivery mechanisms.
-* HTTP handlers, TUI commands, CLI commands, Markdown sync, and future AI surfaces should call shared application/domain logic instead of duplicating behavior.
+* HTTP handlers, TUI commands, CLI commands, Markdown sync, and future AI surfaces should call shared domain/application logic instead of duplicating behavior.
 * Do not put business logic directly into HTTP handlers when it belongs in an application/service layer.
 * Prefer small interfaces that describe behavior the app actually needs.
 * Avoid giant interfaces that mechanically mirror database tables.
@@ -33,17 +33,19 @@ The core philosophy is:
 
 For small feature pull requests:
 
+* Follow the order of red green refactor loop to iteratively work towards working feature
+* Red is used locally to prove the test matters; committed states should normally be green.
+* Add or update tests with the feature.
 * Implement one focused behavior at a time.
 * Prefer incremental changes over large rewrites.
 * Preserve existing package boundaries unless there is a clear reason to change them.
-* Add or update tests with the feature.
 * Keep migrations, store code, handlers, and tests consistent when schema-backed behavior changes.
 * Do not introduce speculative infrastructure for future features unless the current feature needs it. Justify it before making changes.
 * Leave clear seams for future CLI, HTTP, TUI, Markdown, and AI surfaces, but do not build all surfaces at once.
 
 ## Testing Principles
 
-* Use TDD-style red, green, refactor when practical.
+* Use TDD-style red, green, refactor.
 * Tests should support good design, not excuse poor design.
 * Handler tests may use stubs/fakes.
 * Store tests should verify real SQLite behavior where persistence matters.
@@ -95,7 +97,27 @@ A good PR should be:
 - Never merge into `master`; the project owner handles final merges.
 - Keep commits small and focused when practical.
 - Do not commit failing or red states.
-- Prefer clear commit messages that describe the actual change.
+- Prefer clear commit messages that describe the actual change. 
+
+Example:
+```
+Feature: create goal
+
+Local Red:
+- Add a failing test for creating a goal.
+
+Green:
+- Add minimal schema/store/service/handler code needed to pass.
+
+Commit:
+- add: create goal()
+
+Refactor:
+- Implement changes, clean names, reduce duplication, improve package boundaries.
+
+Commit:
+- refactor: create goal()
+```
 
 ### Commit Message Conventions
 
@@ -120,5 +142,6 @@ schema: add goals table migration
 docs: add project agent instructions
 chore: format go files
 ```
+
 
 When uncertain, choose the simplest implementation that preserves the architecture.
