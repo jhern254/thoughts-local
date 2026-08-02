@@ -1,55 +1,51 @@
 package validator
 
 import (
-    "regexp"
+	"regexp"
 )
 
 type Validator struct {
-    Errors map[string]string
+	Errors map[string]string
 }
 
 func NewValidator() *Validator {
-    return &Validator{Errors: make(map[string]string)}
+	return &Validator{Errors: make(map[string]string)}
 }
 
 func (v *Validator) Valid() bool {
-    return len(v.Errors) == 0
+	return len(v.Errors) == 0
 }
 
-func (v *Validator) AddError(key, msg string){
-    if _, exists := v.Errors[key]; !exists {
-        v.Errors[key] = msg
-    }
+func (v *Validator) AddError(key, msg string) {
+	if _, exists := v.Errors[key]; !exists {
+		v.Errors[key] = msg
+	}
 }
 
-func (v *Validator) Check(ok bool, key, msg string){
-    if !ok {
-        v.AddError(key, msg)
-    } 
+func (v *Validator) Check(ok bool, key, msg string) {
+	if !ok {
+		v.AddError(key, msg)
+	}
 }
 
 func In(value string, list ...string) bool {
-    for i := range list {
-        if value == list[i] {
-            return true
-        }  
-    }
-    return false
+	for i := range list {
+		if value == list[i] {
+			return true
+		}
+	}
+	return false
 }
 
 func Matches(value string, rx *regexp.Regexp) bool {
-    return rx.MatchString(value)
+	return rx.MatchString(value)
 }
 
 func Unique(values []string) bool {
-    uniqueValues := make(map[string]bool)
+	uniqueValues := make(map[string]bool)
 
-    for _, value := range values {
-        uniqueValues[value] = true
-    }
-    return len(values) == len(uniqueValues)
+	for _, value := range values {
+		uniqueValues[value] = true
+	}
+	return len(values) == len(uniqueValues)
 }
-
-
-
-

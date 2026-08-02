@@ -1,32 +1,32 @@
-// tape_test.go 
+// tape_test.go
 package data
 
 import (
-//    "fmt"
-    "io"
-    "testing"
-//    "os"
-//    "net/http"
-//    "errors"
-//    "strings"
-//    "encoding/json"
+	//    "fmt"
+	"io"
+	"testing"
+	// "os"
+	// "net/http"
+	// "errors"
+	// "strings"
+	// "encoding/json"
 )
 
 func TestTape_Write(t *testing.T) {
-    file, clean := CreateTempFile(t, "12345")
-    defer clean()
+	file, clean := CreateTempFile(t, "12345")
+	defer clean()
 
-    tape := &tape{file}
+	tape := &tape{file}
 
-    tape.Write([]byte("abc"))
+	tape.Write([]byte("abc"))
 
-    file.Seek(0, 0)
-    newFileContents, _ := io.ReadAll(file)
+	file.Seek(0, 0)
+	newFileContents, _ := io.ReadAll(file)
 
-    got := string(newFileContents)
-    want := "abc"
+	got := string(newFileContents)
+	want := "abc"
 
-    if got != want {
-        t.Errorf("got %q want %q", got, want)
-    }
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
 }
