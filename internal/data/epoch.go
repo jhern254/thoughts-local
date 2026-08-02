@@ -44,4 +44,3 @@ func EnableSQLiteFK(db *sql.DB) error {
 	_, err := db.Exec(`PRAGMA foreign_keys = ON;`)
 	return err
 }
-
