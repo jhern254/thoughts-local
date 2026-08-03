@@ -54,11 +54,6 @@ func normalize(s string) string {
 
 // Validate for POST /subjects
 func ValidateSubjectCreate(v *validator.Validator, in *Subject) {
-	// subject_id
-	if in.SubjectID == 0 {
-		v.AddError("subject_id", "must be provided")
-	}
-
 	// user_id
 	v.Check(in.UserID != "", "user_id", "must be provided")
 
