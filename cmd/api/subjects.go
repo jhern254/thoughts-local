@@ -14,7 +14,7 @@ import (
 
 	//    "github.com/rs/zerolog"
 	"github.com/jhern254/go-thoughts/internal/data"
-	"github.com/jhern254/go-thoughts/internal/validator"
+	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -68,47 +68,25 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
 	}
 	userID := a.userFromReq(r)
 
-	// Map to domain
-	now := time.Now().UTC()
-	subj := &data.Subject{
-		// SubjectID from DB
-		UserID:      userID,
-		SubjectName: inputSubj.SubjectName,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}
-	subjID, storeErr := a.store.CaptureSubject(r.Context(), userID, subj)
-	if storeErr != nil {
+	subj, serviceErr := a.subjectService.Create(r.Context(), userID, inputSubj.SubjectName)
+	if serviceErr != nil {
+		var validationErr *subject.ValidationError
 		switch {
-		case errors.Is(storeErr, data.ErrDuplicateRecord):
-			a.duplicateRecordResponse(w, r, subj.SubjectName) // 409
+		case errors.As(serviceErr, &validationErr):
+			a.failedValidationResponse(w, r, validationErr.Fields)
+			return
+		case errors.Is(serviceErr, data.ErrDuplicateRecord):
+			a.duplicateRecordResponse(w, r, inputSubj.SubjectName) // 409
 			return
 		default:
-			a.serverErrorResponse(w, r, storeErr) // 500
+			a.serverErrorResponse(w, r, serviceErr) // 500
 			return
 		}
 	}
-	subj.SubjectID = subjID
-
-	//    // init validator
-	v := validator.NewValidator()
-	// Check input validate subject
-	data.ValidateSubjectCreate(v, subj)
-	if !v.Valid() {
-		a.failedValidationResponse(w, r, v.Errors)
-		return
-	}
-
-	// set server timestamps
-	//    now := time.Now().UTC()
-	//    in.CreatedAt = now.Format(time.RFC3339)
-	//    in.UpdatedAt = now.Format(time.RFC3339)
-	//
-	// continue: persist to SQLite...
 
 	// respond
 	resp := subjectResponse{
-		SubjectID:   subjID,
+		SubjectID:   subj.SubjectID,
 		UserID:      subj.UserID,
 		SubjectName: subj.SubjectName,
 		CreatedAt:   subj.CreatedAt.Format(time.RFC3339),
