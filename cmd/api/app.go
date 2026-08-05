@@ -11,6 +11,7 @@ import (
 	//    "io"
 	//    "encoding/json"
 
+	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/rs/zerolog"
 	//    "github.com/julienschmidt/httprouter"
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -29,10 +30,11 @@ type config struct {
 
 // main DI container
 type application struct {
-	store       data.Store
-	userFromReq func(*http.Request) string
-	config      config
-	logger      zerolog.Logger
+	store          data.Store
+	subjectService *subject.Service
+	userFromReq    func(*http.Request) string
+	config         config
+	logger         zerolog.Logger
 }
 
 // NOTE: pattern is server fns here, store interface done on test, main
@@ -41,9 +43,10 @@ type application struct {
 // NOTE: store interface already reference value, impl needs pointer
 func NewApplication(store data.Store, cfg config, logger zerolog.Logger) *application {
 	return &application{
-		store:       store,
-		userFromReq: func(*http.Request) string { return "test-user" }, // NOTE: default for now
-		config:      cfg,
-		logger:      logger,
+		store:          store,
+		subjectService: subject.NewService(store),
+		userFromReq:    func(*http.Request) string { return "test-user" }, // NOTE: default for now
+		config:         cfg,
+		logger:         logger,
 	}
 }
