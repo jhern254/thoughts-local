@@ -51,6 +51,16 @@ func main() {
 	}
 	defer db.Close()
 	logger.Info().Str("dsn", cfg.db.dsn).Msg("database connection pool established")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := data.ApplyMigrations(ctx, db); err != nil {
+		logger.Fatal().Err(err).Msg("failed to apply database migrations")
+	}
+	if cfg.env == "development" {
+		if err := ensureDevelopmentUser(ctx, db); err != nil {
+			logger.Fatal().Err(err).Msg("failed to initialize development user")
+		}
+	}
 
 	// NOTE: temp
 	// ---------- use existing JSON file store (temporary) ----------
@@ -59,10 +69,11 @@ func main() {
 		logger.Fatal().Err(err).Str("dbfile", dbFileName).Msg("problem opening file store")
 	}
 
-	store, err := data.NewFileSystemThoughtStore(f)
+	thoughtStore, err := data.NewFileSystemThoughtStore(f)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("problem creating file system thought store")
 	}
+	store := data.NewCompositeStore(thoughtStore, data.NewSQLiteSubjectStore(db))
 
 	// initialize store
 	// TODO: write fn
@@ -87,6 +98,11 @@ func main() {
 	}
 	app.logger.Debug().Msg("Program ended.")
 
+}
+
+func ensureDevelopmentUser(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `INSERT INTO users (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING`, "test-user")
+	return err
 }
 
 // TODO: add epoch fns
