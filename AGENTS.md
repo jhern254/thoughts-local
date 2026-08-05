@@ -90,6 +90,61 @@ A good PR should be:
 * consistent with existing style,
 * and easy to review.
 
+## Branches and Worktrees
+
+Each agent MUST work in its own Git branch and Git worktree.
+
+Never have multiple agents modifying the same branch or working directory.
+
+Workflow:
+
+1. Update `main`.
+
+   ```bash
+   git switch main
+   git pull --ff-only
+   ```
+
+2. Create a new worktree and feature branch.
+
+   ```bash
+   git worktree add ../thoughts-<feature> -b feature/<feature>
+   ```
+
+3. Perform all work inside that worktree.
+
+4. Commit only changes related to the assigned task.
+
+5. Push the feature branch and open a Draft Pull Request.
+
+6. Before requesting review:
+
+   ```bash
+   git fetch origin
+   git rebase origin/main
+   make check
+   ```
+
+7. Resolve any conflicts on the feature branch.
+
+8. CI must pass before merging.
+
+9. After the branch is merged:
+
+   ```bash
+   git worktree remove ../thoughts-<feature>
+   git branch -d feature/<feature>
+   ```
+
+Rules:
+
+- One worktree per agent.
+- One feature branch per worktree.
+- Never commit directly to `main`.
+- Never share a branch between multiple agents.
+- Keep pull requests small and focused.
+- Rebase onto the latest `main` before requesting review.
+
 ## Git Workflow
 
 - Work on feature branches for new features.
@@ -98,6 +153,18 @@ A good PR should be:
 - Keep commits small and focused when practical.
 - Do not commit failing or red states.
 - Prefer clear commit messages that describe the actual change. 
+
+Follow this workflow:
+```
+Before committing, run `make quick`.
+
+Before pushing or requesting review, run `make check`.
+
+Do not claim that a task is complete unless the required checks pass.
+Do not weaken, skip, or delete tests merely to make the branch pass.
+CI is authoritative and must run `make ci`.
+```
+
 
 Example:
 ```
