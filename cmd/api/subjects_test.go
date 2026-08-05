@@ -270,11 +270,10 @@ func TestPOSTSubject(t *testing.T) {
 		testutils.AssertCorrect(t, got.SubjectID, 123)
 	})
 	t.Run("returns 422 without persisting invalid subject", func(t *testing.T) {
-		storeCalls := 0
 		st := StoreStub{
-			captureSubjectFunc: func(ctx context.Context, uid string, subj *data.Subject) (int64, error) {
-				storeCalls++
-				return 123, nil
+			captureSubjectFunc: func(context.Context, string, *data.Subject) (int64, error) {
+				t.Fatal("store must not be called for invalid subject")
+				return 0, nil
 			},
 		}
 		server := NewApplication(st, config{}, zerolog.New(io.Discard))
@@ -283,7 +282,6 @@ func TestPOSTSubject(t *testing.T) {
 		server.routes().ServeHTTP(response, newPostSubjectRequest(" "))
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusUnprocessableEntity)
-		testutils.AssertCorrect(t, storeCalls, 0)
 	})
 	t.Run("returns 409 when duplicate record", func(t *testing.T) {
 		st := StoreStub{
