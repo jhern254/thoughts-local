@@ -61,6 +61,18 @@ For small feature pull requests:
 * Preserve foreign keys, constraints, indexes, and timestamp conventions already established in the project.
 * Do not make broad schema redesigns inside a small feature PR unless explicitly requested.
 
+* Database schema changes use golang-migrate.
+
+Create migrations in migrations/.
+Apply them with:
+
+```text
+    make migrate/up
+```
+
+Do not implement custom migration runners or run migrations
+implicitly during API startup.
+
 ## Markdown Principles
 
 * Markdown is an intentional product direction.

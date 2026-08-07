@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS events (
     ended_at        INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     created_at      INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     updated_at      INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
+    version         INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), -- optimistic-lock version
 
     CONSTRAINT ck_events_activity_type_len
         CHECK (activity_type IS NULL OR length(trim(activity_type)) BETWEEN 1 AND 4096),
@@ -26,4 +27,3 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_user_started_at
     ON events (user_id, started_at);
-

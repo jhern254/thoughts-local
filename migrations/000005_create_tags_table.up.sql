@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS tags (
     tag_name       TEXT    NOT NULL,
     created_at INTEGER NOT NULL DEFAULT (unixepoch('now')),
     updated_at INTEGER NOT NULL DEFAULT (unixepoch('now')),
+    version    INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), -- optimistic-lock version
 
     -- Validation checks
     CONSTRAINT ck_tags_tag_id_len
@@ -30,4 +31,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_tags_user_name
 
 CREATE INDEX IF NOT EXISTS idx_tags_user
     ON tags (user_id);
-
