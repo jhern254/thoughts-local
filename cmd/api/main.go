@@ -59,7 +59,7 @@ func main() {
 		logger.Fatal().Err(err).Str("dbfile", dbFileName).Msg("problem opening file store")
 	}
 
-	store, err := data.NewFileSystemThoughtStore(f)
+	store, err := data.NewFileSystemStore(f)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("problem creating file system thought store")
 	}
@@ -69,7 +69,7 @@ func main() {
 	//    store := data.NewSQLiteStore(db)
 
 	// set up server
-	app := NewApplication(store, cfg, logger)
+	app := NewApplication(store, store, cfg, logger)
 
 	addr := fmt.Sprintf(":%d", cfg.port)
 	srv := &http.Server{

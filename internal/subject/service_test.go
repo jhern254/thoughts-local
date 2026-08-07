@@ -12,9 +12,9 @@ type createStoreStub struct {
 	called bool
 }
 
-func (s *createStoreStub) CaptureSubject(context.Context, string, *data.Subject) (int64, error) {
+func (s *createStoreStub) CreateSubject(context.Context, *data.Subject) (*data.Subject, error) {
 	s.called = true
-	return 1, nil
+	return &data.Subject{SubjectID: 1}, nil
 }
 
 func TestCreateRejectsInvalidSubjectBeforePersistence(t *testing.T) {

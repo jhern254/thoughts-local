@@ -9,7 +9,7 @@ import (
 )
 
 type CreateStore interface {
-	CaptureSubject(ctx context.Context, userID string, subject *data.Subject) (int64, error)
+	CreateSubject(ctx context.Context, subject *data.Subject) (*data.Subject, error)
 }
 
 type ValidationError struct {
@@ -43,11 +43,5 @@ func (s *Service) Create(ctx context.Context, userID, name string) (*data.Subjec
 		return nil, &ValidationError{Fields: v.Errors}
 	}
 
-	id, err := s.store.CaptureSubject(ctx, userID, subject)
-	if err != nil {
-		return nil, err
-	}
-	subject.SubjectID = id
-
-	return subject, nil
+	return s.store.CreateSubject(ctx, subject)
 }

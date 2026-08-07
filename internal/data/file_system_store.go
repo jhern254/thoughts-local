@@ -1,156 +1,134 @@
-// file_system_store.go
 package data
 
 import (
-	"fmt"
-	"io"
-	"os"
-	"sync"
-	//    "net/http"
-	//    "errors"
-	//    "strings"
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
+	"sync"
 )
 
-type FileSystemThoughtStore struct {
-	database *json.Encoder
-	cache    dbFile // cache
-	lock     sync.RWMutex
+type FileSystemStore struct {
+	file *os.File
+	data jsonData
+	mu   sync.RWMutex
 }
 
-// -- private DTOs only used for JSON <-> disk --
-// like db struct
-type subjectRow struct {
-	Name     string   `json:"Name"`
-	Thoughts []string `json:"Thoughts"`
+type jsonData struct {
+	NextSubjectID int64     `json:"next_subject_id"`
+	NextThoughtID int64     `json:"next_thought_id"`
+	Subjects      []Subject `json:"subjects"`
+	Thoughts      []Thought `json:"thoughts"`
 }
 
-type userRow struct {
-	UserID   string       `json:"UserID"`
-	Subjects []subjectRow `json:"Subjects"`
-}
-
-type dbFile []userRow
-
-// populate cache from file
-func loadFrom(file *os.File) (cache dbFile, err error) {
+func NewFileSystemStore(file *os.File) (*FileSystemStore, error) {
 	if _, err := file.Seek(0, 0); err != nil {
 		return nil, err
 	}
-
 	info, err := file.Stat()
-
 	if err != nil {
-		return nil, fmt.Errorf("problem getting file info from file %s %v", file.Name(), err)
-	}
-
-	// create empty json file if file is empty
-	if info.Size() == 0 {
-		file.Write([]byte("[]"))
-		file.Seek(0, 0)
-	}
-
-	var c dbFile
-	err = json.NewDecoder(file).Decode(&c)
-	switch err {
-	case nil:
-		// Decoded OK. If the JSON was "null" somehow, normalize to [].
-		if c == nil {
-			c = dbFile{}
-		}
-		return c, nil
-	case io.EOF:
-		// Empty file → treat as empty dataset.
-		return dbFile{}, nil
-	default:
-		// Any other error is a real decode problem.
 		return nil, err
 	}
-}
-
-func NewFileSystemThoughtStore(file *os.File) (*FileSystemThoughtStore, error) {
-	// Validate we can read/parse whatever is there (including empty file).
-	rows, err := loadFrom(file)
-	if err != nil {
-		return nil, fmt.Errorf("problem parsing thought store file: %w", err)
-	}
-
-	return &FileSystemThoughtStore{
-		database: json.NewEncoder(&tape{file}),
-		cache:    rows,
-	}, nil
-}
-
-func (f *FileSystemThoughtStore) GetThoughts(userID, subject string) []string {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	for _, u := range f.cache {
-		if u.UserID != userID {
-			continue
+	data := jsonData{}
+	if info.Size() > 0 {
+		if err := json.NewDecoder(file).Decode(&data); err != nil {
+			return nil, fmt.Errorf("read table-shaped JSON store: %w", err)
 		}
-		for _, s := range u.Subjects {
-			if s.Name == subject {
-				out := make([]string, len(s.Thoughts))
-				copy(out, s.Thoughts) // protect internal slice
-				return out
+	}
+	return &FileSystemStore{file: file, data: data}, nil
+}
+
+func (s *FileSystemStore) persist() error {
+	if err := s.file.Truncate(0); err != nil {
+		return err
+	}
+	if _, err := s.file.Seek(0, 0); err != nil {
+		return err
+	}
+	if err := json.NewEncoder(s.file).Encode(s.data); err != nil {
+		return err
+	}
+	return s.file.Sync()
+}
+
+func (s *FileSystemStore) CreateSubject(ctx context.Context, subject *Subject) (*Subject, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, existing := range s.data.Subjects {
+		if existing.UserID == subject.UserID && existing.SubjectName == subject.SubjectName {
+			return nil, ErrDuplicateRecord
+		}
+	}
+	s.data.NextSubjectID++
+	stored := *subject
+	stored.SubjectID = s.data.NextSubjectID
+	s.data.Subjects = append(s.data.Subjects, stored)
+	if err := s.persist(); err != nil {
+		return nil, err
+	}
+	return &stored, nil
+}
+
+func (s *FileSystemStore) GetSubject(ctx context.Context, userID string, subjectID int64) (*Subject, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, subject := range s.data.Subjects {
+		if subject.SubjectID == subjectID && subject.UserID == userID {
+			copy := subject
+			return &copy, nil
+		}
+	}
+	return nil, ErrRecordNotFound
+}
+
+func (s *FileSystemStore) CreateThought(ctx context.Context, thought *Thought) (*Thought, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if thought.SubjectID != nil {
+		found := false
+		for _, subject := range s.data.Subjects {
+			if subject.SubjectID == *thought.SubjectID && subject.UserID == thought.UserID {
+				found = true
+				break
 			}
 		}
-		return nil // user found, subject missing
-	}
-	return nil // user missing
-}
-
-// TODO: fix. base impl, still unsafe since not truncating
-func (f *FileSystemThoughtStore) CaptureThought(ctx context.Context, userID, subject, thought string) (int64, error) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-
-	// Ensure the user row exists (prefer the provided userID)
-	// writes to user
-	ui := -1
-	for i := range f.cache {
-		if f.cache[i].UserID == userID {
-			ui = i
-			break
+		if !found {
+			return nil, ErrRecordNotFound
 		}
 	}
-	if ui == -1 {
-		f.cache = append(f.cache, userRow{UserID: userID})
-		ui = len(f.cache) - 1
+	s.data.NextThoughtID++
+	stored := *thought
+	stored.ThoughtID = s.data.NextThoughtID
+	s.data.Thoughts = append(s.data.Thoughts, stored)
+	if err := s.persist(); err != nil {
+		return nil, err
 	}
+	return &stored, nil
+}
 
-	// Update existing subject or add a new one
-	for si := range f.cache[ui].Subjects {
-		if f.cache[ui].Subjects[si].Name == subject {
-			f.cache[ui].Subjects[si].Thoughts = append(f.cache[ui].Subjects[si].Thoughts, thought)
-			// new ID is 1-based index in the slice
-			newID := int64(len(f.cache[ui].Subjects[si].Thoughts))
-			if err := f.database.Encode(f.cache); err != nil {
-				return 0, err
-			}
-			return newID, nil
+func (s *FileSystemStore) GetThought(ctx context.Context, userID string, thoughtID int64) (*Thought, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, thought := range s.data.Thoughts {
+		if thought.ThoughtID == thoughtID && thought.UserID == userID {
+			copy := thought
+			return &copy, nil
 		}
 	}
-
-	// subject doesn't exist
-	f.cache[ui].Subjects = append(f.cache[ui].Subjects, subjectRow{
-		Name:     subject,
-		Thoughts: []string{thought},
-	})
-	// persist data
-	if err := f.database.Encode(f.cache); err != nil {
-		return 0, err
-	}
-	return 1, nil // first thought in subject
+	return nil, ErrRecordNotFound
 }
 
-// Dummy implementations for SubjectStore
-func (f *FileSystemThoughtStore) GetSubject(ctx context.Context, userID, subject string) (*Subject, error) {
-	return nil, ErrRecordNotFound // minimal: always “not found”
-}
-
-func (f *FileSystemThoughtStore) CaptureSubject(ctx context.Context, userID string, subject *Subject) (int64, error) {
-	return 0, nil // do nothing
-}
+var _ SubjectStore = (*FileSystemStore)(nil)
+var _ ThoughtStore = (*FileSystemStore)(nil)

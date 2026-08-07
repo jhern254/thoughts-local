@@ -12,6 +12,7 @@ import (
 	//    "encoding/json"
 
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/rs/zerolog"
 	//    "github.com/julienschmidt/httprouter"
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -30,8 +31,10 @@ type config struct {
 
 // main DI container
 type application struct {
-	store          data.Store
+	subjects       data.SubjectStore
+	thoughts       data.ThoughtStore
 	subjectService *subject.Service
+	thoughtService *thought.Service
 	userFromReq    func(*http.Request) string
 	config         config
 	logger         zerolog.Logger
@@ -41,10 +44,12 @@ type application struct {
 
 // ctor
 // NOTE: store interface already reference value, impl needs pointer
-func NewApplication(store data.Store, cfg config, logger zerolog.Logger) *application {
+func NewApplication(subjects data.SubjectStore, thoughts data.ThoughtStore, cfg config, logger zerolog.Logger) *application {
 	return &application{
-		store:          store,
-		subjectService: subject.NewService(store),
+		subjects:       subjects,
+		thoughts:       thoughts,
+		subjectService: subject.NewService(subjects),
+		thoughtService: thought.NewService(thoughts),
 		userFromReq:    func(*http.Request) string { return "test-user" }, // NOTE: default for now
 		config:         cfg,
 		logger:         logger,

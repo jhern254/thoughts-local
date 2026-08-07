@@ -2,92 +2,83 @@ package data
 
 import (
 	"context"
-	"testing"
-	//    "io"
 	"os"
-	//    "time"
-	"github.com/jhern254/go-thoughts/internal/testutils"
+	"testing"
+	"time"
 )
 
-func TestFileSystemStore(t *testing.T) {
-	t.Run("get thoughts from a reader", func(t *testing.T) {
-		database, cleanDatabase := CreateTempFile(t, `[
-    {
-    "UserID": "2",
-    "Subjects": [
-      {
-        "Name": "Art",
-        "Thoughts": ["Ye is so talented"]
-      },
-      {
-        "Name": "AI",
-        "Thoughts": ["Transformers changed the world!"]
-      }
-    ]
-    }
-        ]`)
-		defer cleanDatabase()
-
-		store, err := NewFileSystemThoughtStore(database)
-		got := store.GetThoughts("2", "AI")
-		want := []string{"Transformers changed the world!"}
-
-		testutils.AssertCorrectStruct(t, got, want)
-		testutils.AssertNoError(t, err)
-	})
-	t.Run("store thoughts for existing user", func(t *testing.T) {
-		database, cleanDatabase := CreateTempFile(t, `[
-    {
-      "UserID": "1",
-      "Subjects": [
-        {
-          "Name": "Code",
-          "Thoughts": ["I'm learning go!"]
-        }
-      ]
-    }
-        ]`)
-		defer cleanDatabase()
-
-		store, err := NewFileSystemThoughtStore(database)
-		id, err := store.CaptureThought(context.Background(), "1", "AI", "Transformers go brr")
-		testutils.AssertNoError(t, err)
-		if id <= 0 {
-			t.Fatalf("got id %d, want >0", id)
-		}
-		got := store.GetThoughts("1", "AI")
-		want := []string{"Transformers go brr"}
-
-		testutils.AssertCorrectStruct(t, got, want)
-		testutils.AssertNoError(t, err)
-	})
-	t.Run("works with an empty file", func(t *testing.T) {
-		database, cleanDatabase := CreateTempFile(t, "")
-		defer cleanDatabase()
-
-		_, err := NewFileSystemThoughtStore(database)
-
-		testutils.AssertNoError(t, err)
-	})
-
+func TestFileSystemStoreSeparatesSubjectsAndThoughts(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "store-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewFileSystemStore(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	subject, err := store.CreateSubject(context.Background(), &Subject{UserID: "test-user", SubjectName: "coding", CreatedAt: now, UpdatedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.CreateThought(context.Background(), &Thought{UserID: "test-user", SubjectID: &subject.SubjectID, Thought: "learn Go", Version: 1, ObservedAt: now, CreatedAt: now, UpdatedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subject.SubjectID == 0 || item.ThoughtID == 0 {
+		t.Fatal("expected generated IDs")
+	}
+	if _, err := store.GetSubject(context.Background(), "test-user", subject.SubjectID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetThought(context.Background(), "test-user", item.ThoughtID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SubjectID == nil || *got.SubjectID != subject.SubjectID {
+		t.Fatalf("got subject ID %#v", got.SubjectID)
+	}
+	file.Close()
+	file, err = os.OpenFile(file.Name(), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewFileSystemStore(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.GetThought(context.Background(), "test-user", item.ThoughtID); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func CreateTempFile(t testing.TB, initialData string) (*os.File, func()) {
-	t.Helper()
-
-	tmpfile, err := os.CreateTemp("", "db")
-
+func TestFileSystemStoreRejectsMissingSubject(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "store-*.json")
 	if err != nil {
-		t.Fatalf("could not create temp file %v", err)
+		t.Fatal(err)
 	}
-
-	tmpfile.Write([]byte(initialData))
-
-	removeFile := func() {
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
+	defer file.Close()
+	store, err := NewFileSystemStore(file)
+	if err != nil {
+		t.Fatal(err)
 	}
+	id := int64(1)
+	now := time.Now().UTC()
+	if _, err := store.CreateThought(context.Background(), &Thought{UserID: "test-user", SubjectID: &id, Thought: "orphan", Version: 1, ObservedAt: now, CreatedAt: now, UpdatedAt: now}); err != ErrRecordNotFound {
+		t.Fatalf("got %v", err)
+	}
+}
 
-	return tmpfile, removeFile
-
+func TestFileSystemStoreRejectsLegacyNestedJSON(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "store-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if _, err := file.WriteString(`[{"UserID":"test-user","Subjects":[]}]`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFileSystemStore(file); err == nil {
+		t.Fatal("expected legacy JSON error")
+	}
 }

@@ -16,8 +16,8 @@ import (
 )
 
 func TestHealthcheck(t *testing.T) {
-	store := data.NewInMemoryThoughtStore()
-	server := NewApplication(store, config{env: "development"}, zerolog.New(os.Stdout))
+	store := data.NewInMemoryStore()
+	server := NewApplication(store, store, config{env: "development"}, zerolog.New(os.Stdout))
 
 	t.Run("returns heatlh check info", func(t *testing.T) {
 		request := httptest.NewRequest(http.MethodGet, "/healthcheck", nil)
