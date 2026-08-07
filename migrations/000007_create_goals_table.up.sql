@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS goals (
 
     created_at       INTEGER NOT NULL DEFAULT (unixepoch('now')),
     updated_at       INTEGER NOT NULL DEFAULT (unixepoch('now')),
+    version          INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), -- optimistic-lock version
 
     -- Validation checks
     CONSTRAINT ck_goals_goal_name_len
@@ -70,4 +71,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_goals_user_name
 -- Helpful for listing a user's goals quickly
 CREATE INDEX IF NOT EXISTS idx_goals_user
     ON goals (user_id);
-
