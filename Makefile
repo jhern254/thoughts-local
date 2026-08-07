@@ -58,3 +58,23 @@ hooks:
 
 clean:
 	rm -f coverage.out
+
+DB_DSN ?= sqlite://./thoughts.db
+
+.PHONY: migrate/new
+migrate/new:
+	@echo "usage: make migrate/new name=create_subjects"
+	migrate create -seq -ext=.sql -dir=./migrations $(name)
+
+.PHONY: migrate/up
+migrate/up:
+	migrate -path=./migrations -database="$(DB_DSN)" up
+
+.PHONY: migrate/down
+migrate/down:
+	migrate -path=./migrations -database="$(DB_DSN)" down 1
+
+.PHONY: migrate/version
+migrate/version:
+	migrate -path=./migrations -database="$(DB_DSN)" version
+
