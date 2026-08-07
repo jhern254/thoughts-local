@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-fresh test-race test-cover build quick check ci clean hooks
+.PHONY: help fmt fmt-check vet test test-fresh test-race test-cover build quick check ci clean hooks run dev migrate/new migrate/up migrate/down migrate/version
 
 help:
 	@echo "Available commands:"
@@ -14,6 +14,12 @@ help:
 	@echo "  make check        Checks before pushing"
 	@echo "  make ci           Complete CI verification"
 	@echo "  make hooks        Enable repository Git hooks"
+	@echo "  make run          Start the API without applying migrations"
+	@echo "  make dev          Apply local migrations, then start the API"
+	@echo "  make migrate/new  Create a migration (name=<description>)"
+	@echo "  make migrate/up   Apply all pending migrations"
+	@echo "  make migrate/down Roll back one migration"
+	@echo "  make migrate/version Show the current migration version"
 	@echo "  make clean        Remove generated test files"
 
 fmt:
@@ -59,22 +65,27 @@ hooks:
 clean:
 	rm -f coverage.out
 
-DB_DSN ?= sqlite://./thoughts.db
+DB_PATH ?= ./data/thoughts.db
+MIGRATE_DSN ?= sqlite://$(DB_PATH)
+APP_DSN ?= file:$(DB_PATH)
+DB_DIR := $(dir $(DB_PATH))
 
-.PHONY: migrate/new
 migrate/new:
-	@echo "usage: make migrate/new name=create_subjects"
+	@test -n "$(name)" || { echo "usage: make migrate/new name=create_subjects"; exit 1; }
 	migrate create -seq -ext=.sql -dir=./migrations $(name)
 
-.PHONY: migrate/up
 migrate/up:
-	migrate -path=./migrations -database="$(DB_DSN)" up
+	@mkdir -p "$(DB_DIR)"
+	migrate -path=./migrations -database="$(MIGRATE_DSN)" up
 
-.PHONY: migrate/down
 migrate/down:
-	migrate -path=./migrations -database="$(DB_DSN)" down 1
+	migrate -path=./migrations -database="$(MIGRATE_DSN)" down 1
 
-.PHONY: migrate/version
 migrate/version:
-	migrate -path=./migrations -database="$(DB_DSN)" version
+	migrate -path=./migrations -database="$(MIGRATE_DSN)" version
 
+run:
+	go run ./cmd/api -db-dsn "$(APP_DSN)"
+
+dev: migrate/up
+	go run ./cmd/api -db-dsn "$(APP_DSN)"
