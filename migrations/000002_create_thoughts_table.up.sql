@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS thoughts (
     subject_id   INTEGER,                                      -- nullable FK -> subjects.subject_id
     event_id     INTEGER,                                      -- nullable FK -> events.event_id
     thought      TEXT    NOT NULL,                             -- validated via CHECK below
+    version      INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), -- optimistic-lock version
     observed_at  INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     created_at   INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     updated_at   INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
@@ -45,4 +46,3 @@ CREATE INDEX IF NOT EXISTS idx_thoughts_event
 
 CREATE INDEX IF NOT EXISTS idx_thoughts_subject
     ON thoughts (subject_id);
-
