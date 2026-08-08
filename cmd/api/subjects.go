@@ -10,7 +10,13 @@ import (
 )
 
 func subjectDTO(subject *data.Subject) subjectResponse {
-	return subjectResponse{SubjectID: subject.SubjectID, UserID: subject.UserID, SubjectName: subject.SubjectName, CreatedAt: subject.CreatedAt.UTC().Format(time.RFC3339), UpdatedAt: subject.UpdatedAt.UTC().Format(time.RFC3339)}
+	return subjectResponse{
+		SubjectID:   subject.SubjectID,
+		UserID:      subject.UserID,
+		SubjectName: subject.SubjectName,
+		CreatedAt:   subject.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   subject.UpdatedAt.UTC().Format(time.RFC3339),
+	}
 }
 
 func (a *application) showSubjectHandler(w http.ResponseWriter, r *http.Request) {
