@@ -10,14 +10,17 @@ import (
 	"encoding/json"
 	"os"
 	//    "io"
-	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/testutils"
 	"github.com/rs/zerolog"
 )
 
 func TestHealthcheck(t *testing.T) {
-	store := data.NewInMemoryStore()
-	server := NewApplication(store, store, config{env: "development"}, zerolog.New(os.Stdout))
+	server := NewApplication(
+		testutils.NewFakeSubjectStore(),
+		testutils.NewFakeThoughtStore(),
+		config{env: "development"},
+		zerolog.New(os.Stdout),
+	)
 
 	t.Run("returns heatlh check info", func(t *testing.T) {
 		request := httptest.NewRequest(http.MethodGet, "/healthcheck", nil)
