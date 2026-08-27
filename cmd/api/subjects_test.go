@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,12 +10,17 @@ import (
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/testutils"
 	"github.com/rs/zerolog"
 )
 
 func newServer() *application {
-	store := data.NewInMemoryStore()
-	return NewApplication(store, store, config{}, zerolog.New(io.Discard))
+	return NewApplication(
+		testutils.NewFakeSubjectStore(),
+		testutils.NewFakeThoughtStore(),
+		config{},
+		zerolog.New(io.Discard),
+	)
 }
 func request(method, path, body string) *http.Request {
 	return httptest.NewRequest(method, path, bytes.NewBufferString(body))
@@ -61,10 +67,29 @@ func TestSubjectAndThoughtResourcesAreSeparate(t *testing.T) {
 	if _, ok := raw["thoughts"]; ok {
 		t.Fatal("subject response embeds thoughts")
 	}
-	missing := httptest.NewRecorder()
-	server.routes().ServeHTTP(missing, request(http.MethodPost, "/thoughts", `{"subject_id":99,"thought":"missing"}`))
-	if missing.Code != http.StatusNotFound {
-		t.Fatalf("missing subject status %d", missing.Code)
+}
+
+type missingSubjectThoughtStore struct{}
+
+func (missingSubjectThoughtStore) CreateThought(context.Context, *data.Thought) (*data.Thought, error) {
+	return nil, data.ErrRecordNotFound
+}
+
+func (missingSubjectThoughtStore) GetThought(context.Context, string, int64) (*data.Thought, error) {
+	return nil, data.ErrRecordNotFound
+}
+
+func TestCreateThoughtWithMissingSubject(t *testing.T) {
+	server := NewApplication(
+		testutils.NewFakeSubjectStore(),
+		missingSubjectThoughtStore{},
+		config{},
+		zerolog.New(io.Discard),
+	)
+	response := httptest.NewRecorder()
+	server.routes().ServeHTTP(response, request(http.MethodPost, "/thoughts", `{"subject_id":99,"thought":"missing"}`))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("got status %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 
