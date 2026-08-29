@@ -11,17 +11,22 @@ import (
 
 const maxThoughtBytes = 1_000_000
 
-type CreateStore interface {
+type Store interface {
 	CreateThought(context.Context, *data.Thought) (*data.Thought, error)
+	GetThought(context.Context, string, int64) (*data.Thought, error)
 }
 
 type ValidationError struct{ Fields map[string]string }
 
 func (e *ValidationError) Error() string { return "thought validation failed" }
 
-type Service struct{ store CreateStore }
+type Service struct{ store Store }
 
-func NewService(store CreateStore) *Service { return &Service{store: store} }
+func NewService(store Store) *Service { return &Service{store: store} }
+
+func (s *Service) Get(ctx context.Context, userID string, thoughtID int64) (*data.Thought, error) {
+	return s.store.GetThought(ctx, userID, thoughtID)
+}
 
 func (s *Service) Create(ctx context.Context, userID, body string, subjectID *int64, observedAt time.Time) (*data.Thought, error) {
 	now := time.Now().UTC()

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/rs/zerolog"
 	_ "modernc.org/sqlite"
 )
@@ -69,7 +71,9 @@ func main() {
 	//    store := data.NewSQLiteStore(db)
 
 	// set up server
-	app := NewApplication(store, store, cfg, logger)
+	subjectService := subject.NewService(store)
+	thoughtService := thought.NewService(store)
+	app := NewApplication(subjectService, thoughtService, cfg, logger)
 
 	addr := fmt.Sprintf(":%d", cfg.port)
 	srv := &http.Server{

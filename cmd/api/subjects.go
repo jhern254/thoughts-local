@@ -25,7 +25,7 @@ func (a *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
 		a.notFoundResponse(w, r)
 		return
 	}
-	item, err := a.subjects.GetSubject(r.Context(), a.userFromReq(r), id)
+	item, err := a.subjectService.Get(r.Context(), a.userFromReq(r), id)
 	if errors.Is(err, data.ErrRecordNotFound) {
 		a.notFoundResponse(w, r)
 		return

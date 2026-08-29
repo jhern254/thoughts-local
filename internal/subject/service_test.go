@@ -17,6 +17,10 @@ func (s *createStoreStub) CreateSubject(context.Context, *data.Subject) (*data.S
 	return &data.Subject{SubjectID: 1}, nil
 }
 
+func (s *createStoreStub) GetSubject(context.Context, string, int64) (*data.Subject, error) {
+	return nil, data.ErrRecordNotFound
+}
+
 func TestCreateRejectsInvalidSubjectBeforePersistence(t *testing.T) {
 	store := &createStoreStub{}
 	service := NewService(store)

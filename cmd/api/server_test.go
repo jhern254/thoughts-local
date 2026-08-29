@@ -10,14 +10,18 @@ import (
 	"encoding/json"
 	"os"
 	//    "io"
+	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/testutils"
+	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/rs/zerolog"
 )
 
 func TestHealthcheck(t *testing.T) {
+	subjectService := subject.NewService(testutils.NewFakeSubjectStore())
+	thoughtService := thought.NewService(testutils.NewFakeThoughtStore())
 	server := NewApplication(
-		testutils.NewFakeSubjectStore(),
-		testutils.NewFakeThoughtStore(),
+		subjectService,
+		thoughtService,
 		config{env: "development"},
 		zerolog.New(os.Stdout),
 	)

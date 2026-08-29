@@ -10,14 +10,18 @@ import (
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/testutils"
+	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/rs/zerolog"
 )
 
 func newServer() *application {
+	subjectService := subject.NewService(testutils.NewFakeSubjectStore())
+	thoughtService := thought.NewService(testutils.NewFakeThoughtStore())
 	return NewApplication(
-		testutils.NewFakeSubjectStore(),
-		testutils.NewFakeThoughtStore(),
+		subjectService,
+		thoughtService,
 		config{},
 		zerolog.New(io.Discard),
 	)
@@ -80,9 +84,11 @@ func (missingSubjectThoughtStore) GetThought(context.Context, string, int64) (*d
 }
 
 func TestCreateThoughtWithMissingSubject(t *testing.T) {
+	subjectService := subject.NewService(testutils.NewFakeSubjectStore())
+	thoughtService := thought.NewService(missingSubjectThoughtStore{})
 	server := NewApplication(
-		testutils.NewFakeSubjectStore(),
-		missingSubjectThoughtStore{},
+		subjectService,
+		thoughtService,
 		config{},
 		zerolog.New(io.Discard),
 	)

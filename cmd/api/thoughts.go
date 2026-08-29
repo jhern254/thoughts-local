@@ -19,7 +19,7 @@ func (a *application) showThoughtHandler(w http.ResponseWriter, r *http.Request)
 		a.notFoundResponse(w, r)
 		return
 	}
-	item, err := a.thoughts.GetThought(r.Context(), a.userFromReq(r), id)
+	item, err := a.thoughtService.Get(r.Context(), a.userFromReq(r), id)
 	if errors.Is(err, data.ErrRecordNotFound) {
 		a.notFoundResponse(w, r)
 		return
