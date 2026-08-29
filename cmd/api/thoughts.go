@@ -9,10 +9,6 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
-func thoughtDTO(item *data.Thought) thoughtResponse {
-	return thoughtResponse{ThoughtID: item.ThoughtID, UserID: item.UserID, SubjectID: item.SubjectID, EventID: item.EventID, Thought: item.Thought, Version: item.Version, ObservedAt: item.ObservedAt.UTC().Format(time.RFC3339), CreatedAt: item.CreatedAt.UTC().Format(time.RFC3339), UpdatedAt: item.UpdatedAt.UTC().Format(time.RFC3339)}
-}
-
 func (a *application) showThoughtHandler(w http.ResponseWriter, r *http.Request) {
 	id, err := a.readIDParam(r)
 	if err != nil {
@@ -28,7 +24,7 @@ func (a *application) showThoughtHandler(w http.ResponseWriter, r *http.Request)
 		a.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := a.writeJSON(w, http.StatusOK, envelope{"thought": thoughtDTO(item)}, nil); err != nil {
+	if err := a.writeJSON(w, http.StatusOK, envelope{"thought": toThoughtResponse(item)}, nil); err != nil {
 		a.serverErrorResponse(w, r, err)
 	}
 }
@@ -58,7 +54,7 @@ func (a *application) createThoughtHandler(w http.ResponseWriter, r *http.Reques
 	case err != nil:
 		a.serverErrorResponse(w, r, err)
 	default:
-		if err := a.writeJSON(w, http.StatusCreated, envelope{"thought": thoughtDTO(item)}, nil); err != nil {
+		if err := a.writeJSON(w, http.StatusCreated, envelope{"thought": toThoughtResponse(item)}, nil); err != nil {
 			a.serverErrorResponse(w, r, err)
 		}
 	}

@@ -3,21 +3,10 @@ package main
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/subject"
 )
-
-func subjectDTO(subject *data.Subject) subjectResponse {
-	return subjectResponse{
-		SubjectID:   subject.SubjectID,
-		UserID:      subject.UserID,
-		SubjectName: subject.SubjectName,
-		CreatedAt:   subject.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:   subject.UpdatedAt.UTC().Format(time.RFC3339),
-	}
-}
 
 func (a *application) showSubjectHandler(w http.ResponseWriter, r *http.Request) {
 	id, err := a.readIDParam(r)
@@ -34,7 +23,7 @@ func (a *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
 		a.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := a.writeJSON(w, http.StatusOK, envelope{"subject": subjectDTO(item)}, nil); err != nil {
+	if err := a.writeJSON(w, http.StatusOK, envelope{"subject": toSubjectResponse(item)}, nil); err != nil {
 		a.serverErrorResponse(w, r, err)
 	}
 }
@@ -55,7 +44,7 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
 	case err != nil:
 		a.serverErrorResponse(w, r, err)
 	default:
-		if err := a.writeJSON(w, http.StatusCreated, envelope{"subject": subjectDTO(item)}, nil); err != nil {
+		if err := a.writeJSON(w, http.StatusCreated, envelope{"subject": toSubjectResponse(item)}, nil); err != nil {
 			a.serverErrorResponse(w, r, err)
 		}
 	}
