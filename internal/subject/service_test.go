@@ -21,20 +21,22 @@ func (s *createStoreStub) GetSubject(context.Context, string, int64) (*data.Subj
 	return nil, data.ErrRecordNotFound
 }
 
-func TestCreateRejectsInvalidSubjectBeforePersistence(t *testing.T) {
-	store := &createStoreStub{}
-	service := NewService(store)
+func TestSubjectService_Create(t *testing.T) {
+	t.Run("rejects invalid subject before persistence", func(t *testing.T) {
+		store := &createStoreStub{}
+		service := NewService(store)
 
-	_, err := service.Create(context.Background(), "test-user", " ")
+		_, err := service.Create(context.Background(), "test-user", " ")
 
-	var validationErr *ValidationError
-	if !errors.As(err, &validationErr) {
-		t.Fatalf("got error %v, want validation error", err)
-	}
-	if _, ok := validationErr.Fields["subject_name"]; !ok {
-		t.Errorf("got validation fields %v, want subject_name", validationErr.Fields)
-	}
-	if store.called {
-		t.Error("store was called for invalid subject")
-	}
+		var validationErr *ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("got error %v, want validation error", err)
+		}
+		if _, ok := validationErr.Fields["subject_name"]; !ok {
+			t.Errorf("got validation fields %v, want subject_name", validationErr.Fields)
+		}
+		if store.called {
+			t.Error("store was called for invalid subject")
+		}
+	})
 }
