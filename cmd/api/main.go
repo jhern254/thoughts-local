@@ -66,9 +66,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("problem creating file system thought store")
 	}
 
-	// initialize store
-	// TODO: write fn
-	//    store := data.NewSQLiteStore(db)
+	// TODO: switch services to entity-specific SQLite stores as they are implemented.
 
 	// set up server
 	subjectService := subject.NewService(store)
