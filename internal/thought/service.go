@@ -4,12 +4,13 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/validator"
 )
 
-const maxThoughtBytes = 1_000_000
+const maxThoughtCharacters = 1_000_000
 
 type Store interface {
 	CreateThought(context.Context, *data.Thought) (*data.Thought, error)
@@ -33,14 +34,11 @@ func (s *Service) Create(ctx context.Context, userID, body string, subjectID *in
 	if observedAt.IsZero() {
 		observedAt = now
 	}
-	item := &data.Thought{UserID: userID, SubjectID: subjectID, Thought: strings.TrimSpace(body), Version: 1, ObservedAt: observedAt.UTC(), CreatedAt: now, UpdatedAt: now}
+	item := &data.Thought{UserID: userID, SubjectID: subjectID, Thought: body, Version: 1, ObservedAt: observedAt.UTC(), CreatedAt: now, UpdatedAt: now}
 	v := validator.NewValidator()
 	v.Check(item.UserID != "", "user_id", "must be provided")
-	v.Check(item.Thought != "", "thought", "must be provided")
-	v.Check(len(item.Thought) <= maxThoughtBytes, "thought", "must not be more than 1000000 bytes long")
-	if item.SubjectID != nil {
-		v.Check(*item.SubjectID > 0, "subject_id", "must be positive")
-	}
+	v.Check(utf8.RuneCountInString(strings.Trim(item.Thought, " ")) > 0, "thought", "must be provided")
+	v.Check(utf8.RuneCountInString(item.Thought) <= maxThoughtCharacters, "thought", "must not be more than 1000000 characters long")
 	if !v.Valid() {
 		return nil, &ValidationError{Fields: v.Errors}
 	}

@@ -32,10 +32,10 @@ func (s *thoughtServiceStoreStub) GetThought(ctx context.Context, userID string,
 }
 
 func TestThoughtService_Create(t *testing.T) {
-	t.Run("creates thought with defaults", func(t *testing.T) {
+	t.Run("creates thought with defaults without rewriting whitespace", func(t *testing.T) {
 		subjectID := int64(3)
 		store := &thoughtServiceStoreStub{create: func(_ context.Context, item *data.Thought) (*data.Thought, error) {
-			if item.UserID != "test-user" || item.Thought != "learn Go" || item.Version != 1 {
+			if item.UserID != "test-user" || item.Thought != "  learn Go  " || item.Version != 1 {
 				t.Fatalf("got thought %#v", item)
 			}
 			if item.SubjectID == nil || *item.SubjectID != subjectID {
@@ -54,8 +54,21 @@ func TestThoughtService_Create(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.ThoughtID != 1 || got.Thought != "learn Go" {
+		if got.ThoughtID != 1 || got.Thought != "  learn Go  " {
 			t.Fatalf("got thought %#v", got)
+		}
+	})
+
+	t.Run("accepts one million Unicode characters", func(t *testing.T) {
+		body := strings.Repeat("界", maxThoughtCharacters)
+		store := &thoughtServiceStoreStub{create: func(_ context.Context, item *data.Thought) (*data.Thought, error) {
+			return item, nil
+		}}
+
+		_, err := NewService(store).Create(context.Background(), "test-user", body, nil, time.Time{})
+
+		if err != nil {
+			t.Fatal(err)
 		}
 	})
 
@@ -85,8 +98,7 @@ func TestThoughtService_Create(t *testing.T) {
 		}{
 			{name: "missing user", body: "learn Go", field: "user_id"},
 			{name: "empty body", userID: "test-user", body: " ", field: "thought"},
-			{name: "oversized body", userID: "test-user", body: strings.Repeat("x", maxThoughtBytes+1), field: "thought"},
-			{name: "invalid subject ID", userID: "test-user", body: "learn Go", subjectID: int64Pointer(0), field: "subject_id"},
+			{name: "oversized body", userID: "test-user", body: strings.Repeat("x", maxThoughtCharacters+1), field: "thought"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -105,6 +117,22 @@ func TestThoughtService_Create(t *testing.T) {
 					t.Error("store was called for invalid thought")
 				}
 			})
+		}
+	})
+
+	t.Run("delegates subject ID validity to the store", func(t *testing.T) {
+		subjectID := int64(0)
+		store := &thoughtServiceStoreStub{create: func(_ context.Context, item *data.Thought) (*data.Thought, error) {
+			if item.SubjectID == nil || *item.SubjectID != subjectID {
+				t.Fatalf("got subject ID %#v", item.SubjectID)
+			}
+			return nil, data.ErrRecordNotFound
+		}}
+
+		_, err := NewService(store).Create(context.Background(), "test-user", "learn Go", &subjectID, time.Time{})
+
+		if !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatalf("got %v, want %v", err, data.ErrRecordNotFound)
 		}
 	})
 
@@ -151,5 +179,3 @@ func TestThoughtService_Get(t *testing.T) {
 		}
 	})
 }
-
-func int64Pointer(value int64) *int64 { return &value }

@@ -30,9 +30,9 @@ func (s *subjectServiceStoreStub) GetSubject(ctx context.Context, userID string,
 }
 
 func TestSubjectService_Create(t *testing.T) {
-	t.Run("creates normalized subject", func(t *testing.T) {
+	t.Run("creates subject without rewriting schema-valid whitespace", func(t *testing.T) {
 		store := &subjectServiceStoreStub{create: func(_ context.Context, item *data.Subject) (*data.Subject, error) {
-			if item.UserID != "test-user" || item.SubjectName != "learn Go" {
+			if item.UserID != "test-user" || item.SubjectName != "  learn   Go  " {
 				t.Fatalf("got subject %#v", item)
 			}
 			if item.CreatedAt.IsZero() || item.UpdatedAt.IsZero() {
@@ -48,7 +48,7 @@ func TestSubjectService_Create(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.SubjectID != 1 || got.SubjectName != "learn Go" {
+		if got.SubjectID != 1 || got.SubjectName != "  learn   Go  " {
 			t.Fatalf("got subject %#v", got)
 		}
 	})

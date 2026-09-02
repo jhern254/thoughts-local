@@ -1,4 +1,4 @@
--- Thoughts
+-- Thoughts table.
 CREATE TABLE IF NOT EXISTS thoughts (
     thought_id   INTEGER PRIMARY KEY,                          -- int64
     user_id      TEXT    NOT NULL,                             -- FK -> users.user_id
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS thoughts (
     updated_at   INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
 
     -- Validation checks
-    -- Non-empty after trim; cap size to ~1M characters (~1MB). (Fix 'body' -> 'thought'.)
+    -- Non-empty after trim; cap size to 1,000,000 characters.
     CONSTRAINT ck_thoughts_text_len
         CHECK (length(trim(thought)) > 0 AND length(thought) <= 1000000),
 
@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS thoughts (
     CONSTRAINT fk_thoughts_subject
         FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
         ON DELETE SET NULL
+        ON UPDATE CASCADE,
+
+    -- A linked thought and subject must belong to the same user. The separate
+    -- subject FK above preserves user_id when a deleted subject is set to NULL.
+    CONSTRAINT fk_thoughts_subject_owner
+        FOREIGN KEY (subject_id, user_id) REFERENCES subjects(subject_id, user_id)
         ON UPDATE CASCADE,
 
     CONSTRAINT fk_thoughts_event

@@ -1,4 +1,4 @@
--- Subjects
+-- Subjects table.
 CREATE TABLE IF NOT EXISTS subjects (
     subject_id    INTEGER PRIMARY KEY,                         -- maps to int64
     user_id       TEXT    NOT NULL,                            -- FK -> users.user_id
@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS subjects (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subjects_user_name
     ON subjects (user_id, subject_name);
 
+-- Composite parent key for enforcing thought/subject ownership.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subjects_id_user
+    ON subjects (subject_id, user_id);
+
 CREATE INDEX IF NOT EXISTS idx_subjects_user
     ON subjects (user_id);
-

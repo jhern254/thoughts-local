@@ -1,4 +1,4 @@
--- Events
+-- Events table.
 CREATE TABLE IF NOT EXISTS events (
     event_id        INTEGER PRIMARY KEY,
     user_id         TEXT    NOT NULL,
