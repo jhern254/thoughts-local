@@ -1,4 +1,4 @@
--- Users
+-- Users table.
 CREATE TABLE IF NOT EXISTS users (
     user_id    TEXT PRIMARY KEY,
     handle     TEXT    UNIQUE,
@@ -23,5 +23,3 @@ CREATE TABLE IF NOT EXISTS users (
     CONSTRAINT ck_users_time_order
         CHECK (created_at <= updated_at)
 );
-
-

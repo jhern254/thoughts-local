@@ -8,8 +8,9 @@ import (
 	"github.com/jhern254/go-thoughts/internal/validator"
 )
 
-type CreateStore interface {
-	CaptureSubject(ctx context.Context, userID string, subject *data.Subject) (int64, error)
+type Store interface {
+	CreateSubject(ctx context.Context, subject *data.Subject) (*data.Subject, error)
+	GetSubject(ctx context.Context, userID string, subjectID int64) (*data.Subject, error)
 }
 
 type ValidationError struct {
@@ -21,11 +22,15 @@ func (e *ValidationError) Error() string {
 }
 
 type Service struct {
-	store CreateStore
+	store Store
 }
 
-func NewService(store CreateStore) *Service {
+func NewService(store Store) *Service {
 	return &Service{store: store}
+}
+
+func (s *Service) Get(ctx context.Context, userID string, subjectID int64) (*data.Subject, error) {
+	return s.store.GetSubject(ctx, userID, subjectID)
 }
 
 func (s *Service) Create(ctx context.Context, userID, name string) (*data.Subject, error) {
@@ -43,11 +48,5 @@ func (s *Service) Create(ctx context.Context, userID, name string) (*data.Subjec
 		return nil, &ValidationError{Fields: v.Errors}
 	}
 
-	id, err := s.store.CaptureSubject(ctx, userID, subject)
-	if err != nil {
-		return nil, err
-	}
-	subject.SubjectID = id
-
-	return subject, nil
+	return s.store.CreateSubject(ctx, subject)
 }

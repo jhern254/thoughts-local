@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/rs/zerolog"
 	_ "modernc.org/sqlite"
 )
@@ -59,7 +61,7 @@ func main() {
 		logger.Fatal().Err(err).Str("dbfile", dbFileName).Msg("problem opening file store")
 	}
 
-	store, err := data.NewFileSystemThoughtStore(f)
+	store, err := data.NewFileSystemStore(f)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("problem creating file system thought store")
 	}
@@ -69,7 +71,9 @@ func main() {
 	//    store := data.NewSQLiteStore(db)
 
 	// set up server
-	app := NewApplication(store, cfg, logger)
+	subjectService := subject.NewService(store)
+	thoughtService := thought.NewService(store)
+	app := NewApplication(subjectService, thoughtService, cfg, logger)
 
 	addr := fmt.Sprintf(":%d", cfg.port)
 	srv := &http.Server{

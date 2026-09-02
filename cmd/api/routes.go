@@ -24,10 +24,10 @@ func (s *application) routes() *httprouter.Router {
 	router.MethodNotAllowed = http.HandlerFunc(s.methodNotAllowedResponse)
 
 	// REST endpoints
-	router.HandlerFunc(http.MethodGet, "/subjects/:subject", s.showSubjectHandler)
+	router.HandlerFunc(http.MethodGet, "/subjects/:id", s.showSubjectHandler)
 	router.HandlerFunc(http.MethodPost, "/subjects", s.createSubjectHandler)
-	router.HandlerFunc(http.MethodGet, "/subjects/:subject/thoughts", s.showSubjectThoughtsHandler)
-	router.HandlerFunc(http.MethodPost, "/subjects/:subject/thoughts", s.createSubjectThoughtHandler)
+	router.HandlerFunc(http.MethodGet, "/thoughts/:id", s.showThoughtHandler)
+	router.HandlerFunc(http.MethodPost, "/thoughts", s.createThoughtHandler)
 	router.HandlerFunc(http.MethodGet, "/healthcheck", s.healthcheckHandler)
 
 	return router
