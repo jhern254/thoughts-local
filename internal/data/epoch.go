@@ -2,7 +2,6 @@
 package data
 
 import (
-	"database/sql"
 	"fmt"
 	"time"
 )
@@ -13,7 +12,6 @@ func TimeFromUnixSec(sec int64) time.Time {
 }
 
 // UnixSec returns epoch seconds for a time (UTC).
-// TODO: add to insert, update logic
 func UnixSec(t time.Time) int64 {
 	if t.IsZero() {
 		return time.Now().UTC().Unix()
@@ -37,10 +35,4 @@ func ScanUnixNullable(src any) (time.Time, error) {
 	default:
 		return time.Time{}, fmt.Errorf("unsupported type %T for epoch seconds", src)
 	}
-}
-
-// EnableSQLiteFK ensures SQLite enforces foreign keys. Call once after opening DB.
-func EnableSQLiteFK(db *sql.DB) error {
-	_, err := db.Exec(`PRAGMA foreign_keys = ON;`)
-	return err
 }

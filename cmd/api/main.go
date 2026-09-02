@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -17,7 +18,6 @@ import (
 )
 
 const (
-	dbFileName      = "thoughts.db.json"
 	version         = "0.1.0"
 	jsonContentType = "application/json"
 )
@@ -54,23 +54,9 @@ func main() {
 	defer db.Close()
 	logger.Info().Str("dsn", cfg.db.dsn).Msg("database connection pool established")
 
-	// NOTE: temp
-	// ---------- use existing JSON file store (temporary) ----------
-	f, err := os.OpenFile(dbFileName, os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		logger.Fatal().Err(err).Str("dbfile", dbFileName).Msg("problem opening file store")
-	}
-
-	store, err := data.NewFileSystemStore(f)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("problem creating file system thought store")
-	}
-
-	// TODO: switch services to entity-specific SQLite stores as they are implemented.
-
 	// set up server
-	subjectService := subject.NewService(store)
-	thoughtService := thought.NewService(store)
+	subjectService := subject.NewService(data.NewSQLiteSubjectStore(db))
+	thoughtService := thought.NewService(data.NewSQLiteThoughtStore(db))
 	app := NewApplication(subjectService, thoughtService, cfg, logger)
 
 	addr := fmt.Sprintf(":%d", cfg.port)
@@ -91,14 +77,9 @@ func main() {
 
 }
 
-// TODO: add epoch fns
 func openDB(cfg config) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", cfg.db.dsn)
+	db, err := sql.Open("sqlite", sqliteDSNWithForeignKeys(cfg.db.dsn))
 	if err != nil {
-		return nil, err
-	}
-
-	if err := data.EnableSQLiteFK(db); err != nil {
 		return nil, err
 	}
 
@@ -121,4 +102,12 @@ func openDB(cfg config) (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+func sqliteDSNWithForeignKeys(dsn string) string {
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	return dsn + separator + "_pragma=foreign_keys(1)"
 }
