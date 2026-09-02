@@ -10,17 +10,17 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// SQLiteStore persists application data in SQLite.
-type SQLiteStore struct {
+// SQLiteSubjectStore persists subjects in SQLite.
+type SQLiteSubjectStore struct {
 	db *sql.DB
 }
 
-// NewSQLiteStore returns a store backed by db.
-func NewSQLiteStore(db *sql.DB) *SQLiteStore {
-	return &SQLiteStore{db: db}
+// NewSQLiteSubjectStore returns a subject store backed by db.
+func NewSQLiteSubjectStore(db *sql.DB) *SQLiteSubjectStore {
+	return &SQLiteSubjectStore{db: db}
 }
 
-func (s *SQLiteStore) CreateSubject(ctx context.Context, subject *Subject) (*Subject, error) {
+func (s *SQLiteSubjectStore) CreateSubject(ctx context.Context, subject *Subject) (*Subject, error) {
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO subjects (user_id, subject_name, created_at, updated_at)
 		VALUES (?, ?, ?, ?)`,
@@ -43,7 +43,7 @@ func (s *SQLiteStore) CreateSubject(ctx context.Context, subject *Subject) (*Sub
 	return s.GetSubject(ctx, subject.UserID, subjectID)
 }
 
-func (s *SQLiteStore) GetSubject(ctx context.Context, userID string, subjectID int64) (*Subject, error) {
+func (s *SQLiteSubjectStore) GetSubject(ctx context.Context, userID string, subjectID int64) (*Subject, error) {
 	var subject Subject
 	var createdAt, updatedAt int64
 	err := s.db.QueryRowContext(ctx, `
@@ -76,4 +76,4 @@ func isSQLiteUniqueConstraint(err error) bool {
 	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
 }
 
-var _ SubjectStore = (*SQLiteStore)(nil)
+var _ SubjectStore = (*SQLiteSubjectStore)(nil)

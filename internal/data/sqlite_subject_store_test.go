@@ -15,11 +15,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestSQLiteStore_CreateSubject(t *testing.T) {
+func TestSQLiteSubjectStore_CreateSubject(t *testing.T) {
 	t.Run("creates and returns persisted subject", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "test-user")
-		store := data.NewSQLiteStore(db)
+		store := data.NewSQLiteSubjectStore(db)
 		now := time.Date(2026, time.September, 2, 12, 30, 0, 0, time.UTC)
 
 		created, err := store.CreateSubject(context.Background(), &data.Subject{
@@ -46,7 +46,7 @@ func TestSQLiteStore_CreateSubject(t *testing.T) {
 	t.Run("returns duplicate record for the same users subject name", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "test-user")
-		store := data.NewSQLiteStore(db)
+		store := data.NewSQLiteSubjectStore(db)
 		item := &data.Subject{UserID: "test-user", SubjectName: "coding"}
 		if _, err := store.CreateSubject(context.Background(), item); err != nil {
 			t.Fatal(err)
@@ -62,7 +62,7 @@ func TestSQLiteStore_CreateSubject(t *testing.T) {
 	t.Run("allows the same subject name for different users", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "user-1", "user-2")
-		store := data.NewSQLiteStore(db)
+		store := data.NewSQLiteSubjectStore(db)
 		if _, err := store.CreateSubject(context.Background(), &data.Subject{UserID: "user-1", SubjectName: "coding"}); err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +79,7 @@ func TestSQLiteStore_CreateSubject(t *testing.T) {
 
 	t.Run("rejects a subject without an existing user", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
-		store := data.NewSQLiteStore(db)
+		store := data.NewSQLiteSubjectStore(db)
 
 		_, err := store.CreateSubject(context.Background(), &data.Subject{UserID: "missing-user", SubjectName: "coding"})
 
@@ -89,11 +89,11 @@ func TestSQLiteStore_CreateSubject(t *testing.T) {
 	})
 }
 
-func TestSQLiteStore_GetSubject(t *testing.T) {
+func TestSQLiteSubjectStore_GetSubject(t *testing.T) {
 	t.Run("returns subject for its owner", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "test-user")
-		store := data.NewSQLiteStore(db)
+		store := data.NewSQLiteSubjectStore(db)
 		created, err := store.CreateSubject(context.Background(), &data.Subject{UserID: "test-user", SubjectName: "coding"})
 		if err != nil {
 			t.Fatal(err)
@@ -113,7 +113,7 @@ func TestSQLiteStore_GetSubject(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "test-user")
 
-		_, err := data.NewSQLiteStore(db).GetSubject(context.Background(), "test-user", 99)
+		_, err := data.NewSQLiteSubjectStore(db).GetSubject(context.Background(), "test-user", 99)
 
 		if !errors.Is(err, data.ErrRecordNotFound) {
 			t.Fatalf("got %v, want %v", err, data.ErrRecordNotFound)
@@ -123,7 +123,7 @@ func TestSQLiteStore_GetSubject(t *testing.T) {
 	t.Run("does not return another users subject", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "user-1", "user-2")
-		store := data.NewSQLiteStore(db)
+		store := data.NewSQLiteSubjectStore(db)
 		created, err := store.CreateSubject(context.Background(), &data.Subject{UserID: "user-1", SubjectName: "coding"})
 		if err != nil {
 			t.Fatal(err)
@@ -141,7 +141,7 @@ func TestSubjectWorkflow_SQLitePersistence(t *testing.T) {
 	t.Run("creates and retrieves a subject after reopening the database", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		insertUsers(t, db, "test-user")
-		service := subject.NewService(data.NewSQLiteStore(db))
+		service := subject.NewService(data.NewSQLiteSubjectStore(db))
 
 		created, err := service.Create(context.Background(), "test-user", "coding")
 		if err != nil {
@@ -162,7 +162,7 @@ func TestSubjectWorkflow_SQLitePersistence(t *testing.T) {
 		}
 
 		reopened := openSQLite(t, dsn)
-		persisted, err := subject.NewService(data.NewSQLiteStore(reopened)).Get(context.Background(), "test-user", created.SubjectID)
+		persisted, err := subject.NewService(data.NewSQLiteSubjectStore(reopened)).Get(context.Background(), "test-user", created.SubjectID)
 
 		if err != nil {
 			t.Fatal(err)
