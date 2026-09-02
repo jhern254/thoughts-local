@@ -119,9 +119,9 @@ Workflow:
 
 2. Create a new worktree and feature branch.
 
-   ```bash
-   git worktree add ../thoughts-<feature> -b feature/<feature>
-   ```
+```bash
+git worktree add ../thoughts-<feature> -b feature/<feature>
+```
 
 3. Perform all work inside that worktree.
 
@@ -131,11 +131,11 @@ Workflow:
 
 6. Before requesting review:
 
-   ```bash
-   git fetch origin
-   git rebase origin/main
-   make check
-   ```
+```bash
+git fetch origin
+git rebase origin/main
+make check
+```
 
 7. Resolve any conflicts on the feature branch.
 
@@ -143,10 +143,10 @@ Workflow:
 
 9. After the branch is merged:
 
-   ```bash
-   git worktree remove ../thoughts-<feature>
-   git branch -d feature/<feature>
-   ```
+```bash
+git worktree remove ../thoughts-<feature>
+git branch -d feature/<feature>
+```
 
 Rules:
 
@@ -221,6 +221,185 @@ schema: add goals table migration
 docs: add project agent instructions
 chore: format go files
 ```
+
+### Scope discipline
+
+PRs must remain narrowly focused on the stated goal.
+
+Implement only what is required for the current PR.
+Do not opportunistically refactor unrelated code.
+Do not implement future entities, features, infrastructure, or abstractions unless the current task requires them.
+Do not use an existing PR as an excuse to clean up neighboring code.
+If a larger architectural improvement is useful but not required, ask if it should be separate focused PR.
+Prefer several small, reviewable PRs over one broad PR.
+
+A PR should be explainable in one clear sentence.
+
+### Commit discipline
+
+Each commit must be local to one coherent goal.
+
+A commit should contain only changes necessary for its stated purpose.
+Do not mix feature implementation, unrelated refactors, formatting churn, cleanup, and architectural changes in one commit.
+Avoid touching files that do not need to change.
+Do not rewrite working code merely to make it stylistically different.
+Commit messages should describe the actual focused change.
+
+Prefer commits that are easy to review independently.
+
+### Minimal implementation
+
+Prefer the smallest clean implementation that correctly solves the problem.
+
+Minimize lines of code changed and added.
+Avoid fluff code, speculative helpers, wrapper layers, generic frameworks, and abstractions that are not currently necessary.
+Prefer deleting obsolete plumbing over adding abstractions around it.
+Use straightforward, idiomatic Go.
+Prefer explicit dependencies and obvious control flow.
+Use narrow interfaces.
+Avoid premature generalization.
+Do not create generic infrastructure for a problem that currently has one or two concrete cases.
+Follow established Go best practices rather than blindly copying legacy patterns in the repository.
+
+Minimal does not mean compressed or clever. Code should remain readable and maintainable.
+
+The preferred outcome is:
+
+few concepts
+few abstractions
+few changed lines
+clear responsibilities
+idiomatic Go
+Existing code is context, not authority
+
+Legacy code may represent transitional or obsolete design decisions.
+
+Do not automatically reproduce an existing pattern just because it already exists in the repository.
+
+Before extending a pattern, consider whether it matches the current architecture and documented project direction and ask about changes.
+
+Prefer the intended architecture over preserving accidental legacy structure.
+
+Database schema is authoritative
+
+SQL migrations are the source of truth for persistent schema constraints.
+
+Go models and validation must mirror the migration contract rather than inventing parallel schema rules.
+
+When implementing or modifying an entity, compare the Go representation against the migrations for:
+
+field types
+nullability
+minimum and maximum values
+text-length constraints
+defaults
+uniqueness
+foreign keys
+version constraints
+timestamps
+allowed values
+
+Do not silently introduce a stricter or different application-level limit.
+
+For example, if a migration defines:
+
+CHECK (length(trim(subject_name)) BETWEEN 1 AND 255)
+
+Go validation must not independently introduce a 120-byte limit.
+
+Also preserve SQL semantics where practical. For SQLite text length constraints, remember that Go len(string) counts UTF-8 bytes, while SQLite length(TEXT) counts Unicode characters/code points. Use rune-aware validation where matching the migration requires it.
+
+Application validation may provide earlier and clearer errors, but it should reflect the database contract.
+
+If an intentionally stricter business rule is ever needed, it must be deliberate and documented rather than invented during implementation.
+
+Tests drive feature implementation
+
+Tests are a core part of implementing a feature, not an afterthought.
+
+For new behavior:
+
+identify the behavior being added or changed,
+write or update the relevant test,
+implement the minimum production code necessary to satisfy it,
+refactor only when useful while preserving behavior.
+
+Preserve a red-green-refactor mindset where practical.
+
+A feature is not complete merely because the production code compiles.
+
+Test organization
+
+Tests in this repository should be behavior-focused and organized using descriptive grouped subtests.
+
+The preferred structure is:
+
+```
+func Test<Type>_<Method>(t *testing.T) {
+    t.Run("describes expected behavior", func(t *testing.T) {
+        // arrange
+        // act
+        // assert
+    })
+
+    t.Run("describes another behavior", func(t *testing.T) {
+        // arrange
+        // act
+        // assert
+    })
+}
+
+Examples:
+
+func TestSubjectService_Create(t *testing.T) {
+    t.Run("creates normalized subject", func(t *testing.T) {
+        // ...
+    })
+
+    t.Run("rejects invalid subject before persistence", func(t *testing.T) {
+        // ...
+    })
+
+    t.Run("returns store error", func(t *testing.T) {
+        // ...
+    })
+}
+
+func TestFileSystemStore_GetSubject(t *testing.T) {
+    t.Run("returns subject", func(t *testing.T) {
+        // ...
+    })
+
+    t.Run("returns not found", func(t *testing.T) {
+        // ...
+    })
+}
+```
+
+Prefer:
+
+```
+Test<Type>_<Method>
+    t.Run("<behavior>")
+```
+
+rather than creating a separate top-level Test... function for every individual condition.
+
+The subtest name should describe observable behavior rather than implementation details.
+
+Good:
+
+"creates normalized subject"
+"returns 404 for missing subject"
+"rejects invalid thought before persistence"
+"returns duplicate record error"
+
+Less useful:
+
+"test one"
+"invalid"
+"error case"
+"works"
 
 
 When uncertain, choose the simplest implementation that preserves the architecture.
