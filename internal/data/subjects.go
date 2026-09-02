@@ -9,7 +9,7 @@ import (
 
 const maxSubjectNameCharacters = 255
 
-func ValidateSubjectCreate(v *validator.Validator, subject *Subject) {
+func ValidateSubject(v *validator.Validator, subject *Subject) {
 	trimmedName := strings.Trim(subject.SubjectName, " ")
 	nameLength := utf8.RuneCountInString(trimmedName)
 	v.Check(subject.UserID != "", "user_id", "must be provided")

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/subject"
@@ -37,6 +38,18 @@ func (s *subjectStoreStub) GetSubject(ctx context.Context, userID string, subjec
 		panic("GetSubject not stubbed")
 	}
 	return s.getSubject(ctx, userID, subjectID)
+}
+
+func (s *subjectStoreStub) ListSubjects(context.Context, string) ([]data.Subject, error) {
+	panic("ListSubjects not stubbed")
+}
+
+func (s *subjectStoreStub) UpdateSubject(context.Context, string, int64, string, time.Time) (*data.Subject, error) {
+	panic("UpdateSubject not stubbed")
+}
+
+func (s *subjectStoreStub) DeleteSubject(context.Context, string, int64) error {
+	panic("DeleteSubject not stubbed")
 }
 
 func newSubjectServer(store subject.Store) *application {
