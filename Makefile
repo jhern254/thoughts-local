@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-fresh test-race test-cover build quick check ci clean hooks run dev migrate/new migrate/up migrate/down migrate/version
+.PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev migrate/new migrate/up migrate/down migrate/version
 
 help:
 	@echo "Available commands:"
@@ -7,6 +7,7 @@ help:
 	@echo "  make vet          Run go vet"
 	@echo "  make test         Run tests"
 	@echo "  make test-fresh   Run tests without cached results"
+	@echo "  make test-integration Run integration tests"
 	@echo "  make test-race    Run tests with the race detector"
 	@echo "  make test-cover   Generate a coverage report"
 	@echo "  make build        Build all packages"
@@ -42,6 +43,9 @@ test:
 test-fresh:
 	go test -count=1 ./...
 
+test-integration:
+	go test -tags=integration -count=1 ./integration/...
+
 test-race:
 	go test -race -count=1 ./...
 
@@ -54,7 +58,7 @@ build:
 
 quick: fmt-check vet test
 
-check: fmt-check vet test-fresh build
+check: fmt-check vet test-fresh test-integration build
 
 ci: check test-race
 
