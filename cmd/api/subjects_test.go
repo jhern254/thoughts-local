@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/subject"
@@ -16,98 +19,149 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func newServer() *application {
-	subjectService := subject.NewService(testutils.NewFakeSubjectStore())
-	thoughtService := thought.NewService(testutils.NewFakeThoughtStore())
-	return NewApplication(
-		subjectService,
-		thoughtService,
-		config{},
-		zerolog.New(io.Discard),
-	)
+type subjectStoreStub struct {
+	createSubject func(context.Context, *data.Subject) (*data.Subject, error)
+	getSubject    func(context.Context, string, int64) (*data.Subject, error)
+	createCalls   int
 }
-func request(method, path, body string) *http.Request {
+
+func (s *subjectStoreStub) CreateSubject(ctx context.Context, item *data.Subject) (*data.Subject, error) {
+	s.createCalls++
+	if s.createSubject == nil {
+		panic("CreateSubject not stubbed")
+	}
+	return s.createSubject(ctx, item)
+}
+
+func (s *subjectStoreStub) GetSubject(ctx context.Context, userID string, subjectID int64) (*data.Subject, error) {
+	if s.getSubject == nil {
+		panic("GetSubject not stubbed")
+	}
+	return s.getSubject(ctx, userID, subjectID)
+}
+
+func newSubjectServer(store subject.Store) *application {
+	return NewApplication(subject.NewService(store), thought.NewService(testutils.NewFakeThoughtStore()), config{}, zerolog.New(io.Discard))
+}
+
+func subjectRequest(method, path, body string) *http.Request {
 	return httptest.NewRequest(method, path, bytes.NewBufferString(body))
 }
 
-func TestApplication_Routes(t *testing.T) {
-	t.Run("keeps subject and thought resources separate", func(t *testing.T) {
-		server := newServer()
-		createdSubject := httptest.NewRecorder()
-		server.routes().ServeHTTP(createdSubject, request(http.MethodPost, "/subjects", `{"subject_name":"coding"}`))
-		if createdSubject.Code != http.StatusCreated {
-			t.Fatalf("subject status %d", createdSubject.Code)
-		}
-		var subject struct {
+func TestShowSubjectHandler(t *testing.T) {
+	t.Run("returns 200 with subject", func(t *testing.T) {
+		now := time.Date(2026, time.August, 1, 12, 0, 0, 0, time.UTC)
+		store := &subjectStoreStub{getSubject: func(_ context.Context, userID string, subjectID int64) (*data.Subject, error) {
+			if userID != "test-user" || subjectID != 7 {
+				t.Fatalf("got user %q and subject ID %d", userID, subjectID)
+			}
+			return &data.Subject{SubjectID: 7, UserID: userID, SubjectName: "coding", CreatedAt: now, UpdatedAt: now}, nil
+		}}
+		response := httptest.NewRecorder()
+
+		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodGet, "/subjects/7", ""))
+
+		testutils.AssertStatusCode(t, response.Code, http.StatusOK)
+		testutils.AssertContentType(t, response, jsonContentType)
+		var body struct {
 			Subject subjectResponse `json:"subject"`
 		}
-		if err := json.NewDecoder(createdSubject.Body).Decode(&subject); err != nil {
+		if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		createdThought := httptest.NewRecorder()
-		server.routes().ServeHTTP(createdThought, request(http.MethodPost, "/thoughts", `{"subject_id":1,"thought":"learn Go"}`))
-		if createdThought.Code != http.StatusCreated {
-			t.Fatalf("thought status %d", createdThought.Code)
-		}
-		var thought struct {
-			Thought thoughtResponse `json:"thought"`
-		}
-		if err := json.NewDecoder(createdThought.Body).Decode(&thought); err != nil {
-			t.Fatal(err)
-		}
-		if thought.Thought.SubjectID == nil || *thought.Thought.SubjectID != subject.Subject.SubjectID || thought.Thought.Version != 1 {
-			t.Fatalf("bad thought %#v", thought.Thought)
-		}
-		gotSubject := httptest.NewRecorder()
-		server.routes().ServeHTTP(gotSubject, request(http.MethodGet, "/subjects/1", ""))
-		if gotSubject.Code != http.StatusOK {
-			t.Fatalf("get subject status %d", gotSubject.Code)
-		}
-		var body map[string]json.RawMessage
-		if err := json.NewDecoder(gotSubject.Body).Decode(&body); err != nil {
-			t.Fatal(err)
-		}
-		var raw map[string]any
-		json.Unmarshal(body["subject"], &raw)
-		if _, ok := raw["thoughts"]; ok {
-			t.Fatal("subject response embeds thoughts")
-		}
+		testutils.AssertCorrect(t, body.Subject.SubjectID, int64(7))
+		testutils.AssertCorrect(t, body.Subject.SubjectName, "coding")
 	})
 
-	t.Run("does not register nested thought routes", func(t *testing.T) {
-		server := newServer()
+	t.Run("returns 404 for missing subject", func(t *testing.T) {
+		store := &subjectStoreStub{getSubject: func(context.Context, string, int64) (*data.Subject, error) { return nil, data.ErrRecordNotFound }}
 		response := httptest.NewRecorder()
-		server.routes().ServeHTTP(response, request(http.MethodGet, "/subjects/coding/thoughts", ""))
-		if response.Code != http.StatusNotFound {
-			t.Fatalf("got %d", response.Code)
-		}
+
+		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodGet, "/subjects/99", ""))
+
+		testutils.AssertStatusCode(t, response.Code, http.StatusNotFound)
+	})
+
+	t.Run("returns 404 for invalid subject ID", func(t *testing.T) {
+		response := httptest.NewRecorder()
+
+		newSubjectServer(&subjectStoreStub{}).routes().ServeHTTP(response, subjectRequest(http.MethodGet, "/subjects/not-an-id", ""))
+
+		testutils.AssertStatusCode(t, response.Code, http.StatusNotFound)
+	})
+
+	t.Run("returns 500 when store fails", func(t *testing.T) {
+		store := &subjectStoreStub{getSubject: func(context.Context, string, int64) (*data.Subject, error) { return nil, errors.New("boom") }}
+		response := httptest.NewRecorder()
+
+		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodGet, "/subjects/7", ""))
+
+		testutils.AssertStatusCode(t, response.Code, http.StatusInternalServerError)
 	})
 }
 
-type missingSubjectThoughtStore struct{}
-
-func (missingSubjectThoughtStore) CreateThought(context.Context, *data.Thought) (*data.Thought, error) {
-	return nil, data.ErrRecordNotFound
-}
-
-func (missingSubjectThoughtStore) GetThought(context.Context, string, int64) (*data.Thought, error) {
-	return nil, data.ErrRecordNotFound
-}
-
-func TestApplication_CreateThought(t *testing.T) {
-	t.Run("returns not found for missing subject", func(t *testing.T) {
-		subjectService := subject.NewService(testutils.NewFakeSubjectStore())
-		thoughtService := thought.NewService(missingSubjectThoughtStore{})
-		server := NewApplication(
-			subjectService,
-			thoughtService,
-			config{},
-			zerolog.New(io.Discard),
-		)
+func TestCreateSubjectHandler(t *testing.T) {
+	t.Run("returns 201 with created subject", func(t *testing.T) {
+		store := &subjectStoreStub{createSubject: func(_ context.Context, item *data.Subject) (*data.Subject, error) {
+			created := *item
+			created.SubjectID = 123
+			return &created, nil
+		}}
 		response := httptest.NewRecorder()
-		server.routes().ServeHTTP(response, request(http.MethodPost, "/thoughts", `{"subject_id":99,"thought":"missing"}`))
-		if response.Code != http.StatusNotFound {
-			t.Fatalf("got status %d, want %d", response.Code, http.StatusNotFound)
+
+		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodPost, "/subjects", `{"subject_name":"coding"}`))
+
+		testutils.AssertStatusCode(t, response.Code, http.StatusCreated)
+		testutils.AssertContentType(t, response, jsonContentType)
+		var body struct {
+			Subject subjectResponse `json:"subject"`
 		}
+		if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		testutils.AssertCorrect(t, body.Subject.SubjectID, int64(123))
+		testutils.AssertCorrect(t, body.Subject.SubjectName, "coding")
+	})
+
+	t.Run("returns 400 for malformed JSON", func(t *testing.T) {
+		response := httptest.NewRecorder()
+
+		newSubjectServer(&subjectStoreStub{}).routes().ServeHTTP(response, subjectRequest(http.MethodPost, "/subjects", `{"subject_name":`))
+
+		testutils.AssertStatusCode(t, response.Code, http.StatusBadRequest)
+	})
+
+	t.Run("returns 422 without persisting invalid subject", func(t *testing.T) {
+		store := &subjectStoreStub{}
+		response := httptest.NewRecorder()
+
+		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodPost, "/subjects", `{"subject_name":" "}`))
+
+		testutils.AssertStatusCode(t, response.Code, http.StatusUnprocessableEntity)
+		testutils.AssertCorrect(t, store.createCalls, 0)
+		if !strings.Contains(response.Body.String(), `"subject_name"`) {
+			t.Fatalf("got response body %s", response.Body.String())
+		}
+	})
+
+	t.Run("returns 409 for duplicate subject", func(t *testing.T) {
+		store := &subjectStoreStub{createSubject: func(context.Context, *data.Subject) (*data.Subject, error) { return nil, data.ErrDuplicateRecord }}
+		response := httptest.NewRecorder()
+
+		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodPost, "/subjects", `{"subject_name":"coding"}`))
+
+		testutils.AssertStatusCode(t, response.Code, http.StatusConflict)
+		if !strings.Contains(response.Body.String(), "coding already exists") {
+			t.Fatalf("got response body %s", response.Body.String())
+		}
+	})
+
+	t.Run("returns 500 when store fails", func(t *testing.T) {
+		store := &subjectStoreStub{createSubject: func(context.Context, *data.Subject) (*data.Subject, error) { return nil, errors.New("boom") }}
+		response := httptest.NewRecorder()
+
+		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodPost, "/subjects", `{"subject_name":"coding"}`))
+
+		testutils.AssertStatusCode(t, response.Code, http.StatusInternalServerError)
 	})
 }
