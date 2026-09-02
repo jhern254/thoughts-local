@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev migrate/new migrate/up migrate/down migrate/version
+.PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed migrate/new migrate/up migrate/down migrate/version
 
 help:
 	@echo "Available commands:"
@@ -16,7 +16,8 @@ help:
 	@echo "  make ci           Complete CI verification"
 	@echo "  make hooks        Enable repository Git hooks"
 	@echo "  make run          Start the API without applying migrations"
-	@echo "  make dev          Apply local migrations, then start the API"
+	@echo "  make dev          Migrate, seed, then start the development API"
+	@echo "  make dev/seed     Apply migrations and seed the development user"
 	@echo "  make migrate/new  Create a migration (name=<description>)"
 	@echo "  make migrate/up   Apply all pending migrations"
 	@echo "  make migrate/down Roll back one migration"
@@ -88,8 +89,11 @@ migrate/down:
 migrate/version:
 	migrate -path=./migrations -database="$(MIGRATE_DSN)" version
 
+dev/seed: migrate/up
+	sqlite3 "$(DB_PATH)" "INSERT INTO users (user_id) VALUES ('test-user') ON CONFLICT (user_id) DO NOTHING;"
+
 run:
 	go run ./cmd/api -db-dsn "$(APP_DSN)"
 
-dev: migrate/up
+dev: dev/seed
 	go run ./cmd/api -db-dsn "$(APP_DSN)"
