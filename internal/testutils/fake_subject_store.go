@@ -8,7 +8,7 @@ import (
 
 type FakeSubjectStore struct {
 	subjects map[int64]data.Subject
-	nextID   int64
+	lastID   int64
 }
 
 func NewFakeSubjectStore() *FakeSubjectStore {
@@ -19,9 +19,9 @@ func (s *FakeSubjectStore) CreateSubject(ctx context.Context, subject *data.Subj
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	s.nextID++
+	s.lastID++
 	created := *subject
-	created.SubjectID = s.nextID
+	created.SubjectID = s.lastID
 	s.subjects[created.SubjectID] = created
 	return &created, nil
 }

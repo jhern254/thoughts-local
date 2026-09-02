@@ -8,7 +8,7 @@ import (
 
 type FakeThoughtStore struct {
 	thoughts map[int64]data.Thought
-	nextID   int64
+	lastID   int64
 }
 
 func NewFakeThoughtStore() *FakeThoughtStore {
@@ -19,9 +19,9 @@ func (s *FakeThoughtStore) CreateThought(ctx context.Context, thought *data.Thou
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	s.nextID++
+	s.lastID++
 	created := *thought
-	created.ThoughtID = s.nextID
+	created.ThoughtID = s.lastID
 	s.thoughts[created.ThoughtID] = created
 	return &created, nil
 }
