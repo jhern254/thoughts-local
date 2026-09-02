@@ -52,15 +52,14 @@ func TestShowThoughtHandler(t *testing.T) {
 	t.Run("returns 200 with thought", func(t *testing.T) {
 		now := time.Date(2026, time.August, 1, 12, 0, 0, 0, time.UTC)
 		subjectID := int64(3)
-		store := &thoughtStoreStub{getThought: func(_ context.Context, userID string, thoughtID int64) (*data.Thought, error) {
-			if userID != "test-user" || thoughtID != 7 {
-				t.Fatalf("got user %q and thought ID %d", userID, thoughtID)
-			}
-			return &data.Thought{ThoughtID: 7, UserID: userID, SubjectID: &subjectID, Thought: "learn Go", Version: 1, ObservedAt: now, CreatedAt: now, UpdatedAt: now}, nil
-		}}
+		store := testutils.NewFakeThoughtStore()
+		created, err := store.CreateThought(context.Background(), &data.Thought{UserID: "test-user", SubjectID: &subjectID, Thought: "learn Go", Version: 1, ObservedAt: now, CreatedAt: now, UpdatedAt: now})
+		if err != nil {
+			t.Fatal(err)
+		}
 		response := httptest.NewRecorder()
 
-		newThoughtServer(store).routes().ServeHTTP(response, thoughtRequest(http.MethodGet, "/thoughts/7", ""))
+		newThoughtServer(store).routes().ServeHTTP(response, thoughtRequest(http.MethodGet, "/thoughts/1", ""))
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusOK)
 		testutils.AssertContentType(t, response, jsonContentType)
@@ -70,13 +69,13 @@ func TestShowThoughtHandler(t *testing.T) {
 		if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		testutils.AssertCorrect(t, body.Thought.ThoughtID, int64(7))
+		testutils.AssertCorrect(t, body.Thought.ThoughtID, created.ThoughtID)
 		testutils.AssertCorrect(t, body.Thought.Thought, "learn Go")
 		testutils.AssertCorrect(t, *body.Thought.SubjectID, subjectID)
 	})
 
 	t.Run("returns 404 for missing thought", func(t *testing.T) {
-		store := &thoughtStoreStub{getThought: func(context.Context, string, int64) (*data.Thought, error) { return nil, data.ErrRecordNotFound }}
+		store := testutils.NewFakeThoughtStore()
 		response := httptest.NewRecorder()
 
 		newThoughtServer(store).routes().ServeHTTP(response, thoughtRequest(http.MethodGet, "/thoughts/99", ""))
@@ -87,7 +86,7 @@ func TestShowThoughtHandler(t *testing.T) {
 	t.Run("returns 404 for invalid thought ID", func(t *testing.T) {
 		response := httptest.NewRecorder()
 
-		newThoughtServer(&thoughtStoreStub{}).routes().ServeHTTP(response, thoughtRequest(http.MethodGet, "/thoughts/not-an-id", ""))
+		newThoughtServer(testutils.NewFakeThoughtStore()).routes().ServeHTTP(response, thoughtRequest(http.MethodGet, "/thoughts/not-an-id", ""))
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusNotFound)
 	})
@@ -104,11 +103,7 @@ func TestShowThoughtHandler(t *testing.T) {
 
 func TestCreateThoughtHandler(t *testing.T) {
 	t.Run("returns 201 with created thought", func(t *testing.T) {
-		store := &thoughtStoreStub{createThought: func(_ context.Context, item *data.Thought) (*data.Thought, error) {
-			created := *item
-			created.ThoughtID = 123
-			return &created, nil
-		}}
+		store := testutils.NewFakeThoughtStore()
 		response := httptest.NewRecorder()
 
 		newThoughtServer(store).routes().ServeHTTP(response, thoughtRequest(http.MethodPost, "/thoughts", `{"subject_id":3,"thought":"learn Go","observed_at":"2026-08-01T12:00:00Z"}`))
@@ -121,7 +116,7 @@ func TestCreateThoughtHandler(t *testing.T) {
 		if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		testutils.AssertCorrect(t, body.Thought.ThoughtID, int64(123))
+		testutils.AssertCorrect(t, body.Thought.ThoughtID, int64(1))
 		testutils.AssertCorrect(t, body.Thought.Thought, "learn Go")
 		testutils.AssertCorrect(t, body.Thought.Version, int64(1))
 		testutils.AssertCorrect(t, body.Thought.ObservedAt, "2026-08-01T12:00:00Z")
@@ -130,7 +125,7 @@ func TestCreateThoughtHandler(t *testing.T) {
 	t.Run("returns 400 for malformed JSON", func(t *testing.T) {
 		response := httptest.NewRecorder()
 
-		newThoughtServer(&thoughtStoreStub{}).routes().ServeHTTP(response, thoughtRequest(http.MethodPost, "/thoughts", `{"thought":`))
+		newThoughtServer(testutils.NewFakeThoughtStore()).routes().ServeHTTP(response, thoughtRequest(http.MethodPost, "/thoughts", `{"thought":`))
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusBadRequest)
 	})
@@ -138,7 +133,7 @@ func TestCreateThoughtHandler(t *testing.T) {
 	t.Run("returns 400 for invalid observed at", func(t *testing.T) {
 		response := httptest.NewRecorder()
 
-		newThoughtServer(&thoughtStoreStub{}).routes().ServeHTTP(response, thoughtRequest(http.MethodPost, "/thoughts", `{"thought":"learn Go","observed_at":"yesterday"}`))
+		newThoughtServer(testutils.NewFakeThoughtStore()).routes().ServeHTTP(response, thoughtRequest(http.MethodPost, "/thoughts", `{"thought":"learn Go","observed_at":"yesterday"}`))
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusBadRequest)
 	})
