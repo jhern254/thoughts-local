@@ -15,8 +15,8 @@ type FileSystemStore struct {
 }
 
 type jsonData struct {
-	NextSubjectID int64     `json:"next_subject_id"`
-	NextThoughtID int64     `json:"next_thought_id"`
+	LastSubjectID int64     `json:"last_subject_id"`
+	LastThoughtID int64     `json:"last_thought_id"`
 	Subjects      []Subject `json:"subjects"`
 	Thoughts      []Thought `json:"thoughts"`
 }
@@ -62,9 +62,9 @@ func (s *FileSystemStore) CreateSubject(ctx context.Context, subject *Subject) (
 			return nil, ErrDuplicateRecord
 		}
 	}
-	s.data.NextSubjectID++
+	s.data.LastSubjectID++
 	stored := *subject
-	stored.SubjectID = s.data.NextSubjectID
+	stored.SubjectID = s.data.LastSubjectID
 	s.data.Subjects = append(s.data.Subjects, stored)
 	if err := s.persist(); err != nil {
 		return nil, err
@@ -105,9 +105,9 @@ func (s *FileSystemStore) CreateThought(ctx context.Context, thought *Thought) (
 			return nil, ErrRecordNotFound
 		}
 	}
-	s.data.NextThoughtID++
+	s.data.LastThoughtID++
 	stored := *thought
-	stored.ThoughtID = s.data.NextThoughtID
+	stored.ThoughtID = s.data.LastThoughtID
 	s.data.Thoughts = append(s.data.Thoughts, stored)
 	if err := s.persist(); err != nil {
 		return nil, err
