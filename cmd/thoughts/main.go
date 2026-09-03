@@ -7,8 +7,9 @@ import (
 )
 
 func main() {
-	if err := newCLI(os.Stdout, openSubjectCreator).Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	app := newApplication(os.Stdout, os.Stderr)
+	if err := newCLI(app).Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintln(app.errOut, err)
 		os.Exit(1)
 	}
 }
