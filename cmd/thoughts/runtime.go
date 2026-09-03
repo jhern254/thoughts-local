@@ -2,91 +2,59 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"io"
-	"strings"
 
+	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/subject"
-	"github.com/jhern254/go-thoughts/internal/user"
-	_ "modernc.org/sqlite"
 )
 
+type runtime interface {
+	LocalUser() *data.User
+	Subjects() *subject.Service
+	Close() error
+}
+
 type application struct {
-	db       *sql.DB
+	runtime  runtime
 	subjects SubjectService
 	userID   string
 	out      io.Writer
 	errOut   io.Writer
 
-	openDatabase    func(context.Context, string) (*sql.DB, error)
-	ensureLocalUser func(context.Context, *sql.DB) (*data.User, error)
+	openRuntime func(context.Context, string) (runtime, error)
 }
 
 func newApplication(out, errOut io.Writer) *application {
 	return &application{
-		out:             out,
-		errOut:          errOut,
-		openDatabase:    openSQLite,
-		ensureLocalUser: ensureLocalUser,
+		out:    out,
+		errOut: errOut,
+		openRuntime: func(ctx context.Context, dsn string) (runtime, error) {
+			return appcore.Open(ctx, dsn)
+		},
 	}
 }
 
 func (app *application) open(ctx context.Context, dsn string) error {
-	db, err := app.openDatabase(ctx, dsn)
+	runtime, err := app.openRuntime(ctx, dsn)
 	if err != nil {
-		return err
-	}
-	localUser, err := app.ensureLocalUser(ctx, db)
-	if err != nil {
-		if closeErr := db.Close(); closeErr != nil {
-			return errors.Join(err, closeErr)
-		}
 		return err
 	}
 
-	app.db = db
-	app.subjects = subject.NewService(data.NewSQLiteSubjectStore(db))
-	app.userID = localUser.UserID
+	app.runtime = runtime
+	app.subjects = runtime.Subjects()
+	app.userID = runtime.LocalUser().UserID
 	return nil
 }
 
-func ensureLocalUser(ctx context.Context, db *sql.DB) (*data.User, error) {
-	return user.NewService(data.NewSQLiteUserStore(db)).EnsureLocalUser(ctx)
-}
-
 func (app *application) close() error {
-	if app.db == nil {
+	if app.runtime == nil {
 		return nil
 	}
 
-	err := app.db.Close()
-	app.db = nil
+	err := app.runtime.Close()
+	app.runtime = nil
 	app.subjects = nil
 	app.userID = ""
 	return err
-}
-
-func openSQLite(ctx context.Context, dsn string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", sqliteDSNWithForeignKeys(dsn))
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	if pingErr := db.PingContext(ctx); pingErr != nil {
-		if closeErr := db.Close(); closeErr != nil {
-			return nil, errors.Join(pingErr, closeErr)
-		}
-		return nil, pingErr
-	}
-	return db, nil
-}
-
-func sqliteDSNWithForeignKeys(dsn string) string {
-	separator := "?"
-	if strings.Contains(dsn, "?") {
-		separator = "&"
-	}
-	return dsn + separator + "_pragma=foreign_keys(1)"
 }

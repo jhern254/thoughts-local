@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 
+	appcore "github.com/jhern254/go-thoughts/internal/application"
 	cli "github.com/urfave/cli/v3"
 )
 
-const defaultSQLiteDSN = "file:data/thoughts.db"
+const defaultSQLiteDSN = appcore.DefaultSQLiteDSN
 
 func newCLI(app *application) *cli.Command {
 	return &cli.Command{
