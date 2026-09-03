@@ -443,5 +443,9 @@ Less useful:
 "error case"
 "works"
 
+### Integration tests
+
+Integration tests must use the real migrated SQLite database and be organized as independent, behavior-focused subtests. Each unrelated scenario should start with a fresh temporary database so failures remain isolated. Prefer `Test<Feature>Workflow_<Infrastructure>` with descriptive `t.Run("<observable behavior>")` cases, and test database-specific behavior such as constraints, foreign keys, ownership, uniqueness, and persistence against SQLite rather than reproducing it in fakes.
+
 
 When uncertain, choose the simplest implementation that preserves the architecture.
