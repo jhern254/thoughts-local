@@ -5,6 +5,7 @@ go 1.24.3
 require (
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/rs/zerolog v1.34.0
+	github.com/urfave/cli/v3 v3.11.0
 	modernc.org/sqlite v1.39.0
 )
 
