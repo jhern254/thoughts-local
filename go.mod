@@ -1,6 +1,6 @@
 module github.com/jhern254/go-thoughts
 
-go 1.24.3
+go 1.25.14
 
 require (
 	github.com/google/uuid v1.6.0
