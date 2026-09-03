@@ -174,6 +174,33 @@ func TestMigrations_ThoughtSubjectOwnership(t *testing.T) {
 	})
 }
 
+func TestMigrations_UserVersion(t *testing.T) {
+	t.Run("defaults version to one", func(t *testing.T) {
+		db := openMigratedDatabase(t)
+
+		if _, err := db.Exec("INSERT INTO users (user_id) VALUES ('user-1')"); err != nil {
+			t.Fatal(err)
+		}
+		var version int64
+		if err := db.QueryRow("SELECT version FROM users WHERE user_id = 'user-1'").Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		if version != 1 {
+			t.Fatalf("got version %d, want 1", version)
+		}
+	})
+
+	for _, version := range []int64{0, -1} {
+		t.Run("rejects non-positive version", func(t *testing.T) {
+			db := openMigratedDatabase(t)
+
+			if _, err := db.Exec("INSERT INTO users (user_id, version) VALUES ('user-1', ?)", version); err == nil {
+				t.Fatalf("expected version %d to be rejected", version)
+			}
+		})
+	}
+}
+
 func TestMigrations_Down(t *testing.T) {
 	db := openMigratedDatabase(t)
 
