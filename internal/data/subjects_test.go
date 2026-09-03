@@ -7,12 +7,12 @@ import (
 	"github.com/jhern254/go-thoughts/internal/validator"
 )
 
-func TestValidateSubjectCreate(t *testing.T) {
+func TestValidateSubject(t *testing.T) {
 	t.Run("does not require subject ID", func(t *testing.T) {
 		subject := &Subject{UserID: "test-user", SubjectName: "coding"}
 		v := validator.NewValidator()
 
-		ValidateSubjectCreate(v, subject)
+		ValidateSubject(v, subject)
 
 		if !v.Valid() {
 			t.Fatalf("expected valid subject creation input, got errors: %v", v.Errors)
@@ -23,7 +23,7 @@ func TestValidateSubjectCreate(t *testing.T) {
 		subject := &Subject{UserID: "test-user", SubjectName: strings.Repeat("界", 255)}
 		v := validator.NewValidator()
 
-		ValidateSubjectCreate(v, subject)
+		ValidateSubject(v, subject)
 
 		if !v.Valid() {
 			t.Fatalf("expected valid subject creation input, got errors: %v", v.Errors)
@@ -34,7 +34,7 @@ func TestValidateSubjectCreate(t *testing.T) {
 		subject := &Subject{UserID: "test-user", SubjectName: " " + strings.Repeat("a", 256) + " "}
 		v := validator.NewValidator()
 
-		ValidateSubjectCreate(v, subject)
+		ValidateSubject(v, subject)
 
 		if _, ok := v.Errors["subject_name"]; !ok {
 			t.Fatalf("expected subject_name error, got %v", v.Errors)
@@ -46,7 +46,7 @@ func TestValidateSubjectCreate(t *testing.T) {
 		subject := &Subject{UserID: "test-user", SubjectName: name}
 		v := validator.NewValidator()
 
-		ValidateSubjectCreate(v, subject)
+		ValidateSubject(v, subject)
 
 		if !v.Valid() {
 			t.Fatalf("expected valid subject creation input, got errors: %v", v.Errors)
