@@ -9,6 +9,7 @@ import (
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/user"
 	_ "modernc.org/sqlite"
 )
 
@@ -30,15 +31,22 @@ func newApplication(out, errOut io.Writer) *application {
 	}
 }
 
-func (app *application) open(ctx context.Context, dsn, userID string) error {
+func (app *application) open(ctx context.Context, dsn string) error {
 	db, err := app.openDatabase(ctx, dsn)
 	if err != nil {
+		return err
+	}
+	localUser, err := user.NewService(data.NewSQLiteUserStore(db)).EnsureLocalUser(ctx)
+	if err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			return errors.Join(err, closeErr)
+		}
 		return err
 	}
 
 	app.db = db
 	app.subjects = subject.NewService(data.NewSQLiteSubjectStore(db))
-	app.userID = userID
+	app.userID = localUser.UserID
 	return nil
 }
 
@@ -50,6 +58,7 @@ func (app *application) close() error {
 	err := app.db.Close()
 	app.db = nil
 	app.subjects = nil
+	app.userID = ""
 	return err
 }
 

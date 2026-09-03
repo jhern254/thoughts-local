@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -18,19 +19,19 @@ func TestCLI_DatabaseDSNPrecedence(t *testing.T) {
 	}{
 		{
 			name:    "uses default",
-			args:    []string{"thoughts", "--user-id", "user-1", "subjects", "create", "coding"},
+			args:    []string{"thoughts", "subjects", "create", "coding"},
 			wantDSN: defaultSQLiteDSN,
 		},
 		{
 			name:    "uses environment variable",
 			envDSN:  "file:environment.db",
-			args:    []string{"thoughts", "--user-id", "user-1", "subjects", "create", "coding"},
+			args:    []string{"thoughts", "subjects", "create", "coding"},
 			wantDSN: "file:environment.db",
 		},
 		{
 			name:    "flag overrides environment variable",
 			envDSN:  "file:environment.db",
-			args:    []string{"thoughts", "--user-id", "user-1", "--db-dsn", "file:flag.db", "subjects", "create", "coding"},
+			args:    []string{"thoughts", "--db-dsn", "file:flag.db", "subjects", "create", "coding"},
 			wantDSN: "file:flag.db",
 		},
 	}
@@ -64,6 +65,8 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		db.SetMaxOpenConns(1)
+		applyUsersMigration(t, db)
 		openCalls := 0
 		app := newApplication(io.Discard, io.Discard)
 		app.openDatabase = func(context.Context, string) (*sql.DB, error) {
@@ -72,7 +75,7 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 		}
 
 		err = newCLI(app).Run(context.Background(), []string{
-			"thoughts", "--user-id", "user-1", "subjects", "create",
+			"thoughts", "subjects", "create",
 		})
 
 		if err == nil || !strings.Contains(err.Error(), "exactly one subject name") {
@@ -86,23 +89,53 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("requires user ID", func(t *testing.T) {
+	t.Run("rejects obsolete user ID flag", func(t *testing.T) {
+		openCalls := 0
+		app := newApplication(io.Discard, io.Discard)
+		app.openDatabase = func(context.Context, string) (*sql.DB, error) {
+			openCalls++
+			return nil, errors.New("unexpected database open")
+		}
+
+		err := newCLI(app).Run(context.Background(), []string{"thoughts", "--user-id", "user-1", "subjects", "create", "coding"})
+
+		if err == nil || !strings.Contains(err.Error(), "user-id") {
+			t.Fatalf("got error %v, want unsupported user ID flag error", err)
+		}
+		if openCalls != 0 {
+			t.Fatalf("opened SQLite %d times, want 0", openCalls)
+		}
+	})
+
+	t.Run("closes SQLite after bootstrap failure", func(t *testing.T) {
 		db, err := sql.Open("sqlite", "file::memory:")
 		if err != nil {
 			t.Fatal(err)
 		}
+		db.SetMaxOpenConns(1)
 		app := newApplication(io.Discard, io.Discard)
 		app.openDatabase = func(context.Context, string) (*sql.DB, error) {
 			return db, nil
 		}
 
-		err = newCLI(app).Run(context.Background(), []string{"thoughts", "subjects", "create", "coding"})
+		err = newCLI(app).Run(context.Background(), []string{"thoughts", "subjects", "list"})
 
-		if err == nil || !strings.Contains(err.Error(), "user-id") {
-			t.Fatalf("got error %v, want missing user ID error", err)
+		if err == nil || !strings.Contains(err.Error(), "users") {
+			t.Fatalf("got error %v, want user bootstrap error", err)
 		}
 		if err := db.Ping(); err == nil {
-			t.Fatal("expected SQLite to be closed after command")
+			t.Fatal("expected SQLite to be closed after bootstrap failure")
 		}
 	})
+}
+
+func applyUsersMigration(t *testing.T, db *sql.DB) {
+	t.Helper()
+	migration, err := os.ReadFile("../../migrations/000001_create_users_table.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(migration)); err != nil {
+		t.Fatal(err)
+	}
 }
