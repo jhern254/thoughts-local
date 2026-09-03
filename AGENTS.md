@@ -53,6 +53,48 @@ For small feature pull requests:
 * Add regression tests for bugs before fixing them when practical.
 * Integration tests are critical and should be run often after feature development.
 
+### Layered test structure
+
+Use each test layer for a distinct purpose:
+
+```text
+service unit tests
+    -> local stubs/spies
+    -> isolated business behavior
+
+handler/application tests
+    -> reusable testutils fakes for normal behavior
+    -> local stubs only for controlled failures
+
+SQLite integration tests
+    -> real migrated temporary SQLite DB
+    -> independent behavior-focused subtests
+```
+
+### SQLite integration-test organization
+
+Integration tests verify real component interactions and database behavior, but each observable behavior should remain independently testable.
+
+* Use real SQLite for persistence integration tests and run the real migrations before exercising stores or services.
+* Prefer a fresh temporary migrated database for each independent scenario. Do not share mutable database state between unrelated behaviors.
+* Organize tests as `Test<Feature>Workflow_<Infrastructure>` with `t.Run("<observable behavior>")` subtests. For example:
+
+```go
+func TestSubjectWorkflow_SQLite(t *testing.T) {
+    t.Run("creates and retrieves subject", ...)
+    t.Run("enforces per-user uniqueness", ...)
+    t.Run("deletes subject and unlinks linked thoughts", ...)
+}
+```
+
+* Name subtests after observable behavior, not implementation mechanics.
+* Do not build one giant sequential workflow whose later assertions depend on all earlier mutations.
+* A scenario may contain several operations when they are required to prove one meaningful behavior; keep those related operations together.
+* Test SQLite-specific behavior against real SQLite rather than reproducing it in fakes.
+* Verify important migration constraints, foreign keys, ownership rules, uniqueness, persistence, and delete/update semantics through integration tests.
+* Reopen the database when persistence across connections is the behavior under test.
+* Keep integration tests readable and explicit. Avoid generic harnesses and excessive abstraction.
+
 ## SQLite Principles
 
 * Treat SQLite as a serious persistence layer, not a throwaway dev database.

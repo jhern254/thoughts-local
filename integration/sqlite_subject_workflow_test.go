@@ -15,9 +15,9 @@ import (
 )
 
 func TestSubjectWorkflow_SQLite(t *testing.T) {
-	t.Run("manages subjects while enforcing ownership and uniqueness", func(t *testing.T) {
-		db, dsn := openMigratedSQLite(t)
-		insertUsers(t, db, "user-1", "user-2", "user-3")
+	t.Run("creates and retrieves subject", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "user-1")
 		service := subject.NewService(data.NewSQLiteSubjectStore(db))
 		ctx := context.Background()
 
@@ -31,42 +31,84 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 		if created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() {
 			t.Fatal("expected created subject timestamps")
 		}
-
-		second, err := service.Create(ctx, "user-1", "writing")
-		if err != nil {
-			t.Fatal(err)
-		}
 		got, err := service.Get(ctx, "user-1", created.SubjectID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assertSubjectEqual(t, got, created)
+	})
 
-		if _, err := service.Create(ctx, "user-1", created.SubjectName); !errors.Is(err, data.ErrDuplicateRecord) {
+	t.Run("enforces per-user uniqueness", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "user-1", "user-2")
+		service := subject.NewService(data.NewSQLiteSubjectStore(db))
+		ctx := context.Background()
+
+		created, err := service.Create(ctx, "user-1", "coding")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.Create(ctx, "user-1", "coding"); !errors.Is(err, data.ErrDuplicateRecord) {
 			t.Fatalf("got duplicate error %v, want %v", err, data.ErrDuplicateRecord)
 		}
 
-		other, err := service.Create(ctx, "user-2", created.SubjectName)
+		other, err := service.Create(ctx, "user-2", "coding")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if other.SubjectID == created.SubjectID || other.UserID != "user-2" {
 			t.Fatalf("got other users subject %#v", other)
 		}
+	})
+
+	t.Run("lists subjects for user", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "user-1", "user-2", "user-3")
+		service := subject.NewService(data.NewSQLiteSubjectStore(db))
+		ctx := context.Background()
+
+		first, err := service.Create(ctx, "user-1", "coding")
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := service.Create(ctx, "user-1", "writing")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.Create(ctx, "user-2", "private"); err != nil {
+			t.Fatal(err)
+		}
 
 		listed, err := service.List(ctx, "user-1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(listed) != 2 || listed[0].SubjectID != created.SubjectID || listed[1].SubjectID != second.SubjectID {
+		if len(listed) != 2 || listed[0].SubjectID != first.SubjectID || listed[1].SubjectID != second.SubjectID {
 			t.Fatalf("got subjects %#v", listed)
 		}
+
 		empty, err := service.List(ctx, "user-3")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if empty == nil || len(empty) != 0 {
 			t.Fatalf("got empty subjects %#v", empty)
+		}
+	})
+
+	t.Run("updates subject", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "user-1")
+		service := subject.NewService(data.NewSQLiteSubjectStore(db))
+		ctx := context.Background()
+
+		created, err := service.Create(ctx, "user-1", "coding")
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := service.Create(ctx, "user-1", "writing")
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		updated, err := service.Update(ctx, "user-1", created.SubjectID, "  Go programming  ")
@@ -82,20 +124,69 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 		if _, err := service.Update(ctx, "user-1", created.SubjectID, second.SubjectName); !errors.Is(err, data.ErrDuplicateRecord) {
 			t.Fatalf("got duplicate update error %v, want %v", err, data.ErrDuplicateRecord)
 		}
+	})
+
+	t.Run("prevents cross-user access and mutation", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "user-1", "user-2")
+		service := subject.NewService(data.NewSQLiteSubjectStore(db))
+		ctx := context.Background()
+
+		created, err := service.Create(ctx, "user-1", "coding")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.Get(ctx, "user-2", created.SubjectID); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatalf("got cross-user get error %v, want %v", err, data.ErrRecordNotFound)
+		}
 		if _, err := service.Update(ctx, "user-2", created.SubjectID, "not mine"); !errors.Is(err, data.ErrRecordNotFound) {
 			t.Fatalf("got cross-user update error %v, want %v", err, data.ErrRecordNotFound)
+		}
+		if err := service.Delete(ctx, "user-2", created.SubjectID); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatalf("got cross-user delete error %v, want %v", err, data.ErrRecordNotFound)
+		}
+	})
+
+	t.Run("reports missing records", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "user-1")
+		service := subject.NewService(data.NewSQLiteSubjectStore(db))
+		ctx := context.Background()
+
+		if _, err := service.Get(ctx, "user-1", 99); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatalf("got missing get error %v, want %v", err, data.ErrRecordNotFound)
 		}
 		if _, err := service.Update(ctx, "user-1", 99, "missing"); !errors.Is(err, data.ErrRecordNotFound) {
 			t.Fatalf("got missing update error %v, want %v", err, data.ErrRecordNotFound)
 		}
+		if err := service.Delete(ctx, "user-1", 99); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatalf("got missing delete error %v, want %v", err, data.ErrRecordNotFound)
+		}
+	})
 
+	t.Run("enforces user foreign key", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		service := subject.NewService(data.NewSQLiteSubjectStore(db))
+
+		if _, err := service.Create(context.Background(), "missing-user", "coding"); err == nil {
+			t.Fatal("expected foreign key error for missing user")
+		}
+	})
+
+	t.Run("deletes subject and unlinks linked thoughts", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "user-1")
+		service := subject.NewService(data.NewSQLiteSubjectStore(db))
+		ctx := context.Background()
+
+		created, err := service.Create(ctx, "user-1", "coding")
+		if err != nil {
+			t.Fatal(err)
+		}
 		thoughtService := thought.NewService(data.NewSQLiteThoughtStore(db))
 		linkedThought, err := thoughtService.Create(ctx, "user-1", "keep me", &created.SubjectID, time.Time{})
 		if err != nil {
 			t.Fatal(err)
-		}
-		if err := service.Delete(ctx, "user-2", created.SubjectID); !errors.Is(err, data.ErrRecordNotFound) {
-			t.Fatalf("got cross-user delete error %v, want %v", err, data.ErrRecordNotFound)
 		}
 		if err := service.Delete(ctx, "user-1", created.SubjectID); err != nil {
 			t.Fatal(err)
@@ -110,15 +201,29 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 		if unlinkedThought.SubjectID != nil {
 			t.Fatalf("got linked subject ID %#v after deletion", unlinkedThought.SubjectID)
 		}
+	})
 
-		if _, err := service.Get(ctx, "user-2", second.SubjectID); !errors.Is(err, data.ErrRecordNotFound) {
-			t.Fatalf("got cross-user error %v, want %v", err, data.ErrRecordNotFound)
+	t.Run("persists changes after reopening database", func(t *testing.T) {
+		db, dsn := openMigratedSQLite(t)
+		insertUsers(t, db, "user-1")
+		service := subject.NewService(data.NewSQLiteSubjectStore(db))
+		ctx := context.Background()
+
+		deleted, err := service.Create(ctx, "user-1", "temporary")
+		if err != nil {
+			t.Fatal(err)
 		}
-		if _, err := service.Get(ctx, "user-1", 99); !errors.Is(err, data.ErrRecordNotFound) {
-			t.Fatalf("got missing subject error %v, want %v", err, data.ErrRecordNotFound)
+		persisted, err := service.Create(ctx, "user-1", "writing")
+		if err != nil {
+			t.Fatal(err)
 		}
-		if _, err := service.Create(context.Background(), "missing-user", "coding"); err == nil {
-			t.Fatal("expected foreign key error for missing user")
+		thoughtService := thought.NewService(data.NewSQLiteThoughtStore(db))
+		linkedThought, err := thoughtService.Create(ctx, "user-1", "keep me", &deleted.SubjectID, time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := service.Delete(ctx, "user-1", deleted.SubjectID); err != nil {
+			t.Fatal(err)
 		}
 
 		if err := db.Close(); err != nil {
@@ -126,17 +231,17 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 		}
 		reopened := openSQLite(t, dsn)
 		reopenedService := subject.NewService(data.NewSQLiteSubjectStore(reopened))
-		if _, err := reopenedService.Get(ctx, "user-1", created.SubjectID); !errors.Is(err, data.ErrRecordNotFound) {
+		if _, err := reopenedService.Get(ctx, "user-1", deleted.SubjectID); !errors.Is(err, data.ErrRecordNotFound) {
 			t.Fatalf("got deleted subject error %v, want %v", err, data.ErrRecordNotFound)
 		}
-		persisted, err := reopenedService.List(ctx, "user-1")
+		listed, err := reopenedService.List(ctx, "user-1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(persisted) != 1 {
-			t.Fatalf("got persisted subjects %#v", persisted)
+		if len(listed) != 1 {
+			t.Fatalf("got persisted subjects %#v", listed)
 		}
-		assertSubjectEqual(t, &persisted[0], second)
+		assertSubjectEqual(t, &listed[0], persisted)
 		persistedThought, err := thought.NewService(data.NewSQLiteThoughtStore(reopened)).Get(ctx, "user-1", linkedThought.ThoughtID)
 		if err != nil {
 			t.Fatal(err)
