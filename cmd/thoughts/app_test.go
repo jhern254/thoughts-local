@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"io"
-	"os"
 	"strings"
 	"testing"
+
+	"github.com/jhern254/go-thoughts/internal/data"
 )
 
 func TestCLI_DatabaseDSNPrecedence(t *testing.T) {
@@ -65,13 +66,14 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		db.SetMaxOpenConns(1)
-		applyUsersMigration(t, db)
 		openCalls := 0
 		app := newApplication(io.Discard, io.Discard)
 		app.openDatabase = func(context.Context, string) (*sql.DB, error) {
 			openCalls++
 			return db, nil
+		}
+		app.ensureLocalUser = func(context.Context, *sql.DB) (*data.User, error) {
+			return &data.User{UserID: "local-user"}, nil
 		}
 
 		err = newCLI(app).Run(context.Background(), []string{
@@ -112,30 +114,22 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		db.SetMaxOpenConns(1)
+		want := errors.New("bootstrap failed")
 		app := newApplication(io.Discard, io.Discard)
 		app.openDatabase = func(context.Context, string) (*sql.DB, error) {
 			return db, nil
 		}
+		app.ensureLocalUser = func(context.Context, *sql.DB) (*data.User, error) {
+			return nil, want
+		}
 
 		err = newCLI(app).Run(context.Background(), []string{"thoughts", "subjects", "list"})
 
-		if err == nil || !strings.Contains(err.Error(), "users") {
-			t.Fatalf("got error %v, want user bootstrap error", err)
+		if err != want {
+			t.Fatalf("got error %v, want %v", err, want)
 		}
 		if err := db.Ping(); err == nil {
 			t.Fatal("expected SQLite to be closed after bootstrap failure")
 		}
 	})
-}
-
-func applyUsersMigration(t *testing.T, db *sql.DB) {
-	t.Helper()
-	migration, err := os.ReadFile("../../migrations/000001_create_users_table.up.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(string(migration)); err != nil {
-		t.Fatal(err)
-	}
 }

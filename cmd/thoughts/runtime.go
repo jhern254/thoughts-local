@@ -20,14 +20,16 @@ type application struct {
 	out      io.Writer
 	errOut   io.Writer
 
-	openDatabase func(context.Context, string) (*sql.DB, error)
+	openDatabase    func(context.Context, string) (*sql.DB, error)
+	ensureLocalUser func(context.Context, *sql.DB) (*data.User, error)
 }
 
 func newApplication(out, errOut io.Writer) *application {
 	return &application{
-		out:          out,
-		errOut:       errOut,
-		openDatabase: openSQLite,
+		out:             out,
+		errOut:          errOut,
+		openDatabase:    openSQLite,
+		ensureLocalUser: ensureLocalUser,
 	}
 }
 
@@ -36,7 +38,7 @@ func (app *application) open(ctx context.Context, dsn string) error {
 	if err != nil {
 		return err
 	}
-	localUser, err := user.NewService(data.NewSQLiteUserStore(db)).EnsureLocalUser(ctx)
+	localUser, err := app.ensureLocalUser(ctx, db)
 	if err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			return errors.Join(err, closeErr)
@@ -48,6 +50,10 @@ func (app *application) open(ctx context.Context, dsn string) error {
 	app.subjects = subject.NewService(data.NewSQLiteSubjectStore(db))
 	app.userID = localUser.UserID
 	return nil
+}
+
+func ensureLocalUser(ctx context.Context, db *sql.DB) (*data.User, error) {
+	return user.NewService(data.NewSQLiteUserStore(db)).EnsureLocalUser(ctx)
 }
 
 func (app *application) close() error {
