@@ -2,6 +2,16 @@ package data
 
 import "time"
 
+type User struct {
+	UserID    string
+	Handle    *string
+	AltHandle *string
+	Email     *string
+	Version   int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Subject struct {
 	SubjectID   int64
 	UserID      string

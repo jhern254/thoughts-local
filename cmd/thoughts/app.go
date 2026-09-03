@@ -16,11 +16,6 @@ func newCLI(app *application) *cli.Command {
 		ErrWriter: app.errOut,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:     "user-id",
-				Usage:    "owner of the requested resources",
-				Required: true,
-			},
-			&cli.StringFlag{
 				Name:    "db-dsn",
 				Usage:   "SQLite data source name",
 				Value:   defaultSQLiteDSN,
@@ -32,7 +27,7 @@ func newCLI(app *application) *cli.Command {
 			if dsn == "" {
 				dsn = defaultSQLiteDSN
 			}
-			return ctx, app.open(ctx, dsn, cmd.String("user-id"))
+			return ctx, app.open(ctx, dsn)
 		},
 		After: func(context.Context, *cli.Command) error {
 			return app.close()

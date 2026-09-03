@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
     handle     TEXT    UNIQUE,
     alt_handle TEXT,        
     email      TEXT    UNIQUE,
+    version    INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
     created_at INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     updated_at INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
 

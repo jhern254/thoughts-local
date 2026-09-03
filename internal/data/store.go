@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+type UserStore interface {
+	CreateUser(context.Context, *User) (*User, error)
+	GetUserByHandle(context.Context, string) (*User, error)
+}
+
 type SubjectStore interface {
 	CreateSubject(context.Context, *Subject) (*Subject, error)
 	GetSubject(context.Context, string, int64) (*Subject, error)
