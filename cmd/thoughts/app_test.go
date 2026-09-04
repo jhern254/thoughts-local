@@ -11,21 +11,21 @@ import (
 	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
-type runtimeStub struct {
+type cliRuntimeStub struct {
 	localUser *data.User
 	subjects  *subject.Service
 	close     func() error
 }
 
-func (stub *runtimeStub) LocalUser() *data.User {
+func (stub *cliRuntimeStub) LocalUser() *data.User {
 	return stub.localUser
 }
 
-func (stub *runtimeStub) Subjects() *subject.Service {
+func (stub *cliRuntimeStub) Subjects() *subject.Service {
 	return stub.subjects
 }
 
-func (stub *runtimeStub) Close() error {
+func (stub *cliRuntimeStub) Close() error {
 	if stub.close == nil {
 		return nil
 	}
@@ -64,7 +64,7 @@ func TestCLI_DatabaseDSNPrecedence(t *testing.T) {
 			want := errors.New("stop after resolving DSN")
 			var gotDSN string
 			app := newApplication(io.Discard, io.Discard)
-			app.openRuntime = func(_ context.Context, dsn string) (runtime, error) {
+			app.openRuntime = func(_ context.Context, dsn string) (cliRuntime, error) {
 				gotDSN = dsn
 				return nil, want
 			}
@@ -86,9 +86,9 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 		openCalls := 0
 		closeCalls := 0
 		app := newApplication(io.Discard, io.Discard)
-		app.openRuntime = func(context.Context, string) (runtime, error) {
+		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			openCalls++
-			return &runtimeStub{
+			return &cliRuntimeStub{
 				localUser: &data.User{UserID: "local-user"},
 				close: func() error {
 					closeCalls++
@@ -118,7 +118,7 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 	t.Run("rejects obsolete user ID flag", func(t *testing.T) {
 		openCalls := 0
 		app := newApplication(io.Discard, io.Discard)
-		app.openRuntime = func(context.Context, string) (runtime, error) {
+		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			openCalls++
 			return nil, errors.New("unexpected database open")
 		}
@@ -136,7 +136,7 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 	t.Run("returns runtime open failure", func(t *testing.T) {
 		want := errors.New("bootstrap failed")
 		app := newApplication(io.Discard, io.Discard)
-		app.openRuntime = func(context.Context, string) (runtime, error) {
+		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			return nil, want
 		}
 

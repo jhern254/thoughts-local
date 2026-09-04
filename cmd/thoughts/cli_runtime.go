@@ -9,27 +9,27 @@ import (
 	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
-type runtime interface {
+type cliRuntime interface {
 	LocalUser() *data.User
 	Subjects() *subject.Service
 	Close() error
 }
 
 type application struct {
-	runtime  runtime
+	runtime  cliRuntime
 	subjects SubjectService
 	userID   string
 	out      io.Writer
 	errOut   io.Writer
 
-	openRuntime func(context.Context, string) (runtime, error)
+	openRuntime func(context.Context, string) (cliRuntime, error)
 }
 
 func newApplication(out, errOut io.Writer) *application {
 	return &application{
 		out:    out,
 		errOut: errOut,
-		openRuntime: func(ctx context.Context, dsn string) (runtime, error) {
+		openRuntime: func(ctx context.Context, dsn string) (cliRuntime, error) {
 			return appcore.Open(ctx, dsn)
 		},
 	}
