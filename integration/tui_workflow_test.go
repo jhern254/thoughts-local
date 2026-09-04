@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	appcore "github.com/jhern254/go-thoughts/internal/application"
+	"github.com/jhern254/go-thoughts/internal/tui"
 )
 
 func TestTUIWorkflow_SQLite(t *testing.T) {
@@ -42,6 +45,59 @@ func TestTUIWorkflow_SQLite(t *testing.T) {
 		}
 		if userCount != 1 {
 			t.Fatalf("got %d local users, want 1", userCount)
+		}
+	})
+}
+
+func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
+	t.Run("wires bootstrapped user and Subject service into model", func(t *testing.T) {
+		_, dsn := openMigratedSQLite(t)
+		ctx := context.Background()
+		runtime, err := appcore.Open(ctx, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := runtime.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+
+		model := tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects())
+		if view := model.View().Content; !strings.Contains(view, "Subjects") {
+			t.Fatalf("view %q does not contain Subjects", view)
+		}
+
+		listed, err := runtime.Subjects().List(ctx, runtime.LocalUser().UserID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(listed) != 0 {
+			t.Fatalf("got %d initial subjects, want 0", len(listed))
+		}
+
+		created, err := runtime.Subjects().Create(ctx, runtime.LocalUser().UserID, "coding")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if created.UserID != runtime.LocalUser().UserID {
+			t.Fatalf("got owner %q, want %q", created.UserID, runtime.LocalUser().UserID)
+		}
+
+		listed, err = runtime.Subjects().List(ctx, runtime.LocalUser().UserID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(listed) != 1 || listed[0].SubjectID != created.SubjectID {
+			t.Fatalf("got subjects %#v, want created subject %#v", listed, created)
+		}
+
+		found, err := runtime.Subjects().Get(ctx, runtime.LocalUser().UserID, created.SubjectID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found.SubjectName != "coding" {
+			t.Fatalf("got subject name %q, want coding", found.SubjectName)
 		}
 	})
 }
