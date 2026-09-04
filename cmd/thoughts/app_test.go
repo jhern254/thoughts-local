@@ -2,14 +2,35 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"io"
 	"strings"
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/subject"
 )
+
+type cliRuntimeStub struct {
+	localUser *data.User
+	subjects  *subject.Service
+	close     func() error
+}
+
+func (stub *cliRuntimeStub) LocalUser() *data.User {
+	return stub.localUser
+}
+
+func (stub *cliRuntimeStub) Subjects() *subject.Service {
+	return stub.subjects
+}
+
+func (stub *cliRuntimeStub) Close() error {
+	if stub.close == nil {
+		return nil
+	}
+	return stub.close()
+}
 
 func TestCLI_DatabaseDSNPrecedence(t *testing.T) {
 	tests := []struct {
@@ -43,7 +64,7 @@ func TestCLI_DatabaseDSNPrecedence(t *testing.T) {
 			want := errors.New("stop after resolving DSN")
 			var gotDSN string
 			app := newApplication(io.Discard, io.Discard)
-			app.openDatabase = func(_ context.Context, dsn string) (*sql.DB, error) {
+			app.openRuntime = func(_ context.Context, dsn string) (cliRuntime, error) {
 				gotDSN = dsn
 				return nil, want
 			}
@@ -61,22 +82,22 @@ func TestCLI_DatabaseDSNPrecedence(t *testing.T) {
 }
 
 func TestCLI_RuntimeLifecycle(t *testing.T) {
-	t.Run("opens and closes SQLite once around command", func(t *testing.T) {
-		db, err := sql.Open("sqlite", "file::memory:")
-		if err != nil {
-			t.Fatal(err)
-		}
+	t.Run("opens runtime once and clears dependencies after command", func(t *testing.T) {
 		openCalls := 0
+		closeCalls := 0
 		app := newApplication(io.Discard, io.Discard)
-		app.openDatabase = func(context.Context, string) (*sql.DB, error) {
+		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			openCalls++
-			return db, nil
-		}
-		app.ensureLocalUser = func(context.Context, *sql.DB) (*data.User, error) {
-			return &data.User{UserID: "local-user"}, nil
+			return &cliRuntimeStub{
+				localUser: &data.User{UserID: "local-user"},
+				close: func() error {
+					closeCalls++
+					return nil
+				},
+			}, nil
 		}
 
-		err = newCLI(app).Run(context.Background(), []string{
+		err := newCLI(app).Run(context.Background(), []string{
 			"thoughts", "subjects", "create",
 		})
 
@@ -84,17 +105,20 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 			t.Fatalf("got error %v, want subject name argument error", err)
 		}
 		if openCalls != 1 {
-			t.Fatalf("opened SQLite %d times, want 1", openCalls)
+			t.Fatalf("opened runtime %d times, want 1", openCalls)
 		}
-		if err := db.Ping(); err == nil {
-			t.Fatal("expected SQLite to be closed after command")
+		if closeCalls != 1 {
+			t.Fatalf("closed runtime %d times, want 1", closeCalls)
+		}
+		if app.runtime != nil || app.subjects != nil || app.userID != "" {
+			t.Fatal("runtime dependencies were not cleared after command")
 		}
 	})
 
 	t.Run("rejects obsolete user ID flag", func(t *testing.T) {
 		openCalls := 0
 		app := newApplication(io.Discard, io.Discard)
-		app.openDatabase = func(context.Context, string) (*sql.DB, error) {
+		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			openCalls++
 			return nil, errors.New("unexpected database open")
 		}
@@ -109,27 +133,17 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("closes SQLite after bootstrap failure", func(t *testing.T) {
-		db, err := sql.Open("sqlite", "file::memory:")
-		if err != nil {
-			t.Fatal(err)
-		}
+	t.Run("returns runtime open failure", func(t *testing.T) {
 		want := errors.New("bootstrap failed")
 		app := newApplication(io.Discard, io.Discard)
-		app.openDatabase = func(context.Context, string) (*sql.DB, error) {
-			return db, nil
-		}
-		app.ensureLocalUser = func(context.Context, *sql.DB) (*data.User, error) {
+		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			return nil, want
 		}
 
-		err = newCLI(app).Run(context.Background(), []string{"thoughts", "subjects", "list"})
+		err := newCLI(app).Run(context.Background(), []string{"thoughts", "subjects", "list"})
 
 		if err != want {
 			t.Fatalf("got error %v, want %v", err, want)
-		}
-		if err := db.Ping(); err == nil {
-			t.Fatal("expected SQLite to be closed after bootstrap failure")
 		}
 	})
 }
