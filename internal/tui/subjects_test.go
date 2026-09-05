@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -78,6 +79,9 @@ func TestSubjectModel_List(t *testing.T) {
 			if row.kind != subjectRowRecord {
 				t.Fatalf("got row %d kind %v, want Subject", index+1, row.kind)
 			}
+			if description := row.Description(); description != "" {
+				t.Fatalf("got Subject row description %q, want no description", description)
+			}
 		}
 	})
 
@@ -97,13 +101,14 @@ func TestSubjectModel_List(t *testing.T) {
 func TestSubjectModel_Create(t *testing.T) {
 	t.Run("passes entered name unchanged and displays created subject", func(t *testing.T) {
 		const name = "  learn Go  "
+		createdAt := time.Date(2026, time.January, 2, 15, 4, 5, 0, time.UTC)
 		service := &subjectServiceStub{
 			list: func(context.Context, string) ([]data.Subject, error) { return nil, nil },
 			create: func(_ context.Context, userID, gotName string) (*data.Subject, error) {
 				if userID != "local-user-id" || gotName != name {
 					t.Fatalf("got user ID %q and name %q", userID, gotName)
 				}
-				return &data.Subject{SubjectID: 7, UserID: userID, SubjectName: gotName}, nil
+				return &data.Subject{SubjectID: 7, UserID: userID, SubjectName: gotName, CreatedAt: createdAt}, nil
 			},
 		}
 		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
@@ -114,10 +119,13 @@ func TestSubjectModel_Create(t *testing.T) {
 		if model.screen != screenSubjectDetail || !model.subjectListStale {
 			t.Fatalf("got screen %v and stale=%v, want created detail with stale list", model.screen, model.subjectListStale)
 		}
-		for _, want := range []string{"7", name} {
+		for _, want := range []string{name, "Added: Jan 2, 2026"} {
 			if view := model.View().Content; !strings.Contains(view, want) {
 				t.Fatalf("view %q does not contain %q", view, want)
 			}
+		}
+		if view := model.View().Content; strings.Contains(view, "ID:") {
+			t.Fatalf("view %q contains Subject ID", view)
 		}
 	})
 
@@ -202,6 +210,7 @@ func TestSubjectModel_Create(t *testing.T) {
 
 func TestSubjectModel_Get(t *testing.T) {
 	t.Run("passes bootstrapped local user ID + selected Subject ID for a typed Subject row", func(t *testing.T) {
+		createdAt := time.Date(2025, time.March, 4, 15, 4, 5, 0, time.UTC)
 		service := &subjectServiceStub{
 			list: func(_ context.Context, userID string) ([]data.Subject, error) {
 				return []data.Subject{{SubjectID: 9, UserID: userID, SubjectName: createSubjectLabel}}, nil
@@ -210,7 +219,12 @@ func TestSubjectModel_Get(t *testing.T) {
 				if userID != "local-user-id" || subjectID != 9 {
 					t.Fatalf("got bootstrapped local user ID %q and selected Subject ID %d", userID, subjectID)
 				}
-				return &data.Subject{SubjectID: subjectID, UserID: userID, SubjectName: createSubjectLabel}, nil
+				return &data.Subject{
+					SubjectID:   subjectID,
+					UserID:      userID,
+					SubjectName: createSubjectLabel,
+					CreatedAt:   createdAt,
+				}, nil
 			},
 		}
 		model := openSubjects(t, newSubjectTestModel(service))
@@ -220,6 +234,13 @@ func TestSubjectModel_Get(t *testing.T) {
 
 		if service.createCalls != 0 || service.getCalls != 1 || model.screen != screenSubjectDetail {
 			t.Fatalf("got %d create calls, %d get calls, and screen %v", service.createCalls, service.getCalls, model.screen)
+		}
+		view := model.View().Content
+		if !strings.Contains(view, "Added: Mar 4, 2025") {
+			t.Fatalf("view %q does not contain added date", view)
+		}
+		if strings.Contains(view, "ID:") {
+			t.Fatalf("view %q contains Subject ID", view)
 		}
 	})
 
