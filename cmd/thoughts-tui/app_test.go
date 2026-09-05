@@ -9,15 +9,21 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
 type runtimeStub struct {
 	localUser *data.User
+	subjects  *subject.Service
 	close     func() error
 }
 
 func (stub *runtimeStub) LocalUser() *data.User {
 	return stub.localUser
+}
+
+func (stub *runtimeStub) Subjects() *subject.Service {
+	return stub.subjects
 }
 
 func (stub *runtimeStub) Close() error {

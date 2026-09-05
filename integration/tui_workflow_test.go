@@ -9,6 +9,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
+	appcore "github.com/jhern254/go-thoughts/internal/application"
+	"github.com/jhern254/go-thoughts/internal/tui"
 )
 
 func TestTUIWorkflow_SQLite(t *testing.T) {
@@ -44,6 +48,70 @@ func TestTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got %d local users, want 1", userCount)
 		}
 	})
+}
+
+func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
+	t.Run("creates a Subject through the TUI", func(t *testing.T) {
+		const wantName = "coding"
+
+		db, dsn := openMigratedSQLite(t)
+		ctx := context.Background()
+		runtime, err := appcore.Open(ctx, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := runtime.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+
+		wantUserID := runtime.LocalUser().UserID
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects())
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tuiKey(tea.KeyEnter))
+		for _, value := range wantName {
+			model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: value, Text: string(value)}))
+		}
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+
+		view := model.View().Content
+		for _, want := range []string{"Created subject", wantName} {
+			if !strings.Contains(view, want) {
+				t.Fatalf("view %q does not contain %q", view, want)
+			}
+		}
+
+		var name, userID string
+		if err := db.QueryRow("SELECT subject_name, user_id FROM subjects").Scan(&name, &userID); err != nil {
+			t.Fatal(err)
+		}
+		if name != wantName {
+			t.Fatalf("got persisted Subject name %q, want %q", name, wantName)
+		}
+		if userID != wantUserID {
+			t.Fatalf("got persisted user ID %q, want %q", userID, wantUserID)
+		}
+	})
+}
+
+func runTUIModelCommand(t *testing.T, model tea.Model, message tea.Msg) tea.Model {
+	t.Helper()
+	updated, command := model.Update(message)
+	if command == nil {
+		t.Fatal("got nil command")
+	}
+	updated, _ = updated.Update(command())
+	return updated
+}
+
+func updateTUIModel(model tea.Model, message tea.Msg) tea.Model {
+	updated, _ := model.Update(message)
+	return updated
+}
+
+func tuiKey(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code})
 }
 
 func runTUI(t *testing.T, dsn, input string) (string, string, error) {

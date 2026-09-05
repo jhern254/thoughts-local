@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	cli "github.com/urfave/cli/v3"
 )
@@ -15,6 +16,7 @@ const defaultSQLiteDSN = appcore.DefaultSQLiteDSN
 
 type runtime interface {
 	LocalUser() *data.User
+	Subjects() *subject.Service
 	Close() error
 }
 
@@ -67,7 +69,12 @@ func newTUI(app *application) *cli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, _ *cli.Command) error {
-			return app.runProgram(ctx, tui.NewModel(app.runtime.LocalUser()), app.in, app.out)
+			return app.runProgram(
+				ctx,
+				tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects()),
+				app.in,
+				app.out,
+			)
 		},
 		After: func(context.Context, *cli.Command) error {
 			if app.runtime == nil {
