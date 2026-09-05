@@ -9,7 +9,10 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 )
 
-const createSubjectLabel = "Create subject…"
+const (
+	createSubjectLabel = "Create subject…"
+	subjectDateLayout  = "Jan 2, 2006"
+)
 
 type SubjectService interface {
 	List(ctx context.Context, userID string) ([]data.Subject, error)
@@ -40,7 +43,7 @@ func (row subjectRow) Description() string {
 	if row.kind == subjectRowCreate {
 		return "Add a new subject"
 	}
-	return fmt.Sprintf("Subject %d", row.subject.SubjectID)
+	return ""
 }
 
 func (row subjectRow) FilterValue() string {
@@ -254,9 +257,9 @@ func (m Model) viewSubjectDetail() string {
 		title = "Created subject"
 	}
 	return fmt.Sprintf(
-		"%s\n\nID: %d\nName: %s\n\nEsc: subjects • q: quit",
+		"%s\n\nName: %s\nAdded: %s\n\nEsc: subjects • q: quit",
 		title,
-		m.selectedSubject.SubjectID,
 		m.selectedSubject.SubjectName,
+		m.selectedSubject.CreatedAt.UTC().Format(subjectDateLayout),
 	)
 }
