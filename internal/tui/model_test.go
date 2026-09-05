@@ -30,10 +30,7 @@ func TestModel_View(t *testing.T) {
 
 func TestModel_Update(t *testing.T) {
 	t.Run("selects Subjects entity", func(t *testing.T) {
-		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) {
-			return nil, nil
-		}}
-		model := newTestModel(service)
+		model := newRootTestModel()
 
 		updated, command := model.Update(enterKey())
 		got := updated.(Model)
@@ -47,7 +44,7 @@ func TestModel_Update(t *testing.T) {
 	})
 
 	t.Run("returns from Subjects to entity menu", func(t *testing.T) {
-		model := newTestModel(&subjectServiceStub{})
+		model := newRootTestModel()
 		updated, _ := model.Update(enterKey())
 		model = updated.(Model)
 
@@ -70,13 +67,21 @@ func TestModel_Update(t *testing.T) {
 		{name: "ctrl+c quits", key: tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl})},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			model := newTestModel(&subjectServiceStub{})
+			model := newRootTestModel()
 
 			_, command := model.Update(tt.key)
 
 			assertQuitCommand(t, command)
 		})
 	}
+}
+
+func newRootTestModel() Model {
+	return NewModel(
+		context.Background(),
+		&data.User{UserID: "local-user-id"},
+		&subjectServiceStub{},
+	)
 }
 
 func assertQuitCommand(t *testing.T, command tea.Cmd) {

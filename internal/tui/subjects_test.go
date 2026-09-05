@@ -40,7 +40,7 @@ func TestSubjectModel_List(t *testing.T) {
 		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) {
 			return nil, nil
 		}}
-		model := openSubjects(t, newTestModel(service))
+		model := openSubjects(t, newSubjectTestModel(service))
 
 		rows := model.subjectList.Items()
 
@@ -59,7 +59,7 @@ func TestSubjectModel_List(t *testing.T) {
 				{SubjectID: 2, UserID: userID, SubjectName: createSubjectLabel},
 			}, nil
 		}}
-		model := openSubjects(t, newTestModel(service))
+		model := openSubjects(t, newSubjectTestModel(service))
 
 		rows := model.subjectList.Items()
 
@@ -86,7 +86,7 @@ func TestSubjectModel_List(t *testing.T) {
 		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) {
 			return nil, want
 		}}
-		model := openSubjects(t, newTestModel(service))
+		model := openSubjects(t, newSubjectTestModel(service))
 
 		if view := model.View().Content; !strings.Contains(view, want.Error()) {
 			t.Fatalf("view %q does not contain %q", view, want)
@@ -106,7 +106,7 @@ func TestSubjectModel_Create(t *testing.T) {
 				return &data.Subject{SubjectID: 7, UserID: userID, SubjectName: gotName}, nil
 			},
 		}
-		model := openCreateSubject(t, openSubjects(t, newTestModel(service)))
+		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
 		model.subjectInput.SetValue(name)
 
 		model = runModelCommand(t, model, enterKey())
@@ -127,7 +127,7 @@ func TestSubjectModel_Create(t *testing.T) {
 			list:   func(context.Context, string) ([]data.Subject, error) { return nil, nil },
 			create: func(context.Context, string, string) (*data.Subject, error) { return nil, want },
 		}
-		model := openCreateSubject(t, openSubjects(t, newTestModel(service)))
+		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
 		model.subjectInput.SetValue("invalid")
 
 		model = runModelCommand(t, model, enterKey())
@@ -142,7 +142,7 @@ func TestSubjectModel_Create(t *testing.T) {
 
 	t.Run("treats q as form input", func(t *testing.T) {
 		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }}
-		model := openCreateSubject(t, openSubjects(t, newTestModel(service)))
+		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
 
 		updated, _ := model.Update(runeKey('q'))
 		model = updated.(Model)
@@ -154,7 +154,7 @@ func TestSubjectModel_Create(t *testing.T) {
 
 	t.Run("cancels form without calling service", func(t *testing.T) {
 		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }}
-		model := openCreateSubject(t, openSubjects(t, newTestModel(service)))
+		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
 		model.subjectInput.SetValue("discard me")
 
 		updated, command := model.Update(escapeKey())
@@ -180,7 +180,7 @@ func TestSubjectModel_Create(t *testing.T) {
 				return &data.Subject{SubjectID: 7, UserID: userID, SubjectName: name}, nil
 			},
 		}
-		model := openCreateSubject(t, openSubjects(t, newTestModel(service)))
+		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
 		model.subjectInput.SetValue("coding")
 		model = runModelCommand(t, model, enterKey())
 		if service.listCalls != 1 {
@@ -213,7 +213,7 @@ func TestSubjectModel_Get(t *testing.T) {
 				return &data.Subject{SubjectID: subjectID, UserID: userID, SubjectName: createSubjectLabel}, nil
 			},
 		}
-		model := openSubjects(t, newTestModel(service))
+		model := openSubjects(t, newSubjectTestModel(service))
 		model.subjectList.Select(1)
 
 		model = runModelCommand(t, model, enterKey())
@@ -231,7 +231,7 @@ func TestSubjectModel_Get(t *testing.T) {
 			},
 			get: func(context.Context, string, int64) (*data.Subject, error) { return nil, want },
 		}
-		model := openSubjects(t, newTestModel(service))
+		model := openSubjects(t, newSubjectTestModel(service))
 		model.subjectList.Select(1)
 
 		model = runModelCommand(t, model, enterKey())
@@ -253,7 +253,7 @@ func TestSubjectModel_Get(t *testing.T) {
 				return &data.Subject{SubjectID: subjectID, UserID: userID, SubjectName: "coding"}, nil
 			},
 		}
-		model := openSubjects(t, newTestModel(service))
+		model := openSubjects(t, newSubjectTestModel(service))
 		model.subjectList.Select(1)
 		model = runModelCommand(t, model, enterKey())
 
@@ -269,7 +269,7 @@ func TestSubjectModel_Get(t *testing.T) {
 	})
 }
 
-func newTestModel(service SubjectService) Model {
+func newSubjectTestModel(service SubjectService) Model {
 	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service)
 }
 
@@ -297,16 +297,4 @@ func applyCommand(t *testing.T, model Model, command tea.Cmd) Model {
 	t.Helper()
 	updated, _ := model.Update(command())
 	return updated.(Model)
-}
-
-func enterKey() tea.KeyPressMsg {
-	return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
-}
-
-func escapeKey() tea.KeyPressMsg {
-	return tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape})
-}
-
-func runeKey(value rune) tea.KeyPressMsg {
-	return tea.KeyPressMsg(tea.Key{Code: value, Text: string(value)})
 }
