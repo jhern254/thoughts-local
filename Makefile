@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed migrate/new migrate/up migrate/down migrate/version
+.PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed tui tui/demo tui/build migrate/new migrate/up migrate/down migrate/version
 
 help:
 	@echo "Available commands:"
@@ -18,6 +18,9 @@ help:
 	@echo "  make run          Start the API without applying migrations"
 	@echo "  make dev          Migrate, seed, then start the development API"
 	@echo "  make dev/seed     Apply migrations and seed the development user"
+	@echo "  make tui          Migrate, build, and start the persistent TUI"
+	@echo "  make tui/demo     Start the TUI with a disposable migrated database"
+	@echo "  make tui/build    Build the TUI binary"
 	@echo "  make migrate/new  Create a migration (name=<description>)"
 	@echo "  make migrate/up   Apply all pending migrations"
 	@echo "  make migrate/down Roll back one migration"
@@ -68,11 +71,12 @@ hooks:
 	@echo "Git hooks enabled from .githooks/"
 
 clean:
-	rm -f coverage.out
+	rm -f coverage.out "$(TUI_BIN)"
 
 DB_PATH ?= ./data/thoughts.db
 MIGRATE_DSN ?= sqlite://$(DB_PATH)
 APP_DSN ?= file:$(DB_PATH)
+TUI_BIN ?= ./bin/thoughts-tui
 DB_DIR := $(dir $(DB_PATH))
 
 migrate/new:
@@ -97,3 +101,20 @@ run:
 
 dev: dev/seed
 	go run ./cmd/api -db-dsn "$(APP_DSN)"
+
+tui/build:
+	@mkdir -p "$(dir $(TUI_BIN))"
+	go build -o "$(TUI_BIN)" ./cmd/thoughts-tui
+
+tui: migrate/up tui/build
+	"$(TUI_BIN)" --db-dsn "$(APP_DSN)"
+
+tui/demo: tui/build
+	@set -eu; \
+	demo_dir="$$(mktemp -d)"; \
+	cleanup() { trap - 0 1 2 15; rm -rf "$$demo_dir"; }; \
+	trap cleanup 0 1 2 15; \
+	demo_db="$$demo_dir/thoughts.db"; \
+	echo "Starting disposable TUI with $$demo_db (deleted on exit)."; \
+	migrate -path=./migrations -database="sqlite://$$demo_db" up; \
+	"$(TUI_BIN)" --db-dsn "file:$$demo_db"
