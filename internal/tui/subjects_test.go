@@ -63,6 +63,9 @@ func TestSubjectModel_List(t *testing.T) {
 
 		rows := model.subjectList.Items()
 
+		if service.listCalls != 1 {
+			t.Fatalf("got %d List calls, want 1", service.listCalls)
+		}
 		if len(rows) != 3 {
 			t.Fatalf("got %d rows, want 3", len(rows))
 		}
@@ -119,7 +122,7 @@ func TestSubjectModel_Create(t *testing.T) {
 	})
 
 	t.Run("preserves input and displays service error", func(t *testing.T) {
-		want := errors.New("subject validation failed")
+		want := errors.New("create failed")
 		service := &subjectServiceStub{
 			list:   func(context.Context, string) ([]data.Subject, error) { return nil, nil },
 			create: func(context.Context, string, string) (*data.Subject, error) { return nil, want },
@@ -198,14 +201,14 @@ func TestSubjectModel_Create(t *testing.T) {
 }
 
 func TestSubjectModel_Get(t *testing.T) {
-	t.Run("gets selected Subject row even when its name matches Create label", func(t *testing.T) {
+	t.Run("passes bootstrapped local user ID + selected Subject ID for a typed Subject row", func(t *testing.T) {
 		service := &subjectServiceStub{
 			list: func(_ context.Context, userID string) ([]data.Subject, error) {
 				return []data.Subject{{SubjectID: 9, UserID: userID, SubjectName: createSubjectLabel}}, nil
 			},
 			get: func(_ context.Context, userID string, subjectID int64) (*data.Subject, error) {
 				if userID != "local-user-id" || subjectID != 9 {
-					t.Fatalf("got user ID %q and subject ID %d", userID, subjectID)
+					t.Fatalf("got bootstrapped local user ID %q and selected Subject ID %d", userID, subjectID)
 				}
 				return &data.Subject{SubjectID: subjectID, UserID: userID, SubjectName: createSubjectLabel}, nil
 			},

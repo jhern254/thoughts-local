@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/tui"
 )
@@ -50,8 +51,8 @@ func TestTUIWorkflow_SQLite(t *testing.T) {
 }
 
 func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
-	t.Run("wires bootstrapped user and Subject service into model", func(t *testing.T) {
-		_, dsn := openMigratedSQLite(t)
+	t.Run("creates a Subject through the TUI", func(t *testing.T) {
+		db, dsn := openMigratedSQLite(t)
 		ctx := context.Background()
 		runtime, err := appcore.Open(ctx, dsn)
 		if err != nil {
@@ -63,43 +64,48 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 			}
 		})
 
-		model := tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects())
-		if view := model.View().Content; !strings.Contains(view, "Subjects") {
-			t.Fatalf("view %q does not contain Subjects", view)
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects())
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tuiKey(tea.KeyEnter))
+		for _, value := range "coding" {
+			model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: value, Text: string(value)}))
+		}
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+
+		view := model.View().Content
+		for _, want := range []string{"Created subject", "coding"} {
+			if !strings.Contains(view, want) {
+				t.Fatalf("view %q does not contain %q", view, want)
+			}
 		}
 
-		listed, err := runtime.Subjects().List(ctx, runtime.LocalUser().UserID)
-		if err != nil {
+		var name, userID string
+		if err := db.QueryRow("SELECT subject_name, user_id FROM subjects").Scan(&name, &userID); err != nil {
 			t.Fatal(err)
 		}
-		if len(listed) != 0 {
-			t.Fatalf("got %d initial subjects, want 0", len(listed))
-		}
-
-		created, err := runtime.Subjects().Create(ctx, runtime.LocalUser().UserID, "coding")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if created.UserID != runtime.LocalUser().UserID {
-			t.Fatalf("got owner %q, want %q", created.UserID, runtime.LocalUser().UserID)
-		}
-
-		listed, err = runtime.Subjects().List(ctx, runtime.LocalUser().UserID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(listed) != 1 || listed[0].SubjectID != created.SubjectID {
-			t.Fatalf("got subjects %#v, want created subject %#v", listed, created)
-		}
-
-		found, err := runtime.Subjects().Get(ctx, runtime.LocalUser().UserID, created.SubjectID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if found.SubjectName != "coding" {
-			t.Fatalf("got subject name %q, want coding", found.SubjectName)
+		if name != "coding" || userID != runtime.LocalUser().UserID {
+			t.Fatalf("got persisted Subject name %q and user ID %q", name, userID)
 		}
 	})
+}
+
+func runTUIModelCommand(t *testing.T, model tea.Model, message tea.Msg) tea.Model {
+	t.Helper()
+	updated, command := model.Update(message)
+	if command == nil {
+		t.Fatal("got nil command")
+	}
+	updated, _ = updated.Update(command())
+	return updated
+}
+
+func updateTUIModel(model tea.Model, message tea.Msg) tea.Model {
+	updated, _ := model.Update(message)
+	return updated
+}
+
+func tuiKey(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code})
 }
 
 func runTUI(t *testing.T, dsn, input string) (string, string, error) {

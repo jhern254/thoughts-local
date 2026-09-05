@@ -47,10 +47,9 @@ func TestModel_Update(t *testing.T) {
 	})
 
 	t.Run("returns from Subjects to entity menu", func(t *testing.T) {
-		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) {
-			return nil, nil
-		}}
-		model := openSubjects(t, newTestModel(service))
+		model := newTestModel(&subjectServiceStub{})
+		updated, _ := model.Update(enterKey())
+		model = updated.(Model)
 
 		updated, command := model.Update(escapeKey())
 		got := updated.(Model)
