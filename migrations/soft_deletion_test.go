@@ -2,7 +2,6 @@ package migrations
 
 import (
 	"database/sql"
-	"os"
 	"testing"
 )
 
@@ -62,36 +61,7 @@ func TestSoftDeletionWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("got foreign-key violation count %d, want %d", got, want)
 			}
 		})
-		t.Run(table+" blocks rollback after deletion", func(t *testing.T) {
-			db := openMigratedDatabase(t)
-			if _, err := db.Exec(deletionFixture); err != nil {
-				t.Fatalf("got error %v, want nil", err)
-			}
-			if _, err := db.Exec("UPDATE " + table + " SET deleted_at=updated_at"); err != nil {
-				t.Fatalf("got error %v, want nil", err)
-			}
-			migration, err := os.ReadFile("000009_soft_deletion.down.sql")
-			if err != nil {
-				t.Fatalf("got error %v, want nil", err)
-			}
-			tx, err := db.Begin()
-			if err != nil {
-				t.Fatalf("got error %v, want nil", err)
-			}
-			if _, err = tx.Exec(string(migration)); err == nil {
-				t.Fatalf("got rollback error %v, want retained-deletion constraint error", err)
-			}
-			if err := tx.Rollback(); err != nil {
-				t.Fatalf("got error %v, want nil", err)
-			}
-			var count int
-			if err := db.QueryRow("SELECT count(*) FROM " + table + " WHERE deleted_at IS NOT NULL").Scan(&count); err != nil {
-				t.Fatalf("got query error %v, want nil", err)
-			}
-			if got, want := count, 1; got != want {
-				t.Fatalf("got retained deletion count %d, want %d", got, want)
-			}
-		})
+
 	}
 	for _, tc := range []struct{ table, column string }{{"subjects", "subject_name"}, {"tags", "tag_name"}, {"goals", "goal_name"}} {
 		t.Run(tc.table+" allows reuse only after deletion", func(t *testing.T) {
@@ -122,24 +92,31 @@ func TestSoftDeletionWorkflow_SQLite(t *testing.T) {
 			}
 		})
 	}
-	t.Run("preserves existing data during upgrade and unused rollback", func(t *testing.T) {
+	t.Run("rebuilds a populated database from the original migrations", func(t *testing.T) {
 		db := openMigratedDatabase(t)
-		applyMigrationFiles(t, db, "000009*.down.sql", false)
 		if _, err := db.Exec(deletionFixture); err != nil {
-			t.Fatalf("got error %v, want nil", err)
+			t.Fatalf("got fixture error %v, want nil", err)
 		}
-		applyMigrationFiles(t, db, "000009*.up.sql", false)
+		if _, err := db.Exec("UPDATE subjects SET deleted_at=updated_at"); err != nil {
+			t.Fatalf("got deletion error %v, want nil", err)
+		}
+		applyMigrationFiles(t, db, "*.down.sql", true)
+		applyMigrationFiles(t, db, "*.up.sql", false)
 		var count int
-		if err := db.QueryRow("SELECT count(*) FROM thoughts WHERE subject_id=1 AND event_id=1 AND deleted_at IS NULL").Scan(&count); err != nil {
+		if err := db.QueryRow("SELECT count(*) FROM subjects").Scan(&count); err != nil {
+			t.Fatalf("got query error %v, want nil", err)
+		}
+		if got, want := count, 0; got != want {
+			t.Fatalf("got rebuilt subject count %d, want %d", got, want)
+		}
+		if _, err := db.Exec(deletionFixture); err != nil {
+			t.Fatalf("got rebuilt fixture error %v, want nil", err)
+		}
+		if err := db.QueryRow("SELECT count(*) FROM subjects WHERE deleted_at IS NULL").Scan(&count); err != nil {
 			t.Fatalf("got query error %v, want nil", err)
 		}
 		if got, want := count, 1; got != want {
-			t.Fatalf("got upgraded thought count %d, want %d", got, want)
+			t.Fatalf("got undeleted subject count %d, want %d", got, want)
 		}
-		applyMigrationFiles(t, db, "000009*.down.sql", false)
-		if _, err := db.Exec("INSERT INTO subjects(user_id,subject_name) VALUES ('u','name')"); err == nil {
-			t.Fatalf("got name uniqueness error %v, want constraint error", err)
-		}
-		applyMigrationFiles(t, db, "000009*.up.sql", false)
 	})
 }

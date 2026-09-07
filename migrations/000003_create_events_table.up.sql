@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS events (
     ended_at        INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     created_at      INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     updated_at      INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
+    deleted_at      INTEGER, -- NULL means undeleted; UTC epoch seconds otherwise
     version         INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), -- optimistic-lock version
 
     CONSTRAINT ck_events_activity_type_len
@@ -14,6 +15,10 @@ CREATE TABLE IF NOT EXISTS events (
 
     CONSTRAINT ck_ended_at_null_or_greater_than_started_at
         CHECK (ended_at IS NULL OR ended_at >= started_at),
+
+    CONSTRAINT ck_events_deleted_at
+        CHECK (deleted_at IS NULL OR
+            (typeof(deleted_at) = 'integer' AND created_at <= deleted_at AND deleted_at <= updated_at)),
 
     CONSTRAINT ck_events_time_order
         CHECK (created_at <= updated_at),
