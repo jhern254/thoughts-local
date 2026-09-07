@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS tags (
     tag_name       TEXT    NOT NULL,
     created_at INTEGER NOT NULL DEFAULT (unixepoch('now')),
     updated_at INTEGER NOT NULL DEFAULT (unixepoch('now')),
+    deleted_at INTEGER, -- NULL means undeleted; UTC epoch seconds otherwise
     version    INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), -- optimistic-lock version
 
     -- Validation checks
@@ -13,6 +14,10 @@ CREATE TABLE IF NOT EXISTS tags (
 
     CONSTRAINT ck_tags_name_len
         CHECK (length(trim(tag_name)) BETWEEN 1 AND 4096),
+
+    CONSTRAINT ck_tags_deleted_at
+        CHECK (deleted_at IS NULL OR
+            (typeof(deleted_at) = 'integer' AND created_at <= deleted_at AND deleted_at <= updated_at)),
 
     CONSTRAINT ck_tags_time_order
         CHECK (created_at <= updated_at),
@@ -25,9 +30,9 @@ CREATE TABLE IF NOT EXISTS tags (
         ON UPDATE CASCADE
 );
 
--- Per-user uniqueness of tag names
+-- Per-user names are unique among undeleted records.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tags_user_name
-    ON tags (user_id, tag_name);
+    ON tags (user_id, tag_name) WHERE deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_tags_user
     ON tags (user_id);

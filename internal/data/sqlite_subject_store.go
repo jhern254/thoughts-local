@@ -24,17 +24,27 @@ func NewSQLiteSubjectStore(db *sql.DB) *SQLiteSubjectStore {
 func (s *SQLiteSubjectStore) CreateSubject(ctx context.Context, subject *Subject) (*Subject, error) {
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO subjects (user_id, subject_name, created_at, updated_at)
-		VALUES (?, ?, ?, ?)`,
+		SELECT ?, ?, ?, ?
+		WHERE EXISTS (SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL)`,
 		subject.UserID,
 		subject.SubjectName,
 		UnixSec(subject.CreatedAt),
 		UnixSec(subject.UpdatedAt),
+		subject.UserID,
 	)
 	if err != nil {
 		if isSQLiteUniqueConstraint(err) {
 			return nil, ErrDuplicateRecord
 		}
 		return nil, fmt.Errorf("create subject: %w", err)
+	}
+
+	created, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("get created subject count: %w", err)
+	}
+	if created == 0 {
+		return nil, ErrRecordNotFound
 	}
 
 	subjectID, err := result.LastInsertId()
@@ -48,7 +58,8 @@ func (s *SQLiteSubjectStore) GetSubject(ctx context.Context, userID string, subj
 	subject, err := scanSubject(s.db.QueryRowContext(ctx, `
 		SELECT subject_id, user_id, subject_name, created_at, updated_at
 		FROM subjects
-		WHERE user_id = ? AND subject_id = ?`,
+		WHERE user_id = ? AND subject_id = ? AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)`,
 		userID,
 		subjectID,
 	))
@@ -66,7 +77,8 @@ func (s *SQLiteSubjectStore) ListSubjects(ctx context.Context, userID string) ([
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT subject_id, user_id, subject_name, created_at, updated_at
 		FROM subjects
-		WHERE user_id = ?
+		WHERE user_id = ? AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)
 		ORDER BY subject_id`,
 		userID,
 	)
@@ -93,7 +105,8 @@ func (s *SQLiteSubjectStore) UpdateSubject(ctx context.Context, userID string, s
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE subjects
 		SET subject_name = ?, updated_at = ?
-		WHERE user_id = ? AND subject_id = ?`,
+		WHERE user_id = ? AND subject_id = ? AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)`,
 		name,
 		UnixSec(updatedAt),
 		userID,
@@ -117,8 +130,11 @@ func (s *SQLiteSubjectStore) UpdateSubject(ctx context.Context, userID string, s
 
 func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, subjectID int64) error {
 	result, err := s.db.ExecContext(ctx, `
-		DELETE FROM subjects
-		WHERE user_id = ? AND subject_id = ?`,
+		UPDATE subjects
+		SET deleted_at = max(unixepoch('now'), updated_at),
+		    updated_at = max(unixepoch('now'), updated_at)
+		WHERE user_id = ? AND subject_id = ? AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)`,
 		userID,
 		subjectID,
 	)

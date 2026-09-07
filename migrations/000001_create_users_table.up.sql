@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     version    INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
     created_at INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     updated_at INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
+    deleted_at INTEGER, -- NULL means undeleted; UTC epoch seconds otherwise
 
     -- Validation checks
     -- auth
@@ -21,6 +22,10 @@ CREATE TABLE IF NOT EXISTS users (
         CHECK (alt_handle IS NULL OR length(trim(alt_handle)) BETWEEN 1 AND 512),
 
     -- Timestamps must be logical
+    CONSTRAINT ck_users_deleted_at
+        CHECK (deleted_at IS NULL OR
+            (typeof(deleted_at) = 'integer' AND created_at <= deleted_at AND deleted_at <= updated_at)),
+
     CONSTRAINT ck_users_time_order
         CHECK (created_at <= updated_at)
 );

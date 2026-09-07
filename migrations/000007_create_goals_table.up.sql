@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS goals (
 
     created_at       INTEGER NOT NULL DEFAULT (unixepoch('now')),
     updated_at       INTEGER NOT NULL DEFAULT (unixepoch('now')),
+    deleted_at       INTEGER, -- NULL means undeleted; UTC epoch seconds otherwise
     version          INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), -- optimistic-lock version
 
     -- Validation checks
@@ -54,6 +55,10 @@ CREATE TABLE IF NOT EXISTS goals (
     CONSTRAINT ck_goals_date_order
         CHECK (goal_start_date IS NULL OR goal_end_date IS NULL OR goal_end_date >= goal_start_date),
 
+    CONSTRAINT ck_goals_deleted_at
+        CHECK (deleted_at IS NULL OR
+            (typeof(deleted_at) = 'integer' AND created_at <= deleted_at AND deleted_at <= updated_at)),
+
     CONSTRAINT ck_goals_time_order
         CHECK (created_at <= updated_at),
 
@@ -64,9 +69,9 @@ CREATE TABLE IF NOT EXISTS goals (
         ON UPDATE CASCADE
 );
 
--- Uniqueness per user
+-- Per-user names are unique among undeleted records.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_goals_user_name
-    ON goals (user_id, goal_name);
+    ON goals (user_id, goal_name) WHERE deleted_at IS NULL;
 
 -- Helpful for listing a user's goals quickly
 CREATE INDEX IF NOT EXISTS idx_goals_user

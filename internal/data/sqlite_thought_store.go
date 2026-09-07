@@ -32,7 +32,12 @@ func (s *SQLiteThoughtStore) CreateThought(ctx context.Context, thought *Thought
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?
+		WHERE EXISTS (SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL)
+		  AND (? IS NULL OR EXISTS (SELECT 1 FROM subjects WHERE subject_id = ? AND user_id = ? AND deleted_at IS NULL))
+		  AND (? IS NULL OR EXISTS (
+			SELECT 1 FROM events e JOIN users u ON u.user_id = e.user_id
+			WHERE e.event_id = ? AND e.deleted_at IS NULL AND u.deleted_at IS NULL))`,
 		thought.UserID,
 		thought.SubjectID,
 		thought.EventID,
@@ -41,12 +46,26 @@ func (s *SQLiteThoughtStore) CreateThought(ctx context.Context, thought *Thought
 		UnixSec(thought.ObservedAt),
 		UnixSec(thought.CreatedAt),
 		UnixSec(thought.UpdatedAt),
+		thought.UserID,
+		thought.SubjectID,
+		thought.SubjectID,
+		thought.UserID,
+		thought.EventID,
+		thought.EventID,
 	)
 	if err != nil {
 		if thought.SubjectID != nil && isSQLiteForeignKeyConstraint(err) {
 			return nil, ErrRecordNotFound
 		}
 		return nil, fmt.Errorf("create thought: %w", err)
+	}
+
+	created, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("get created thought count: %w", err)
+	}
+	if created == 0 {
+		return nil, ErrRecordNotFound
 	}
 
 	thoughtID, err := result.LastInsertId()
@@ -64,15 +83,17 @@ func (s *SQLiteThoughtStore) GetThought(ctx context.Context, userID string, thou
 		SELECT
 			thought_id,
 			user_id,
-			subject_id,
-			event_id,
+			(SELECT subject_id FROM subjects WHERE subject_id = thoughts.subject_id AND deleted_at IS NULL),
+			(SELECT e.event_id FROM events e JOIN users u ON u.user_id = e.user_id
+			 WHERE e.event_id = thoughts.event_id AND e.deleted_at IS NULL AND u.deleted_at IS NULL),
 			thought,
 			version,
 			observed_at,
 			created_at,
 			updated_at
 		FROM thoughts
-		WHERE user_id = ? AND thought_id = ?`,
+		WHERE user_id = ? AND thought_id = ? AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = thoughts.user_id AND users.deleted_at IS NULL)`,
 		userID,
 		thoughtID,
 	).Scan(

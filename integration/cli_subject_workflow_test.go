@@ -177,7 +177,7 @@ func TestSubjectCLIWorkflow_SQLite(t *testing.T) {
 		}
 	})
 
-	t.Run("deletes subject and unlinks linked thoughts", func(t *testing.T) {
+	t.Run("deletes subject and hides its reference on linked thoughts", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		localUser := ensureLocalUser(t, db)
 		ctx := context.Background()

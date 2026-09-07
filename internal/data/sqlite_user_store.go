@@ -43,7 +43,7 @@ func (s *SQLiteUserStore) GetUserByHandle(ctx context.Context, handle string) (*
 	user, err := scanUser(s.db.QueryRowContext(ctx, `
 		SELECT user_id, handle, alt_handle, email, version, created_at, updated_at
 		FROM users
-		WHERE handle = ?`,
+		WHERE handle = ? AND deleted_at IS NULL`,
 		handle,
 	))
 	if errors.Is(err, sql.ErrNoRows) {

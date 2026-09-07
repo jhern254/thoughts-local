@@ -5,10 +5,15 @@ CREATE TABLE IF NOT EXISTS subjects (
     subject_name  TEXT    NOT NULL,                            -- validated via CHECK below
     created_at    INTEGER NOT NULL DEFAULT (unixepoch('now')), -- epoch seconds (UTC)
     updated_at    INTEGER NOT NULL DEFAULT (unixepoch('now')), -- epoch seconds (UTC)
+    deleted_at    INTEGER, -- NULL means undeleted; UTC epoch seconds otherwise
 
     -- Validation checks
     CONSTRAINT ck_subjects_name_len
         CHECK (length(trim(subject_name)) BETWEEN 1 AND 255),  -- non-empty, reasonable max; trims spaces
+    CONSTRAINT ck_subjects_deleted_at
+        CHECK (deleted_at IS NULL OR
+            (typeof(deleted_at) = 'integer' AND created_at <= deleted_at AND deleted_at <= updated_at)),
+
     CONSTRAINT ck_subjects_time_order
         CHECK (created_at <= updated_at),                      -- created_at must not be after updated_at
 
@@ -19,9 +24,9 @@ CREATE TABLE IF NOT EXISTS subjects (
         ON UPDATE CASCADE
 );
 
--- Uniqueness: per-user subject names must be unique
+-- Per-user names are unique among undeleted records.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subjects_user_name
-    ON subjects (user_id, subject_name);
+    ON subjects (user_id, subject_name) WHERE deleted_at IS NULL;
 
 -- Composite parent key for enforcing thought/subject ownership.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subjects_id_user
