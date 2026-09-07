@@ -23,13 +23,13 @@ func TestUserWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := uuid.Parse(created.UserID); err != nil {
-			t.Fatalf("got user ID %q: %v", created.UserID, err)
+			t.Fatalf("got user ID %q, want a valid UUID: %v", created.UserID, err)
 		}
 		if created.Handle == nil || *created.Handle != "local" || created.Version != 1 {
-			t.Fatalf("got local user %#v", created)
+			t.Fatalf("got local user %#v, want handle %q and version 1", created, "local")
 		}
 		if created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() {
-			t.Fatalf("got timestamps %v and %v", created.CreatedAt, created.UpdatedAt)
+			t.Fatalf("got created/updated timestamps %v / %v, want both nonzero", created.CreatedAt, created.UpdatedAt)
 		}
 		assertLocalUserCount(t, db, 1)
 	})

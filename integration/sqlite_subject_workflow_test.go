@@ -26,10 +26,10 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if created.SubjectID == 0 || created.UserID != "user-1" || created.SubjectName != "  learn Go  " {
-			t.Fatalf("got created subject %#v", created)
+			t.Fatalf("got created subject %#v, want nonzero ID, user ID %q, and name %q", created, "user-1", "  learn Go  ")
 		}
 		if created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() {
-			t.Fatal("expected created subject timestamps")
+			t.Fatalf("got created/updated timestamps %v / %v, want both nonzero", created.CreatedAt, created.UpdatedAt)
 		}
 		got, err := service.Get(ctx, "user-1", created.SubjectID)
 		if err != nil {
@@ -57,7 +57,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if other.SubjectID == created.SubjectID || other.UserID != "user-2" {
-			t.Fatalf("got other users subject %#v", other)
+			t.Fatalf("got other user's subject %#v, want ID different from %d and user ID %q", other, created.SubjectID, "user-2")
 		}
 	})
 
@@ -84,7 +84,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(listed) != 2 || listed[0].SubjectID != first.SubjectID || listed[1].SubjectID != second.SubjectID {
-			t.Fatalf("got subjects %#v", listed)
+			t.Fatalf("got subjects %#v, want exactly two subjects with IDs %d and %d in order", listed, first.SubjectID, second.SubjectID)
 		}
 
 		empty, err := service.List(ctx, "user-3")
@@ -92,7 +92,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if empty == nil || len(empty) != 0 {
-			t.Fatalf("got empty subjects %#v", empty)
+			t.Fatalf("got subjects %#v, want a non-nil empty slice", empty)
 		}
 	})
 
@@ -116,7 +116,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if updated.SubjectName != "  Go programming  " || !updated.CreatedAt.Equal(created.CreatedAt) || updated.UpdatedAt.Before(created.UpdatedAt) {
-			t.Fatalf("got updated subject %#v, created %#v", updated, created)
+			t.Fatalf("got updated subject %#v, want name %q, created time %v, and updated time at or after %v", updated, "  Go programming  ", created.CreatedAt, created.UpdatedAt)
 		}
 		if _, err := service.Update(ctx, "user-1", created.SubjectID, updated.SubjectName); err != nil {
 			t.Fatalf("update to existing name: %v", err)
@@ -169,7 +169,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 		service := subject.NewService(data.NewSQLiteSubjectStore(db))
 
 		if _, err := service.Create(context.Background(), "missing-user", "coding"); err == nil {
-			t.Fatal("expected foreign key error for missing user")
+			t.Fatalf("got create error %v, want a foreign key error for missing user", err)
 		}
 	})
 
@@ -199,7 +199,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if unlinkedThought.SubjectID != nil {
-			t.Fatalf("got linked subject ID %#v after deletion", unlinkedThought.SubjectID)
+			t.Fatalf("got linked subject ID %d after deletion, want nil", *unlinkedThought.SubjectID)
 		}
 	})
 
@@ -239,7 +239,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(listed) != 1 {
-			t.Fatalf("got persisted subjects %#v", listed)
+			t.Fatalf("got %d persisted subjects (%#v), want 1", len(listed), listed)
 		}
 		assertSubjectEqual(t, &listed[0], persisted)
 		persistedThought, err := thought.NewService(data.NewSQLiteThoughtStore(reopened)).Get(ctx, "user-1", linkedThought.ThoughtID)
@@ -247,7 +247,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if persistedThought.SubjectID != nil {
-			t.Fatalf("got persisted subject ID %#v after deletion", persistedThought.SubjectID)
+			t.Fatalf("got persisted subject ID %d after deletion, want nil", *persistedThought.SubjectID)
 		}
 	})
 }

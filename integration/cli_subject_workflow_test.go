@@ -36,8 +36,8 @@ func TestSubjectCLIWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if created.SubjectName != "  learn Go  " {
-			t.Fatalf("got subject name %q", created.SubjectName)
+		if got, want := created.SubjectName, "  learn Go  "; got != want {
+			t.Fatalf("got subject name %q, want %q", got, want)
 		}
 
 		stdout, stderr, err = runSubjectsCLI(t, dsn, "create", "writing")
@@ -116,7 +116,7 @@ func TestSubjectCLIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("run CLI: %v: %s", err, stderr)
 		}
 		if stdout != "" {
-			t.Fatalf("got unexpected output %q", stdout)
+			t.Fatalf("got output %q, want empty output", stdout)
 		}
 	})
 
@@ -141,8 +141,8 @@ func TestSubjectCLIWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if updated.SubjectName != "  Go programming  " {
-			t.Fatalf("got updated subject name %q", updated.SubjectName)
+		if got, want := updated.SubjectName, "  Go programming  "; got != want {
+			t.Fatalf("got updated subject name %q, want %q", got, want)
 		}
 	})
 
@@ -162,18 +162,18 @@ func TestSubjectCLIWorkflow_SQLite(t *testing.T) {
 		} {
 			stdout, _, err := runSubjectsCLI(t, dsn, args...)
 			if err == nil {
-				t.Fatalf("expected %s error", args[0])
+				t.Fatalf("got %s error %v, want non-nil error for cross-user access", args[0], err)
 			}
 			if stdout != "" {
-				t.Fatalf("got unexpected %s output %q", args[0], stdout)
+				t.Fatalf("got %s output %q, want empty output", args[0], stdout)
 			}
 		}
 		found, err := service.Get(context.Background(), "user-1", created.SubjectID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if found.SubjectName != "coding" {
-			t.Fatalf("got subject name %q after cross-user commands", found.SubjectName)
+		if got, want := found.SubjectName, "coding"; got != want {
+			t.Fatalf("got subject name %q after cross-user commands, want %q", got, want)
 		}
 	})
 
@@ -208,7 +208,7 @@ func TestSubjectCLIWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if unlinked.SubjectID != nil {
-			t.Fatalf("got linked subject ID %#v after deletion", unlinked.SubjectID)
+			t.Fatalf("got linked subject ID %d after deletion, want nil", *unlinked.SubjectID)
 		}
 	})
 }

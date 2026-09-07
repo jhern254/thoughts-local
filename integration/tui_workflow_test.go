@@ -26,7 +26,7 @@ func TestTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("run TUI: %v: %s", err, stderr)
 		}
 		if stdout == "" {
-			t.Fatal("TUI produced no terminal output")
+			t.Fatalf("got TUI output %q, want nonempty terminal output", stdout)
 		}
 		localUser := getLocalUser(t, db)
 
@@ -39,7 +39,7 @@ func TestTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got second user ID %q, want %q", reused.UserID, localUser.UserID)
 		}
 		if stdout == "" {
-			t.Fatal("second TUI run produced no terminal output")
+			t.Fatalf("got second TUI output %q, want nonempty terminal output", stdout)
 		}
 
 		var userCount int
@@ -101,7 +101,7 @@ func runTUIModelCommand(t *testing.T, model tea.Model, message tea.Msg) tea.Mode
 	t.Helper()
 	updated, command := model.Update(message)
 	if command == nil {
-		t.Fatal("got nil command")
+		t.Fatal("got nil command, want a command to execute")
 	}
 	updated, _ = updated.Update(command())
 	return updated

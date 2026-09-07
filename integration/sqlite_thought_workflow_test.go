@@ -37,16 +37,16 @@ func TestThoughtWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if assigned.ThoughtID == 0 || assigned.UserID != "user-1" || assigned.Thought != "  learn Go  " || assigned.Version != 1 {
-			t.Fatalf("got assigned thought %#v", assigned)
+			t.Fatalf("got assigned thought %#v, want nonzero ID, user ID %q, text %q, and version 1", assigned, "user-1", "  learn Go  ")
 		}
 		if assigned.SubjectID == nil || *assigned.SubjectID != ownedSubject.SubjectID || assigned.EventID != nil {
-			t.Fatalf("got assigned relationships %#v", assigned)
+			t.Fatalf("got assigned relationships %#v, want subject ID %d and nil event ID", assigned, ownedSubject.SubjectID)
 		}
 		if !assigned.ObservedAt.Equal(observedAt) || assigned.ObservedAt.Location() != time.UTC {
 			t.Fatalf("got observed time %v, want %v in UTC", assigned.ObservedAt, observedAt)
 		}
 		if assigned.CreatedAt.IsZero() || assigned.UpdatedAt.IsZero() {
-			t.Fatal("expected assigned thought timestamps")
+			t.Fatalf("got assigned created/updated timestamps %v / %v, want both nonzero", assigned.CreatedAt, assigned.UpdatedAt)
 		}
 
 		unassigned, err := thoughtService.Create(ctx, "user-1", "inbox", nil, time.Time{})
@@ -54,7 +54,7 @@ func TestThoughtWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if unassigned.SubjectID != nil || unassigned.EventID != nil || unassigned.ObservedAt.IsZero() {
-			t.Fatalf("got unassigned thought %#v", unassigned)
+			t.Fatalf("got unassigned thought %#v, want nil subject/event IDs and nonzero observed time", unassigned)
 		}
 
 		eventResult, err := db.Exec("INSERT INTO events (user_id) VALUES (?)", "user-1")
@@ -79,7 +79,7 @@ func TestThoughtWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if storedWithEvent.EventID == nil || *storedWithEvent.EventID != eventID || storedWithEvent.Version != 2 {
-			t.Fatalf("got event-linked thought %#v", storedWithEvent)
+			t.Fatalf("got event-linked thought %#v, want event ID %d and version 2", storedWithEvent, eventID)
 		}
 
 		got, err := thoughtService.Get(ctx, "user-1", assigned.ThoughtID)
