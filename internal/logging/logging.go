@@ -17,8 +17,6 @@ type MutationEvent uint8
 
 const (
 	SubjectCreated MutationEvent = iota
-	SubjectUpdated
-	SubjectDeleted
 )
 
 type Operation uint8
@@ -30,8 +28,6 @@ const (
 	SubjectCreate
 	SubjectGet
 	SubjectList
-	SubjectUpdate
-	SubjectDelete
 )
 
 type FailureCategory uint8
@@ -52,10 +48,6 @@ func (operation Operation) name() string {
 		return "subject_get"
 	case SubjectList:
 		return "subject_list"
-	case SubjectUpdate:
-		return "subject_update"
-	case SubjectDelete:
-		return "subject_delete"
 	default:
 		return "unknown"
 	}
@@ -65,10 +57,6 @@ func (event MutationEvent) message() string {
 	switch event {
 	case SubjectCreated:
 		return "subject created"
-	case SubjectUpdated:
-		return "subject updated"
-	case SubjectDeleted:
-		return "subject deleted"
 	default:
 		return "unknown mutation"
 	}

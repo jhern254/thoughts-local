@@ -122,10 +122,8 @@ func newSubjectUpdateCommand(app *application) *cli.Command {
 
 			updated, err := app.subjects.Update(ctx, app.userID, subjectID, cmd.Args().Get(1))
 			if err != nil {
-				logSubjectError(app.logger, logging.SubjectUpdate, err)
 				return err
 			}
-			app.logger.Mutation(logging.SubjectUpdated, updated.SubjectID)
 			_, err = fmt.Fprintf(app.out, "Updated subject %d: %s\n", updated.SubjectID, updated.SubjectName)
 			return err
 		},
@@ -147,10 +145,8 @@ func newSubjectDeleteCommand(app *application) *cli.Command {
 			}
 
 			if err := app.subjects.Delete(ctx, app.userID, subjectID); err != nil {
-				logSubjectError(app.logger, logging.SubjectDelete, err)
 				return err
 			}
-			app.logger.Mutation(logging.SubjectDeleted, subjectID)
 			_, err = fmt.Fprintf(app.out, "Deleted subject %d\n", subjectID)
 			return err
 		},

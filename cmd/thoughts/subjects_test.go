@@ -60,7 +60,7 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 		}
 	})
 
-	for _, operation := range []string{"create", "get", "list", "update", "delete"} {
+	for _, operation := range []string{"create", "get", "list"} {
 		for _, tt := range []struct {
 			name   string
 			err    error
@@ -82,16 +82,11 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 					create: func(context.Context, string, string) (*data.Subject, error) { return nil, failure },
 					get:    func(context.Context, string, int64) (*data.Subject, error) { return nil, failure },
 					list:   func(context.Context, string) ([]data.Subject, error) { return nil, failure },
-					update: func(context.Context, string, int64, string) (*data.Subject, error) { return nil, failure },
-					delete: func(context.Context, string, int64) error { return failure },
 				}
 				app := &application{subjects: service, userID: "user-1", out: io.Discard, logger: newTestLogger(t, &logs)}
 				args := []string{"subjects", operation}
 				if operation != "list" {
 					args = append(args, "7")
-				}
-				if operation == "update" {
-					args = append(args, "private subject")
 				}
 				if err := newSubjectsCommand(app).Run(context.Background(), args); !errors.Is(err, failure) {
 					t.Fatalf("got error %v, want %v", err, failure)

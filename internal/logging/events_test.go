@@ -12,7 +12,7 @@ import (
 )
 
 func TestLogger_Events(t *testing.T) {
-	for _, name := range []string{"started", "stopped", "created", "updated", "deleted", "failure", "unknown mutation", "unknown failure"} {
+	for _, name := range []string{"started", "stopped", "created", "failure", "unknown mutation", "unknown failure"} {
 		t.Run(name+" emits only approved fields from the public caller", func(t *testing.T) {
 			var output bytes.Buffer
 			logger, err := logging.New(&output, "test", "")
@@ -31,14 +31,9 @@ func TestLogger_Events(t *testing.T) {
 				_, file, line, _ = runtime.Caller(0)
 				logger.Stopped()
 				want["message"] = "stopped application"
-			case "created", "updated", "deleted", "unknown mutation":
+			case "created", "unknown mutation":
 				event := logging.SubjectCreated
-				switch name {
-				case "updated":
-					event = logging.SubjectUpdated
-				case "deleted":
-					event = logging.SubjectDeleted
-				case "unknown mutation":
+				if name == "unknown mutation" {
 					event = logging.MutationEvent(255)
 				}
 				_, file, line, _ = runtime.Caller(0)
@@ -85,7 +80,6 @@ func TestLogger_Events(t *testing.T) {
 			logging.ApplicationStart: "application_start", logging.ApplicationClose: "application_close",
 			logging.TUIRun: "tui_run", logging.SubjectCreate: "subject_create",
 			logging.SubjectGet: "subject_get", logging.SubjectList: "subject_list",
-			logging.SubjectUpdate: "subject_update", logging.SubjectDelete: "subject_delete",
 		} {
 			var output bytes.Buffer
 			logger, err := logging.New(&output, "test", "")
