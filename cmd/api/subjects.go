@@ -41,6 +41,8 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
 		a.failedValidationResponse(w, r, validationErr.Fields)
 	case errors.Is(err, data.ErrDuplicateRecord):
 		a.duplicateRecordResponse(w, r, input.SubjectName)
+	case errors.Is(err, data.ErrRecordNotFound):
+		a.notFoundResponse(w, r)
 	case err != nil:
 		a.serverErrorResponse(w, r, err)
 	default:
