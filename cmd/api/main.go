@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -23,15 +26,14 @@ const (
 )
 
 func main() {
-	var cfg config
-
-	flag.IntVar(&cfg.port, "port", 7777, "API server port")
-	flag.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
-	flag.StringVar(&cfg.db.dsn, "db-dsn", os.Getenv("THOUGHTS_DB_DSN"), "SQLite DSN (e.g. file:data/thoughts_dev.db)")
-	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 4, "SQLite max open connections")
-	flag.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", 4, "SQLite max idle connections")
-	flag.StringVar(&cfg.db.maxIdleTime, "db-max-idle-time", "15m", "SQLite max connection idle time")
-	flag.Parse()
+	cfg, err := parseConfig(os.Args[1:], os.Stderr)
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Invalid command arguments. Use -help for usage.")
+		os.Exit(2)
+	}
 
 	// configure package zerolog
 	output := zerolog.ConsoleWriter{
@@ -49,10 +51,14 @@ func main() {
 	// set up db
 	db, err := openDB(cfg)
 	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to open SQLite database")
+		logger.Fatal().Msg("Could not open the application database.")
 	}
-	defer db.Close()
-	logger.Info().Str("dsn", cfg.db.dsn).Msg("database connection pool established")
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Error().Msg("Could not close the application database.")
+		}
+	}()
+	logger.Info().Msg("database connection pool established")
 
 	// set up server
 	subjectService := subject.NewService(data.NewSQLiteSubjectStore(db))
@@ -63,6 +69,7 @@ func main() {
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      app.routes(),
+		ErrorLog:     log.New(serverDiagnosticWriter{logger: logger}, "", 0),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
@@ -71,7 +78,7 @@ func main() {
 	// start server
 	app.logger.Info().Str("addr", addr).Msg("starting server")
 	if err := srv.ListenAndServe(); err != nil {
-		app.logger.Fatal().Err(err).Str("addr", addr).Msg("ListenAndServe failed")
+		app.logger.Fatal().Msg("Could not run the HTTP server.")
 	}
 	app.logger.Debug().Msg("Program ended.")
 
@@ -110,4 +117,37 @@ func sqliteDSNWithForeignKeys(dsn string) string {
 		separator = "&"
 	}
 	return dsn + separator + "_pragma=foreign_keys(1)"
+}
+
+// Keep flag-parser errors and environment-derived defaults out of usage output.
+func parseConfig(args []string, helpOut io.Writer) (config, error) {
+	flags := flag.NewFlagSet("thoughts-api", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.Usage = func() {
+		fmt.Fprintln(helpOut, "Usage: thoughts-api [options]")
+		flags.SetOutput(helpOut)
+		flags.PrintDefaults()
+		flags.SetOutput(io.Discard)
+	}
+	var cfg config
+
+	flags.IntVar(&cfg.port, "port", 7777, "API server port")
+	flags.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
+	flags.StringVar(&cfg.db.dsn, "db-dsn", "", "SQLite DSN (e.g. file:data/thoughts_dev.db)")
+	flags.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 4, "SQLite max open connections")
+	flags.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", 4, "SQLite max idle connections")
+	flags.StringVar(&cfg.db.maxIdleTime, "db-max-idle-time", "15m", "SQLite max connection idle time")
+	if err := flags.Parse(args); err != nil {
+		return cfg, err
+	}
+	dsnSet := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "db-dsn" {
+			dsnSet = true
+		}
+	})
+	if !dsnSet {
+		cfg.db.dsn = os.Getenv("THOUGHTS_DB_DSN")
+	}
+	return cfg, nil
 }

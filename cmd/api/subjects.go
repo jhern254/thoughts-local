@@ -15,7 +15,7 @@ func (a *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	item, err := a.subjectService.Get(r.Context(), a.userFromReq(r), id)
-	if errors.Is(err, data.ErrRecordNotFound) {
+	if errors.Is(diagnosticCause(err), data.ErrRecordNotFound) {
 		a.notFoundResponse(w, r)
 		return
 	}
@@ -37,11 +37,11 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
 	item, err := a.subjectService.Create(r.Context(), a.userFromReq(r), input.SubjectName)
 	var validationErr *subject.ValidationError
 	switch {
-	case errors.As(err, &validationErr):
+	case errors.As(diagnosticCause(err), &validationErr):
 		a.failedValidationResponse(w, r, validationErr.Fields)
-	case errors.Is(err, data.ErrDuplicateRecord):
-		a.duplicateRecordResponse(w, r, input.SubjectName)
-	case errors.Is(err, data.ErrRecordNotFound):
+	case errors.Is(diagnosticCause(err), data.ErrDuplicateRecord):
+		a.duplicateRecordResponse(w, r)
+	case errors.Is(diagnosticCause(err), data.ErrRecordNotFound):
 		a.notFoundResponse(w, r)
 	case err != nil:
 		a.serverErrorResponse(w, r, err)

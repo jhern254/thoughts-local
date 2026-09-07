@@ -41,15 +41,18 @@ func newSubjectCreateCommand(app *application) *cli.Command {
 		SkipFlagParsing: true,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 {
+				app.failureMessage = "Expected exactly one subject name."
 				return fmt.Errorf("expected exactly one subject name")
 			}
 
 			created, err := app.subjects.Create(ctx, app.userID, cmd.Args().Get(0))
 			if err != nil {
+				app.subjectFailure(err, "Could not save the subject.")
 				logSubjectError(app.logger, logging.SubjectCreate, err)
 				return err
 			}
 			app.logger.Mutation(logging.SubjectCreated, created.SubjectID)
+			app.failureMessage = "Could not write command output."
 			_, err = fmt.Fprintf(app.out, "Created subject %d: %s\n", created.SubjectID, created.SubjectName)
 			return err
 		},
@@ -63,18 +66,22 @@ func newSubjectGetCommand(app *application) *cli.Command {
 		ArgsUsage: "<id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 {
+				app.failureMessage = "Expected exactly one subject ID."
 				return fmt.Errorf("expected exactly one subject ID")
 			}
 			subjectID, err := parseSubjectID(cmd.Args().Get(0))
 			if err != nil {
+				app.failureMessage = "Subject ID must be a positive integer."
 				return err
 			}
 
 			found, err := app.subjects.Get(ctx, app.userID, subjectID)
 			if err != nil {
+				app.subjectFailure(err, "Could not retrieve the subject.")
 				logSubjectError(app.logger, logging.SubjectGet, err)
 				return err
 			}
+			app.failureMessage = "Could not write command output."
 			_, err = fmt.Fprintf(app.out, "Subject %d: %s\n", found.SubjectID, found.SubjectName)
 			return err
 		},
@@ -87,14 +94,17 @@ func newSubjectListCommand(app *application) *cli.Command {
 		Usage: "list subjects",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 0 {
+				app.failureMessage = "Expected no arguments."
 				return fmt.Errorf("expected no arguments")
 			}
 
 			subjects, err := app.subjects.List(ctx, app.userID)
 			if err != nil {
+				app.subjectFailure(err, "Could not list subjects.")
 				logSubjectError(app.logger, logging.SubjectList, err)
 				return err
 			}
+			app.failureMessage = "Could not write command output."
 			for _, item := range subjects {
 				if _, err := fmt.Fprintf(app.out, "%d\t%s\n", item.SubjectID, item.SubjectName); err != nil {
 					return err
@@ -113,17 +123,21 @@ func newSubjectUpdateCommand(app *application) *cli.Command {
 		SkipFlagParsing: true,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 2 {
+				app.failureMessage = "Expected subject ID and name."
 				return fmt.Errorf("expected subject ID and name")
 			}
 			subjectID, err := parseSubjectID(cmd.Args().Get(0))
 			if err != nil {
+				app.failureMessage = "Subject ID must be a positive integer."
 				return err
 			}
 
 			updated, err := app.subjects.Update(ctx, app.userID, subjectID, cmd.Args().Get(1))
 			if err != nil {
+				app.subjectFailure(err, "Could not save the subject.")
 				return err
 			}
+			app.failureMessage = "Could not write command output."
 			_, err = fmt.Fprintf(app.out, "Updated subject %d: %s\n", updated.SubjectID, updated.SubjectName)
 			return err
 		},
@@ -137,16 +151,20 @@ func newSubjectDeleteCommand(app *application) *cli.Command {
 		ArgsUsage: "<id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 {
+				app.failureMessage = "Expected exactly one subject ID."
 				return fmt.Errorf("expected exactly one subject ID")
 			}
 			subjectID, err := parseSubjectID(cmd.Args().Get(0))
 			if err != nil {
+				app.failureMessage = "Subject ID must be a positive integer."
 				return err
 			}
 
 			if err := app.subjects.Delete(ctx, app.userID, subjectID); err != nil {
+				app.subjectFailure(err, "Could not delete the subject.")
 				return err
 			}
+			app.failureMessage = "Could not write command output."
 			_, err = fmt.Fprintf(app.out, "Deleted subject %d\n", subjectID)
 			return err
 		},

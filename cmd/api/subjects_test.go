@@ -158,7 +158,7 @@ func TestCreateSubjectHandler(t *testing.T) {
 		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodPost, "/subjects", `{"subject_name":"coding"}`))
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusConflict)
-		if !strings.Contains(response.Body.String(), "coding already exists") {
+		if !strings.Contains(response.Body.String(), "A subject with that name already exists.") {
 			t.Fatalf("got response body %s", response.Body.String())
 		}
 	})

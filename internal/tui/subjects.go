@@ -26,12 +26,13 @@ type SubjectService interface {
 type subjectState struct {
 	service SubjectService
 
-	list      list.Model
-	input     textinput.Model
-	selected  *data.Subject
-	err       error
-	loading   bool
-	listStale bool
+	list       list.Model
+	input      textinput.Model
+	selected   *data.Subject
+	err        error
+	errMessage string
+	loading    bool
+	listStale  bool
 }
 
 type subjectRowKind uint8
@@ -151,6 +152,7 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 	if message.err != nil {
 		logSubjectError(m.logger, logging.SubjectList, message.err)
 		m.subjects.err = message.err
+		m.subjects.errMessage = subjectErrorMessage(message.err, "Could not list subjects.")
 		return m, nil
 	}
 
@@ -164,6 +166,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	if message.err != nil {
 		logSubjectError(m.logger, logging.SubjectCreate, message.err)
 		m.subjects.err = message.err
+		m.subjects.errMessage = subjectErrorMessage(message.err, "Could not save the subject.")
 		return m, m.subjects.input.Focus()
 	}
 
@@ -182,6 +185,7 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 	if message.err != nil {
 		logSubjectError(m.logger, logging.SubjectGet, message.err)
 		m.subjects.err = message.err
+		m.subjects.errMessage = subjectErrorMessage(message.err, "Could not retrieve the subject.")
 		return m, nil
 	}
 
@@ -285,7 +289,7 @@ func (m Model) viewSubjectList() string {
 	if m.subjects.loading {
 		status = "Loading subjects…\n\n"
 	} else if m.subjects.err != nil {
-		status = fmt.Sprintf("Error: %s\n\n", m.subjects.err)
+		status = fmt.Sprintf("Error: %s\n\n", m.subjects.errMessage)
 	}
 	return fmt.Sprintf("%s%s\nEsc: entities • q: quit", status, m.subjects.list.View())
 }
@@ -295,7 +299,7 @@ func (m Model) viewSubjectCreate() string {
 	if m.subjects.loading {
 		status = "Creating subject…\n\n"
 	} else if m.subjects.err != nil {
-		status = fmt.Sprintf("Error: %s\n\n", m.subjects.err)
+		status = fmt.Sprintf("Error: %s\n\n", m.subjects.errMessage)
 	}
 	return fmt.Sprintf("Create subject\n\n%s%s\n\nEnter: create • Esc: cancel", status, m.subjects.input.View())
 }

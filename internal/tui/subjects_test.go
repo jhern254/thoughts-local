@@ -93,8 +93,11 @@ func TestSubjectModel_List(t *testing.T) {
 		}}
 		model := openSubjects(t, newSubjectTestModel(service))
 
-		if view := model.View().Content; !strings.Contains(view, want.Error()) {
-			t.Fatalf("view %q does not contain %q", view, want)
+		if !errors.Is(model.subjects.err, want) {
+			t.Fatalf("got error %v, want original error %v", model.subjects.err, want)
+		}
+		if view := model.View().Content; !strings.Contains(view, "Could not list subjects.") {
+			t.Fatalf("got view %q, want safe message %q", view, "Could not list subjects.")
 		}
 	})
 }
@@ -144,8 +147,11 @@ func TestSubjectModel_Create(t *testing.T) {
 		if model.screen != screenSubjectCreate || model.subjects.input.Value() != "invalid" {
 			t.Fatalf("got screen %v and input %q", model.screen, model.subjects.input.Value())
 		}
-		if view := model.View().Content; !strings.Contains(view, want.Error()) {
-			t.Fatalf("view %q does not contain %q", view, want)
+		if !errors.Is(model.subjects.err, want) {
+			t.Fatalf("got error %v, want original error %v", model.subjects.err, want)
+		}
+		if view := model.View().Content; !strings.Contains(view, "Could not save the subject.") {
+			t.Fatalf("got view %q, want safe message %q", view, "Could not save the subject.")
 		}
 	})
 
@@ -261,8 +267,11 @@ func TestSubjectModel_Get(t *testing.T) {
 		if model.screen != screenSubjectList {
 			t.Fatalf("got screen %v, want subject list", model.screen)
 		}
-		if view := model.View().Content; !strings.Contains(view, want.Error()) {
-			t.Fatalf("view %q does not contain %q", view, want)
+		if !errors.Is(model.subjects.err, want) {
+			t.Fatalf("got error %v, want original error %v", model.subjects.err, want)
+		}
+		if view := model.View().Content; !strings.Contains(view, "Could not retrieve the subject.") {
+			t.Fatalf("got view %q, want safe message %q", view, "Could not retrieve the subject.")
 		}
 	})
 

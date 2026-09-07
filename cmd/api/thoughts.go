@@ -16,7 +16,7 @@ func (a *application) showThoughtHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	item, err := a.thoughtService.Get(r.Context(), a.userFromReq(r), id)
-	if errors.Is(err, data.ErrRecordNotFound) {
+	if errors.Is(diagnosticCause(err), data.ErrRecordNotFound) {
 		a.notFoundResponse(w, r)
 		return
 	}
@@ -40,16 +40,16 @@ func (a *application) createThoughtHandler(w http.ResponseWriter, r *http.Reques
 		var err error
 		observedAt, err = time.Parse(time.RFC3339, *input.ObservedAt)
 		if err != nil {
-			a.badRequestResponse(w, r, errors.New("observed_at must be RFC3339"))
+			a.errorResponse(w, r, http.StatusBadRequest, "observed_at must be RFC3339")
 			return
 		}
 	}
 	item, err := a.thoughtService.Create(r.Context(), a.userFromReq(r), input.Thought, input.SubjectID, observedAt)
 	var validationErr *thought.ValidationError
 	switch {
-	case errors.As(err, &validationErr):
+	case errors.As(diagnosticCause(err), &validationErr):
 		a.failedValidationResponse(w, r, validationErr.Fields)
-	case errors.Is(err, data.ErrRecordNotFound):
+	case errors.Is(diagnosticCause(err), data.ErrRecordNotFound):
 		a.notFoundResponse(w, r)
 	case err != nil:
 		a.serverErrorResponse(w, r, err)

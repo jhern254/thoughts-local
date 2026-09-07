@@ -11,13 +11,12 @@ import (
 func main() {
 	logger, err := logging.NewConsole(os.Stderr, "thoughts-cli", os.Getenv("THOUGHTS_LOG_LEVEL"))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, "Could not initialize application logging.")
 		os.Exit(1)
 	}
 
 	app := newApplication(os.Stdout, os.Stderr, logger)
 	if err := newCLI(app).Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintln(app.errOut, err)
-		os.Exit(1)
+		os.Exit(app.reportError(err))
 	}
 }
