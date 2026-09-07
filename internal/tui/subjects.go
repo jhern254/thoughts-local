@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"charm.land/bubbles/v2/list"
@@ -150,7 +149,7 @@ func (m Model) getSubject(subjectID int64) tea.Cmd {
 func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		logSubjectCreateError(m.logger, message.err)
+		logSubjectError(m.logger, "list", message.err)
 		m.subjects.err = message.err
 		return m, nil
 	}
@@ -163,6 +162,7 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
+		logSubjectError(m.logger, "create", message.err)
 		m.subjects.err = message.err
 		return m, m.subjects.input.Focus()
 	}
@@ -180,6 +180,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
+		logSubjectError(m.logger, "get", message.err)
 		m.subjects.err = message.err
 		return m, nil
 	}
@@ -190,18 +191,11 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 	return m, nil
 }
 
-func logSubjectCreateError(logger logging.Logger, err error) {
-	if isExpectedSubjectError(err) {
+func logSubjectError(logger logging.Logger, operation string, err error) {
+	if subject.IsExpectedError(err) {
 		return
 	}
-	logger.Error(err, "subject operation failed", logging.Fields{"operation": "create"})
-}
-
-func isExpectedSubjectError(err error) bool {
-	var validationError *subject.ValidationError
-	return errors.As(err, &validationError) ||
-		errors.Is(err, data.ErrRecordNotFound) ||
-		errors.Is(err, data.ErrDuplicateRecord)
+	logger.Error(err, "subject operation failed", logging.Fields{"operation": operation})
 }
 
 func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {

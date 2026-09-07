@@ -60,14 +60,14 @@ func newTUI(app *application) *cli.Command {
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			app.logger.Info("starting application")
+			app.logger.Info("starting application", nil)
 			dsn := cmd.String("db-dsn")
 			if dsn == "" {
 				dsn = defaultSQLiteDSN
 			}
 			runtime, err := app.openRuntime(ctx, dsn)
 			if err != nil {
-				app.logger.Error(err, "failed to start application")
+				app.logger.Error(err, "failed to start application", nil)
 				return ctx, err
 			}
 			app.runtime = runtime
@@ -81,21 +81,21 @@ func newTUI(app *application) *cli.Command {
 				app.out,
 			)
 			if err != nil {
-				app.logger.Error(err, "TUI program failed")
+				app.logger.Error(err, "TUI program failed", nil)
 			}
 			return err
 		},
 		After: func(context.Context, *cli.Command) error {
 			if app.runtime == nil {
-				app.logger.Info("stopped application")
+				app.logger.Info("stopped application", nil)
 				return nil
 			}
 			err := app.runtime.Close()
 			app.runtime = nil
 			if err != nil {
-				app.logger.Error(err, "failed to close application")
+				app.logger.Error(err, "failed to close application", nil)
 			}
-			app.logger.Info("stopped application")
+			app.logger.Info("stopped application", nil)
 			return err
 		},
 	}

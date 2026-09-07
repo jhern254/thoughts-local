@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 
@@ -47,7 +46,7 @@ func newSubjectCreateCommand(app *application) *cli.Command {
 
 			created, err := app.subjects.Create(ctx, app.userID, cmd.Args().Get(0))
 			if err != nil {
-				logSubjectCreateError(app.logger, err)
+				logSubjectError(app.logger, "create", err)
 				return err
 			}
 			app.logger.Info("subject created", logging.Fields{"subject_id": created.SubjectID})
@@ -73,6 +72,7 @@ func newSubjectGetCommand(app *application) *cli.Command {
 
 			found, err := app.subjects.Get(ctx, app.userID, subjectID)
 			if err != nil {
+				logSubjectError(app.logger, "get", err)
 				return err
 			}
 			_, err = fmt.Fprintf(app.out, "Subject %d: %s\n", found.SubjectID, found.SubjectName)
@@ -92,6 +92,7 @@ func newSubjectListCommand(app *application) *cli.Command {
 
 			subjects, err := app.subjects.List(ctx, app.userID)
 			if err != nil {
+				logSubjectError(app.logger, "list", err)
 				return err
 			}
 			for _, item := range subjects {
@@ -154,18 +155,11 @@ func newSubjectDeleteCommand(app *application) *cli.Command {
 	}
 }
 
-func logSubjectCreateError(logger logging.Logger, err error) {
-	if isExpectedSubjectError(err) {
+func logSubjectError(logger logging.Logger, operation string, err error) {
+	if subject.IsExpectedError(err) {
 		return
 	}
-	logger.Error(err, "subject operation failed", logging.Fields{"operation": "create"})
-}
-
-func isExpectedSubjectError(err error) bool {
-	var validationError *subject.ValidationError
-	return errors.As(err, &validationError) ||
-		errors.Is(err, data.ErrRecordNotFound) ||
-		errors.Is(err, data.ErrDuplicateRecord)
+	logger.Error(err, "subject operation failed", logging.Fields{"operation": operation})
 }
 
 func parseSubjectID(value string) (int64, error) {

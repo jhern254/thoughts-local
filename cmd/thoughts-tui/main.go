@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+
+	"github.com/jhern254/go-thoughts/internal/logging"
 )
 
 func main() {
-	logger, logFile, err := newLogger(defaultTUILogPath, os.Getenv("THOUGHTS_LOG_LEVEL"))
+	logger, logFile, err := logging.NewFile("data/thoughts-tui.log", "thoughts-tui", os.Getenv("THOUGHTS_LOG_LEVEL"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

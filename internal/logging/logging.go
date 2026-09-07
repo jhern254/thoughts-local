@@ -3,6 +3,8 @@ package logging
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -29,9 +31,22 @@ func Nop() Logger {
 	return Logger{}
 }
 
-func Disabled(value string) (bool, error) {
-	level, err := parseLevel(value)
-	return level == zerolog.Disabled, err
+// NewFile opens an append-only JSON log. Disabled logging creates no file.
+// The caller must close the returned file when it is non-nil.
+func NewFile(path, application, level string) (Logger, *os.File, error) {
+	logger, err := New(io.Discard, application, level)
+	if err != nil || logger.logger == nil {
+		return logger, nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return Logger{}, nil, fmt.Errorf("create log directory: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return Logger{}, nil, fmt.Errorf("open log: %w", err)
+	}
+	*logger.logger = logger.logger.Output(file)
+	return logger, file, nil
 }
 
 func newLogger(output io.Writer, application, value string, console bool) (Logger, error) {
@@ -68,23 +83,16 @@ func parseLevel(value string) (zerolog.Level, error) {
 	return level, nil
 }
 
-func (l Logger) Info(message string, fields ...Fields) {
+func (l Logger) Info(message string, fields Fields) {
 	if l.logger == nil {
 		return
 	}
-	addFields(l.logger.Info(), fields).Msg(message)
+	l.logger.Info().Fields(map[string]any(fields)).Msg(message)
 }
 
-func (l Logger) Error(err error, message string, fields ...Fields) {
+func (l Logger) Error(err error, message string, fields Fields) {
 	if l.logger == nil {
 		return
 	}
-	addFields(l.logger.Error().Err(err), fields).Msg(message)
-}
-
-func addFields(event *zerolog.Event, fields []Fields) *zerolog.Event {
-	for _, values := range fields {
-		event = event.Fields(map[string]any(values))
-	}
-	return event
+	l.logger.Error().Err(err).Fields(map[string]any(fields)).Msg(message)
 }

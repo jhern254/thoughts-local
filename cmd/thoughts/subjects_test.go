@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -48,42 +50,49 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 		}
 	})
 
-	t.Run("logs unexpected failure as error", func(t *testing.T) {
-		want := errors.New("create failed")
-		var logs bytes.Buffer
-
-		logSubjectCreateError(newTestLogger(t, &logs), want)
-
-		got := logs.String()
-		for _, wantLog := range []string{"subject operation failed", want.Error(), `"operation":"create"`} {
-			if !strings.Contains(got, wantLog) {
-				t.Fatalf("logs %q do not contain %q", got, wantLog)
-			}
-		}
-	})
-
-	t.Run("does not log expected application outcomes as errors", func(t *testing.T) {
-		tests := []struct {
-			name string
-			err  error
+	for _, operation := range []string{"create", "get", "list"} {
+		for _, tt := range []struct {
+			name   string
+			err    error
+			logged bool
 		}{
+			{name: "unexpected failure", err: errors.New("database unavailable"), logged: true},
 			{name: "validation", err: &subject.ValidationError{Fields: map[string]string{"subject_name": "must be provided"}}},
 			{name: "not found", err: data.ErrRecordNotFound},
 			{name: "duplicate", err: data.ErrDuplicateRecord},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
+		} {
+			t.Run(operation+" handles "+tt.name, func(t *testing.T) {
 				var logs bytes.Buffer
-
-				logSubjectCreateError(newTestLogger(t, &logs), tt.err)
-
-				if logs.Len() != 0 {
-					t.Fatalf("got expected-outcome logs %q", logs.String())
+				failure := fmt.Errorf("wrapped: %w", tt.err)
+				service := &subjectServiceStub{
+					create: func(context.Context, string, string) (*data.Subject, error) { return nil, failure },
+					get:    func(context.Context, string, int64) (*data.Subject, error) { return nil, failure },
+					list:   func(context.Context, string) ([]data.Subject, error) { return nil, failure },
+				}
+				app := &application{subjects: service, userID: "user-1", out: io.Discard, logger: newTestLogger(t, &logs)}
+				args := []string{"subjects", operation}
+				if operation != "list" {
+					args = append(args, "7")
+				}
+				if err := newSubjectsCommand(app).Run(context.Background(), args); !errors.Is(err, failure) {
+					t.Fatalf("got error %v, want %v", err, failure)
+				}
+				if !tt.logged {
+					if logs.Len() != 0 {
+						t.Fatalf("unexpected logs: %s", &logs)
+					}
+					return
+				}
+				var event map[string]any
+				if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
+					t.Fatal(err)
+				}
+				if event["operation"] != operation || event["level"] != "error" || event["error"] != failure.Error() {
+					t.Fatalf("incorrect failure event: %v", event)
 				}
 			})
 		}
-	})
+	}
 }
 
 func (s *subjectServiceStub) Create(ctx context.Context, userID, name string) (*data.Subject, error) {

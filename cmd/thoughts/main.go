@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+
+	"github.com/jhern254/go-thoughts/internal/logging"
 )
 
 func main() {
-	logger, err := newLogger(os.Stderr, os.Getenv("THOUGHTS_LOG_LEVEL"))
+	logger, err := logging.NewConsole(os.Stderr, "thoughts-cli", os.Getenv("THOUGHTS_LOG_LEVEL"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

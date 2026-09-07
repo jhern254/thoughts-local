@@ -13,7 +13,7 @@ import (
 
 func TestCLI_Logging(t *testing.T) {
 	var logs, output bytes.Buffer
-	logger, err := newLogger(&logs, "")
+	logger, err := logging.NewConsole(&logs, "thoughts-cli", "")
 	if err != nil {
 		t.Fatal(err)
 	}
