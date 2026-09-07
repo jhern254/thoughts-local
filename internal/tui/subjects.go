@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 )
@@ -18,6 +19,17 @@ type SubjectService interface {
 	List(ctx context.Context, userID string) ([]data.Subject, error)
 	Create(ctx context.Context, userID, name string) (*data.Subject, error)
 	Get(ctx context.Context, userID string, subjectID int64) (*data.Subject, error)
+}
+
+type subjectState struct {
+	service SubjectService
+
+	list      list.Model
+	input     textinput.Model
+	selected  *data.Subject
+	err       error
+	loading   bool
+	listStale bool
 }
 
 type subjectRowKind uint8
@@ -74,10 +86,38 @@ func subjectRows(subjects []data.Subject) []list.Item {
 	return rows
 }
 
+func newSubjectState(service SubjectService) subjectState {
+	subjectList := list.New(subjectRows(nil), list.NewDefaultDelegate(), defaultWidth, defaultHeight)
+	subjectList.Title = "Subjects"
+	subjectList.SetStatusBarItemName("subject", "subjects")
+
+	input := textinput.New()
+	input.Prompt = "Subject name: "
+	input.Placeholder = "What is this about?"
+
+	return subjectState{
+		service: service,
+		list:    subjectList,
+		input:   input,
+	}
+}
+
+func (m *Model) resizeSubjects(width, height int) {
+	m.subjects.list.SetSize(width, max(0, height))
+	m.subjects.input.SetWidth(max(0, width-2))
+}
+
+func (m Model) openSubjects() (tea.Model, tea.Cmd) {
+	m.screen = screenSubjectList
+	m.subjects.err = nil
+	m.subjects.loading = true
+	return m, m.listSubjects()
+}
+
 func (m Model) listSubjects() tea.Cmd {
 	ctx := m.ctx
 	userID := m.user.UserID
-	service := m.subjects
+	service := m.subjects.service
 	return func() tea.Msg {
 		subjects, err := service.List(ctx, userID)
 		return subjectsListedMsg{subjects: subjects, err: err}
@@ -87,7 +127,7 @@ func (m Model) listSubjects() tea.Cmd {
 func (m Model) createSubject(name string) tea.Cmd {
 	ctx := m.ctx
 	userID := m.user.UserID
-	service := m.subjects
+	service := m.subjects.service
 	return func() tea.Msg {
 		subject, err := service.Create(ctx, userID, name)
 		return subjectCreatedMsg{subject: subject, err: err}
@@ -97,7 +137,7 @@ func (m Model) createSubject(name string) tea.Cmd {
 func (m Model) getSubject(subjectID int64) tea.Cmd {
 	ctx := m.ctx
 	userID := m.user.UserID
-	service := m.subjects
+	service := m.subjects.service
 	return func() tea.Msg {
 		subject, err := service.Get(ctx, userID, subjectID)
 		return subjectFoundMsg{subject: subject, err: err}
@@ -105,42 +145,42 @@ func (m Model) getSubject(subjectID int64) tea.Cmd {
 }
 
 func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.Cmd) {
-	m.subjectLoading = false
+	m.subjects.loading = false
 	if message.err != nil {
-		m.subjectError = message.err
+		m.subjects.err = message.err
 		return m, nil
 	}
 
-	m.subjectError = nil
-	m.subjectListStale = false
-	return m, m.subjectList.SetItems(subjectRows(message.subjects))
+	m.subjects.err = nil
+	m.subjects.listStale = false
+	return m, m.subjects.list.SetItems(subjectRows(message.subjects))
 }
 
 func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.Cmd) {
-	m.subjectLoading = false
+	m.subjects.loading = false
 	if message.err != nil {
-		m.subjectError = message.err
-		return m, m.subjectInput.Focus()
+		m.subjects.err = message.err
+		return m, m.subjects.input.Focus()
 	}
 
-	m.subjectInput.Blur()
-	m.subjectInput.Reset()
-	m.subjectError = nil
-	m.selectedSubject = message.subject
-	m.subjectListStale = true
+	m.subjects.input.Blur()
+	m.subjects.input.Reset()
+	m.subjects.err = nil
+	m.subjects.selected = message.subject
+	m.subjects.listStale = true
 	m.screen = screenSubjectDetail
 	return m, nil
 }
 
 func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) {
-	m.subjectLoading = false
+	m.subjects.loading = false
 	if message.err != nil {
-		m.subjectError = message.err
+		m.subjects.err = message.err
 		return m, nil
 	}
 
-	m.subjectError = nil
-	m.selectedSubject = message.subject
+	m.subjects.err = nil
+	m.subjects.selected = message.subject
 	m.screen = screenSubjectDetail
 	return m, nil
 }
@@ -149,29 +189,29 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "esc":
-			if !m.subjectList.SettingFilter() && !m.subjectList.IsFiltered() {
+			if !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered() {
 				m.screen = screenEntities
-				m.subjectError = nil
+				m.subjects.err = nil
 				return m, nil
 			}
 		case "q":
-			if !m.subjectList.SettingFilter() {
+			if !m.subjects.list.SettingFilter() {
 				return m, tea.Quit
 			}
 		case "enter":
-			if !m.subjectList.SettingFilter() && !m.subjectLoading {
-				row, ok := m.subjectList.SelectedItem().(subjectRow)
+			if !m.subjects.list.SettingFilter() && !m.subjects.loading {
+				row, ok := m.subjects.list.SelectedItem().(subjectRow)
 				if !ok {
 					return m, nil
 				}
-				m.subjectError = nil
+				m.subjects.err = nil
 				switch row.kind {
 				case subjectRowCreate:
 					m.screen = screenSubjectCreate
-					m.subjectInput.Reset()
-					return m, m.subjectInput.Focus()
+					m.subjects.input.Reset()
+					return m, m.subjects.input.Focus()
 				case subjectRowRecord:
-					m.subjectLoading = true
+					m.subjects.loading = true
 					return m, m.getSubject(row.subject.SubjectID)
 				}
 			}
@@ -179,33 +219,33 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var command tea.Cmd
-	m.subjectList, command = m.subjectList.Update(message)
+	m.subjects.list, command = m.subjects.list.Update(message)
 	return m, command
 }
 
 func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
-	if m.subjectLoading {
+	if m.subjects.loading {
 		return m, nil
 	}
 
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "esc":
-			m.subjectInput.Blur()
-			m.subjectInput.Reset()
-			m.subjectError = nil
+			m.subjects.input.Blur()
+			m.subjects.input.Reset()
+			m.subjects.err = nil
 			m.screen = screenSubjectList
 			return m, nil
 		case "enter":
-			m.subjectLoading = true
-			m.subjectError = nil
-			m.subjectInput.Blur()
-			return m, m.createSubject(m.subjectInput.Value())
+			m.subjects.loading = true
+			m.subjects.err = nil
+			m.subjects.input.Blur()
+			return m, m.createSubject(m.subjects.input.Value())
 		}
 	}
 
 	var command tea.Cmd
-	m.subjectInput, command = m.subjectInput.Update(message)
+	m.subjects.input, command = m.subjects.input.Update(message)
 	return m, command
 }
 
@@ -215,11 +255,11 @@ func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q":
 			return m, tea.Quit
 		case "esc":
-			m.selectedSubject = nil
-			m.subjectError = nil
+			m.subjects.selected = nil
+			m.subjects.err = nil
 			m.screen = screenSubjectList
-			if m.subjectListStale {
-				m.subjectLoading = true
+			if m.subjects.listStale {
+				m.subjects.loading = true
 				return m, m.listSubjects()
 			}
 			return m, nil
@@ -230,36 +270,36 @@ func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) viewSubjectList() string {
 	status := ""
-	if m.subjectLoading {
+	if m.subjects.loading {
 		status = "Loading subjects…\n\n"
-	} else if m.subjectError != nil {
-		status = fmt.Sprintf("Error: %s\n\n", m.subjectError)
+	} else if m.subjects.err != nil {
+		status = fmt.Sprintf("Error: %s\n\n", m.subjects.err)
 	}
-	return fmt.Sprintf("%s%s\nEsc: entities • q: quit", status, m.subjectList.View())
+	return fmt.Sprintf("%s%s\nEsc: entities • q: quit", status, m.subjects.list.View())
 }
 
 func (m Model) viewSubjectCreate() string {
 	status := ""
-	if m.subjectLoading {
+	if m.subjects.loading {
 		status = "Creating subject…\n\n"
-	} else if m.subjectError != nil {
-		status = fmt.Sprintf("Error: %s\n\n", m.subjectError)
+	} else if m.subjects.err != nil {
+		status = fmt.Sprintf("Error: %s\n\n", m.subjects.err)
 	}
-	return fmt.Sprintf("Create subject\n\n%s%s\n\nEnter: create • Esc: cancel", status, m.subjectInput.View())
+	return fmt.Sprintf("Create subject\n\n%s%s\n\nEnter: create • Esc: cancel", status, m.subjects.input.View())
 }
 
 func (m Model) viewSubjectDetail() string {
-	if m.selectedSubject == nil {
+	if m.subjects.selected == nil {
 		return "Subject unavailable\n\nEsc: subjects • q: quit"
 	}
 	title := "Subject"
-	if m.subjectListStale {
+	if m.subjects.listStale {
 		title = "Created subject"
 	}
 	return fmt.Sprintf(
 		"%s\n\nName: %s\nAdded: %s\n\nEsc: subjects • q: quit",
 		title,
-		m.selectedSubject.SubjectName,
-		m.selectedSubject.CreatedAt.UTC().Format(subjectDateLayout),
+		m.subjects.selected.SubjectName,
+		m.subjects.selected.CreatedAt.UTC().Format(subjectDateLayout),
 	)
 }
