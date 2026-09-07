@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -161,6 +162,39 @@ func TestCreateSubjectHandler(t *testing.T) {
 			t.Fatalf("got response body %s", response.Body.String())
 		}
 	})
+
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"returns 404 for unavailable owner", data.ErrRecordNotFound},
+		{"returns 404 for wrapped unavailable owner error", fmt.Errorf("create subject: %w", data.ErrRecordNotFound)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &subjectStoreStub{createSubject: func(context.Context, *data.Subject) (*data.Subject, error) {
+				return nil, tc.err
+			}}
+			response := httptest.NewRecorder()
+
+			newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodPost, "/subjects", `{"subject_name":"coding"}`))
+
+			if got, want := response.Code, http.StatusNotFound; got != want {
+				t.Fatalf("got status code %d, want %d", got, want)
+			}
+			if got, want := response.Header().Get("Content-Type"), jsonContentType; got != want {
+				t.Fatalf("got content type %q, want %q", got, want)
+			}
+			var body struct {
+				Error string `json:"error"`
+			}
+			if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+				t.Fatalf("got response decode error %v, want nil", err)
+			}
+			if got, want := body.Error, "the requested resource could not be found"; got != want {
+				t.Fatalf("got error message %q, want %q", got, want)
+			}
+		})
+	}
 
 	t.Run("returns 500 when store fails", func(t *testing.T) {
 		store := &subjectStoreStub{createSubject: func(context.Context, *data.Subject) (*data.Subject, error) { return nil, errors.New("boom") }}
