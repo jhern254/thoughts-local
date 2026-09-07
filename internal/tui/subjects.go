@@ -150,7 +150,7 @@ func (m Model) getSubject(subjectID int64) tea.Cmd {
 func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		logSubjectServiceError(m.logger, message.err, "list")
+		logSubjectCreateError(m.logger, message.err)
 		m.subjects.err = message.err
 		return m, nil
 	}
@@ -163,7 +163,6 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		logSubjectServiceError(m.logger, message.err, "create")
 		m.subjects.err = message.err
 		return m, m.subjects.input.Focus()
 	}
@@ -173,7 +172,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.err = nil
 	m.subjects.selected = message.subject
 	m.subjects.listStale = true
-	m.logger.Info("subject created", logging.Int64("subject_id", message.subject.SubjectID))
+	m.logger.Info("subject created", logging.Fields{"subject_id": message.subject.SubjectID})
 	m.screen = screenSubjectDetail
 	return m, nil
 }
@@ -181,7 +180,6 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		logSubjectServiceError(m.logger, message.err, "get")
 		m.subjects.err = message.err
 		return m, nil
 	}
@@ -192,11 +190,11 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 	return m, nil
 }
 
-func logSubjectServiceError(logger logging.Logger, err error, operation string) {
+func logSubjectCreateError(logger logging.Logger, err error) {
 	if isExpectedSubjectError(err) {
 		return
 	}
-	logger.Error(err, "subject operation failed", logging.String("operation", operation))
+	logger.Error(err, "subject operation failed", logging.Fields{"operation": "create"})
 }
 
 func isExpectedSubjectError(err error) bool {

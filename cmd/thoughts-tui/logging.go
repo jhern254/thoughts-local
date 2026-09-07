@@ -14,11 +14,11 @@ const (
 )
 
 func newLogger(path, value string) (logging.Logger, *os.File, error) {
-	level, err := logging.ParseLevel(value)
+	disabled, err := logging.Disabled(value)
 	if err != nil {
 		return logging.Logger{}, nil, err
 	}
-	if level.Disabled() {
+	if disabled {
 		return logging.Nop(), nil, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -29,5 +29,12 @@ func newLogger(path, value string) (logging.Logger, *os.File, error) {
 		return logging.Logger{}, nil, fmt.Errorf("open TUI log: %w", err)
 	}
 
-	return logging.New(file, tuiApplicationName, level), file, nil
+	logger, err := logging.New(file, tuiApplicationName, value)
+	if err != nil {
+		if closeErr := file.Close(); closeErr != nil {
+			return logging.Logger{}, nil, fmt.Errorf("configure TUI log: %v; close TUI log: %w", err, closeErr)
+		}
+		return logging.Logger{}, nil, err
+	}
+	return logger, file, nil
 }

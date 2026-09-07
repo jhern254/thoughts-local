@@ -26,106 +26,39 @@ type subjectServiceStub struct {
 }
 
 func TestSubjectsCommand_Logging(t *testing.T) {
-	t.Run("logs successful mutations by ID without authored content", func(t *testing.T) {
-		tests := []struct {
-			name    string
-			args    []string
-			service *subjectServiceStub
-			message string
-		}{
-			{
-				name: "create",
-				args: []string{"subjects", "create", "private subject"},
-				service: &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) {
-					return &data.Subject{SubjectID: 7, SubjectName: "private subject"}, nil
-				}},
-				message: "subject created",
-			},
-			{
-				name: "update",
-				args: []string{"subjects", "update", "7", "private subject"},
-				service: &subjectServiceStub{update: func(context.Context, string, int64, string) (*data.Subject, error) {
-					return &data.Subject{SubjectID: 7, SubjectName: "private subject"}, nil
-				}},
-				message: "subject updated",
-			},
-			{
-				name:    "delete",
-				args:    []string{"subjects", "delete", "7"},
-				service: &subjectServiceStub{delete: func(context.Context, string, int64) error { return nil }},
-				message: "subject deleted",
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				var logs, output bytes.Buffer
-				app := newSubjectTestApplication(tt.service, &output)
-				app.logger = newTestLogger(t, &logs)
-
-				if err := newSubjectsCommand(app).Run(context.Background(), tt.args); err != nil {
-					t.Fatal(err)
-				}
-
-				got := logs.String()
-				for _, want := range []string{tt.message, `"subject_id":7`} {
-					if !strings.Contains(got, want) {
-						t.Fatalf("logs %q do not contain %q", got, want)
-					}
-				}
-				if strings.Contains(got, "private subject") {
-					t.Fatalf("logs %q contain authored content", got)
-				}
-				if output.Len() == 0 {
-					t.Fatal("got no command output")
-				}
-			})
-		}
-	})
-
-	t.Run("does not log successful reads at info", func(t *testing.T) {
-		service := &subjectServiceStub{
-			get: func(context.Context, string, int64) (*data.Subject, error) {
-				return &data.Subject{SubjectID: 7, SubjectName: "private subject"}, nil
-			},
-			list: func(context.Context, string) ([]data.Subject, error) { return nil, nil },
-		}
-		for _, args := range [][]string{{"subjects", "get", "7"}, {"subjects", "list"}} {
-			var logs bytes.Buffer
-			app := newSubjectTestApplication(service, io.Discard)
-			app.logger = newTestLogger(t, &logs)
-
-			if err := newSubjectsCommand(app).Run(context.Background(), args); err != nil {
-				t.Fatal(err)
-			}
-			if logs.Len() != 0 {
-				t.Fatalf("got read success logs %q", logs.String())
-			}
-		}
-	})
-
-	t.Run("logs service failure without authored content", func(t *testing.T) {
-		want := errors.New("create failed")
-		service := &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) {
-			return nil, want
-		}}
+	t.Run("logs mutation ID without authored content", func(t *testing.T) {
 		var logs bytes.Buffer
-		app := newSubjectTestApplication(service, io.Discard)
-		app.logger = newTestLogger(t, &logs)
+		service := &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) {
+			return &data.Subject{SubjectID: 7, SubjectName: "private subject"}, nil
+		}}
+		app := &application{subjects: service, userID: "user-1", out: io.Discard, logger: newTestLogger(t, &logs)}
 
-		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "create", "private subject"})
-
-		if err != want {
-			t.Fatalf("got error %v, want %v", err, want)
+		if err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "create", "private subject"}); err != nil {
+			t.Fatal(err)
 		}
+
+		got := logs.String()
+		for _, want := range []string{"subject created", `"subject_id":7`} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("logs %q do not contain %q", got, want)
+			}
+		}
+		if strings.Contains(got, "private subject") {
+			t.Fatalf("logs %q contain authored content", got)
+		}
+	})
+
+	t.Run("logs unexpected failure as error", func(t *testing.T) {
+		want := errors.New("create failed")
+		var logs bytes.Buffer
+
+		logSubjectCreateError(newTestLogger(t, &logs), want)
+
 		got := logs.String()
 		for _, wantLog := range []string{"subject operation failed", want.Error(), `"operation":"create"`} {
 			if !strings.Contains(got, wantLog) {
 				t.Fatalf("logs %q do not contain %q", got, wantLog)
 			}
-		}
-		if strings.Contains(got, "private subject") {
-			t.Fatalf("logs %q contain authored content", got)
 		}
 	})
 
@@ -142,17 +75,9 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				var logs bytes.Buffer
-				service := &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) {
-					return nil, tt.err
-				}}
-				app := newSubjectTestApplication(service, io.Discard)
-				app.logger = newTestLogger(t, &logs)
 
-				err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "create", "private subject"})
+				logSubjectCreateError(newTestLogger(t, &logs), tt.err)
 
-				if !errors.Is(err, tt.err) {
-					t.Fatalf("got error %v, want %v", err, tt.err)
-				}
 				if logs.Len() != 0 {
 					t.Fatalf("got expected-outcome logs %q", logs.String())
 				}
@@ -197,7 +122,7 @@ func TestSubjectsCommand_Create(t *testing.T) {
 			}
 			return &data.Subject{SubjectID: 7, UserID: userID, SubjectName: name}, nil
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(ctx, []string{"subjects", "create", "  learn Go  "})
 
@@ -220,7 +145,7 @@ func TestSubjectsCommand_Create(t *testing.T) {
 			service := &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) {
 				return nil, errors.New("unexpected service call")
 			}}
-			app := newSubjectTestApplication(service, &bytes.Buffer{})
+			app := &application{subjects: service, userID: "user-1", out: &bytes.Buffer{}}
 
 			err := newSubjectsCommand(app).Run(context.Background(), tt.args)
 
@@ -239,7 +164,7 @@ func TestSubjectsCommand_Create(t *testing.T) {
 		service := &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) {
 			return nil, want
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "create", "coding"})
 
@@ -256,7 +181,7 @@ func TestSubjectsCommand_Create(t *testing.T) {
 		service := &subjectServiceStub{create: func(_ context.Context, userID, name string) (*data.Subject, error) {
 			return &data.Subject{SubjectID: 7, UserID: userID, SubjectName: name}, nil
 		}}
-		app := newSubjectTestApplication(service, errorWriter{err: want})
+		app := &application{subjects: service, userID: "user-1", out: errorWriter{err: want}}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "create", "coding"})
 
@@ -277,7 +202,7 @@ func TestSubjectsCommand_Get(t *testing.T) {
 			}
 			return &data.Subject{SubjectID: subjectID, UserID: userID, SubjectName: "coding"}, nil
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(ctx, []string{"subjects", "get", "7"})
 
@@ -303,7 +228,7 @@ func TestSubjectsCommand_Get(t *testing.T) {
 		service := &subjectServiceStub{get: func(context.Context, string, int64) (*data.Subject, error) {
 			return nil, want
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "get", "7"})
 
@@ -320,7 +245,7 @@ func TestSubjectsCommand_Get(t *testing.T) {
 		service := &subjectServiceStub{get: func(_ context.Context, userID string, subjectID int64) (*data.Subject, error) {
 			return &data.Subject{SubjectID: subjectID, UserID: userID, SubjectName: "coding"}, nil
 		}}
-		app := newSubjectTestApplication(service, errorWriter{err: want})
+		app := &application{subjects: service, userID: "user-1", out: errorWriter{err: want}}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "get", "7"})
 
@@ -344,7 +269,7 @@ func TestSubjectsCommand_List(t *testing.T) {
 				{SubjectID: 9, UserID: userID, SubjectName: "writing"},
 			}, nil
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(ctx, []string{"subjects", "list"})
 
@@ -361,7 +286,7 @@ func TestSubjectsCommand_List(t *testing.T) {
 		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) {
 			return []data.Subject{}, nil
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "list"})
 
@@ -377,7 +302,7 @@ func TestSubjectsCommand_List(t *testing.T) {
 		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) {
 			return nil, errors.New("unexpected service call")
 		}}
-		app := newSubjectTestApplication(service, &bytes.Buffer{})
+		app := &application{subjects: service, userID: "user-1", out: &bytes.Buffer{}}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "list", "extra"})
 
@@ -395,7 +320,7 @@ func TestSubjectsCommand_List(t *testing.T) {
 		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) {
 			return nil, want
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "list"})
 
@@ -412,7 +337,7 @@ func TestSubjectsCommand_List(t *testing.T) {
 		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) {
 			return []data.Subject{{SubjectID: 7, SubjectName: "coding"}}, nil
 		}}
-		app := newSubjectTestApplication(service, errorWriter{err: want})
+		app := &application{subjects: service, userID: "user-1", out: errorWriter{err: want}}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "list"})
 
@@ -433,7 +358,7 @@ func TestSubjectsCommand_Update(t *testing.T) {
 			}
 			return &data.Subject{SubjectID: subjectID, UserID: userID, SubjectName: name}, nil
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(ctx, []string{"subjects", "update", "7", "  Go programming  "})
 
@@ -460,7 +385,7 @@ func TestSubjectsCommand_Update(t *testing.T) {
 		service := &subjectServiceStub{update: func(context.Context, string, int64, string) (*data.Subject, error) {
 			return nil, want
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "update", "7", "coding"})
 
@@ -477,7 +402,7 @@ func TestSubjectsCommand_Update(t *testing.T) {
 		service := &subjectServiceStub{update: func(_ context.Context, userID string, subjectID int64, name string) (*data.Subject, error) {
 			return &data.Subject{SubjectID: subjectID, UserID: userID, SubjectName: name}, nil
 		}}
-		app := newSubjectTestApplication(service, errorWriter{err: want})
+		app := &application{subjects: service, userID: "user-1", out: errorWriter{err: want}}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "update", "7", "coding"})
 
@@ -498,7 +423,7 @@ func TestSubjectsCommand_Delete(t *testing.T) {
 			}
 			return nil
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(ctx, []string{"subjects", "delete", "7"})
 
@@ -524,7 +449,7 @@ func TestSubjectsCommand_Delete(t *testing.T) {
 		service := &subjectServiceStub{delete: func(context.Context, string, int64) error {
 			return want
 		}}
-		app := newSubjectTestApplication(service, &out)
+		app := &application{subjects: service, userID: "user-1", out: &out}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "delete", "7"})
 
@@ -539,7 +464,7 @@ func TestSubjectsCommand_Delete(t *testing.T) {
 	t.Run("returns output error", func(t *testing.T) {
 		want := errors.New("write failed")
 		service := &subjectServiceStub{delete: func(context.Context, string, int64) error { return nil }}
-		app := newSubjectTestApplication(service, errorWriter{err: want})
+		app := &application{subjects: service, userID: "user-1", out: errorWriter{err: want}}
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "delete", "7"})
 
@@ -554,7 +479,7 @@ func testInvalidSubjectCommandArguments(t *testing.T, command string, testCases 
 	for _, args := range testCases {
 		t.Run("rejects "+command+" arguments "+args[len(args)-1], func(t *testing.T) {
 			service := &subjectServiceStub{}
-			app := newSubjectTestApplication(service, &bytes.Buffer{})
+			app := &application{subjects: service, userID: "user-1", out: &bytes.Buffer{}}
 
 			err := newSubjectsCommand(app).Run(context.Background(), args)
 

@@ -47,14 +47,11 @@ func newSubjectCreateCommand(app *application) *cli.Command {
 
 			created, err := app.subjects.Create(ctx, app.userID, cmd.Args().Get(0))
 			if err != nil {
-				logSubjectServiceError(app.logger, err, "create")
+				logSubjectCreateError(app.logger, err)
 				return err
 			}
-			app.logger.Info("subject created", logging.Int64("subject_id", created.SubjectID))
+			app.logger.Info("subject created", logging.Fields{"subject_id": created.SubjectID})
 			_, err = fmt.Fprintf(app.out, "Created subject %d: %s\n", created.SubjectID, created.SubjectName)
-			if err != nil {
-				app.logger.Error(err, "subject operation failed", logging.String("operation", "create"), logging.String("stage", "output"), logging.Int64("subject_id", created.SubjectID))
-			}
 			return err
 		},
 	}
@@ -76,13 +73,9 @@ func newSubjectGetCommand(app *application) *cli.Command {
 
 			found, err := app.subjects.Get(ctx, app.userID, subjectID)
 			if err != nil {
-				logSubjectServiceError(app.logger, err, "get", logging.Int64("subject_id", subjectID))
 				return err
 			}
 			_, err = fmt.Fprintf(app.out, "Subject %d: %s\n", found.SubjectID, found.SubjectName)
-			if err != nil {
-				app.logger.Error(err, "subject operation failed", logging.String("operation", "get"), logging.String("stage", "output"), logging.Int64("subject_id", found.SubjectID))
-			}
 			return err
 		},
 	}
@@ -99,12 +92,10 @@ func newSubjectListCommand(app *application) *cli.Command {
 
 			subjects, err := app.subjects.List(ctx, app.userID)
 			if err != nil {
-				logSubjectServiceError(app.logger, err, "list")
 				return err
 			}
 			for _, item := range subjects {
 				if _, err := fmt.Fprintf(app.out, "%d\t%s\n", item.SubjectID, item.SubjectName); err != nil {
-					app.logger.Error(err, "subject operation failed", logging.String("operation", "list"), logging.String("stage", "output"), logging.Int64("subject_id", item.SubjectID))
 					return err
 				}
 			}
@@ -130,14 +121,10 @@ func newSubjectUpdateCommand(app *application) *cli.Command {
 
 			updated, err := app.subjects.Update(ctx, app.userID, subjectID, cmd.Args().Get(1))
 			if err != nil {
-				logSubjectServiceError(app.logger, err, "update", logging.Int64("subject_id", subjectID))
 				return err
 			}
-			app.logger.Info("subject updated", logging.Int64("subject_id", updated.SubjectID))
+			app.logger.Info("subject updated", logging.Fields{"subject_id": updated.SubjectID})
 			_, err = fmt.Fprintf(app.out, "Updated subject %d: %s\n", updated.SubjectID, updated.SubjectName)
-			if err != nil {
-				app.logger.Error(err, "subject operation failed", logging.String("operation", "update"), logging.String("stage", "output"), logging.Int64("subject_id", updated.SubjectID))
-			}
 			return err
 		},
 	}
@@ -158,24 +145,20 @@ func newSubjectDeleteCommand(app *application) *cli.Command {
 			}
 
 			if err := app.subjects.Delete(ctx, app.userID, subjectID); err != nil {
-				logSubjectServiceError(app.logger, err, "delete", logging.Int64("subject_id", subjectID))
 				return err
 			}
-			app.logger.Info("subject deleted", logging.Int64("subject_id", subjectID))
+			app.logger.Info("subject deleted", logging.Fields{"subject_id": subjectID})
 			_, err = fmt.Fprintf(app.out, "Deleted subject %d\n", subjectID)
-			if err != nil {
-				app.logger.Error(err, "subject operation failed", logging.String("operation", "delete"), logging.String("stage", "output"), logging.Int64("subject_id", subjectID))
-			}
 			return err
 		},
 	}
 }
 
-func logSubjectServiceError(logger logging.Logger, err error, operation string, fields ...logging.Field) {
+func logSubjectCreateError(logger logging.Logger, err error) {
 	if isExpectedSubjectError(err) {
 		return
 	}
-	logger.Error(err, "subject operation failed", append([]logging.Field{logging.String("operation", operation)}, fields...)...)
+	logger.Error(err, "subject operation failed", logging.Fields{"operation": "create"})
 }
 
 func isExpectedSubjectError(err error) bool {

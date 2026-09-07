@@ -11,82 +11,80 @@ import (
 
 const callerSkipFrameCount = 3
 
-type Level struct {
-	value zerolog.Level
-}
-
-func ParseLevel(value string) (Level, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return Level{value: zerolog.InfoLevel}, nil
-	}
-	level, err := zerolog.ParseLevel(value)
-	if err != nil {
-		return Level{}, fmt.Errorf("invalid THOUGHTS_LOG_LEVEL %q: %w", value, err)
-	}
-	return Level{value: level}, nil
-}
-
-func (l Level) Disabled() bool {
-	return l.value == zerolog.Disabled
-}
-
-type Field struct {
-	key   string
-	value any
-}
-
-func String(key, value string) Field {
-	return Field{key: key, value: value}
-}
-
-func Int64(key string, value int64) Field {
-	return Field{key: key, value: value}
-}
+type Fields map[string]any
 
 type Logger struct {
-	logger zerolog.Logger
+	logger *zerolog.Logger
 }
 
-func New(output io.Writer, application string, level Level) Logger {
-	return newLogger(output, application, level)
+func New(output io.Writer, application, level string) (Logger, error) {
+	return newLogger(output, application, level, false)
 }
 
-func NewConsole(output io.Writer, application string, level Level) Logger {
-	console := zerolog.ConsoleWriter{Out: output, TimeFormat: time.RFC3339}
-	return newLogger(console, application, level)
+func NewConsole(output io.Writer, application, level string) (Logger, error) {
+	return newLogger(output, application, level, true)
 }
 
 func Nop() Logger {
-	return Logger{logger: zerolog.Nop()}
+	return Logger{}
 }
 
-func newLogger(output io.Writer, application string, level Level) Logger {
+func Disabled(value string) (bool, error) {
+	level, err := parseLevel(value)
+	return level == zerolog.Disabled, err
+}
+
+func newLogger(output io.Writer, application, value string, console bool) (Logger, error) {
+	level, err := parseLevel(value)
+	if err != nil {
+		return Logger{}, err
+	}
+	if level == zerolog.Disabled {
+		return Nop(), nil
+	}
+	if console {
+		output = zerolog.ConsoleWriter{Out: output, TimeFormat: time.RFC3339}
+	}
+
 	logger := zerolog.New(output).
 		With().
 		Timestamp().
 		CallerWithSkipFrameCount(callerSkipFrameCount).
 		Str("application", application).
 		Logger().
-		Level(level.value)
-	return Logger{logger: logger}
+		Level(level)
+	return Logger{logger: &logger}, nil
 }
 
-func (l Logger) Info(message string, fields ...Field) {
+func parseLevel(value string) (zerolog.Level, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return zerolog.InfoLevel, nil
+	}
+	level, err := zerolog.ParseLevel(value)
+	if err != nil {
+		return zerolog.NoLevel, fmt.Errorf("invalid THOUGHTS_LOG_LEVEL %q: %w", value, err)
+	}
+	return level, nil
+}
+
+func (l Logger) Info(message string, fields ...Fields) {
+	if l.logger == nil {
+		return
+	}
 	addFields(l.logger.Info(), fields).Msg(message)
 }
 
-func (l Logger) Debug(message string, fields ...Field) {
-	addFields(l.logger.Debug(), fields).Msg(message)
-}
-
-func (l Logger) Error(err error, message string, fields ...Field) {
+func (l Logger) Error(err error, message string, fields ...Fields) {
+	if l.logger == nil {
+		return
+	}
 	addFields(l.logger.Error().Err(err), fields).Msg(message)
 }
 
-func addFields(event *zerolog.Event, fields []Field) *zerolog.Event {
-	for _, field := range fields {
-		event = event.Interface(field.key, field.value)
+func addFields(event *zerolog.Event, fields []Fields) *zerolog.Event {
+	for _, values := range fields {
+		event = event.Fields(map[string]any(values))
 	}
 	return event
 }
