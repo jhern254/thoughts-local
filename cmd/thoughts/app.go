@@ -4,6 +4,7 @@ import (
 	"context"
 
 	appcore "github.com/jhern254/go-thoughts/internal/application"
+	"github.com/jhern254/go-thoughts/internal/logging"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -24,13 +25,13 @@ func newCLI(app *application) *cli.Command {
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			app.logger.Info("starting application", nil)
+			app.logger.Started()
 			dsn := cmd.String("db-dsn")
 			if dsn == "" {
 				dsn = defaultSQLiteDSN
 			}
 			if err := app.open(ctx, dsn); err != nil {
-				app.logger.Error(err, "failed to start application", nil)
+				app.logger.Failure(logging.ApplicationStart, logging.UnexpectedFailure)
 				return ctx, err
 			}
 			return ctx, nil
@@ -38,9 +39,9 @@ func newCLI(app *application) *cli.Command {
 		After: func(context.Context, *cli.Command) error {
 			err := app.close()
 			if err != nil {
-				app.logger.Error(err, "failed to close application", nil)
+				app.logger.Failure(logging.ApplicationClose, logging.UnexpectedFailure)
 			}
-			app.logger.Info("stopped application", nil)
+			app.logger.Stopped()
 			return err
 		},
 		Commands: []*cli.Command{

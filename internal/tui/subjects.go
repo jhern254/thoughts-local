@@ -149,7 +149,7 @@ func (m Model) getSubject(subjectID int64) tea.Cmd {
 func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		logSubjectError(m.logger, "list", message.err)
+		logSubjectError(m.logger, logging.SubjectList, message.err)
 		m.subjects.err = message.err
 		return m, nil
 	}
@@ -162,7 +162,7 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		logSubjectError(m.logger, "create", message.err)
+		logSubjectError(m.logger, logging.SubjectCreate, message.err)
 		m.subjects.err = message.err
 		return m, m.subjects.input.Focus()
 	}
@@ -172,7 +172,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.err = nil
 	m.subjects.selected = message.subject
 	m.subjects.listStale = true
-	m.logger.Info("subject created", logging.Fields{"subject_id": message.subject.SubjectID})
+	m.logger.Mutation(logging.SubjectCreated, message.subject.SubjectID)
 	m.screen = screenSubjectDetail
 	return m, nil
 }
@@ -180,7 +180,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		logSubjectError(m.logger, "get", message.err)
+		logSubjectError(m.logger, logging.SubjectGet, message.err)
 		m.subjects.err = message.err
 		return m, nil
 	}
@@ -191,11 +191,11 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 	return m, nil
 }
 
-func logSubjectError(logger logging.Logger, operation string, err error) {
+func logSubjectError(logger logging.Logger, operation logging.Operation, err error) {
 	if subject.IsExpectedError(err) {
 		return
 	}
-	logger.Error(err, "subject operation failed", logging.Fields{"operation": operation})
+	logger.Failure(operation, logging.UnexpectedFailure)
 }
 
 func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {

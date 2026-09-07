@@ -23,8 +23,8 @@ func TestLogger(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				logger.Info("information", nil)
-				logger.Error(errors.New("failure"), "problem", nil)
+				logger.Started()
+				logger.Failure(logging.SubjectCreate, logging.UnexpectedFailure)
 				if got := strings.Contains(output.String(), `"level":"info"`); got != (level == "info") {
 					t.Fatalf("unexpected info output: %s", &output)
 				}
@@ -40,8 +40,10 @@ func TestLogger(t *testing.T) {
 
 	t.Run("zero value and Nop accept events", func(t *testing.T) {
 		for _, logger := range []logging.Logger{{}, logging.Nop()} {
-			logger.Info("ignored", nil)
-			logger.Error(errors.New("ignored"), "ignored", nil)
+			logger.Started()
+			logger.Stopped()
+			logger.Mutation(logging.SubjectCreated, 7)
+			logger.Failure(logging.SubjectCreate, logging.UnexpectedFailure)
 		}
 	})
 
@@ -59,7 +61,7 @@ func TestLogger(t *testing.T) {
 			t.Fatal(err)
 		}
 		for key, want := range map[string]any{
-			"level": "info", "application": "test-app", "message": "created", "subject_id": float64(7),
+			"level": "info", "application": "test-app", "message": "subject created", "subject_id": float64(7),
 		} {
 			if got := event[key]; got != want {
 				t.Fatalf("got %s %v, want %v", key, got, want)
@@ -84,12 +86,12 @@ func TestLogger(t *testing.T) {
 func TestLogger_NewFile(t *testing.T) {
 	t.Run("creates private file and preserves events when reopened", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "logs", "thoughts.log")
-		for _, message := range []string{"first", "second"} {
+		for _, subjectID := range []int64{1, 2} {
 			logger, file, err := logging.NewFile(path, "test", "info")
 			if err != nil {
 				t.Fatal(err)
 			}
-			logger.Info(message, nil)
+			logger.Mutation(logging.SubjectCreated, subjectID)
 			if err := file.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -106,13 +108,13 @@ func TestLogger_NewFile(t *testing.T) {
 			t.Fatal(err)
 		}
 		decoder := json.NewDecoder(bytes.NewReader(contents))
-		for _, want := range []string{"first", "second"} {
+		for _, want := range []float64{1, 2} {
 			var event map[string]any
 			if err := decoder.Decode(&event); err != nil {
 				t.Fatal(err)
 			}
-			if event["message"] != want {
-				t.Fatalf("got event %v, want %s", event, want)
+			if event["subject_id"] != want {
+				t.Fatalf("got event %v, want %v", event, want)
 			}
 		}
 	})
@@ -144,6 +146,6 @@ func TestLogger_NewFile(t *testing.T) {
 
 func logFromApplication(logger logging.Logger) string {
 	_, file, line, _ := runtime.Caller(0)
-	logger.Info("created", logging.Fields{"subject_id": int64(7)})
+	logger.Mutation(logging.SubjectCreated, 7)
 	return fmt.Sprintf("%s:%d", filepath.Base(file), line+1)
 }

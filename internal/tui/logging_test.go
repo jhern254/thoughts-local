@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -20,11 +21,14 @@ func TestSubjectModel_Logging(t *testing.T) {
 			err    error
 			logged bool
 		}{
-			{"unexpected failure", errors.New("database unavailable"), true},
+			{"unexpected failure", errors.New("PRIVATE-ERROR-MARKER"), true},
 			{"validation", &subject.ValidationError{}, false},
 			{"not found", data.ErrRecordNotFound, false},
 			{"duplicate", data.ErrDuplicateRecord, false},
 		} {
+			if operation != "create" && !outcome.logged {
+				continue
+			}
 			t.Run(operation+" handles "+outcome.name, func(t *testing.T) {
 				var logs bytes.Buffer
 				logger, err := logging.New(&logs, "test", "info")
@@ -57,7 +61,7 @@ func TestSubjectModel_Logging(t *testing.T) {
 				if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
 					t.Fatal(err)
 				}
-				if event["operation"] != operation || event["level"] != "error" || event["error"] != failure.Error() {
+				if len(event) != 7 || event["operation"] != "subject_"+operation || event["level"] != "error" || event["category"] != "unexpected_failure" || event["application"] != "test" || event["message"] != "operation failed" || event["caller"] == nil || event["time"] == nil || strings.Contains(logs.String(), "PRIVATE-ERROR-MARKER") {
 					t.Fatalf("incorrect failure event: %v", event)
 				}
 			})

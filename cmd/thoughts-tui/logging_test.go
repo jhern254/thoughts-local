@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,6 +17,54 @@ import (
 )
 
 func TestTUI_Logging(t *testing.T) {
+	for _, operation := range []string{"application_start", "application_close", "tui_run"} {
+		t.Run(operation+" logs safe failure and returns original error", func(t *testing.T) {
+			failure := errors.New("PRIVATE-LIFECYCLE-MARKER")
+			var logs bytes.Buffer
+			logger, err := logging.New(&logs, "test", "error")
+			if err != nil {
+				t.Fatal(err)
+			}
+			app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logger)
+			app.openRuntime = func(context.Context, string) (runtime, error) {
+				if operation == "application_start" {
+					return nil, failure
+				}
+				return &runtimeStub{localUser: &data.User{UserID: "local"}, close: func() error {
+					if operation == "application_close" {
+						return failure
+					}
+					return nil
+				}}, nil
+			}
+			app.runProgram = func(context.Context, tea.Model, io.Reader, io.Writer) error {
+				if operation == "tui_run" {
+					return failure
+				}
+				return nil
+			}
+			if err := newTUI(app).Run(context.Background(), []string{"thoughts-tui"}); !errors.Is(err, failure) {
+				t.Fatalf("got %v, want original error", err)
+			}
+			var event map[string]any
+			if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]any{"level": "error", "application": "test", "message": "operation failed", "operation": operation, "category": "unexpected_failure"}
+			if len(event) != len(want)+2 || event["caller"] == nil || event["time"] == nil {
+				t.Fatalf("unexpected fields: %v", event)
+			}
+			for key, value := range want {
+				if event[key] != value {
+					t.Fatalf("unexpected event: %v", event)
+				}
+			}
+			if strings.Contains(logs.String(), "PRIVATE-LIFECYCLE-MARKER") {
+				t.Fatal("private error entered logs")
+			}
+		})
+	}
+
 	t.Run("keeps lifecycle logs in file and screen output in terminal", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "thoughts.log")
 		logger, file, err := logging.NewFile(path, "thoughts-tui", "")

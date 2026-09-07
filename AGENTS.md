@@ -21,6 +21,8 @@ The core philosophy is:
 
 ## Architecture Principles
 
+Operational logging accepts only approved typed metadata and uses fixed event messages. Never pass authored content, arbitrary objects, or raw error text into logs. Classify existing errors at the presentation boundary; services and stores return errors without logging them.
+
 * The database is the canonical source of truth.
 * Markdown should be treated as a projection, import/export format, or editing surface, not the hidden domain model.
 * Keep domain/application behavior separate from delivery mechanisms.

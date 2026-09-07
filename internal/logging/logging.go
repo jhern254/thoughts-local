@@ -13,7 +13,71 @@ import (
 
 const callerSkipFrameCount = 3
 
-type Fields map[string]any
+type MutationEvent uint8
+
+const (
+	SubjectCreated MutationEvent = iota
+	SubjectUpdated
+	SubjectDeleted
+)
+
+type Operation uint8
+
+const (
+	ApplicationStart Operation = iota
+	ApplicationClose
+	TUIRun
+	SubjectCreate
+	SubjectGet
+	SubjectList
+	SubjectUpdate
+	SubjectDelete
+)
+
+type FailureCategory uint8
+
+const UnexpectedFailure FailureCategory = iota
+
+func (operation Operation) name() string {
+	switch operation {
+	case ApplicationStart:
+		return "application_start"
+	case ApplicationClose:
+		return "application_close"
+	case TUIRun:
+		return "tui_run"
+	case SubjectCreate:
+		return "subject_create"
+	case SubjectGet:
+		return "subject_get"
+	case SubjectList:
+		return "subject_list"
+	case SubjectUpdate:
+		return "subject_update"
+	case SubjectDelete:
+		return "subject_delete"
+	default:
+		return "unknown"
+	}
+}
+
+func (event MutationEvent) message() string {
+	switch event {
+	case SubjectCreated:
+		return "subject created"
+	case SubjectUpdated:
+		return "subject updated"
+	case SubjectDeleted:
+		return "subject deleted"
+	default:
+		return "unknown mutation"
+	}
+}
+
+func (category FailureCategory) name() string {
+	// There is only one approved category; unknown values use the same fallback.
+	return "unexpected_failure"
+}
 
 type Logger struct {
 	logger *zerolog.Logger
@@ -83,16 +147,30 @@ func parseLevel(value string) (zerolog.Level, error) {
 	return level, nil
 }
 
-func (l Logger) Info(message string, fields Fields) {
+func (l Logger) Started() {
 	if l.logger == nil {
 		return
 	}
-	l.logger.Info().Fields(map[string]any(fields)).Msg(message)
+	l.logger.Info().Msg("starting application")
 }
 
-func (l Logger) Error(err error, message string, fields Fields) {
+func (l Logger) Stopped() {
 	if l.logger == nil {
 		return
 	}
-	l.logger.Error().Err(err).Fields(map[string]any(fields)).Msg(message)
+	l.logger.Info().Msg("stopped application")
+}
+
+func (l Logger) Mutation(event MutationEvent, subjectID int64) {
+	if l.logger == nil {
+		return
+	}
+	l.logger.Info().Int64("subject_id", subjectID).Msg(event.message())
+}
+
+func (l Logger) Failure(operation Operation, category FailureCategory) {
+	if l.logger == nil {
+		return
+	}
+	l.logger.Error().Str("operation", operation.name()).Str("category", category.name()).Msg("operation failed")
 }

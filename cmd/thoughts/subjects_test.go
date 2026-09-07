@@ -29,38 +29,52 @@ type subjectServiceStub struct {
 
 func TestSubjectsCommand_Logging(t *testing.T) {
 	t.Run("logs mutation ID without authored content", func(t *testing.T) {
-		var logs bytes.Buffer
+		var logs, output bytes.Buffer
 		service := &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) {
 			return &data.Subject{SubjectID: 7, SubjectName: "private subject"}, nil
 		}}
-		app := &application{subjects: service, userID: "user-1", out: io.Discard, logger: newTestLogger(t, &logs)}
+		app := &application{subjects: service, userID: "user-1", out: &output, logger: newTestLogger(t, &logs)}
 
 		if err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "create", "private subject"}); err != nil {
 			t.Fatal(err)
 		}
 
 		got := logs.String()
+		if output.String() != "Created subject 7: private subject\n" {
+			t.Fatalf("changed command output: %q", &output)
+		}
 		for _, want := range []string{"subject created", `"subject_id":7`} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("logs %q do not contain %q", got, want)
 			}
+		}
+		var event map[string]any
+		if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
+			t.Fatal(err)
+		}
+		if len(event) != 6 || event["application"] != "test" || event["level"] != "info" || event["message"] != "subject created" || event["subject_id"] != float64(7) || event["caller"] == nil || event["time"] == nil {
+			t.Fatalf("unexpected event: %v", event)
 		}
 		if strings.Contains(got, "private subject") {
 			t.Fatalf("logs %q contain authored content", got)
 		}
 	})
 
-	for _, operation := range []string{"create", "get", "list"} {
+	for _, operation := range []string{"create", "get", "list", "update", "delete"} {
 		for _, tt := range []struct {
 			name   string
 			err    error
 			logged bool
 		}{
-			{name: "unexpected failure", err: errors.New("database unavailable"), logged: true},
+			{name: "unexpected failure", err: errors.New("PRIVATE-ERROR-MARKER"), logged: true},
 			{name: "validation", err: &subject.ValidationError{Fields: map[string]string{"subject_name": "must be provided"}}},
 			{name: "not found", err: data.ErrRecordNotFound},
 			{name: "duplicate", err: data.ErrDuplicateRecord},
 		} {
+			// Exercise classification once; other operations only need wiring coverage.
+			if operation != "create" && !tt.logged {
+				continue
+			}
 			t.Run(operation+" handles "+tt.name, func(t *testing.T) {
 				var logs bytes.Buffer
 				failure := fmt.Errorf("wrapped: %w", tt.err)
@@ -68,11 +82,16 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 					create: func(context.Context, string, string) (*data.Subject, error) { return nil, failure },
 					get:    func(context.Context, string, int64) (*data.Subject, error) { return nil, failure },
 					list:   func(context.Context, string) ([]data.Subject, error) { return nil, failure },
+					update: func(context.Context, string, int64, string) (*data.Subject, error) { return nil, failure },
+					delete: func(context.Context, string, int64) error { return failure },
 				}
 				app := &application{subjects: service, userID: "user-1", out: io.Discard, logger: newTestLogger(t, &logs)}
 				args := []string{"subjects", operation}
 				if operation != "list" {
 					args = append(args, "7")
+				}
+				if operation == "update" {
+					args = append(args, "private subject")
 				}
 				if err := newSubjectsCommand(app).Run(context.Background(), args); !errors.Is(err, failure) {
 					t.Fatalf("got error %v, want %v", err, failure)
@@ -87,7 +106,7 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 				if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
 					t.Fatal(err)
 				}
-				if event["operation"] != operation || event["level"] != "error" || event["error"] != failure.Error() {
+				if len(event) != 7 || event["operation"] != "subject_"+operation || event["level"] != "error" || event["category"] != "unexpected_failure" || event["application"] != "test" || event["message"] != "operation failed" || event["caller"] == nil || event["time"] == nil || strings.Contains(logs.String(), "PRIVATE-ERROR-MARKER") {
 					t.Fatalf("incorrect failure event: %v", event)
 				}
 			})
