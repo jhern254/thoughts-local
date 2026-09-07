@@ -9,6 +9,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/tui"
+	"github.com/rs/zerolog"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -24,17 +25,19 @@ type application struct {
 	in     io.Reader
 	out    io.Writer
 	errOut io.Writer
+	logger zerolog.Logger
 
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
 }
 
-func newApplication(in io.Reader, out, errOut io.Writer) *application {
+func newApplication(in io.Reader, out, errOut io.Writer, logger zerolog.Logger) *application {
 	return &application{
 		in:     in,
 		out:    out,
 		errOut: errOut,
+		logger: logger,
 		openRuntime: func(ctx context.Context, dsn string) (runtime, error) {
 			return appcore.Open(ctx, dsn)
 		},
@@ -57,31 +60,42 @@ func newTUI(app *application) *cli.Command {
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			app.logger.Info().Msg("starting application")
 			dsn := cmd.String("db-dsn")
 			if dsn == "" {
 				dsn = defaultSQLiteDSN
 			}
 			runtime, err := app.openRuntime(ctx, dsn)
 			if err != nil {
+				app.logger.Error().Err(err).Msg("failed to start application")
 				return ctx, err
 			}
 			app.runtime = runtime
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, _ *cli.Command) error {
-			return app.runProgram(
+			err := app.runProgram(
 				ctx,
-				tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects()),
+				tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.logger),
 				app.in,
 				app.out,
 			)
+			if err != nil {
+				app.logger.Error().Err(err).Msg("TUI program failed")
+			}
+			return err
 		},
 		After: func(context.Context, *cli.Command) error {
 			if app.runtime == nil {
+				app.logger.Info().Msg("stopped application")
 				return nil
 			}
 			err := app.runtime.Close()
 			app.runtime = nil
+			if err != nil {
+				app.logger.Error().Err(err).Msg("failed to close application")
+			}
+			app.logger.Info().Msg("stopped application")
 			return err
 		},
 	}

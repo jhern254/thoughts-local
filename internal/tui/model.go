@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -41,12 +42,13 @@ type Model struct {
 	ctx    context.Context
 	user   *data.User
 	screen screen
+	logger zerolog.Logger
 
 	entityList list.Model
 	subjects   subjectState
 }
 
-func NewModel(ctx context.Context, user *data.User, subjects SubjectService) Model {
+func NewModel(ctx context.Context, user *data.User, subjects SubjectService, logger zerolog.Logger) Model {
 	entities := list.New([]list.Item{
 		entityRow{
 			kind:        entitySubjects,
@@ -62,6 +64,7 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService) Mod
 		ctx:        ctx,
 		user:       user,
 		screen:     screenEntities,
+		logger:     logger,
 		entityList: entities,
 		subjects:   newSubjectState(subjects),
 	}

@@ -24,14 +24,24 @@ func newCLI(app *application) *cli.Command {
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			app.logger.Info().Msg("starting application")
 			dsn := cmd.String("db-dsn")
 			if dsn == "" {
 				dsn = defaultSQLiteDSN
 			}
-			return ctx, app.open(ctx, dsn)
+			if err := app.open(ctx, dsn); err != nil {
+				app.logger.Error().Err(err).Msg("failed to start application")
+				return ctx, err
+			}
+			return ctx, nil
 		},
 		After: func(context.Context, *cli.Command) error {
-			return app.close()
+			err := app.close()
+			if err != nil {
+				app.logger.Error().Err(err).Msg("failed to close application")
+			}
+			app.logger.Info().Msg("stopped application")
+			return err
 		},
 		Commands: []*cli.Command{
 			newSubjectsCommand(app),

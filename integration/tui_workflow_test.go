@@ -5,6 +5,7 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/tui"
+	"github.com/rs/zerolog"
 )
 
 func TestTUIWorkflow_SQLite(t *testing.T) {
@@ -67,7 +69,7 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 		})
 
 		wantUserID := runtime.LocalUser().UserID
-		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects())
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), zerolog.Nop())
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tuiKey(tea.KeyEnter))
 		for _, value := range wantName {
@@ -119,6 +121,7 @@ func runTUI(t *testing.T, dsn, input string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, "go", "run", "../cmd/thoughts-tui", "--db-dsn", dsn)
+	command.Env = append(os.Environ(), "THOUGHTS_LOG_LEVEL=disabled")
 	command.Stdin = strings.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout

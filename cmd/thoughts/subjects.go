@@ -44,9 +44,14 @@ func newSubjectCreateCommand(app *application) *cli.Command {
 
 			created, err := app.subjects.Create(ctx, app.userID, cmd.Args().Get(0))
 			if err != nil {
+				app.logger.Error().Err(err).Str("operation", "create").Msg("subject operation failed")
 				return err
 			}
+			app.logger.Info().Int64("subject_id", created.SubjectID).Msg("subject created")
 			_, err = fmt.Fprintf(app.out, "Created subject %d: %s\n", created.SubjectID, created.SubjectName)
+			if err != nil {
+				app.logger.Error().Err(err).Str("operation", "create").Str("stage", "output").Int64("subject_id", created.SubjectID).Msg("subject operation failed")
+			}
 			return err
 		},
 	}
@@ -68,9 +73,13 @@ func newSubjectGetCommand(app *application) *cli.Command {
 
 			found, err := app.subjects.Get(ctx, app.userID, subjectID)
 			if err != nil {
+				app.logger.Error().Err(err).Str("operation", "get").Int64("subject_id", subjectID).Msg("subject operation failed")
 				return err
 			}
 			_, err = fmt.Fprintf(app.out, "Subject %d: %s\n", found.SubjectID, found.SubjectName)
+			if err != nil {
+				app.logger.Error().Err(err).Str("operation", "get").Str("stage", "output").Int64("subject_id", found.SubjectID).Msg("subject operation failed")
+			}
 			return err
 		},
 	}
@@ -87,10 +96,12 @@ func newSubjectListCommand(app *application) *cli.Command {
 
 			subjects, err := app.subjects.List(ctx, app.userID)
 			if err != nil {
+				app.logger.Error().Err(err).Str("operation", "list").Msg("subject operation failed")
 				return err
 			}
 			for _, item := range subjects {
 				if _, err := fmt.Fprintf(app.out, "%d\t%s\n", item.SubjectID, item.SubjectName); err != nil {
+					app.logger.Error().Err(err).Str("operation", "list").Str("stage", "output").Int64("subject_id", item.SubjectID).Msg("subject operation failed")
 					return err
 				}
 			}
@@ -116,9 +127,14 @@ func newSubjectUpdateCommand(app *application) *cli.Command {
 
 			updated, err := app.subjects.Update(ctx, app.userID, subjectID, cmd.Args().Get(1))
 			if err != nil {
+				app.logger.Error().Err(err).Str("operation", "update").Int64("subject_id", subjectID).Msg("subject operation failed")
 				return err
 			}
+			app.logger.Info().Int64("subject_id", updated.SubjectID).Msg("subject updated")
 			_, err = fmt.Fprintf(app.out, "Updated subject %d: %s\n", updated.SubjectID, updated.SubjectName)
+			if err != nil {
+				app.logger.Error().Err(err).Str("operation", "update").Str("stage", "output").Int64("subject_id", updated.SubjectID).Msg("subject operation failed")
+			}
 			return err
 		},
 	}
@@ -139,9 +155,14 @@ func newSubjectDeleteCommand(app *application) *cli.Command {
 			}
 
 			if err := app.subjects.Delete(ctx, app.userID, subjectID); err != nil {
+				app.logger.Error().Err(err).Str("operation", "delete").Int64("subject_id", subjectID).Msg("subject operation failed")
 				return err
 			}
+			app.logger.Info().Int64("subject_id", subjectID).Msg("subject deleted")
 			_, err = fmt.Fprintf(app.out, "Deleted subject %d\n", subjectID)
+			if err != nil {
+				app.logger.Error().Err(err).Str("operation", "delete").Str("stage", "output").Int64("subject_id", subjectID).Msg("subject operation failed")
+			}
 			return err
 		},
 	}

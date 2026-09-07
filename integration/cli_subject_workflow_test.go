@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -222,6 +223,7 @@ func runSubjectsCLI(t *testing.T, dsn string, args ...string) (string, string, e
 		"subjects",
 	}
 	command := exec.CommandContext(ctx, "go", append(commandArgs, args...)...)
+	command.Env = append(os.Environ(), "THOUGHTS_LOG_LEVEL=disabled")
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr

@@ -147,6 +147,7 @@ func (m Model) getSubject(subjectID int64) tea.Cmd {
 func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
+		m.logger.Error().Err(message.err).Str("operation", "list").Msg("subject operation failed")
 		m.subjects.err = message.err
 		return m, nil
 	}
@@ -159,6 +160,7 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
+		m.logger.Error().Err(message.err).Str("operation", "create").Msg("subject operation failed")
 		m.subjects.err = message.err
 		return m, m.subjects.input.Focus()
 	}
@@ -168,6 +170,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.err = nil
 	m.subjects.selected = message.subject
 	m.subjects.listStale = true
+	m.logger.Info().Int64("subject_id", message.subject.SubjectID).Msg("subject created")
 	m.screen = screenSubjectDetail
 	return m, nil
 }
@@ -175,6 +178,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
+		m.logger.Error().Err(message.err).Str("operation", "get").Msg("subject operation failed")
 		m.subjects.err = message.err
 		return m, nil
 	}

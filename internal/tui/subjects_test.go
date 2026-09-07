@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/rs/zerolog"
 )
 
 type subjectServiceStub struct {
@@ -290,8 +292,87 @@ func TestSubjectModel_Get(t *testing.T) {
 	})
 }
 
+func TestSubjectModel_Logging(t *testing.T) {
+	t.Run("logs successful Create by ID without authored content", func(t *testing.T) {
+		var logs bytes.Buffer
+		service := &subjectServiceStub{
+			list: func(context.Context, string) ([]data.Subject, error) { return nil, nil },
+			create: func(_ context.Context, userID, name string) (*data.Subject, error) {
+				return &data.Subject{SubjectID: 7, UserID: userID, SubjectName: name}, nil
+			},
+		}
+		model := NewModel(
+			context.Background(),
+			&data.User{UserID: "local-user-id"},
+			service,
+			zerolog.New(&logs),
+		)
+		model = openCreateSubject(t, openSubjects(t, model))
+		model.subjects.input.SetValue("private subject")
+
+		model = runModelCommand(t, model, enterKey())
+
+		got := logs.String()
+		for _, want := range []string{"subject created", `"subject_id":7`} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("logs %q do not contain %q", got, want)
+			}
+		}
+		if strings.Contains(got, "private subject") {
+			t.Fatalf("logs %q contain authored content", got)
+		}
+	})
+
+	t.Run("logs handled service failure without authored content", func(t *testing.T) {
+		want := errors.New("create failed")
+		var logs bytes.Buffer
+		service := &subjectServiceStub{
+			list:   func(context.Context, string) ([]data.Subject, error) { return nil, nil },
+			create: func(context.Context, string, string) (*data.Subject, error) { return nil, want },
+		}
+		model := NewModel(
+			context.Background(),
+			&data.User{UserID: "local-user-id"},
+			service,
+			zerolog.New(&logs),
+		)
+		model = openCreateSubject(t, openSubjects(t, model))
+		model.subjects.input.SetValue("private subject")
+
+		model = runModelCommand(t, model, enterKey())
+
+		got := logs.String()
+		for _, wantLog := range []string{"subject operation failed", want.Error(), `"operation":"create"`} {
+			if !strings.Contains(got, wantLog) {
+				t.Fatalf("logs %q do not contain %q", got, wantLog)
+			}
+		}
+		if strings.Contains(got, "private subject") {
+			t.Fatalf("logs %q contain authored content", got)
+		}
+	})
+
+	t.Run("does not log successful reads at info", func(t *testing.T) {
+		var logs bytes.Buffer
+		model := NewModel(
+			context.Background(),
+			&data.User{UserID: "local-user-id"},
+			&subjectServiceStub{},
+			zerolog.New(&logs).Level(zerolog.InfoLevel),
+		)
+
+		updated, _ := model.Update(subjectsListedMsg{})
+		model = updated.(Model)
+		model.Update(subjectFoundMsg{subject: &data.Subject{SubjectID: 7}})
+
+		if logs.Len() != 0 {
+			t.Fatalf("got read success logs %q", logs.String())
+		}
+	})
+}
+
 func newSubjectTestModel(service SubjectService) Model {
-	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service)
+	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service, zerolog.Nop())
 }
 
 func openSubjects(t *testing.T, model Model) Model {
