@@ -43,7 +43,7 @@ func TestSubjectModel_List(t *testing.T) {
 		}}
 		model := openSubjects(t, newSubjectTestModel(service))
 
-		rows := model.subjectList.Items()
+		rows := model.subjects.list.Items()
 
 		if len(rows) != 1 || rows[0].(subjectRow).kind != subjectRowCreate {
 			t.Fatalf("got rows %#v, want only Create action", rows)
@@ -62,7 +62,7 @@ func TestSubjectModel_List(t *testing.T) {
 		}}
 		model := openSubjects(t, newSubjectTestModel(service))
 
-		rows := model.subjectList.Items()
+		rows := model.subjects.list.Items()
 
 		if service.listCalls != 1 {
 			t.Fatalf("got %d List calls, want 1", service.listCalls)
@@ -112,12 +112,12 @@ func TestSubjectModel_Create(t *testing.T) {
 			},
 		}
 		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
-		model.subjectInput.SetValue(name)
+		model.subjects.input.SetValue(name)
 
 		model = runModelCommand(t, model, enterKey())
 
-		if model.screen != screenSubjectDetail || !model.subjectListStale {
-			t.Fatalf("got screen %v and stale=%v, want created detail with stale list", model.screen, model.subjectListStale)
+		if model.screen != screenSubjectDetail || !model.subjects.listStale {
+			t.Fatalf("got screen %v and stale=%v, want created detail with stale list", model.screen, model.subjects.listStale)
 		}
 		for _, want := range []string{name, "Added: Jan 2, 2026"} {
 			if view := model.View().Content; !strings.Contains(view, want) {
@@ -136,12 +136,12 @@ func TestSubjectModel_Create(t *testing.T) {
 			create: func(context.Context, string, string) (*data.Subject, error) { return nil, want },
 		}
 		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
-		model.subjectInput.SetValue("invalid")
+		model.subjects.input.SetValue("invalid")
 
 		model = runModelCommand(t, model, enterKey())
 
-		if model.screen != screenSubjectCreate || model.subjectInput.Value() != "invalid" {
-			t.Fatalf("got screen %v and input %q", model.screen, model.subjectInput.Value())
+		if model.screen != screenSubjectCreate || model.subjects.input.Value() != "invalid" {
+			t.Fatalf("got screen %v and input %q", model.screen, model.subjects.input.Value())
 		}
 		if view := model.View().Content; !strings.Contains(view, want.Error()) {
 			t.Fatalf("view %q does not contain %q", view, want)
@@ -155,15 +155,15 @@ func TestSubjectModel_Create(t *testing.T) {
 		updated, _ := model.Update(runeKey('q'))
 		model = updated.(Model)
 
-		if model.screen != screenSubjectCreate || model.subjectInput.Value() != "q" {
-			t.Fatalf("got screen %v and input %q, want create form containing q", model.screen, model.subjectInput.Value())
+		if model.screen != screenSubjectCreate || model.subjects.input.Value() != "q" {
+			t.Fatalf("got screen %v and input %q, want create form containing q", model.screen, model.subjects.input.Value())
 		}
 	})
 
 	t.Run("cancels form without calling service", func(t *testing.T) {
 		service := &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }}
 		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
-		model.subjectInput.SetValue("discard me")
+		model.subjects.input.SetValue("discard me")
 
 		updated, command := model.Update(escapeKey())
 		model = updated.(Model)
@@ -171,12 +171,12 @@ func TestSubjectModel_Create(t *testing.T) {
 		if command != nil {
 			t.Fatal("got command, want cached subject list")
 		}
-		if service.createCalls != 0 || model.screen != screenSubjectList || model.subjectInput.Value() != "" {
+		if service.createCalls != 0 || model.screen != screenSubjectList || model.subjects.input.Value() != "" {
 			t.Fatalf(
 				"got %d create calls, screen %v, and input %q",
 				service.createCalls,
 				model.screen,
-				model.subjectInput.Value(),
+				model.subjects.input.Value(),
 			)
 		}
 	})
@@ -189,7 +189,7 @@ func TestSubjectModel_Create(t *testing.T) {
 			},
 		}
 		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(service)))
-		model.subjectInput.SetValue("coding")
+		model.subjects.input.SetValue("coding")
 		model = runModelCommand(t, model, enterKey())
 		if service.listCalls != 1 {
 			t.Fatalf("got %d list calls before returning, want 1", service.listCalls)
@@ -202,8 +202,8 @@ func TestSubjectModel_Create(t *testing.T) {
 		}
 		model = applyCommand(t, model, command)
 
-		if service.listCalls != 2 || model.subjectListStale {
-			t.Fatalf("got %d list calls and stale=%v, want 2 calls and fresh list", service.listCalls, model.subjectListStale)
+		if service.listCalls != 2 || model.subjects.listStale {
+			t.Fatalf("got %d list calls and stale=%v, want 2 calls and fresh list", service.listCalls, model.subjects.listStale)
 		}
 	})
 }
@@ -228,7 +228,7 @@ func TestSubjectModel_Get(t *testing.T) {
 			},
 		}
 		model := openSubjects(t, newSubjectTestModel(service))
-		model.subjectList.Select(1)
+		model.subjects.list.Select(1)
 
 		model = runModelCommand(t, model, enterKey())
 
@@ -253,7 +253,7 @@ func TestSubjectModel_Get(t *testing.T) {
 			get: func(context.Context, string, int64) (*data.Subject, error) { return nil, want },
 		}
 		model := openSubjects(t, newSubjectTestModel(service))
-		model.subjectList.Select(1)
+		model.subjects.list.Select(1)
 
 		model = runModelCommand(t, model, enterKey())
 
@@ -275,7 +275,7 @@ func TestSubjectModel_Get(t *testing.T) {
 			},
 		}
 		model := openSubjects(t, newSubjectTestModel(service))
-		model.subjectList.Select(1)
+		model.subjects.list.Select(1)
 		model = runModelCommand(t, model, enterKey())
 
 		updated, command := model.Update(escapeKey())

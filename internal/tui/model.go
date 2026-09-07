@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"charm.land/bubbles/v2/list"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 )
@@ -39,18 +38,12 @@ func (row entityRow) Description() string { return row.description }
 func (row entityRow) FilterValue() string { return row.title }
 
 type Model struct {
-	ctx      context.Context
-	user     *data.User
-	subjects SubjectService
-	screen   screen
+	ctx    context.Context
+	user   *data.User
+	screen screen
 
-	entityList       list.Model
-	subjectList      list.Model
-	subjectInput     textinput.Model
-	selectedSubject  *data.Subject
-	subjectError     error
-	subjectLoading   bool
-	subjectListStale bool
+	entityList list.Model
+	subjects   subjectState
 }
 
 func NewModel(ctx context.Context, user *data.User, subjects SubjectService) Model {
@@ -65,22 +58,12 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService) Mod
 	entities.SetFilteringEnabled(false)
 	entities.SetShowStatusBar(false)
 
-	subjectList := list.New(subjectRows(nil), list.NewDefaultDelegate(), defaultWidth, defaultHeight)
-	subjectList.Title = "Subjects"
-	subjectList.SetStatusBarItemName("subject", "subjects")
-
-	input := textinput.New()
-	input.Prompt = "Subject name: "
-	input.Placeholder = "What is this about?"
-
 	return Model{
-		ctx:          ctx,
-		user:         user,
-		subjects:     subjects,
-		screen:       screenEntities,
-		entityList:   entities,
-		subjectList:  subjectList,
-		subjectInput: input,
+		ctx:        ctx,
+		user:       user,
+		screen:     screenEntities,
+		entityList: entities,
+		subjects:   newSubjectState(subjects),
 	}
 }
 
@@ -92,8 +75,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.entityList.SetSize(message.Width, max(0, message.Height-3))
-		m.subjectList.SetSize(message.Width, max(0, message.Height))
-		m.subjectInput.SetWidth(max(0, message.Width-2))
+		m.resizeSubjects(message.Width, message.Height)
 		return m, nil
 	case subjectsListedMsg:
 		return m.handleSubjectsListed(message)
@@ -129,10 +111,7 @@ func (m Model) updateEntities(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			row, ok := m.entityList.SelectedItem().(entityRow)
 			if ok && row.kind == entitySubjects {
-				m.screen = screenSubjectList
-				m.subjectError = nil
-				m.subjectLoading = true
-				return m, m.listSubjects()
+				return m.openSubjects()
 			}
 		}
 	}
