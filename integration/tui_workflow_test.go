@@ -13,8 +13,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
+	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
-	"github.com/rs/zerolog"
 )
 
 func TestTUIWorkflow_SQLite(t *testing.T) {
@@ -69,7 +69,7 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 		})
 
 		wantUserID := runtime.LocalUser().UserID
-		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), zerolog.Nop())
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), logging.Nop())
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tuiKey(tea.KeyEnter))
 		for _, value := range wantName {

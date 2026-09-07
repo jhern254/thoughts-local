@@ -24,13 +24,13 @@ func newCLI(app *application) *cli.Command {
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			app.logger.Info().Msg("starting application")
+			app.logger.Info("starting application")
 			dsn := cmd.String("db-dsn")
 			if dsn == "" {
 				dsn = defaultSQLiteDSN
 			}
 			if err := app.open(ctx, dsn); err != nil {
-				app.logger.Error().Err(err).Msg("failed to start application")
+				app.logger.Error(err, "failed to start application")
 				return ctx, err
 			}
 			return ctx, nil
@@ -38,9 +38,9 @@ func newCLI(app *application) *cli.Command {
 		After: func(context.Context, *cli.Command) error {
 			err := app.close()
 			if err != nil {
-				app.logger.Error().Err(err).Msg("failed to close application")
+				app.logger.Error(err, "failed to close application")
 			}
-			app.logger.Info().Msg("stopped application")
+			app.logger.Info("stopped application")
 			return err
 		},
 		Commands: []*cli.Command{

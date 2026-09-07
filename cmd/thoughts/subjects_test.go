@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/data"
-	"github.com/rs/zerolog"
+	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
 type subjectServiceStub struct {
@@ -61,7 +61,7 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				var logs, output bytes.Buffer
 				app := newSubjectTestApplication(tt.service, &output)
-				app.logger = zerolog.New(&logs)
+				app.logger = newTestLogger(t, &logs)
 
 				if err := newSubjectsCommand(app).Run(context.Background(), tt.args); err != nil {
 					t.Fatal(err)
@@ -93,7 +93,7 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 		for _, args := range [][]string{{"subjects", "get", "7"}, {"subjects", "list"}} {
 			var logs bytes.Buffer
 			app := newSubjectTestApplication(service, io.Discard)
-			app.logger = zerolog.New(&logs).Level(zerolog.InfoLevel)
+			app.logger = newTestLogger(t, &logs)
 
 			if err := newSubjectsCommand(app).Run(context.Background(), args); err != nil {
 				t.Fatal(err)
@@ -111,7 +111,7 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 		}}
 		var logs bytes.Buffer
 		app := newSubjectTestApplication(service, io.Discard)
-		app.logger = zerolog.New(&logs)
+		app.logger = newTestLogger(t, &logs)
 
 		err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "create", "private subject"})
 
@@ -126,6 +126,37 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 		}
 		if strings.Contains(got, "private subject") {
 			t.Fatalf("logs %q contain authored content", got)
+		}
+	})
+
+	t.Run("does not log expected application outcomes as errors", func(t *testing.T) {
+		tests := []struct {
+			name string
+			err  error
+		}{
+			{name: "validation", err: &subject.ValidationError{Fields: map[string]string{"subject_name": "must be provided"}}},
+			{name: "not found", err: data.ErrRecordNotFound},
+			{name: "duplicate", err: data.ErrDuplicateRecord},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var logs bytes.Buffer
+				service := &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) {
+					return nil, tt.err
+				}}
+				app := newSubjectTestApplication(service, io.Discard)
+				app.logger = newTestLogger(t, &logs)
+
+				err := newSubjectsCommand(app).Run(context.Background(), []string{"subjects", "create", "private subject"})
+
+				if !errors.Is(err, tt.err) {
+					t.Fatalf("got error %v, want %v", err, tt.err)
+				}
+				if logs.Len() != 0 {
+					t.Fatalf("got expected-outcome logs %q", logs.String())
+				}
+			})
 		}
 	})
 }

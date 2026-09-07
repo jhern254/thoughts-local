@@ -9,8 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
-	"github.com/rs/zerolog"
 )
 
 type runtimeStub struct {
@@ -51,7 +51,7 @@ func TestTUI_DatabaseDSNPrecedence(t *testing.T) {
 			t.Setenv("THOUGHTS_DB_DSN", tt.envDSN)
 			want := errors.New("stop after resolving DSN")
 			var gotDSN string
-			app := newApplication(strings.NewReader(""), io.Discard, io.Discard, zerolog.Nop())
+			app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 			app.openRuntime = func(_ context.Context, dsn string) (runtime, error) {
 				gotDSN = dsn
 				return nil, want
@@ -73,7 +73,7 @@ func TestTUI_RuntimeLifecycle(t *testing.T) {
 	t.Run("passes bootstrapped local user to model and closes runtime", func(t *testing.T) {
 		closeCalls := 0
 		programCalls := 0
-		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, zerolog.Nop())
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return &runtimeStub{
 				localUser: &data.User{UserID: "local-user-id"},
@@ -103,7 +103,7 @@ func TestTUI_RuntimeLifecycle(t *testing.T) {
 
 	t.Run("does not launch after runtime open failure", func(t *testing.T) {
 		want := errors.New("open failed")
-		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, zerolog.Nop())
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return nil, want
 		}
@@ -122,7 +122,7 @@ func TestTUI_RuntimeLifecycle(t *testing.T) {
 	t.Run("closes runtime after program failure", func(t *testing.T) {
 		want := errors.New("program failed")
 		closeCalls := 0
-		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, zerolog.Nop())
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return &runtimeStub{
 				localUser: &data.User{UserID: "local-user-id"},
@@ -148,7 +148,7 @@ func TestTUI_RuntimeLifecycle(t *testing.T) {
 
 	t.Run("returns runtime close error", func(t *testing.T) {
 		want := errors.New("close failed")
-		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, zerolog.Nop())
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return &runtimeStub{
 				localUser: &data.User{UserID: "local-user-id"},

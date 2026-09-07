@@ -3,7 +3,7 @@ package main
 import (
 	"io"
 
-	"github.com/rs/zerolog"
+	"github.com/jhern254/go-thoughts/internal/logging"
 )
 
 func newSubjectTestApplication(service SubjectService, out io.Writer) *application {
@@ -11,6 +11,6 @@ func newSubjectTestApplication(service SubjectService, out io.Writer) *applicati
 		subjects: service,
 		userID:   "user-1",
 		out:      out,
-		logger:   zerolog.Nop(),
+		logger:   logging.Nop(),
 	}
 }

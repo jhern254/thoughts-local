@@ -2,12 +2,15 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
 const (
@@ -147,7 +150,7 @@ func (m Model) getSubject(subjectID int64) tea.Cmd {
 func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		m.logger.Error().Err(message.err).Str("operation", "list").Msg("subject operation failed")
+		logSubjectServiceError(m.logger, message.err, "list")
 		m.subjects.err = message.err
 		return m, nil
 	}
@@ -160,7 +163,7 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		m.logger.Error().Err(message.err).Str("operation", "create").Msg("subject operation failed")
+		logSubjectServiceError(m.logger, message.err, "create")
 		m.subjects.err = message.err
 		return m, m.subjects.input.Focus()
 	}
@@ -170,7 +173,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.err = nil
 	m.subjects.selected = message.subject
 	m.subjects.listStale = true
-	m.logger.Info().Int64("subject_id", message.subject.SubjectID).Msg("subject created")
+	m.logger.Info("subject created", logging.Int64("subject_id", message.subject.SubjectID))
 	m.screen = screenSubjectDetail
 	return m, nil
 }
@@ -178,7 +181,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
-		m.logger.Error().Err(message.err).Str("operation", "get").Msg("subject operation failed")
+		logSubjectServiceError(m.logger, message.err, "get")
 		m.subjects.err = message.err
 		return m, nil
 	}
@@ -187,6 +190,20 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 	m.subjects.selected = message.subject
 	m.screen = screenSubjectDetail
 	return m, nil
+}
+
+func logSubjectServiceError(logger logging.Logger, err error, operation string) {
+	if isExpectedSubjectError(err) {
+		return
+	}
+	logger.Error(err, "subject operation failed", logging.String("operation", operation))
+}
+
+func isExpectedSubjectError(err error) bool {
+	var validationError *subject.ValidationError
+	return errors.As(err, &validationError) ||
+		errors.Is(err, data.ErrRecordNotFound) ||
+		errors.Is(err, data.ErrDuplicateRecord)
 }
 
 func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {

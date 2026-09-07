@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/subject"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -44,13 +47,13 @@ func newSubjectCreateCommand(app *application) *cli.Command {
 
 			created, err := app.subjects.Create(ctx, app.userID, cmd.Args().Get(0))
 			if err != nil {
-				app.logger.Error().Err(err).Str("operation", "create").Msg("subject operation failed")
+				logSubjectServiceError(app.logger, err, "create")
 				return err
 			}
-			app.logger.Info().Int64("subject_id", created.SubjectID).Msg("subject created")
+			app.logger.Info("subject created", logging.Int64("subject_id", created.SubjectID))
 			_, err = fmt.Fprintf(app.out, "Created subject %d: %s\n", created.SubjectID, created.SubjectName)
 			if err != nil {
-				app.logger.Error().Err(err).Str("operation", "create").Str("stage", "output").Int64("subject_id", created.SubjectID).Msg("subject operation failed")
+				app.logger.Error(err, "subject operation failed", logging.String("operation", "create"), logging.String("stage", "output"), logging.Int64("subject_id", created.SubjectID))
 			}
 			return err
 		},
@@ -73,12 +76,12 @@ func newSubjectGetCommand(app *application) *cli.Command {
 
 			found, err := app.subjects.Get(ctx, app.userID, subjectID)
 			if err != nil {
-				app.logger.Error().Err(err).Str("operation", "get").Int64("subject_id", subjectID).Msg("subject operation failed")
+				logSubjectServiceError(app.logger, err, "get", logging.Int64("subject_id", subjectID))
 				return err
 			}
 			_, err = fmt.Fprintf(app.out, "Subject %d: %s\n", found.SubjectID, found.SubjectName)
 			if err != nil {
-				app.logger.Error().Err(err).Str("operation", "get").Str("stage", "output").Int64("subject_id", found.SubjectID).Msg("subject operation failed")
+				app.logger.Error(err, "subject operation failed", logging.String("operation", "get"), logging.String("stage", "output"), logging.Int64("subject_id", found.SubjectID))
 			}
 			return err
 		},
@@ -96,12 +99,12 @@ func newSubjectListCommand(app *application) *cli.Command {
 
 			subjects, err := app.subjects.List(ctx, app.userID)
 			if err != nil {
-				app.logger.Error().Err(err).Str("operation", "list").Msg("subject operation failed")
+				logSubjectServiceError(app.logger, err, "list")
 				return err
 			}
 			for _, item := range subjects {
 				if _, err := fmt.Fprintf(app.out, "%d\t%s\n", item.SubjectID, item.SubjectName); err != nil {
-					app.logger.Error().Err(err).Str("operation", "list").Str("stage", "output").Int64("subject_id", item.SubjectID).Msg("subject operation failed")
+					app.logger.Error(err, "subject operation failed", logging.String("operation", "list"), logging.String("stage", "output"), logging.Int64("subject_id", item.SubjectID))
 					return err
 				}
 			}
@@ -127,13 +130,13 @@ func newSubjectUpdateCommand(app *application) *cli.Command {
 
 			updated, err := app.subjects.Update(ctx, app.userID, subjectID, cmd.Args().Get(1))
 			if err != nil {
-				app.logger.Error().Err(err).Str("operation", "update").Int64("subject_id", subjectID).Msg("subject operation failed")
+				logSubjectServiceError(app.logger, err, "update", logging.Int64("subject_id", subjectID))
 				return err
 			}
-			app.logger.Info().Int64("subject_id", updated.SubjectID).Msg("subject updated")
+			app.logger.Info("subject updated", logging.Int64("subject_id", updated.SubjectID))
 			_, err = fmt.Fprintf(app.out, "Updated subject %d: %s\n", updated.SubjectID, updated.SubjectName)
 			if err != nil {
-				app.logger.Error().Err(err).Str("operation", "update").Str("stage", "output").Int64("subject_id", updated.SubjectID).Msg("subject operation failed")
+				app.logger.Error(err, "subject operation failed", logging.String("operation", "update"), logging.String("stage", "output"), logging.Int64("subject_id", updated.SubjectID))
 			}
 			return err
 		},
@@ -155,17 +158,31 @@ func newSubjectDeleteCommand(app *application) *cli.Command {
 			}
 
 			if err := app.subjects.Delete(ctx, app.userID, subjectID); err != nil {
-				app.logger.Error().Err(err).Str("operation", "delete").Int64("subject_id", subjectID).Msg("subject operation failed")
+				logSubjectServiceError(app.logger, err, "delete", logging.Int64("subject_id", subjectID))
 				return err
 			}
-			app.logger.Info().Int64("subject_id", subjectID).Msg("subject deleted")
+			app.logger.Info("subject deleted", logging.Int64("subject_id", subjectID))
 			_, err = fmt.Fprintf(app.out, "Deleted subject %d\n", subjectID)
 			if err != nil {
-				app.logger.Error().Err(err).Str("operation", "delete").Str("stage", "output").Int64("subject_id", subjectID).Msg("subject operation failed")
+				app.logger.Error(err, "subject operation failed", logging.String("operation", "delete"), logging.String("stage", "output"), logging.Int64("subject_id", subjectID))
 			}
 			return err
 		},
 	}
+}
+
+func logSubjectServiceError(logger logging.Logger, err error, operation string, fields ...logging.Field) {
+	if isExpectedSubjectError(err) {
+		return
+	}
+	logger.Error(err, "subject operation failed", append([]logging.Field{logging.String("operation", operation)}, fields...)...)
+}
+
+func isExpectedSubjectError(err error) bool {
+	var validationError *subject.ValidationError
+	return errors.As(err, &validationError) ||
+		errors.Is(err, data.ErrRecordNotFound) ||
+		errors.Is(err, data.ErrDuplicateRecord)
 }
 
 func parseSubjectID(value string) (int64, error) {

@@ -12,7 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
-	"github.com/rs/zerolog"
+	"github.com/jhern254/go-thoughts/internal/logging"
 )
 
 func TestNewLogger(t *testing.T) {
@@ -22,8 +22,8 @@ func TestNewLogger(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		logger.Debug().Msg("hidden")
-		logger.Info().Msg("started")
+		logger.Debug("hidden")
+		logger.Info("started")
 		if err := file.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +56,7 @@ func TestNewLogger(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		logger.Debug().Msg("visible")
+		logger.Debug("visible")
 		if err := file.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +78,7 @@ func TestNewLogger(t *testing.T) {
 		if file != nil {
 			t.Fatal("got log file when logging is disabled")
 		}
-		logger.Error().Msg("hidden")
+		logger.Error(errors.New("hidden"), "hidden")
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("got log file stat error %v, want not exist", err)
 		}
@@ -94,7 +94,7 @@ func TestNewLogger(t *testing.T) {
 func TestTUI_Logging(t *testing.T) {
 	t.Run("logs lifecycle separately from Bubble Tea output", func(t *testing.T) {
 		var logs, output bytes.Buffer
-		app := newApplication(strings.NewReader(""), &output, io.Discard, zerolog.New(&logs))
+		app := newApplication(strings.NewReader(""), &output, io.Discard, newTestLogger(t, &logs))
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return &runtimeStub{localUser: &data.User{UserID: "local-user"}}, nil
 		}
@@ -120,7 +120,7 @@ func TestTUI_Logging(t *testing.T) {
 	t.Run("logs program failure", func(t *testing.T) {
 		want := errors.New("program failed")
 		var logs bytes.Buffer
-		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, zerolog.New(&logs))
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, newTestLogger(t, &logs))
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return &runtimeStub{localUser: &data.User{UserID: "local-user"}}, nil
 		}
@@ -139,7 +139,7 @@ func TestTUI_Logging(t *testing.T) {
 	t.Run("logs runtime close failure", func(t *testing.T) {
 		want := errors.New("close failed")
 		var logs bytes.Buffer
-		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, zerolog.New(&logs))
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, newTestLogger(t, &logs))
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return &runtimeStub{
 				localUser: &data.User{UserID: "local-user"},
@@ -157,4 +157,13 @@ func TestTUI_Logging(t *testing.T) {
 			t.Fatalf("logs %q do not contain close failure", got)
 		}
 	})
+}
+
+func newTestLogger(t *testing.T, output io.Writer) logging.Logger {
+	t.Helper()
+	level, err := logging.ParseLevel("info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return logging.New(output, "test", level)
 }

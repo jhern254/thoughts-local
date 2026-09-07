@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/data"
-	"github.com/rs/zerolog"
+	"github.com/jhern254/go-thoughts/internal/logging"
 )
 
 func TestNewLogger(t *testing.T) {
@@ -20,8 +20,8 @@ func TestNewLogger(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		logger.Debug().Msg("hidden")
-		logger.Info().Msg("started")
+		logger.Debug("hidden")
+		logger.Info("started")
 
 		got := output.String()
 		for _, want := range []string{"started", cliApplicationName, "logging_test.go"} {
@@ -40,7 +40,7 @@ func TestNewLogger(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		logger.Debug().Msg("visible")
+		logger.Debug("visible")
 		if !strings.Contains(output.String(), "visible") {
 			t.Fatalf("log %q does not contain debug event", output.String())
 		}
@@ -52,7 +52,7 @@ func TestNewLogger(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		logger.Error().Msg("hidden")
+		logger.Error(errors.New("hidden"), "hidden")
 		if output.Len() != 0 {
 			t.Fatalf("got disabled log output %q", output.String())
 		}
@@ -68,7 +68,7 @@ func TestNewLogger(t *testing.T) {
 func TestCLI_Logging(t *testing.T) {
 	t.Run("logs lifecycle without writing to command output", func(t *testing.T) {
 		var logs, out bytes.Buffer
-		app := newApplication(&out, io.Discard, zerolog.New(&logs))
+		app := newApplication(&out, io.Discard, newTestLogger(t, &logs))
 		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			return &cliRuntimeStub{localUser: &data.User{UserID: "local-user"}}, nil
 		}
@@ -91,7 +91,7 @@ func TestCLI_Logging(t *testing.T) {
 	t.Run("logs runtime open failure", func(t *testing.T) {
 		want := errors.New("open failed")
 		var logs bytes.Buffer
-		app := newApplication(io.Discard, io.Discard, zerolog.New(&logs))
+		app := newApplication(io.Discard, io.Discard, newTestLogger(t, &logs))
 		app.openRuntime = func(context.Context, string) (cliRuntime, error) { return nil, want }
 
 		err := newCLI(app).Run(context.Background(), []string{"thoughts", "subjects", "list"})
@@ -107,7 +107,7 @@ func TestCLI_Logging(t *testing.T) {
 	t.Run("logs runtime close failure", func(t *testing.T) {
 		want := errors.New("close failed")
 		var logs bytes.Buffer
-		app := newApplication(io.Discard, io.Discard, zerolog.New(&logs))
+		app := newApplication(io.Discard, io.Discard, newTestLogger(t, &logs))
 		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			return &cliRuntimeStub{
 				localUser: &data.User{UserID: "local-user"},
@@ -121,4 +121,13 @@ func TestCLI_Logging(t *testing.T) {
 			t.Fatalf("logs %q do not contain close failure", got)
 		}
 	})
+}
+
+func newTestLogger(t *testing.T, output io.Writer) logging.Logger {
+	t.Helper()
+	level, err := logging.ParseLevel("info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return logging.New(output, "test", level)
 }

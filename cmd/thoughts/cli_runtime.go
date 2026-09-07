@@ -6,8 +6,8 @@ import (
 
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
-	"github.com/rs/zerolog"
 )
 
 type cliRuntime interface {
@@ -22,12 +22,12 @@ type application struct {
 	userID   string
 	out      io.Writer
 	errOut   io.Writer
-	logger   zerolog.Logger
+	logger   logging.Logger
 
 	openRuntime func(context.Context, string) (cliRuntime, error)
 }
 
-func newApplication(out, errOut io.Writer, logger zerolog.Logger) *application {
+func newApplication(out, errOut io.Writer, logger logging.Logger) *application {
 	return &application{
 		out:    out,
 		errOut: errOut,

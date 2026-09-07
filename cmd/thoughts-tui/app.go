@@ -7,9 +7,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/tui"
-	"github.com/rs/zerolog"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -25,14 +25,14 @@ type application struct {
 	in     io.Reader
 	out    io.Writer
 	errOut io.Writer
-	logger zerolog.Logger
+	logger logging.Logger
 
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
 }
 
-func newApplication(in io.Reader, out, errOut io.Writer, logger zerolog.Logger) *application {
+func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) *application {
 	return &application{
 		in:     in,
 		out:    out,
@@ -60,14 +60,14 @@ func newTUI(app *application) *cli.Command {
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			app.logger.Info().Msg("starting application")
+			app.logger.Info("starting application")
 			dsn := cmd.String("db-dsn")
 			if dsn == "" {
 				dsn = defaultSQLiteDSN
 			}
 			runtime, err := app.openRuntime(ctx, dsn)
 			if err != nil {
-				app.logger.Error().Err(err).Msg("failed to start application")
+				app.logger.Error(err, "failed to start application")
 				return ctx, err
 			}
 			app.runtime = runtime
@@ -81,21 +81,21 @@ func newTUI(app *application) *cli.Command {
 				app.out,
 			)
 			if err != nil {
-				app.logger.Error().Err(err).Msg("TUI program failed")
+				app.logger.Error(err, "TUI program failed")
 			}
 			return err
 		},
 		After: func(context.Context, *cli.Command) error {
 			if app.runtime == nil {
-				app.logger.Info().Msg("stopped application")
+				app.logger.Info("stopped application")
 				return nil
 			}
 			err := app.runtime.Close()
 			app.runtime = nil
 			if err != nil {
-				app.logger.Error().Err(err).Msg("failed to close application")
+				app.logger.Error(err, "failed to close application")
 			}
-			app.logger.Info().Msg("stopped application")
+			app.logger.Info("stopped application")
 			return err
 		},
 	}

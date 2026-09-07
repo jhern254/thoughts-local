@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
-	"github.com/rs/zerolog"
+	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
 type subjectServiceStub struct {
@@ -305,7 +307,7 @@ func TestSubjectModel_Logging(t *testing.T) {
 			context.Background(),
 			&data.User{UserID: "local-user-id"},
 			service,
-			zerolog.New(&logs),
+			newTestLogger(t, &logs),
 		)
 		model = openCreateSubject(t, openSubjects(t, model))
 		model.subjects.input.SetValue("private subject")
@@ -334,7 +336,7 @@ func TestSubjectModel_Logging(t *testing.T) {
 			context.Background(),
 			&data.User{UserID: "local-user-id"},
 			service,
-			zerolog.New(&logs),
+			newTestLogger(t, &logs),
 		)
 		model = openCreateSubject(t, openSubjects(t, model))
 		model.subjects.input.SetValue("private subject")
@@ -358,7 +360,7 @@ func TestSubjectModel_Logging(t *testing.T) {
 			context.Background(),
 			&data.User{UserID: "local-user-id"},
 			&subjectServiceStub{},
-			zerolog.New(&logs).Level(zerolog.InfoLevel),
+			newTestLogger(t, &logs),
 		)
 
 		updated, _ := model.Update(subjectsListedMsg{})
@@ -369,10 +371,48 @@ func TestSubjectModel_Logging(t *testing.T) {
 			t.Fatalf("got read success logs %q", logs.String())
 		}
 	})
+
+	t.Run("does not log expected application outcomes as errors", func(t *testing.T) {
+		tests := []struct {
+			name string
+			err  error
+		}{
+			{name: "validation", err: &subject.ValidationError{Fields: map[string]string{"subject_name": "must be provided"}}},
+			{name: "not found", err: data.ErrRecordNotFound},
+			{name: "duplicate", err: data.ErrDuplicateRecord},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var logs bytes.Buffer
+				model := NewModel(
+					context.Background(),
+					&data.User{UserID: "local-user-id"},
+					&subjectServiceStub{},
+					newTestLogger(t, &logs),
+				)
+
+				model.Update(subjectCreatedMsg{err: tt.err})
+
+				if logs.Len() != 0 {
+					t.Fatalf("got expected-outcome logs %q", logs.String())
+				}
+			})
+		}
+	})
 }
 
 func newSubjectTestModel(service SubjectService) Model {
-	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service, zerolog.Nop())
+	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service, logging.Nop())
+}
+
+func newTestLogger(t *testing.T, output io.Writer) logging.Logger {
+	t.Helper()
+	level, err := logging.ParseLevel("info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return logging.New(output, "test", level)
 }
 
 func openSubjects(t *testing.T, model Model) Model {
