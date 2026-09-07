@@ -173,7 +173,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 		}
 	})
 
-	t.Run("deletes subject and unlinks linked thoughts", func(t *testing.T) {
+	t.Run("deletes subject and hides its reference on linked thoughts", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "user-1")
 		service := subject.NewService(data.NewSQLiteSubjectStore(db))
