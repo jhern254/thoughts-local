@@ -5,6 +5,7 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
+	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
 )
 
@@ -24,7 +26,7 @@ func TestTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("run TUI: %v: %s", err, stderr)
 		}
 		if stdout == "" {
-			t.Fatal("TUI produced no terminal output")
+			t.Fatalf("got TUI output %q, want nonempty terminal output", stdout)
 		}
 		localUser := getLocalUser(t, db)
 
@@ -37,7 +39,7 @@ func TestTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got second user ID %q, want %q", reused.UserID, localUser.UserID)
 		}
 		if stdout == "" {
-			t.Fatal("second TUI run produced no terminal output")
+			t.Fatalf("got second TUI output %q, want nonempty terminal output", stdout)
 		}
 
 		var userCount int
@@ -67,7 +69,7 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 		})
 
 		wantUserID := runtime.LocalUser().UserID
-		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects())
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), logging.Nop())
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tuiKey(tea.KeyEnter))
 		for _, value := range wantName {
@@ -99,7 +101,7 @@ func runTUIModelCommand(t *testing.T, model tea.Model, message tea.Msg) tea.Mode
 	t.Helper()
 	updated, command := model.Update(message)
 	if command == nil {
-		t.Fatal("got nil command")
+		t.Fatal("got nil command, want a command to execute")
 	}
 	updated, _ = updated.Update(command())
 	return updated
@@ -119,6 +121,7 @@ func runTUI(t *testing.T, dsn, input string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, "go", "run", "../cmd/thoughts-tui", "--db-dsn", dsn)
+	command.Env = append(os.Environ(), "THOUGHTS_LOG_LEVEL=disabled")
 	command.Stdin = strings.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout

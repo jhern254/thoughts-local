@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
 )
 
 type subjectServiceStub struct {
@@ -291,7 +292,7 @@ func TestSubjectModel_Get(t *testing.T) {
 }
 
 func newSubjectTestModel(service SubjectService) Model {
-	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service)
+	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service, logging.Nop())
 }
 
 func openSubjects(t *testing.T, model Model) Model {

@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/subject"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -44,8 +46,10 @@ func newSubjectCreateCommand(app *application) *cli.Command {
 
 			created, err := app.subjects.Create(ctx, app.userID, cmd.Args().Get(0))
 			if err != nil {
+				logSubjectError(app.logger, logging.SubjectCreate, err)
 				return err
 			}
+			app.logger.Mutation(logging.SubjectCreated, created.SubjectID)
 			_, err = fmt.Fprintf(app.out, "Created subject %d: %s\n", created.SubjectID, created.SubjectName)
 			return err
 		},
@@ -68,6 +72,7 @@ func newSubjectGetCommand(app *application) *cli.Command {
 
 			found, err := app.subjects.Get(ctx, app.userID, subjectID)
 			if err != nil {
+				logSubjectError(app.logger, logging.SubjectGet, err)
 				return err
 			}
 			_, err = fmt.Fprintf(app.out, "Subject %d: %s\n", found.SubjectID, found.SubjectName)
@@ -87,6 +92,7 @@ func newSubjectListCommand(app *application) *cli.Command {
 
 			subjects, err := app.subjects.List(ctx, app.userID)
 			if err != nil {
+				logSubjectError(app.logger, logging.SubjectList, err)
 				return err
 			}
 			for _, item := range subjects {
@@ -145,6 +151,13 @@ func newSubjectDeleteCommand(app *application) *cli.Command {
 			return err
 		},
 	}
+}
+
+func logSubjectError(logger logging.Logger, operation logging.Operation, err error) {
+	if subject.IsExpectedError(err) {
+		return
+	}
+	logger.Failure(operation, logging.UnexpectedFailure)
 }
 
 func parseSubjectID(value string) (int64, error) {

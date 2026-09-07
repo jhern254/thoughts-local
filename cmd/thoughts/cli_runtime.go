@@ -6,6 +6,7 @@ import (
 
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
@@ -21,14 +22,16 @@ type application struct {
 	userID   string
 	out      io.Writer
 	errOut   io.Writer
+	logger   logging.Logger
 
 	openRuntime func(context.Context, string) (cliRuntime, error)
 }
 
-func newApplication(out, errOut io.Writer) *application {
+func newApplication(out, errOut io.Writer, logger logging.Logger) *application {
 	return &application{
 		out:    out,
 		errOut: errOut,
+		logger: logger,
 		openRuntime: func(ctx context.Context, dsn string) (cliRuntime, error) {
 			return appcore.Open(ctx, dsn)
 		},

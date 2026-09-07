@@ -21,6 +21,8 @@ The core philosophy is:
 
 ## Architecture Principles
 
+Operational logging accepts only approved typed metadata and uses fixed event messages. Never pass authored content, arbitrary objects, or raw error text into logs. Classify existing errors at the presentation boundary; services and stores return errors without logging them.
+
 * The database is the canonical source of truth.
 * Markdown should be treated as a projection, import/export format, or editing surface, not the hidden domain model.
 * Keep domain/application behavior separate from delivery mechanisms.
@@ -446,6 +448,8 @@ Less useful:
 ### Integration tests
 
 Integration tests must use the real migrated SQLite database and be organized as independent, behavior-focused subtests. Each unrelated scenario should start with a fresh temporary database so failures remain isolated. Prefer `Test<Feature>Workflow_<Infrastructure>` with descriptive `t.Run("<observable behavior>")` cases, and test database-specific behavior such as constraints, foreign keys, ownership, uniqueness, and persistence against SQLite rather than reproducing it in fakes.
+
+Integration assertion failures should identify the field or operation and report both the actual result and the expected value or condition (`got …, want …`). Prefer `if got, want := …; got != want` for simple comparable values when it improves readability. For predicates such as nonzero timestamps, containment, or error identity, keep the appropriate comparison and describe the expected condition. Setup and cleanup errors may use `t.Fatal(err)` or `t.Error(err)`. This is an integration-test diagnostic guideline, not a mandatory assertion format for every unit test.
 
 
 When uncertain, choose the simplest implementation that preserves the architecture.

@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
 )
 
 func TestModel_View(t *testing.T) {
@@ -16,6 +17,7 @@ func TestModel_View(t *testing.T) {
 			context.Background(),
 			&data.User{UserID: "local-user-id", Handle: &handle},
 			&subjectServiceStub{},
+			logging.Nop(),
 		)
 
 		view := model.View().Content
@@ -81,6 +83,7 @@ func newRootTestModel() Model {
 		context.Background(),
 		&data.User{UserID: "local-user-id"},
 		&subjectServiceStub{},
+		logging.Nop(),
 	)
 }
 

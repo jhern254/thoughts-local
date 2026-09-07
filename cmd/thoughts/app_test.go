@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
@@ -63,7 +64,7 @@ func TestCLI_DatabaseDSNPrecedence(t *testing.T) {
 			t.Setenv("THOUGHTS_DB_DSN", tt.envDSN)
 			want := errors.New("stop after resolving DSN")
 			var gotDSN string
-			app := newApplication(io.Discard, io.Discard)
+			app := newApplication(io.Discard, io.Discard, logging.Nop())
 			app.openRuntime = func(_ context.Context, dsn string) (cliRuntime, error) {
 				gotDSN = dsn
 				return nil, want
@@ -85,7 +86,7 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 	t.Run("opens runtime once and clears dependencies after command", func(t *testing.T) {
 		openCalls := 0
 		closeCalls := 0
-		app := newApplication(io.Discard, io.Discard)
+		app := newApplication(io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			openCalls++
 			return &cliRuntimeStub{
@@ -117,7 +118,7 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 
 	t.Run("rejects obsolete user ID flag", func(t *testing.T) {
 		openCalls := 0
-		app := newApplication(io.Discard, io.Discard)
+		app := newApplication(io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			openCalls++
 			return nil, errors.New("unexpected database open")
@@ -135,7 +136,7 @@ func TestCLI_RuntimeLifecycle(t *testing.T) {
 
 	t.Run("returns runtime open failure", func(t *testing.T) {
 		want := errors.New("bootstrap failed")
-		app := newApplication(io.Discard, io.Discard)
+		app := newApplication(io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (cliRuntime, error) {
 			return nil, want
 		}
