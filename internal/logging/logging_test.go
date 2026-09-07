@@ -15,6 +15,33 @@ import (
 )
 
 func TestLogger(t *testing.T) {
+	t.Run("filters metadata events without suppressing eligible failures", func(t *testing.T) {
+		for _, level := range []string{"error", "fatal", "disabled"} {
+			t.Run(level, func(t *testing.T) {
+				var output bytes.Buffer
+				logger, err := logging.New(&output, "test", level)
+				if err != nil {
+					t.Fatal(err)
+				}
+				logger.Mutation(logging.SubjectCreated, 7)
+				logger.Failure(logging.SubjectGet, logging.UnexpectedFailure)
+				if level != "error" {
+					if output.Len() != 0 {
+						t.Fatalf("filtered event emitted: %s", &output)
+					}
+					return
+				}
+				var event map[string]any
+				if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+					t.Fatal(err)
+				}
+				if event["level"] != "error" || event["operation"] != "subject_get" {
+					t.Fatalf("wrong eligible event: %v", event)
+				}
+			})
+		}
+	})
+
 	t.Run("filters events by configured level", func(t *testing.T) {
 		for _, level := range []string{"info", "error", "disabled"} {
 			t.Run(level, func(t *testing.T) {

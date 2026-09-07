@@ -153,12 +153,20 @@ func (l Logger) Mutation(event MutationEvent, subjectID int64) {
 	if l.logger == nil {
 		return
 	}
-	l.logger.Info().Int64("subject_id", subjectID).Msg(event.message())
+	entry := l.logger.Info()
+	if entry == nil {
+		return
+	}
+	entry.Int64("subject_id", subjectID).Msg(event.message())
 }
 
 func (l Logger) Failure(operation Operation, category FailureCategory) {
 	if l.logger == nil {
 		return
 	}
-	l.logger.Error().Str("operation", operation.name()).Str("category", category.name()).Msg("operation failed")
+	entry := l.logger.Error()
+	if entry == nil {
+		return
+	}
+	entry.Str("operation", operation.name()).Str("category", category.name()).Msg("operation failed")
 }
