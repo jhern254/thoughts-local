@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -40,9 +41,18 @@ func TestCLI_Logging(t *testing.T) {
 		}
 	})
 
-	for _, operation := range []string{"application_start", "application_close"} {
-		t.Run(operation+" logs safe failure and returns original error", func(t *testing.T) {
-			failure := errors.New("PRIVATE-LIFECYCLE-MARKER")
+	for _, tc := range []struct {
+		operation string
+		cause     error
+		category  string
+	}{
+		{"application_start", errors.New("PRIVATE-LIFECYCLE-MARKER"), "unexpected_failure"},
+		{"application_close", errors.New("PRIVATE-LIFECYCLE-MARKER"), "unexpected_failure"},
+		{"application_start", data.ErrDatabaseReadOnly, "database_read_only"},
+	} {
+		operation := tc.operation
+		t.Run(operation+" "+tc.category+" logs safe failure and returns original error", func(t *testing.T) {
+			failure := fmt.Errorf("PRIVATE-LIFECYCLE-MARKER: %w", tc.cause)
 			var logs bytes.Buffer
 			logger, err := logging.New(&logs, "test", "error")
 			if err != nil {
@@ -63,7 +73,7 @@ func TestCLI_Logging(t *testing.T) {
 			if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
 				t.Fatal(err)
 			}
-			want := map[string]any{"level": "error", "application": "test", "message": "operation failed", "operation": operation, "category": "unexpected_failure"}
+			want := map[string]any{"level": "error", "application": "test", "message": "operation failed", "operation": operation, "category": tc.category}
 			if len(event) != len(want)+2 || event["caller"] == nil || event["time"] == nil {
 				t.Fatalf("unexpected fields: %v", event)
 			}

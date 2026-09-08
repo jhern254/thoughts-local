@@ -34,7 +34,7 @@ func (s *SQLiteUserStore) CreateUser(ctx context.Context, user *User) (*User, er
 		if isSQLiteUniqueConstraint(err) {
 			return nil, ErrDuplicateRecord
 		}
-		return nil, fmt.Errorf("create user: %w", err)
+		return nil, fmt.Errorf("create user: %w", TranslateSQLiteError(err))
 	}
 	return created, nil
 }
@@ -50,7 +50,7 @@ func (s *SQLiteUserStore) GetUserByHandle(ctx context.Context, handle string) (*
 		return nil, ErrRecordNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get user by handle: %w", err)
+		return nil, fmt.Errorf("get user by handle: %w", TranslateSQLiteError(err))
 	}
 	return user, nil
 }

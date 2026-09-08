@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/tui"
@@ -67,7 +68,9 @@ func newTUI(app *application) *cli.Command {
 			}
 			runtime, err := app.openRuntime(ctx, dsn)
 			if err != nil {
-				app.logger.Failure(logging.ApplicationStart, logging.UnexpectedFailure)
+				if category, emit := failure.Classify(logging.ApplicationStart, err); emit {
+					app.logger.Failure(logging.ApplicationStart, category)
+				}
 				return ctx, err
 			}
 			app.runtime = runtime
@@ -81,7 +84,9 @@ func newTUI(app *application) *cli.Command {
 				app.out,
 			)
 			if err != nil {
-				app.logger.Failure(logging.TUIRun, logging.UnexpectedFailure)
+				if category, emit := failure.Classify(logging.TUIRun, err); emit {
+					app.logger.Failure(logging.TUIRun, category)
+				}
 			}
 			return err
 		},
@@ -93,7 +98,9 @@ func newTUI(app *application) *cli.Command {
 			err := app.runtime.Close()
 			app.runtime = nil
 			if err != nil {
-				app.logger.Failure(logging.ApplicationClose, logging.UnexpectedFailure)
+				if category, emit := failure.Classify(logging.ApplicationClose, err); emit {
+					app.logger.Failure(logging.ApplicationClose, category)
+				}
 			}
 			app.logger.Stopped()
 			return err

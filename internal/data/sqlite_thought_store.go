@@ -57,12 +57,12 @@ func (s *SQLiteThoughtStore) CreateThought(ctx context.Context, thought *Thought
 		if thought.SubjectID != nil && isSQLiteForeignKeyConstraint(err) {
 			return nil, ErrRecordNotFound
 		}
-		return nil, fmt.Errorf("create thought: %w", err)
+		return nil, fmt.Errorf("create thought: %w", TranslateSQLiteError(err))
 	}
 
 	created, err := result.RowsAffected()
 	if err != nil {
-		return nil, fmt.Errorf("get created thought count: %w", err)
+		return nil, fmt.Errorf("get created thought count: %w", TranslateSQLiteError(err))
 	}
 	if created == 0 {
 		return nil, ErrRecordNotFound
@@ -70,7 +70,7 @@ func (s *SQLiteThoughtStore) CreateThought(ctx context.Context, thought *Thought
 
 	thoughtID, err := result.LastInsertId()
 	if err != nil {
-		return nil, fmt.Errorf("get created thought ID: %w", err)
+		return nil, fmt.Errorf("get created thought ID: %w", TranslateSQLiteError(err))
 	}
 	return s.GetThought(ctx, thought.UserID, thoughtID)
 }
@@ -111,7 +111,7 @@ func (s *SQLiteThoughtStore) GetThought(ctx context.Context, userID string, thou
 		return nil, ErrRecordNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get thought: %w", err)
+		return nil, fmt.Errorf("get thought: %w", TranslateSQLiteError(err))
 	}
 
 	thought.SubjectID = int64Pointer(subjectID)

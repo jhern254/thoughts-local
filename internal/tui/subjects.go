@@ -8,8 +8,8 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
-	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
 const (
@@ -192,10 +192,9 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 }
 
 func logSubjectError(logger logging.Logger, operation logging.Operation, err error) {
-	if subject.IsExpectedError(err) {
-		return
+	if category, emit := failure.Classify(operation, err); emit {
+		logger.Failure(operation, category)
 	}
-	logger.Failure(operation, logging.UnexpectedFailure)
 }
 
 func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {

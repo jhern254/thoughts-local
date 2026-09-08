@@ -12,7 +12,7 @@ import (
 )
 
 func TestLogger_Events(t *testing.T) {
-	for _, name := range []string{"started", "stopped", "created", "failure", "unknown mutation", "unknown failure"} {
+	for _, name := range []string{"started", "stopped", "created", "failure", "database_busy", "database_read_only", "unknown mutation", "unknown failure"} {
 		t.Run(name+" emits only approved fields from the public caller", func(t *testing.T) {
 			var output bytes.Buffer
 			logger, err := logging.New(&output, "test", "")
@@ -42,8 +42,14 @@ func TestLogger_Events(t *testing.T) {
 				if name == "unknown mutation" {
 					want["message"] = name
 				}
-			case "failure", "unknown failure":
+			case "failure", "database_busy", "database_read_only", "unknown failure":
 				operation, category := logging.SubjectCreate, logging.UnexpectedFailure
+				if name == "database_busy" {
+					category = logging.DatabaseBusy
+				}
+				if name == "database_read_only" {
+					category = logging.DatabaseReadOnly
+				}
 				want["operation"] = "subject_create"
 				if name == "unknown failure" {
 					operation, category = logging.Operation(255), logging.FailureCategory(255)
@@ -52,6 +58,9 @@ func TestLogger_Events(t *testing.T) {
 				_, file, line, _ = runtime.Caller(0)
 				logger.Failure(operation, category)
 				want["message"], want["level"], want["category"] = "operation failed", "error", "unexpected_failure"
+				if name == "database_busy" || name == "database_read_only" {
+					want["category"] = name
+				}
 			}
 			var event map[string]any
 			if err := json.Unmarshal(output.Bytes(), &event); err != nil {

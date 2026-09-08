@@ -36,12 +36,12 @@ func (s *SQLiteSubjectStore) CreateSubject(ctx context.Context, subject *Subject
 		if isSQLiteUniqueConstraint(err) {
 			return nil, ErrDuplicateRecord
 		}
-		return nil, fmt.Errorf("create subject: %w", err)
+		return nil, fmt.Errorf("create subject: %w", TranslateSQLiteError(err))
 	}
 
 	created, err := result.RowsAffected()
 	if err != nil {
-		return nil, fmt.Errorf("get created subject count: %w", err)
+		return nil, fmt.Errorf("get created subject count: %w", TranslateSQLiteError(err))
 	}
 	if created == 0 {
 		return nil, ErrRecordNotFound
@@ -49,7 +49,7 @@ func (s *SQLiteSubjectStore) CreateSubject(ctx context.Context, subject *Subject
 
 	subjectID, err := result.LastInsertId()
 	if err != nil {
-		return nil, fmt.Errorf("get created subject ID: %w", err)
+		return nil, fmt.Errorf("get created subject ID: %w", TranslateSQLiteError(err))
 	}
 	return s.GetSubject(ctx, subject.UserID, subjectID)
 }
@@ -67,7 +67,7 @@ func (s *SQLiteSubjectStore) GetSubject(ctx context.Context, userID string, subj
 		return nil, ErrRecordNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get subject: %w", err)
+		return nil, fmt.Errorf("get subject: %w", TranslateSQLiteError(err))
 	}
 
 	return subject, nil
@@ -83,7 +83,7 @@ func (s *SQLiteSubjectStore) ListSubjects(ctx context.Context, userID string) ([
 		userID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("list subjects: %w", err)
+		return nil, fmt.Errorf("list subjects: %w", TranslateSQLiteError(err))
 	}
 	defer rows.Close()
 
@@ -91,12 +91,12 @@ func (s *SQLiteSubjectStore) ListSubjects(ctx context.Context, userID string) ([
 	for rows.Next() {
 		subject, err := scanSubject(rows)
 		if err != nil {
-			return nil, fmt.Errorf("list subjects: %w", err)
+			return nil, fmt.Errorf("list subjects: %w", TranslateSQLiteError(err))
 		}
 		subjects = append(subjects, *subject)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list subjects: %w", err)
+		return nil, fmt.Errorf("list subjects: %w", TranslateSQLiteError(err))
 	}
 	return subjects, nil
 }
@@ -116,11 +116,11 @@ func (s *SQLiteSubjectStore) UpdateSubject(ctx context.Context, userID string, s
 		if isSQLiteUniqueConstraint(err) {
 			return nil, ErrDuplicateRecord
 		}
-		return nil, fmt.Errorf("update subject: %w", err)
+		return nil, fmt.Errorf("update subject: %w", TranslateSQLiteError(err))
 	}
 	updated, err := result.RowsAffected()
 	if err != nil {
-		return nil, fmt.Errorf("get updated subject count: %w", err)
+		return nil, fmt.Errorf("get updated subject count: %w", TranslateSQLiteError(err))
 	}
 	if updated == 0 {
 		return nil, ErrRecordNotFound
@@ -139,11 +139,11 @@ func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, s
 		subjectID,
 	)
 	if err != nil {
-		return fmt.Errorf("delete subject: %w", err)
+		return fmt.Errorf("delete subject: %w", TranslateSQLiteError(err))
 	}
 	deleted, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get deleted subject count: %w", err)
+		return fmt.Errorf("get deleted subject count: %w", TranslateSQLiteError(err))
 	}
 	if deleted == 0 {
 		return ErrRecordNotFound
