@@ -451,5 +451,33 @@ Integration tests must use the real migrated SQLite database and be organized as
 
 Integration assertion failures should identify the field or operation and report both the actual result and the expected value or condition (`got …, want …`). Prefer `if got, want := …; got != want` for simple comparable values when it improves readability. For predicates such as nonzero timestamps, containment, or error identity, keep the appropriate comparison and describe the expected condition. Setup and cleanup errors may use `t.Fatal(err)` or `t.Error(err)`. This is an integration-test diagnostic guideline, not a mandatory assertion format for every unit test.
 
+### Feature growth and logging
+
+Reuse existing infrastructure; avoid duplicated policies, per-entity wrappers,
+and redundant registries. Small explicit allowlists are appropriate for privacy.
+
+Use the injected `internal/logging` adapter for new operational logs. Classify
+errors with `failure.Classify` at presentation/lifecycle boundaries, log once
+when requested, and preserve original errors. Services and stores return errors
+without logging.
+
+Emit only approved typed metadata—never authored content or raw error text.
+Reuse existing categories; add events or classification rules only when the
+implemented feature requires them.
+
+### Feature growth and logging
+
+Reuse existing infrastructure; avoid duplicated policies, per-entity wrappers,
+and redundant registries. Small explicit allowlists are appropriate for privacy.
+
+Use the injected `internal/logging` adapter for new operational logs. Classify
+errors with `failure.Classify` at presentation/lifecycle boundaries, log once
+when requested, and preserve original errors. Services and stores return errors
+without logging.
+
+Emit only approved typed metadata—never authored content or raw error text.
+Reuse existing categories; add events or classification rules only when the
+implemented feature requires them.
+
 
 When uncertain, choose the simplest implementation that preserves the architecture.
