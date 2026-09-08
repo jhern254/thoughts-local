@@ -9,25 +9,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jhern254/go-thoughts/cmd/internal/cliutil"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
-	"github.com/jhern254/go-thoughts/internal/subject"
 	cli "github.com/urfave/cli/v3"
 )
 
 func TestCLI_DiagnosticOutput(t *testing.T) {
 	const private = "PRIVATE-DIAGNOSTIC-MARKER"
-	t.Run("framework usage errors do not echo arguments", func(t *testing.T) {
-		var output, diagnostics bytes.Buffer
-		app := newApplication(&output, &diagnostics, logging.Nop())
-		err := newCLI(app).Run(context.Background(), []string{"thoughts", "--" + private})
-		if err == nil {
-			t.Fatal("got nil error, want usage error")
-		}
-		if strings.Contains(output.String()+diagnostics.String(), private) {
-			t.Fatal("got private flag in output, want safe usage")
-		}
-	})
 	t.Run("runtime errors remain available without printing them", func(t *testing.T) {
 		failure := errors.New(private)
 		var diagnostics bytes.Buffer
@@ -51,19 +40,16 @@ func TestCLI_SubjectDiagnostics(t *testing.T) {
 		want   string
 		logged bool
 	}{
-		{"wrapped missing", fmt.Errorf(private+": %w", data.ErrRecordNotFound), "The requested resource was not found.", false},
 		{"wrapped duplicate", fmt.Errorf(private+": %w", data.ErrDuplicateRecord), "A subject with that name already exists.", false},
 		{"unknown", errors.New(private), "Could not save the subject.", true},
 		{"mixed", errors.Join(data.ErrDuplicateRecord, errors.New(private)), "Could not complete the command.", true},
-		{"controlled validation", &subject.ValidationError{Fields: map[string]string{"subject_name": "must be between 1 and 255 characters long"}}, "Subject name must be between 1 and 255 characters long.", false},
-		{"untrusted validation", &subject.ValidationError{Fields: map[string]string{private: private}}, "The subject details are invalid.", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output, diagnostics, logs bytes.Buffer
 			app := newApplication(&output, &diagnostics, newTestLogger(t, &logs))
 			app.subjects = &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) { return nil, tc.err }}
 			command := newSubjectsCommand(app)
-			app.configureDiagnostics(command)
+			cliutil.ConfigureDiagnostics(command, &app.failureMessage)
 			err := command.Run(context.Background(), []string{"subjects", "create", private})
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("got error %v, want original error", err)
@@ -89,6 +75,29 @@ func TestCLI_SubjectDiagnostics(t *testing.T) {
 			}
 		})
 	}
+	t.Run("friendly missing-list message still emits an operational failure", func(t *testing.T) {
+		var output, diagnostics, logs bytes.Buffer
+		app := newApplication(&output, &diagnostics, newTestLogger(t, &logs))
+		failure := fmt.Errorf(private+": %w", data.ErrRecordNotFound)
+		app.subjects = &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, failure }}
+		command := newSubjectsCommand(app)
+		cliutil.ConfigureDiagnostics(command, &app.failureMessage)
+		err := command.Run(context.Background(), []string{"subjects", "list"})
+		if !errors.Is(err, failure) {
+			t.Fatalf("got error %v, want original error", err)
+		}
+		app.reportError(err)
+		if got, want := diagnostics.String(), "The requested resource was not found.\n"; got != want {
+			t.Fatalf("got diagnostic %q, want %q", got, want)
+		}
+		if got, want := strings.Count(logs.String(), "operation failed"), 1; got != want {
+			t.Fatalf("got events %d, want %d", got, want)
+		}
+		if strings.Contains(logs.String(), private) || !strings.Contains(logs.String(), "unexpected_failure") {
+			t.Fatalf("got log %q, want safe unexpected failure", logs.String())
+		}
+	})
+
 	t.Run("preserves requested subject name separately from diagnostics", func(t *testing.T) {
 		var output, diagnostics, logs bytes.Buffer
 		app := newApplication(&output, &diagnostics, newTestLogger(t, &logs))

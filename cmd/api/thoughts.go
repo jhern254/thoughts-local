@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
@@ -16,7 +17,7 @@ func (a *application) showThoughtHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	item, err := a.thoughtService.Get(r.Context(), a.userFromReq(r), id)
-	if errors.Is(diagnosticCause(err), data.ErrRecordNotFound) {
+	if errors.Is(diagnostics.SingleError(err), data.ErrRecordNotFound) {
 		a.notFoundResponse(w, r)
 		return
 	}
@@ -47,9 +48,9 @@ func (a *application) createThoughtHandler(w http.ResponseWriter, r *http.Reques
 	item, err := a.thoughtService.Create(r.Context(), a.userFromReq(r), input.Thought, input.SubjectID, observedAt)
 	var validationErr *thought.ValidationError
 	switch {
-	case errors.As(diagnosticCause(err), &validationErr):
+	case errors.As(diagnostics.SingleError(err), &validationErr):
 		a.failedValidationResponse(w, r, validationErr.Fields)
-	case errors.Is(diagnosticCause(err), data.ErrRecordNotFound):
+	case errors.Is(diagnostics.SingleError(err), data.ErrRecordNotFound):
 		a.notFoundResponse(w, r)
 	case err != nil:
 		a.serverErrorResponse(w, r, err)

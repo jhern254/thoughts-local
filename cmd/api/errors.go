@@ -10,6 +10,8 @@ import (
 	//    "os"
 	//    "encoding/json"
 	//    "io"
+
+	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	//    "github.com/rs/zerolog"
 )
 
@@ -57,7 +59,7 @@ func (a *application) badRequestResponse(w http.ResponseWriter, r *http.Request,
 
 // 422 Unprocessable Entity
 func (a *application) failedValidationResponse(w http.ResponseWriter, r *http.Request, errors map[string]string) {
-	a.errorResponse(w, r, http.StatusUnprocessableEntity, safeValidationFields(errors))
+	a.errorResponse(w, r, http.StatusUnprocessableEntity, diagnostics.ValidationFields(errors))
 }
 
 // 409 Conflict (generic)
@@ -67,5 +69,5 @@ func (a *application) conflictResponse(w http.ResponseWriter, r *http.Request, m
 
 // 409 Conflict (duplicate record convenience)
 func (a *application) duplicateRecordResponse(w http.ResponseWriter, r *http.Request) {
-	a.conflictResponse(w, r, "A subject with that name already exists.")
+	a.conflictResponse(w, r, diagnostics.DuplicateSubjectMessage)
 }

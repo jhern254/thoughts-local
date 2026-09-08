@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
 )
@@ -152,7 +153,7 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 	if message.err != nil {
 		logSubjectError(m.logger, logging.SubjectList, message.err)
 		m.subjects.err = message.err
-		m.subjects.errMessage = subjectErrorMessage(message.err, "Could not list subjects.")
+		m.subjects.errMessage = diagnostics.SubjectMessage(message.err, "Could not list subjects.")
 		return m, nil
 	}
 
@@ -166,7 +167,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	if message.err != nil {
 		logSubjectError(m.logger, logging.SubjectCreate, message.err)
 		m.subjects.err = message.err
-		m.subjects.errMessage = subjectErrorMessage(message.err, "Could not save the subject.")
+		m.subjects.errMessage = diagnostics.SubjectMessage(message.err, "Could not save the subject.")
 		return m, m.subjects.input.Focus()
 	}
 
@@ -185,7 +186,7 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 	if message.err != nil {
 		logSubjectError(m.logger, logging.SubjectGet, message.err)
 		m.subjects.err = message.err
-		m.subjects.errMessage = subjectErrorMessage(message.err, "Could not retrieve the subject.")
+		m.subjects.errMessage = diagnostics.SubjectMessage(message.err, "Could not retrieve the subject.")
 		return m, nil
 	}
 

@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"io"
 
+	"github.com/jhern254/go-thoughts/cmd/internal/cliutil"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
@@ -13,12 +13,10 @@ import (
 const defaultSQLiteDSN = appcore.DefaultSQLiteDSN
 
 func newCLI(app *application) *cli.Command {
-	app.failureMessage = "Invalid command arguments. Use --help for usage."
 	cmd := &cli.Command{
-		Name:      "thoughts",
-		Usage:     "capture and organize thoughts",
-		Writer:    app.out,
-		ErrWriter: io.Discard, // Framework diagnostics are reported safely by main.
+		Name:   "thoughts",
+		Usage:  "capture and organize thoughts",
+		Writer: app.out,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "db-dsn",
@@ -58,6 +56,6 @@ func newCLI(app *application) *cli.Command {
 			newSubjectsCommand(app),
 		},
 	}
-	app.configureDiagnostics(cmd)
+	cliutil.ConfigureDiagnostics(cmd, &app.failureMessage)
 	return cmd
 }

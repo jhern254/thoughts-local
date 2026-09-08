@@ -5,6 +5,7 @@ import (
 	"io"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/jhern254/go-thoughts/cmd/internal/cliutil"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/failure"
@@ -48,12 +49,10 @@ func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) 
 }
 
 func newTUI(app *application) *cli.Command {
-	app.failureMessage = "Invalid command arguments. Use --help for usage."
 	cmd := &cli.Command{
-		Name:      "thoughts-tui",
-		Usage:     "capture and organize thoughts",
-		Writer:    app.out,
-		ErrWriter: io.Discard, // Framework diagnostics are reported after the terminal is restored.
+		Name:   "thoughts-tui",
+		Usage:  "capture and organize thoughts",
+		Writer: app.out,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "db-dsn",
@@ -112,7 +111,7 @@ func newTUI(app *application) *cli.Command {
 			return err
 		},
 	}
-	app.configureDiagnostics(cmd)
+	cliutil.ConfigureDiagnostics(cmd, &app.failureMessage)
 	return cmd
 }
 

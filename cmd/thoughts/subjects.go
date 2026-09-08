@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	cli "github.com/urfave/cli/v3"
@@ -47,7 +48,7 @@ func newSubjectCreateCommand(app *application) *cli.Command {
 
 			created, err := app.subjects.Create(ctx, app.userID, cmd.Args().Get(0))
 			if err != nil {
-				app.subjectFailure(err, "Could not save the subject.")
+				app.failureMessage = diagnostics.SubjectMessage(err, "Could not save the subject.")
 				logSubjectError(app.logger, logging.SubjectCreate, err)
 				return err
 			}
@@ -77,7 +78,7 @@ func newSubjectGetCommand(app *application) *cli.Command {
 
 			found, err := app.subjects.Get(ctx, app.userID, subjectID)
 			if err != nil {
-				app.subjectFailure(err, "Could not retrieve the subject.")
+				app.failureMessage = diagnostics.SubjectMessage(err, "Could not retrieve the subject.")
 				logSubjectError(app.logger, logging.SubjectGet, err)
 				return err
 			}
@@ -100,7 +101,7 @@ func newSubjectListCommand(app *application) *cli.Command {
 
 			subjects, err := app.subjects.List(ctx, app.userID)
 			if err != nil {
-				app.subjectFailure(err, "Could not list subjects.")
+				app.failureMessage = diagnostics.SubjectMessage(err, "Could not list subjects.")
 				logSubjectError(app.logger, logging.SubjectList, err)
 				return err
 			}
@@ -134,7 +135,7 @@ func newSubjectUpdateCommand(app *application) *cli.Command {
 
 			updated, err := app.subjects.Update(ctx, app.userID, subjectID, cmd.Args().Get(1))
 			if err != nil {
-				app.subjectFailure(err, "Could not save the subject.")
+				app.failureMessage = diagnostics.SubjectMessage(err, "Could not save the subject.")
 				return err
 			}
 			app.failureMessage = "Could not write command output."
@@ -161,7 +162,7 @@ func newSubjectDeleteCommand(app *application) *cli.Command {
 			}
 
 			if err := app.subjects.Delete(ctx, app.userID, subjectID); err != nil {
-				app.subjectFailure(err, "Could not delete the subject.")
+				app.failureMessage = diagnostics.SubjectMessage(err, "Could not delete the subject.")
 				return err
 			}
 			app.failureMessage = "Could not write command output."
