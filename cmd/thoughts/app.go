@@ -4,6 +4,7 @@ import (
 	"context"
 
 	appcore "github.com/jhern254/go-thoughts/internal/application"
+	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	cli "github.com/urfave/cli/v3"
 )
@@ -31,7 +32,9 @@ func newCLI(app *application) *cli.Command {
 				dsn = defaultSQLiteDSN
 			}
 			if err := app.open(ctx, dsn); err != nil {
-				app.logger.Failure(logging.ApplicationStart, logging.UnexpectedFailure)
+				if category, emit := failure.Classify(logging.ApplicationStart, err); emit {
+					app.logger.Failure(logging.ApplicationStart, category)
+				}
 				return ctx, err
 			}
 			return ctx, nil
@@ -39,7 +42,9 @@ func newCLI(app *application) *cli.Command {
 		After: func(context.Context, *cli.Command) error {
 			err := app.close()
 			if err != nil {
-				app.logger.Failure(logging.ApplicationClose, logging.UnexpectedFailure)
+				if category, emit := failure.Classify(logging.ApplicationClose, err); emit {
+					app.logger.Failure(logging.ApplicationClose, category)
+				}
 			}
 			app.logger.Stopped()
 			return err

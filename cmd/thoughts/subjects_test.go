@@ -62,11 +62,13 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 
 	for _, operation := range []string{"create", "get", "list"} {
 		for _, tt := range []struct {
-			name   string
-			err    error
-			logged bool
+			name     string
+			err      error
+			logged   bool
+			category string
 		}{
-			{name: "unexpected failure", err: errors.New("PRIVATE-ERROR-MARKER"), logged: true},
+			{name: "unexpected failure", err: errors.New("PRIVATE-ERROR-MARKER"), logged: true, category: "unexpected_failure"},
+			{name: "busy failure", err: fmt.Errorf("PRIVATE-ERROR-MARKER: %w", data.ErrDatabaseBusy), logged: true, category: "database_busy"},
 			{name: "validation", err: &subject.ValidationError{Fields: map[string]string{"subject_name": "must be provided"}}},
 			{name: "not found", err: data.ErrRecordNotFound},
 			{name: "duplicate", err: data.ErrDuplicateRecord},
@@ -101,7 +103,7 @@ func TestSubjectsCommand_Logging(t *testing.T) {
 				if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
 					t.Fatal(err)
 				}
-				if len(event) != 7 || event["operation"] != "subject_"+operation || event["level"] != "error" || event["category"] != "unexpected_failure" || event["application"] != "test" || event["message"] != "operation failed" || event["caller"] == nil || event["time"] == nil || strings.Contains(logs.String(), "PRIVATE-ERROR-MARKER") {
+				if len(event) != 7 || event["operation"] != "subject_"+operation || event["level"] != "error" || event["category"] != tt.category || event["application"] != "test" || event["message"] != "operation failed" || event["caller"] == nil || event["time"] == nil || strings.Contains(logs.String(), "PRIVATE-ERROR-MARKER") {
 					t.Fatalf("incorrect failure event: %v", event)
 				}
 			})

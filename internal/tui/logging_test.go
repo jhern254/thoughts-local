@@ -17,14 +17,16 @@ import (
 func TestSubjectModel_Logging(t *testing.T) {
 	for _, operation := range []string{"create", "list", "get"} {
 		for _, outcome := range []struct {
-			name   string
-			err    error
-			logged bool
+			name     string
+			err      error
+			logged   bool
+			category string
 		}{
-			{"unexpected failure", errors.New("PRIVATE-ERROR-MARKER"), true},
-			{"validation", &subject.ValidationError{}, false},
-			{"not found", data.ErrRecordNotFound, false},
-			{"duplicate", data.ErrDuplicateRecord, false},
+			{"unexpected failure", errors.New("PRIVATE-ERROR-MARKER"), true, "unexpected_failure"},
+			{"read-only failure", fmt.Errorf("PRIVATE-ERROR-MARKER: %w", data.ErrDatabaseReadOnly), true, "database_read_only"},
+			{"validation", &subject.ValidationError{}, false, ""},
+			{"not found", data.ErrRecordNotFound, false, ""},
+			{"duplicate", data.ErrDuplicateRecord, false, ""},
 		} {
 			if operation != "create" && !outcome.logged {
 				continue
@@ -61,7 +63,7 @@ func TestSubjectModel_Logging(t *testing.T) {
 				if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
 					t.Fatal(err)
 				}
-				if len(event) != 7 || event["operation"] != "subject_"+operation || event["level"] != "error" || event["category"] != "unexpected_failure" || event["application"] != "test" || event["message"] != "operation failed" || event["caller"] == nil || event["time"] == nil || strings.Contains(logs.String(), "PRIVATE-ERROR-MARKER") {
+				if len(event) != 7 || event["operation"] != "subject_"+operation || event["level"] != "error" || event["category"] != outcome.category || event["application"] != "test" || event["message"] != "operation failed" || event["caller"] == nil || event["time"] == nil || strings.Contains(logs.String(), "PRIVATE-ERROR-MARKER") {
 					t.Fatalf("incorrect failure event: %v", event)
 				}
 			})

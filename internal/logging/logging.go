@@ -32,7 +32,11 @@ const (
 
 type FailureCategory uint8
 
-const UnexpectedFailure FailureCategory = iota
+const (
+	UnexpectedFailure FailureCategory = iota
+	DatabaseBusy
+	DatabaseReadOnly
+)
 
 func (operation Operation) name() string {
 	switch operation {
@@ -63,8 +67,14 @@ func (event MutationEvent) message() string {
 }
 
 func (category FailureCategory) name() string {
-	// There is only one approved category; unknown values use the same fallback.
-	return "unexpected_failure"
+	switch category {
+	case DatabaseBusy:
+		return "database_busy"
+	case DatabaseReadOnly:
+		return "database_read_only"
+	default:
+		return "unexpected_failure"
+	}
 }
 
 type Logger struct {

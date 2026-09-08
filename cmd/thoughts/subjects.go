@@ -6,8 +6,8 @@ import (
 	"strconv"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
-	"github.com/jhern254/go-thoughts/internal/subject"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -154,10 +154,9 @@ func newSubjectDeleteCommand(app *application) *cli.Command {
 }
 
 func logSubjectError(logger logging.Logger, operation logging.Operation, err error) {
-	if subject.IsExpectedError(err) {
-		return
+	if category, emit := failure.Classify(operation, err); emit {
+		logger.Failure(operation, category)
 	}
-	logger.Failure(operation, logging.UnexpectedFailure)
 }
 
 func parseSubjectID(value string) (int64, error) {

@@ -32,14 +32,14 @@ func open(
 ) (*Runtime, error) {
 	db, err := openDatabase(ctx, dsn)
 	if err != nil {
-		return nil, err
+		return nil, data.TranslateSQLiteError(err)
 	}
 	localUser, err := bootstrapLocalUser(ctx, db)
 	if err != nil {
 		if closeErr := db.Close(); closeErr != nil {
-			return nil, errors.Join(err, closeErr)
+			return nil, errors.Join(data.TranslateSQLiteError(err), data.TranslateSQLiteError(closeErr))
 		}
-		return nil, err
+		return nil, data.TranslateSQLiteError(err)
 	}
 
 	return &Runtime{
@@ -70,20 +70,20 @@ func (runtime *Runtime) Close() error {
 	runtime.db = nil
 	runtime.localUser = nil
 	runtime.subjects = nil
-	return err
+	return data.TranslateSQLiteError(err)
 }
 
 func openSQLite(ctx context.Context, dsn string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", sqliteDSNWithForeignKeys(dsn))
 	if err != nil {
-		return nil, err
+		return nil, data.TranslateSQLiteError(err)
 	}
 	db.SetMaxOpenConns(1)
 	if pingErr := db.PingContext(ctx); pingErr != nil {
 		if closeErr := db.Close(); closeErr != nil {
-			return nil, errors.Join(pingErr, closeErr)
+			return nil, errors.Join(data.TranslateSQLiteError(pingErr), data.TranslateSQLiteError(closeErr))
 		}
-		return nil, pingErr
+		return nil, data.TranslateSQLiteError(pingErr)
 	}
 	return db, nil
 }
