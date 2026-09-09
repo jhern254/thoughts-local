@@ -38,32 +38,8 @@ func SubjectMessage(err error, fallback string) string {
 	case errors.Is(cause, data.ErrDuplicateRecord):
 		return DuplicateSubjectMessage
 	case errors.As(cause, &validation):
-		fields := ValidationFields(validation.Fields)
-		if len(fields) == 1 && fields["subject_name"] != "" {
-			return "Subject name " + fields["subject_name"] + "."
-		}
 		return "The subject details are invalid."
 	default:
 		return fallback
 	}
-}
-
-// ValidationFields copies only approved field/message pairs; any unknown detail
-// makes the whole diagnostic generic. Submitted values are never forwarded.
-func ValidationFields(fields map[string]string) map[string]string {
-	safe := make(map[string]string)
-	for field, message := range fields {
-		switch {
-		case field == "user_id" && message == "must be provided",
-			field == "subject_name" && message == "must be between 1 and 255 characters long",
-			field == "thought" && (message == "must be provided" || message == "must not be more than 1000000 characters long"):
-			safe[field] = message
-		default:
-			return map[string]string{"request": "The submitted values are invalid."}
-		}
-	}
-	if len(safe) == 0 {
-		return map[string]string{"request": "The submitted values are invalid."}
-	}
-	return safe
 }

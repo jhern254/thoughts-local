@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -146,8 +145,12 @@ func TestCreateThoughtHandler(t *testing.T) {
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusUnprocessableEntity)
 		testutils.AssertCorrect(t, store.createCalls, 0)
-		if !strings.Contains(response.Body.String(), `"thought"`) {
-			t.Fatalf("got response body %s", response.Body.String())
+		var body bytes.Buffer
+		if err := json.Compact(&body, response.Body.Bytes()); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := body.String(), `{"error":{"request":"The submitted values are invalid."}}`; got != want {
+			t.Fatalf("got response %q, want %q", got, want)
 		}
 	})
 

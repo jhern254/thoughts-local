@@ -49,7 +49,7 @@ func (a *application) createThoughtHandler(w http.ResponseWriter, r *http.Reques
 	var validationErr *thought.ValidationError
 	switch {
 	case errors.As(diagnostics.SingleError(err), &validationErr):
-		a.failedValidationResponse(w, r, validationErr.Fields)
+		a.failedValidationResponse(w, r)
 	case errors.Is(diagnostics.SingleError(err), data.ErrRecordNotFound):
 		a.notFoundResponse(w, r)
 	case err != nil:

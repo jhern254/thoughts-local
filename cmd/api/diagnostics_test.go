@@ -101,10 +101,9 @@ func TestHTTP_ThoughtDiagnostics(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		fields map[string]string
-		want   string
 	}{
-		{"controlled guidance", map[string]string{"thought": "must be provided"}, "must be provided"},
-		{"untrusted guidance", map[string]string{"thought": private}, "The submitted values are invalid."},
+		{"previously approved validation", map[string]string{"thought": "must be provided"}},
+		{"private validation details", map[string]string{private: private, "thought": private}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := newThoughtServer(&thoughtStoreStub{createThought: func(context.Context, *data.Thought) (*data.Thought, error) {
@@ -115,8 +114,12 @@ func TestHTTP_ThoughtDiagnostics(t *testing.T) {
 			if got, want := response.Code, http.StatusUnprocessableEntity; got != want {
 				t.Fatalf("got status %d, want %d", got, want)
 			}
-			if got := response.Body.String(); strings.Contains(got, private) || !strings.Contains(got, tc.want) {
-				t.Fatalf("got response %q, want safe guidance %q", got, tc.want)
+			var body bytes.Buffer
+			if err := json.Compact(&body, response.Body.Bytes()); err != nil {
+				t.Fatal(err)
+			}
+			if got, want := body.String(), `{"error":{"request":"The submitted values are invalid."}}`; got != want {
+				t.Fatalf("got response %q, want %q", got, want)
 			}
 		})
 	}
