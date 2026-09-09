@@ -2,6 +2,7 @@ package subject
 
 import (
 	"context"
+	"maps"
 	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -18,6 +19,17 @@ type Store interface {
 
 type ValidationError struct {
 	Fields map[string]string
+	// Only populated from validators whose fixed messages never include submitted values.
+	publicFields map[string]string
+}
+
+// PublicFields returns a copy of validator-produced field/rule guidance. Arbitrary
+// Fields payloads do not establish public feedback; original errors stay intact.
+func (e *ValidationError) PublicFields() map[string]string {
+	if e == nil {
+		return nil
+	}
+	return maps.Clone(e.publicFields)
 }
 
 func (e *ValidationError) Error() string {
@@ -52,7 +64,7 @@ func (s *Service) Create(ctx context.Context, userID, name string) (*data.Subjec
 	v := validator.NewValidator()
 	data.ValidateSubject(v, subject)
 	if !v.Valid() {
-		return nil, &ValidationError{Fields: v.Errors}
+		return nil, &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
 	}
 
 	return s.store.CreateSubject(ctx, subject)
@@ -63,7 +75,7 @@ func (s *Service) Update(ctx context.Context, userID string, subjectID int64, na
 	v := validator.NewValidator()
 	data.ValidateSubject(v, subject)
 	if !v.Valid() {
-		return nil, &ValidationError{Fields: v.Errors}
+		return nil, &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
 	}
 	return s.store.UpdateSubject(ctx, userID, subjectID, name, time.Now().UTC())
 }

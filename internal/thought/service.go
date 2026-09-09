@@ -2,6 +2,7 @@ package thought
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -17,7 +18,20 @@ type Store interface {
 	GetThought(context.Context, string, int64) (*data.Thought, error)
 }
 
-type ValidationError struct{ Fields map[string]string }
+type ValidationError struct {
+	Fields map[string]string
+	// Only populated from validators whose fixed messages never include submitted values.
+	publicFields map[string]string
+}
+
+// PublicFields returns a copy of validator-produced field/rule guidance. Arbitrary
+// Fields payloads do not establish public feedback; original errors stay intact.
+func (e *ValidationError) PublicFields() map[string]string {
+	if e == nil {
+		return nil
+	}
+	return maps.Clone(e.publicFields)
+}
 
 func (e *ValidationError) Error() string { return "thought validation failed" }
 
@@ -40,7 +54,7 @@ func (s *Service) Create(ctx context.Context, userID, body string, subjectID *in
 	v.Check(utf8.RuneCountInString(strings.Trim(item.Thought, " ")) > 0, "thought", "must be provided")
 	v.Check(utf8.RuneCountInString(item.Thought) <= maxThoughtCharacters, "thought", "must not be more than 1000000 characters long")
 	if !v.Valid() {
-		return nil, &ValidationError{Fields: v.Errors}
+		return nil, &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
 	}
 	return s.store.CreateThought(ctx, item)
 }

@@ -149,7 +149,7 @@ func TestCreateThoughtHandler(t *testing.T) {
 		if err := json.Compact(&body, response.Body.Bytes()); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := body.String(), `{"error":{"request":"The submitted values are invalid."}}`; got != want {
+		if got, want := body.String(), `{"error":{"thought":"must be provided"}}`; got != want {
 			t.Fatalf("got response %q, want %q", got, want)
 		}
 	})

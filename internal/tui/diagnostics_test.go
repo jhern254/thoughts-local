@@ -1,12 +1,16 @@
 package tui
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
 func TestSubjectModel_DiagnosticOutput(t *testing.T) {
@@ -57,4 +61,39 @@ func TestSubjectModel_FormDiagnostics(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSubjectModel_ValidatorFeedback(t *testing.T) {
+	t.Run("shows a safe rule and retains private editing input and original error", func(t *testing.T) {
+		const private = "PRIVATE-VALIDATION-MARKER"
+		input := strings.Repeat(private, 20)
+		_, original := subject.NewService(nil).Create(context.Background(), "local", input)
+		failure := fmt.Errorf(private+": %w", original)
+		var logs bytes.Buffer
+		logger, err := logging.New(&logs, "test", "info")
+		if err != nil {
+			t.Fatal(err)
+		}
+		model := newSubjectTestModel(&subjectServiceStub{})
+		model.logger = logger
+		model.subjects.input.SetValue(input)
+		updated, _ := model.handleSubjectCreated(subjectCreatedMsg{err: failure})
+		got := updated.(Model)
+		if !errors.Is(got.subjects.err, original) {
+			t.Fatalf("got error %v, want original error", got.subjects.err)
+		}
+		want := "subject_name: must be between 1 and 255 characters long"
+		if got.subjects.errMessage != want {
+			t.Fatalf("got diagnostic %q, want %q", got.subjects.errMessage, want)
+		}
+		if !strings.Contains(got.viewSubjectCreate(), want) {
+			t.Fatal("got no validation rule in view, want actionable guidance")
+		}
+		if got.subjects.input.Value() != input {
+			t.Fatal("got changed form content, want original input")
+		}
+		if strings.Contains(got.subjects.errMessage+logs.String(), private) || strings.Contains(logs.String(), "subject_name") {
+			t.Fatal("got private input or validation payload in diagnostics/logs, want safe rule and metadata")
+		}
+	})
 }

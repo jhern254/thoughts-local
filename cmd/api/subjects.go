@@ -39,7 +39,7 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
 	var validationErr *subject.ValidationError
 	switch {
 	case errors.As(diagnostics.SingleError(err), &validationErr):
-		a.failedValidationResponse(w, r)
+		a.failedValidationResponse(w, r, validationErr.PublicFields())
 	case errors.Is(diagnostics.SingleError(err), data.ErrDuplicateRecord):
 		a.duplicateRecordResponse(w, r)
 	case errors.Is(diagnostics.SingleError(err), data.ErrRecordNotFound):

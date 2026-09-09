@@ -12,6 +12,7 @@ import (
 	"github.com/jhern254/go-thoughts/cmd/internal/cliutil"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/subject"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -161,6 +162,37 @@ func TestCLI_ShutdownDiagnostics(t *testing.T) {
 		}
 		if strings.Contains(output.String(), private) {
 			t.Fatal("got private framework output, want no raw error")
+		}
+	})
+}
+
+func TestCLI_ValidatorFeedback(t *testing.T) {
+	t.Run("shows actionable guidance while logging only operational metadata", func(t *testing.T) {
+		const private = "PRIVATE-VALIDATION-MARKER"
+		_, original := subject.NewService(nil).Create(context.Background(), "local", strings.Repeat(private, 20))
+		failure := fmt.Errorf(private+": %w", original)
+		var output, diagnostic, logs bytes.Buffer
+		app := newApplication(&output, &diagnostic, newTestLogger(t, &logs))
+		app.subjects = &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, failure }}
+		command := newSubjectsCommand(app)
+		cliutil.ConfigureDiagnostics(command, &app.failureMessage)
+		err := command.Run(context.Background(), []string{"subjects", "list"})
+		if !errors.Is(err, original) {
+			t.Fatalf("got error %v, want original validation error", err)
+		}
+		app.reportError(err)
+		want := "subject_name: must be between 1 and 255 characters long\n"
+		if got := diagnostic.String(); got != want {
+			t.Fatalf("got diagnostic %q, want %q", got, want)
+		}
+		if strings.Contains(diagnostic.String()+logs.String(), private) {
+			t.Fatal("got private input in diagnostics or logs, want safe output")
+		}
+		if strings.Contains(logs.String(), "subject_name") || !strings.Contains(logs.String(), "unexpected_failure") {
+			t.Fatalf("got log %q, want operational metadata without validation payload", logs.String())
+		}
+		if output.Len() != 0 {
+			t.Fatalf("got content output %q, want empty on failure", output.String())
 		}
 	})
 }

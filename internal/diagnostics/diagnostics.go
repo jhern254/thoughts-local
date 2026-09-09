@@ -3,6 +3,8 @@ package diagnostics
 
 import (
 	"errors"
+	"sort"
+	"strings"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/subject"
@@ -38,6 +40,19 @@ func SubjectMessage(err error, fallback string) string {
 	case errors.Is(cause, data.ErrDuplicateRecord):
 		return DuplicateSubjectMessage
 	case errors.As(cause, &validation):
+		fields := validation.PublicFields()
+		if len(fields) != 0 {
+			names := make([]string, 0, len(fields))
+			for name := range fields {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			messages := make([]string, 0, len(names))
+			for _, name := range names {
+				messages = append(messages, name+": "+fields[name])
+			}
+			return strings.Join(messages, "; ")
+		}
 		return "The subject details are invalid."
 	default:
 		return fallback

@@ -150,7 +150,7 @@ func TestCreateSubjectHandler(t *testing.T) {
 		if err := json.Compact(&body, response.Body.Bytes()); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := body.String(), `{"error":{"request":"The submitted values are invalid."}}`; got != want {
+		if got, want := body.String(), `{"error":{"subject_name":"must be between 1 and 255 characters long"}}`; got != want {
 			t.Fatalf("got response %q, want %q", got, want)
 		}
 	})

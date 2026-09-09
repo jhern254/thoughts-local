@@ -58,8 +58,11 @@ func (a *application) badRequestResponse(w http.ResponseWriter, r *http.Request,
 }
 
 // 422 Unprocessable Entity
-func (a *application) failedValidationResponse(w http.ResponseWriter, r *http.Request) {
-	a.errorResponse(w, r, http.StatusUnprocessableEntity, map[string]string{"request": "The submitted values are invalid."})
+func (a *application) failedValidationResponse(w http.ResponseWriter, r *http.Request, publicFields map[string]string) {
+	if len(publicFields) == 0 {
+		publicFields = map[string]string{"request": "The submitted values are invalid."}
+	}
+	a.errorResponse(w, r, http.StatusUnprocessableEntity, publicFields)
 }
 
 // 409 Conflict (generic)

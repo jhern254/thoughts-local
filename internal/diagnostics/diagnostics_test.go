@@ -1,8 +1,10 @@
 package diagnostics
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -83,4 +85,29 @@ func TestSingleError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSubjectMessage_ValidatorFeedback(t *testing.T) {
+	t.Run("renders validator guidance without submitted values or wrapper text", func(t *testing.T) {
+		const private = "PRIVATE-VALIDATION-MARKER"
+		_, original := subject.NewService(nil).Create(context.Background(), "local", strings.Repeat(private, 20))
+		var validation *subject.ValidationError
+		if !errors.As(original, &validation) {
+			t.Fatalf("got error %v, want validation error", original)
+		}
+		want := "subject_name: " + validation.Fields["subject_name"]
+		wrapped := fmt.Errorf(private+": %w", original)
+		if got := SubjectMessage(wrapped, "Could not save the subject."); got != want {
+			t.Fatalf("got diagnostic %q, want %q", got, want)
+		}
+		if !errors.Is(wrapped, original) {
+			t.Fatal("got lost original error, want retained identity")
+		}
+		// Mutable internal fields cannot change the validator-owned public feedback.
+		validation.Fields["subject_name"] = private
+		validation.Fields[private] = private
+		if got := SubjectMessage(wrapped, "Could not save the subject."); got != want {
+			t.Fatalf("got diagnostic %q, want unchanged guidance %q", got, want)
+		}
+	})
 }

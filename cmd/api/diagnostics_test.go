@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/subject"
@@ -135,6 +136,66 @@ func TestHTTP_ServerDiagnostics(t *testing.T) {
 		}
 		if got, want := strings.Count(output.String(), "HTTP server diagnostic"), 1; got != want {
 			t.Fatalf("got events %d, want %d", got, want)
+		}
+	})
+}
+
+func TestHTTP_ValidatorFeedback(t *testing.T) {
+	const private = "PRIVATE-VALIDATION-MARKER"
+	for _, tc := range []struct {
+		name, route, field, input, want string
+		app                             *application
+	}{
+		{"subject", "/subjects", "subject_name", strings.Repeat(private, 20), "must be between 1 and 255 characters long", newSubjectServer(&subjectStoreStub{})},
+		{"thought", "/thoughts", "thought", strings.Repeat("x", 1_000_001) + private, "must not be more than 1000000 characters long", newThoughtServer(&thoughtStoreStub{})},
+	} {
+		t.Run(tc.name+" returns the field and rule without submitted content", func(t *testing.T) {
+			var logs bytes.Buffer
+			tc.app.logger = zerolog.New(&logs)
+			payload, err := json.Marshal(map[string]string{tc.field: tc.input})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := httptest.NewRecorder()
+			tc.app.routes().ServeHTTP(response, httptest.NewRequest(http.MethodPost, tc.route, bytes.NewReader(payload)))
+			if got, want := response.Code, 422; got != want {
+				t.Fatalf("got status %d, want %d", got, want)
+			}
+			var body struct {
+				Error map[string]string `json:"error"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if len(body.Error) != 1 || body.Error[tc.field] != tc.want {
+				t.Fatalf("got feedback %v, want %s: %s", body.Error, tc.field, tc.want)
+			}
+			if strings.Contains(response.Body.String()+logs.String(), private) || strings.Contains(logs.String(), tc.want) {
+				t.Fatal("got private input or logged validation payload, want safe response and metadata")
+			}
+		})
+	}
+	t.Run("wrapped thought validation uses an isolated public snapshot", func(t *testing.T) {
+		_, original := thought.NewService(nil).Create(context.Background(), "local", "", nil, time.Time{})
+		var validation *thought.ValidationError
+		if !errors.As(original, &validation) {
+			t.Fatalf("got error %v, want typed validation", original)
+		}
+		validation.Fields["thought"] = private
+		public := validation.PublicFields()
+		public["thought"] = private
+		wrapped := fmt.Errorf(private+": %w", original)
+		app := newThoughtServer(&thoughtStoreStub{createThought: func(context.Context, *data.Thought) (*data.Thought, error) { return nil, wrapped }})
+		response := httptest.NewRecorder()
+		app.routes().ServeHTTP(response, thoughtRequest(http.MethodPost, "/thoughts", `{"thought":"`+private+`"}`))
+		if got, want := response.Code, 422; got != want {
+			t.Fatalf("got status %d, want %d", got, want)
+		}
+		if strings.Contains(response.Body.String(), private) || !strings.Contains(response.Body.String(), "must be provided") {
+			t.Fatalf("got response %q, want original safe rule", response.Body.String())
+		}
+		if validation.Fields["thought"] != private || !errors.Is(wrapped, original) {
+			t.Fatal("got changed internal error, want original fields and identity")
 		}
 	})
 }
