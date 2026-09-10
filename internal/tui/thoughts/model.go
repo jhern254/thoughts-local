@@ -107,7 +107,7 @@ type Result struct {
 func New(ctx context.Context, userID string, service Service, logger logging.Logger) Model {
 	items := list.New([]list.Item{row{kind: rowCreate}}, list.NewDefaultDelegate(), 80, 14)
 	items.Title = "Thoughts"
-	items.SetStatusBarItemName("thought", "thoughts")
+	items.SetShowStatusBar(false)
 	items.DisableQuitKeybindings()
 	input := textarea.New()
 	input.Placeholder = "What is on your mind?"
@@ -122,7 +122,7 @@ func New(ctx context.Context, userID string, service Service, logger logging.Log
 }
 
 func (m *Model) Resize(width, height int) {
-	m.list.SetSize(max(1, width), max(1, height-3))
+	m.list.SetSize(max(1, width), max(1, height-4))
 	m.input.SetWidth(max(1, width-2))
 	m.input.SetHeight(max(1, height-5))
 	m.viewport.SetWidth(max(1, width))
@@ -328,6 +328,16 @@ func (m Model) View() string {
 	case detail:
 		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, m.selected.ObservedAt.UTC().Format(time.RFC3339), status, m.viewport.View())
 	default:
-		return strings.TrimSuffix(status+m.list.View(), "\n") + "\nr: refresh"
+		count := 0
+		for _, item := range m.list.VisibleItems() {
+			if row, ok := item.(row); ok && row.kind == rowRecord {
+				count++
+			}
+		}
+		label := "thoughts"
+		if count == 1 {
+			label = "thought"
+		}
+		return fmt.Sprintf("%s\n%d %s\nr: refresh", strings.TrimSuffix(status+m.list.View(), "\n"), count, label)
 	}
 }

@@ -119,9 +119,9 @@ func subjectRows(subjects []data.Subject) []list.Item {
 }
 
 func newSubjectState(service SubjectService) subjectState {
-	subjectList := list.New(subjectRows(nil), list.NewDefaultDelegate(), defaultWidth, defaultHeight)
+	subjectList := list.New(subjectRows(nil), list.NewDefaultDelegate(), defaultWidth, max(0, defaultHeight-4))
 	subjectList.Title = "Subjects"
-	subjectList.SetStatusBarItemName("subject", "subjects")
+	subjectList.SetShowStatusBar(false)
 
 	input := textinput.New()
 	input.Prompt = "Subject name: "
@@ -135,7 +135,8 @@ func newSubjectState(service SubjectService) subjectState {
 }
 
 func (m *Model) resizeSubjects(width, height int) {
-	m.subjects.list.SetSize(width, max(0, height))
+	// Reserve feedback (two lines), the record count, and navigation help.
+	m.subjects.list.SetSize(width, max(0, height-4))
 	m.subjects.input.SetWidth(max(0, width-2))
 }
 
@@ -484,7 +485,17 @@ func (m Model) viewSubjectList() string {
 	} else if m.subjects.err != nil {
 		status = fmt.Sprintf("Error: %s\n\n", m.subjects.errMessage)
 	}
-	return fmt.Sprintf("%s%s\nEsc: entities • q: quit", status, m.subjects.list.View())
+	count := 0
+	for _, item := range m.subjects.list.VisibleItems() {
+		if row, ok := item.(subjectRow); ok && row.kind == subjectRowRecord {
+			count++
+		}
+	}
+	label := "subjects"
+	if count == 1 {
+		label = "subject"
+	}
+	return fmt.Sprintf("%s%s\n%d %s\nEsc: entities • q: quit", status, m.subjects.list.View(), count, label)
 }
 
 func (m Model) viewSubjectCreate() string {
