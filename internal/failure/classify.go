@@ -8,6 +8,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
 // Classify returns approved log metadata and whether the failure should be
@@ -23,6 +24,7 @@ func Classify(operation logging.Operation, err error) (logging.FailureCategory, 
 			return logging.UnexpectedFailure, true
 		}
 	}
+	var validation *thought.ValidationError
 	switch {
 	case errors.Is(err, data.ErrDatabaseBusy):
 		return logging.DatabaseBusy, true
@@ -31,6 +33,10 @@ func Classify(operation logging.Operation, err error) (logging.FailureCategory, 
 	case (operation == logging.SubjectCreate || operation == logging.SubjectUpdate) && subject.IsExpectedError(err):
 		return logging.UnexpectedFailure, false
 	case (operation == logging.SubjectGet || operation == logging.SubjectDelete) && errors.Is(err, data.ErrRecordNotFound):
+		return logging.UnexpectedFailure, false
+	case operation == logging.ThoughtCreate && (errors.As(err, &validation) || errors.Is(err, data.ErrRecordNotFound)):
+		return logging.UnexpectedFailure, false
+	case operation == logging.ThoughtGet && errors.Is(err, data.ErrRecordNotFound):
 		return logging.UnexpectedFailure, false
 	default:
 		return logging.UnexpectedFailure, true

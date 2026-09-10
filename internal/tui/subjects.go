@@ -11,6 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 )
 
 const (
@@ -26,8 +27,13 @@ type SubjectService interface {
 	Get(ctx context.Context, userID string, subjectID int64) (*data.Subject, error)
 }
 
+type MetricsService interface {
+	ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCount, error)
+}
+
 type subjectState struct {
 	service SubjectService
+	filter  listfilter.Scope
 
 	list        list.Model
 	input       textinput.Model
@@ -49,6 +55,7 @@ const (
 type subjectRow struct {
 	kind    subjectRowKind
 	subject data.Subject
+	count   *int64
 }
 
 func (row subjectRow) Title() string {
@@ -62,7 +69,13 @@ func (row subjectRow) Description() string {
 	if row.kind == subjectRowCreate {
 		return "Add a new subject"
 	}
-	return ""
+	if row.count == nil {
+		return "Thought count unavailable"
+	}
+	if *row.count == 1 {
+		return "1 thought"
+	}
+	return fmt.Sprintf("%d thoughts", *row.count)
 }
 
 func (row subjectRow) FilterValue() string {
@@ -72,6 +85,8 @@ func (row subjectRow) FilterValue() string {
 type subjectsListedMsg struct {
 	subjects []data.Subject
 	err      error
+	counts   []data.SubjectThoughtCount
+	countErr error
 }
 
 type subjectCreatedMsg struct {
@@ -125,6 +140,7 @@ func (m *Model) resizeSubjects(width, height int) {
 }
 
 func (m Model) openSubjects() (tea.Model, tea.Cmd) {
+	m.subjects.filter.Invalidate()
 	m.screen = screenSubjectList
 	m.subjects.err = nil
 	m.subjects.loading = true
@@ -135,9 +151,14 @@ func (m Model) listSubjects() tea.Cmd {
 	ctx := m.ctx
 	userID := m.user.UserID
 	service := m.subjects.service
+	metrics := m.metrics
 	return func() tea.Msg {
 		subjects, err := service.List(ctx, userID)
-		return subjectsListedMsg{subjects: subjects, err: err}
+		result := subjectsListedMsg{subjects: subjects, err: err}
+		if err == nil {
+			result.counts, result.countErr = metrics.ThoughtCountsBySubject(ctx, userID)
+		}
+		return result
 	}
 }
 
@@ -194,7 +215,26 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 
 	m.subjects.err = nil
 	m.subjects.listStale = false
-	return m, m.subjects.list.SetItems(subjectRows(message.subjects))
+	rows := subjectRows(message.subjects)
+	if message.countErr != nil {
+		logSubjectError(m.logger, logging.ThoughtCountsBySubject, message.countErr)
+		m.subjects.err = message.countErr
+		m.subjects.errMessage = "Could not load thought counts. Press r to retry."
+	} else {
+		counts := make(map[int64]int64, len(message.counts))
+		for _, count := range message.counts {
+			counts[count.SubjectID] = count.Count
+		}
+		for i, item := range rows {
+			row := item.(subjectRow)
+			if count, ok := counts[row.subject.SubjectID]; ok {
+				row.count = &count
+				rows[i] = row
+			}
+		}
+	}
+	cmd := m.subjects.filter.SetItems(&m.subjects.list, rows)
+	return m, cmd
 }
 
 func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.Cmd) {
@@ -214,7 +254,8 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.listStale = true
 	m.logger.Mutation(logging.SubjectCreated, message.subject.SubjectID)
 	m.screen = screenSubjectDetail
-	return m, nil
+	cmd := m.thoughts.Open(message.subject.SubjectID)
+	return m, cmd
 }
 
 func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) {
@@ -230,7 +271,8 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 	m.subjects.selected = message.subject
 	m.subjects.detailTitle = "Subject"
 	m.screen = screenSubjectDetail
-	return m, nil
+	cmd := m.thoughts.Open(message.subject.SubjectID)
+	return m, cmd
 }
 
 func (m Model) handleSubjectUpdated(message subjectUpdatedMsg) (tea.Model, tea.Cmd) {
@@ -262,6 +304,7 @@ func (m Model) handleSubjectDeleted(message subjectDeletedMsg) (tea.Model, tea.C
 	}
 	m.subjects.err = nil
 	m.subjects.selected = nil
+	m.thoughts.Reset()
 	m.subjects.listStale = true
 	m.subjects.loading = true
 	m.screen = screenSubjectList
@@ -278,8 +321,13 @@ func logSubjectError(logger logging.Logger, operation logging.Operation, err err
 func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
+		case "r":
+			if !m.subjects.list.SettingFilter() && !m.subjects.loading {
+				return m.openSubjects()
+			}
 		case "esc":
 			if !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered() {
+				m.subjects.filter.Invalidate()
 				m.screen = screenEntities
 				m.subjects.err = nil
 				return m, nil
@@ -308,8 +356,7 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	var command tea.Cmd
-	m.subjects.list, command = m.subjects.list.Update(message)
+	command := m.subjects.filter.Update(&m.subjects.list, message)
 	return m, command
 }
 
@@ -340,6 +387,11 @@ func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
+	if !m.thoughts.Browsing() {
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		return m, cmd
+	}
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "e":
@@ -361,6 +413,7 @@ func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q":
 			return m, tea.Quit
 		case "esc":
+			m.thoughts.Reset()
 			m.subjects.selected = nil
 			m.subjects.err = nil
 			m.screen = screenSubjectList
@@ -371,7 +424,9 @@ func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	return m, nil
+	var cmd tea.Cmd
+	m.thoughts, cmd = m.thoughts.Update(message)
+	return m, cmd
 }
 
 func (m Model) updateSubjectEdit(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -451,11 +506,19 @@ func (m Model) viewSubjectDetail() string {
 		title = "Subject"
 	}
 	return fmt.Sprintf(
-		"%s\n\nName: %s\nAdded: %s\n\ne: edit • d: delete • Esc: subjects • q: quit",
+		"%s\n\nName: %s\nAdded: %s\n\n%s\n%s",
 		title,
 		m.subjects.selected.SubjectName,
 		m.subjects.selected.CreatedAt.UTC().Format(subjectDateLayout),
+		m.thoughts.View(), m.subjectDetailHelp(),
 	)
+}
+
+func (m Model) subjectDetailHelp() string {
+	if m.thoughts.Browsing() {
+		return "e: edit subject • d: delete subject • Esc: subjects • q: quit"
+	}
+	return ""
 }
 
 func (m Model) viewSubjectEdit() string {

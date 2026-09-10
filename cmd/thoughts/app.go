@@ -54,6 +54,7 @@ func newCLI(app *application) *cli.Command {
 		},
 		Commands: []*cli.Command{
 			newSubjectsCommand(app),
+			newMetricsCommand(app),
 		},
 	}
 	cliutil.ConfigureDiagnostics(cmd, &app.failureMessage)

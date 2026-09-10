@@ -42,12 +42,15 @@ func TestRuntime_Open(t *testing.T) {
 		if runtime.LocalUser() != localUser {
 			t.Fatalf("got local user %#v, want %#v", runtime.LocalUser(), localUser)
 		}
-		if runtime.Subjects() == nil {
-			t.Fatal("got nil subject service")
+		if runtime.Subjects() == nil || runtime.Thoughts() == nil || runtime.Metrics() == nil {
+			t.Fatal("got nil runtime service")
 		}
 
 		if err := runtime.Close(); err != nil {
 			t.Fatal(err)
+		}
+		if runtime.Thoughts() != nil || runtime.Metrics() != nil {
+			t.Fatal("closed runtime retained services")
 		}
 		if err := db.Ping(); err == nil {
 			t.Fatal("expected SQLite to be closed")

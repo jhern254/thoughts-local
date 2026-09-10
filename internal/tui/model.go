@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
+	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
 const (
@@ -48,9 +50,11 @@ type Model struct {
 
 	entityList list.Model
 	subjects   subjectState
+	thoughts   thoughts.Model
+	metrics    MetricsService
 }
 
-func NewModel(ctx context.Context, user *data.User, subjects SubjectService, logger logging.Logger) Model {
+func NewModel(ctx context.Context, user *data.User, subjects SubjectService, thoughtService thoughts.Service, metrics MetricsService, logger logging.Logger) Model {
 	entities := list.New([]list.Item{
 		entityRow{
 			kind:        entitySubjects,
@@ -69,6 +73,8 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, log
 		logger:     logger,
 		entityList: entities,
 		subjects:   newSubjectState(subjects),
+		thoughts:   thoughts.New(ctx, user.UserID, thoughtService, logger),
+		metrics:    metrics,
 	}
 }
 
@@ -78,9 +84,30 @@ func (Model) Init() tea.Cmd {
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
+	case list.FilterMatchesMsg:
+		return m, nil
+	case listfilter.Reply:
+		if m.subjects.filter.Owns(message) {
+			cmd := m.subjects.filter.Update(&m.subjects.list, message)
+			return m, cmd
+		}
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		return m, cmd
 	case tea.WindowSizeMsg:
 		m.entityList.SetSize(message.Width, max(0, message.Height-3))
 		m.resizeSubjects(message.Width, message.Height)
+		m.thoughts.Resize(message.Width, max(1, message.Height-8))
+		return m, nil
+	case thoughts.Result:
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		return m, cmd
+	case thoughts.ChangedMsg:
+		m.subjects.listStale = true
+		if m.screen == screenSubjectList && !m.subjects.loading {
+			return m.openSubjects()
+		}
 		return m, nil
 	case subjectsListedMsg:
 		return m.handleSubjectsListed(message)

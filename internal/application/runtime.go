@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/user"
 	_ "modernc.org/sqlite"
 )
@@ -18,6 +20,8 @@ type Runtime struct {
 	db        *sql.DB
 	localUser *data.User
 	subjects  *subject.Service
+	thoughts  *thought.Service
+	metrics   *metrics.Service
 }
 
 func Open(ctx context.Context, dsn string) (*Runtime, error) {
@@ -46,6 +50,8 @@ func open(
 		db:        db,
 		localUser: localUser,
 		subjects:  subject.NewService(data.NewSQLiteSubjectStore(db)),
+		thoughts:  thought.NewService(data.NewSQLiteThoughtStore(db)),
+		metrics:   metrics.NewService(data.NewSQLiteMetricsStore(db)),
 	}, nil
 }
 
@@ -56,6 +62,9 @@ func (runtime *Runtime) LocalUser() *data.User {
 func (runtime *Runtime) Subjects() *subject.Service {
 	return runtime.subjects
 }
+
+func (runtime *Runtime) Thoughts() *thought.Service { return runtime.thoughts }
+func (runtime *Runtime) Metrics() *metrics.Service  { return runtime.metrics }
 
 func ensureLocalUser(ctx context.Context, db *sql.DB) (*data.User, error) {
 	return user.NewService(data.NewSQLiteUserStore(db)).EnsureLocalUser(ctx)
@@ -70,6 +79,8 @@ func (runtime *Runtime) Close() error {
 	runtime.db = nil
 	runtime.localUser = nil
 	runtime.subjects = nil
+	runtime.thoughts = nil
+	runtime.metrics = nil
 	return data.TranslateSQLiteError(err)
 }
 
