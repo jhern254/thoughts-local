@@ -23,6 +23,7 @@ func thoughtRequest(method, path, body string) *http.Request {
 }
 
 type thoughtStoreStub struct {
+	thought.Store
 	createThought func(context.Context, *data.Thought) (*data.Thought, error)
 	getThought    func(context.Context, string, int64) (*data.Thought, error)
 	createCalls   int

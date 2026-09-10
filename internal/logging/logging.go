@@ -19,6 +19,7 @@ const (
 	SubjectCreated MutationEvent = iota
 	SubjectUpdated
 	SubjectDeleted
+	ThoughtCreated
 )
 
 type Operation uint8
@@ -32,6 +33,10 @@ const (
 	SubjectList
 	SubjectUpdate
 	SubjectDelete
+	ThoughtCreate
+	ThoughtGet
+	ThoughtList
+	ThoughtCountsBySubject
 )
 
 type FailureCategory uint8
@@ -44,6 +49,14 @@ const (
 
 func (operation Operation) name() string {
 	switch operation {
+	case ThoughtCreate:
+		return "thought_create"
+	case ThoughtGet:
+		return "thought_get"
+	case ThoughtList:
+		return "thought_list"
+	case ThoughtCountsBySubject:
+		return "thought_counts_by_subject"
 	case ApplicationStart:
 		return "application_start"
 	case ApplicationClose:
@@ -67,6 +80,8 @@ func (operation Operation) name() string {
 
 func (event MutationEvent) message() string {
 	switch event {
+	case ThoughtCreated:
+		return "thought created"
 	case SubjectUpdated:
 		return "subject updated"
 	case SubjectDeleted:
@@ -171,7 +186,7 @@ func (l Logger) Stopped() {
 	l.logger.Info().Msg("stopped application")
 }
 
-func (l Logger) Mutation(event MutationEvent, subjectID int64) {
+func (l Logger) Mutation(event MutationEvent, recordID int64) {
 	if l.logger == nil {
 		return
 	}
@@ -179,7 +194,12 @@ func (l Logger) Mutation(event MutationEvent, subjectID int64) {
 	if entry == nil {
 		return
 	}
-	entry.Int64("subject_id", subjectID).Msg(event.message())
+	if event == ThoughtCreated {
+		entry.Int64("thought_id", recordID)
+	} else {
+		entry.Int64("subject_id", recordID)
+	}
+	entry.Msg(event.message())
 }
 
 func (l Logger) Failure(operation Operation, category FailureCategory) {

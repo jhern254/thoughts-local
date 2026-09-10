@@ -11,9 +11,30 @@ import (
 )
 
 type thoughtServiceStoreStub struct {
+	list         func(context.Context, string, int64) ([]data.Thought, error)
 	create       func(context.Context, *data.Thought) (*data.Thought, error)
 	get          func(context.Context, string, int64) (*data.Thought, error)
 	createCalled bool
+}
+
+func (s *thoughtServiceStoreStub) ListThoughts(ctx context.Context, u string, id int64) ([]data.Thought, error) {
+	return s.list(ctx, u, id)
+}
+
+func TestThoughtService_List(t *testing.T) {
+	t.Run("passes scope and preserves store failures", func(t *testing.T) {
+		ctx := context.Background()
+		wantErr := errors.New("store failure")
+		service := NewService(&thoughtServiceStoreStub{list: func(got context.Context, u string, id int64) ([]data.Thought, error) {
+			if got != ctx || u != "u" || id != 7 {
+				t.Fatal("list lost scope")
+			}
+			return nil, wantErr
+		}})
+		if _, err := service.List(ctx, "u", 7); err != wantErr {
+			t.Fatalf("got %v, want original error", err)
+		}
+	})
 }
 
 func (s *thoughtServiceStoreStub) CreateThought(ctx context.Context, item *data.Thought) (*data.Thought, error) {

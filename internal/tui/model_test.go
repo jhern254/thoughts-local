@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/testutils"
+	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
 func TestModel_View(t *testing.T) {
@@ -17,6 +19,7 @@ func TestModel_View(t *testing.T) {
 			context.Background(),
 			&data.User{UserID: "local-user-id", Handle: &handle},
 			&subjectServiceStub{},
+			thought.NewService(testutils.NewFakeThoughtStore()), &metricsStub{},
 			logging.Nop(),
 		)
 
@@ -83,8 +86,18 @@ func newRootTestModel() Model {
 		context.Background(),
 		&data.User{UserID: "local-user-id"},
 		&subjectServiceStub{},
+		thought.NewService(testutils.NewFakeThoughtStore()), &metricsStub{},
 		logging.Nop(),
 	)
+}
+
+type metricsStub struct {
+	counts []data.SubjectThoughtCount
+	err    error
+}
+
+func (s *metricsStub) ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCount, error) {
+	return s.counts, s.err
 }
 
 func assertQuitCommand(t *testing.T, command tea.Cmd) {

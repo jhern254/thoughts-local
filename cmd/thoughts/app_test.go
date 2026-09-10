@@ -9,14 +9,18 @@ import (
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
 type cliRuntimeStub struct {
+	metrics   *metrics.Service
 	localUser *data.User
 	subjects  *subject.Service
 	close     func() error
 }
+
+func (stub *cliRuntimeStub) Metrics() *metrics.Service { return stub.metrics }
 
 func (stub *cliRuntimeStub) LocalUser() *data.User {
 	return stub.localUser

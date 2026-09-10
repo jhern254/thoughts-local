@@ -16,6 +16,7 @@ const maxThoughtCharacters = 1_000_000
 type Store interface {
 	CreateThought(context.Context, *data.Thought) (*data.Thought, error)
 	GetThought(context.Context, string, int64) (*data.Thought, error)
+	ListThoughts(context.Context, string, int64) ([]data.Thought, error)
 }
 
 type ValidationError struct {
@@ -41,6 +42,10 @@ func NewService(store Store) *Service { return &Service{store: store} }
 
 func (s *Service) Get(ctx context.Context, userID string, thoughtID int64) (*data.Thought, error) {
 	return s.store.GetThought(ctx, userID, thoughtID)
+}
+
+func (s *Service) List(ctx context.Context, userID string, subjectID int64) ([]data.Thought, error) {
+	return s.store.ListThoughts(ctx, userID, subjectID)
 }
 
 func (s *Service) Create(ctx context.Context, userID, body string, subjectID *int64, observedAt time.Time) (*data.Thought, error) {

@@ -19,6 +19,7 @@ type SubjectStore interface {
 }
 
 type ThoughtStore interface {
+	ListThoughts(context.Context, string, int64) ([]Thought, error)
 	CreateThought(context.Context, *Thought) (*Thought, error)
 	GetThought(context.Context, string, int64) (*Thought, error)
 }

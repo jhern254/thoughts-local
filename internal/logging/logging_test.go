@@ -24,6 +24,7 @@ func TestLogger(t *testing.T) {
 					t.Fatal(err)
 				}
 				logger.Mutation(logging.SubjectCreated, 7)
+				logger.Mutation(logging.ThoughtCreated, 8)
 				logger.Failure(logging.SubjectGet, logging.UnexpectedFailure)
 				if level != "error" {
 					if output.Len() != 0 {

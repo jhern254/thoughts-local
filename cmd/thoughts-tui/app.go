@@ -10,7 +10,9 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	cli "github.com/urfave/cli/v3"
 )
@@ -20,6 +22,8 @@ const defaultSQLiteDSN = appcore.DefaultSQLiteDSN
 type runtime interface {
 	LocalUser() *data.User
 	Subjects() *subject.Service
+	Thoughts() *thought.Service
+	Metrics() *metrics.Service
 	Close() error
 }
 
@@ -82,7 +86,7 @@ func newTUI(app *application) *cli.Command {
 		Action: func(ctx context.Context, _ *cli.Command) error {
 			err := app.runProgram(
 				ctx,
-				tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.logger),
+				tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.logger),
 				app.in,
 				app.out,
 			)

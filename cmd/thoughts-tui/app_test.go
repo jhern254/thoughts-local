@@ -10,7 +10,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
 type runtimeStub struct {
@@ -18,6 +20,9 @@ type runtimeStub struct {
 	subjects  *subject.Service
 	close     func() error
 }
+
+func (stub *runtimeStub) Thoughts() *thought.Service { return nil }
+func (stub *runtimeStub) Metrics() *metrics.Service  { return nil }
 
 func (stub *runtimeStub) LocalUser() *data.User {
 	return stub.localUser

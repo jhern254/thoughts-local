@@ -2,6 +2,7 @@ package testutils
 
 import (
 	"context"
+	"sort"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 )
@@ -38,3 +39,22 @@ func (s *FakeThoughtStore) GetThought(ctx context.Context, userID string, though
 }
 
 var _ data.ThoughtStore = (*FakeThoughtStore)(nil)
+
+func (s *FakeThoughtStore) ListThoughts(ctx context.Context, userID string, subjectID int64) ([]data.Thought, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	rows := []data.Thought{}
+	for _, item := range s.thoughts {
+		if item.UserID == userID && item.SubjectID != nil && *item.SubjectID == subjectID {
+			rows = append(rows, item)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].ObservedAt.Equal(rows[j].ObservedAt) {
+			return rows[i].ThoughtID > rows[j].ThoughtID
+		}
+		return rows[i].ObservedAt.After(rows[j].ObservedAt)
+	})
+	return rows, nil
+}

@@ -12,6 +12,8 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/testutils"
+	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
 type subjectServiceStub struct {
@@ -91,8 +93,8 @@ func TestSubjectModel_List(t *testing.T) {
 			if row.kind != subjectRowRecord {
 				t.Fatalf("got row %d kind %v, want Subject", index+1, row.kind)
 			}
-			if description := row.Description(); description != "" {
-				t.Fatalf("got Subject row description %q, want no description", description)
+			if description := row.Description(); description != "Thought count unavailable" {
+				t.Fatalf("got Subject row description %q, want unavailable count when metrics omit the subject", description)
 			}
 		}
 	})
@@ -498,7 +500,7 @@ func TestSubjectModel_Mutations(t *testing.T) {
 }
 
 func newSubjectTestModel(service SubjectService) Model {
-	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service, logging.Nop())
+	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service, thought.NewService(testutils.NewFakeThoughtStore()), &metricsStub{}, logging.Nop())
 }
 
 func openSubjects(t *testing.T, model Model) Model {

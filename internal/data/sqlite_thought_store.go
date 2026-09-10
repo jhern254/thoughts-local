@@ -76,11 +76,19 @@ func (s *SQLiteThoughtStore) CreateThought(ctx context.Context, thought *Thought
 }
 
 func (s *SQLiteThoughtStore) GetThought(ctx context.Context, userID string, thoughtID int64) (*Thought, error) {
-	var thought Thought
-	var subjectID, eventID sql.NullInt64
-	var observedAt, createdAt, updatedAt int64
-	err := s.db.QueryRowContext(ctx, `
-		SELECT
+	thought, err := scanThought(s.db.QueryRowContext(ctx, thoughtSelect+`
+		WHERE user_id = ? AND thought_id = ? AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = thoughts.user_id AND users.deleted_at IS NULL)`, userID, thoughtID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrRecordNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get thought: %w", TranslateSQLiteError(err))
+	}
+	return thought, nil
+}
+
+const thoughtSelect = `SELECT
 			thought_id,
 			user_id,
 			(SELECT subject_id FROM subjects WHERE subject_id = thoughts.subject_id AND deleted_at IS NULL),
@@ -91,12 +99,39 @@ func (s *SQLiteThoughtStore) GetThought(ctx context.Context, userID string, thou
 			observed_at,
 			created_at,
 			updated_at
-		FROM thoughts
-		WHERE user_id = ? AND thought_id = ? AND deleted_at IS NULL
-		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = thoughts.user_id AND users.deleted_at IS NULL)`,
-		userID,
-		thoughtID,
-	).Scan(
+		FROM thoughts `
+
+func (s *SQLiteThoughtStore) ListThoughts(ctx context.Context, userID string, subjectID int64) ([]Thought, error) {
+	rows, err := s.db.QueryContext(ctx, thoughtSelect+`
+		WHERE user_id = ? AND subject_id = ? AND deleted_at IS NULL
+		  AND EXISTS (
+			SELECT 1 FROM subjects s JOIN users u ON u.user_id = s.user_id
+			WHERE s.subject_id = thoughts.subject_id AND s.user_id = thoughts.user_id
+			  AND s.deleted_at IS NULL AND u.deleted_at IS NULL)
+		ORDER BY observed_at DESC, thought_id DESC`, userID, subjectID)
+	if err != nil {
+		return nil, fmt.Errorf("list thoughts: %w", TranslateSQLiteError(err))
+	}
+	defer rows.Close()
+	thoughts := []Thought{}
+	for rows.Next() {
+		item, err := scanThought(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan thought: %w", TranslateSQLiteError(err))
+		}
+		thoughts = append(thoughts, *item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read thoughts: %w", TranslateSQLiteError(err))
+	}
+	return thoughts, nil
+}
+
+func scanThought(row interface{ Scan(...any) error }) (*Thought, error) {
+	var thought Thought
+	var subjectID, eventID sql.NullInt64
+	var observedAt, createdAt, updatedAt int64
+	err := row.Scan(
 		&thought.ThoughtID,
 		&thought.UserID,
 		&subjectID,
@@ -107,11 +142,8 @@ func (s *SQLiteThoughtStore) GetThought(ctx context.Context, userID string, thou
 		&createdAt,
 		&updatedAt,
 	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrRecordNotFound
-	}
 	if err != nil {
-		return nil, fmt.Errorf("get thought: %w", TranslateSQLiteError(err))
+		return nil, err
 	}
 
 	thought.SubjectID = int64Pointer(subjectID)
