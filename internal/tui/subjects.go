@@ -19,6 +19,8 @@ const (
 )
 
 type SubjectService interface {
+	Update(ctx context.Context, userID string, subjectID int64, name string) (*data.Subject, error)
+	Delete(ctx context.Context, userID string, subjectID int64) error
 	List(ctx context.Context, userID string) ([]data.Subject, error)
 	Create(ctx context.Context, userID, name string) (*data.Subject, error)
 	Get(ctx context.Context, userID string, subjectID int64) (*data.Subject, error)
@@ -27,13 +29,14 @@ type SubjectService interface {
 type subjectState struct {
 	service SubjectService
 
-	list       list.Model
-	input      textinput.Model
-	selected   *data.Subject
-	err        error
-	errMessage string
-	loading    bool
-	listStale  bool
+	list        list.Model
+	input       textinput.Model
+	selected    *data.Subject
+	err         error
+	errMessage  string
+	loading     bool
+	listStale   bool
+	detailTitle string
 }
 
 type subjectRowKind uint8
@@ -175,6 +178,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.input.Reset()
 	m.subjects.err = nil
 	m.subjects.selected = message.subject
+	m.subjects.detailTitle = "Created subject"
 	m.subjects.listStale = true
 	m.logger.Mutation(logging.SubjectCreated, message.subject.SubjectID)
 	m.screen = screenSubjectDetail
@@ -192,6 +196,7 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 
 	m.subjects.err = nil
 	m.subjects.selected = message.subject
+	m.subjects.detailTitle = "Subject"
 	m.screen = screenSubjectDetail
 	return m, nil
 }
@@ -269,6 +274,22 @@ func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
+		case "e":
+			if m.subjects.selected == nil {
+				return m, nil
+			}
+			m.screen = screenSubjectEdit
+			m.subjects.err = nil
+			m.subjects.input.SetValue(m.subjects.selected.SubjectName)
+			m.subjects.input.CursorEnd()
+			return m, m.subjects.input.Focus()
+		case "d":
+			if m.subjects.selected == nil {
+				return m, nil
+			}
+			m.screen = screenSubjectDelete
+			m.subjects.err = nil
+			return m, nil
 		case "q":
 			return m, tea.Quit
 		case "esc":
@@ -309,12 +330,12 @@ func (m Model) viewSubjectDetail() string {
 	if m.subjects.selected == nil {
 		return "Subject unavailable\n\nEsc: subjects • q: quit"
 	}
-	title := "Subject"
-	if m.subjects.listStale {
-		title = "Created subject"
+	title := m.subjects.detailTitle
+	if title == "" {
+		title = "Subject"
 	}
 	return fmt.Sprintf(
-		"%s\n\nName: %s\nAdded: %s\n\nEsc: subjects • q: quit",
+		"%s\n\nName: %s\nAdded: %s\n\ne: edit • d: delete • Esc: subjects • q: quit",
 		title,
 		m.subjects.selected.SubjectName,
 		m.subjects.selected.CreatedAt.UTC().Format(subjectDateLayout),

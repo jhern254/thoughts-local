@@ -28,9 +28,9 @@ func Classify(operation logging.Operation, err error) (logging.FailureCategory, 
 		return logging.DatabaseBusy, true
 	case errors.Is(err, data.ErrDatabaseReadOnly):
 		return logging.DatabaseReadOnly, true
-	case operation == logging.SubjectCreate && subject.IsExpectedError(err):
+	case (operation == logging.SubjectCreate || operation == logging.SubjectUpdate) && subject.IsExpectedError(err):
 		return logging.UnexpectedFailure, false
-	case operation == logging.SubjectGet && errors.Is(err, data.ErrRecordNotFound):
+	case (operation == logging.SubjectGet || operation == logging.SubjectDelete) && errors.Is(err, data.ErrRecordNotFound):
 		return logging.UnexpectedFailure, false
 	default:
 		return logging.UnexpectedFailure, true

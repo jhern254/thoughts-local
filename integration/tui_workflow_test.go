@@ -5,6 +5,7 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -13,7 +14,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
+	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/tui"
 )
 
@@ -95,6 +98,125 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got persisted user ID %q, want %q", userID, wantUserID)
 		}
 	})
+	t.Run("renames a subject through the edit screen and persists it", func(t *testing.T) {
+		db, dsn := openMigratedSQLite(t)
+		ctx := context.Background()
+		runtime, err := appcore.Open(ctx, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := runtime.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		item, err := runtime.Subjects().Create(ctx, runtime.LocalUser().UserID, "original")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var logs bytes.Buffer
+		logger, err := logging.New(&logs, "test", "info")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), logger)
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tuiKey(tea.KeyDown))
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: 'e', Text: "e"}))
+		model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: 'u', Mod: tea.ModCtrl}))
+		const name = "PRIVATE-SUBJECT-RENAMED"
+		for _, r := range name {
+			model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
+		}
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		if got := model.View().Content; !strings.Contains(got, "Updated subject") || !strings.Contains(got, name) {
+			t.Fatalf("got view %q, want renamed detail", got)
+		}
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEscape))
+		if got := model.View().Content; !strings.Contains(got, name) {
+			t.Fatalf("got list %q, want renamed subject", got)
+		}
+		var stored string
+		if err := db.QueryRow("SELECT subject_name FROM subjects WHERE subject_id=?", item.SubjectID).Scan(&stored); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := stored, name; got != want {
+			t.Fatalf("got persisted name %q, want %q", got, want)
+		}
+		if strings.Contains(logs.String(), name) || strings.Count(logs.String(), "subject updated") != 1 {
+			t.Fatalf("got logs %q, want one metadata-only update event", logs.String())
+		}
+	})
+	t.Run("confirmed deletion hides the subject and retains linked thoughts", func(t *testing.T) {
+		db, dsn := openMigratedSQLite(t)
+		ctx := context.Background()
+		runtime, err := appcore.Open(ctx, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := runtime.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		const name = "PRIVATE-SUBJECT-DELETED"
+		item, err := runtime.Subjects().Create(ctx, runtime.LocalUser().UserID, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		thoughts := thought.NewService(data.NewSQLiteThoughtStore(db))
+		linked, err := thoughts.Create(ctx, runtime.LocalUser().UserID, "keep this thought", &item.SubjectID, time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var logs bytes.Buffer
+		logger, err := logging.New(&logs, "test", "info")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), logger)
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tuiKey(tea.KeyDown))
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: 'd', Text: "d"}))
+		if got := model.View().Content; !strings.Contains(got, name) || !strings.Contains(got, "Existing thoughts will be kept") {
+			t.Fatalf("got view %q, want delete confirmation", got)
+		}
+		pending, deleteCommand := model.Update(tea.KeyPressMsg(tea.Key{Code: 'y', Text: "y"}))
+		if deleteCommand == nil {
+			t.Fatal("got nil command, want deletion")
+		}
+		model, refresh := pending.Update(deleteCommand())
+		if refresh == nil {
+			t.Fatal("got nil command, want list refresh")
+		}
+		model, _ = model.Update(refresh())
+		if got := model.View().Content; strings.Contains(got, name) {
+			t.Fatalf("got deleted subject in list %q, want hidden subject", got)
+		}
+		if _, err := runtime.Subjects().Get(ctx, runtime.LocalUser().UserID, item.SubjectID); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatalf("got subject error %v, want not found", err)
+		}
+		kept, err := thoughts.Get(ctx, runtime.LocalUser().UserID, linked.ThoughtID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kept.Thought != "keep this thought" || kept.SubjectID != nil {
+			t.Fatalf("got thought %v, want retained content with hidden subject reference", kept)
+		}
+		var retainedID int64
+		if err := db.QueryRow("SELECT t.subject_id FROM thoughts t JOIN subjects s ON s.subject_id=t.subject_id WHERE t.thought_id=? AND s.deleted_at IS NOT NULL", linked.ThoughtID).Scan(&retainedID); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := retainedID, item.SubjectID; got != want {
+			t.Fatalf("got retained subject ID %d, want %d", got, want)
+		}
+		if strings.Contains(logs.String(), name) || strings.Count(logs.String(), "subject deleted") != 1 {
+			t.Fatalf("got logs %q, want one metadata-only delete event", logs.String())
+		}
+	})
+
 }
 
 func runTUIModelCommand(t *testing.T, model tea.Model, message tea.Msg) tea.Model {

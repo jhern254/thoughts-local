@@ -13,6 +13,8 @@ import (
 )
 
 type subjectServiceStub struct {
+	update func(context.Context, string, int64, string) (*data.Subject, error)
+	delete func(context.Context, string, int64) error
 	list   func(context.Context, string) ([]data.Subject, error)
 	create func(context.Context, string, string) (*data.Subject, error)
 	get    func(context.Context, string, int64) (*data.Subject, error)
@@ -35,6 +37,13 @@ func (stub *subjectServiceStub) Create(ctx context.Context, userID, name string)
 func (stub *subjectServiceStub) Get(ctx context.Context, userID string, subjectID int64) (*data.Subject, error) {
 	stub.getCalls++
 	return stub.get(ctx, userID, subjectID)
+}
+
+func (stub *subjectServiceStub) Update(ctx context.Context, user string, id int64, name string) (*data.Subject, error) {
+	return stub.update(ctx, user, id, name)
+}
+func (stub *subjectServiceStub) Delete(ctx context.Context, user string, id int64) error {
+	return stub.delete(ctx, user, id)
 }
 
 func TestSubjectModel_List(t *testing.T) {
