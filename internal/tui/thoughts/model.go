@@ -57,10 +57,20 @@ type Model struct {
 	filter       listfilter.Scope
 }
 
-type row struct{ item data.Thought }
+type rowKind uint8
+
+const (
+	rowCreate rowKind = iota
+	rowRecord
+)
+
+type row struct {
+	kind rowKind
+	item data.Thought
+}
 
 func (r row) Title() string {
-	if r.item.ThoughtID == 0 {
+	if r.kind == rowCreate {
 		return "Create thought…"
 	}
 	// Build a bounded, single-line preview without copying a potentially large body.
@@ -77,7 +87,7 @@ func (r row) Title() string {
 	return string(preview)
 }
 func (r row) Description() string {
-	if r.item.ThoughtID == 0 {
+	if r.kind == rowCreate {
 		return "Add a thought to this subject"
 	}
 	return r.item.ObservedAt.UTC().Format("Jan 2, 2006 15:04 UTC")
@@ -95,7 +105,7 @@ type Result struct {
 }
 
 func New(ctx context.Context, userID string, service Service, logger logging.Logger) Model {
-	items := list.New([]list.Item{row{}}, list.NewDefaultDelegate(), 80, 14)
+	items := list.New([]list.Item{row{kind: rowCreate}}, list.NewDefaultDelegate(), 80, 14)
 	items.Title = "Thoughts"
 	items.SetStatusBarItemName("thought", "thoughts")
 	items.DisableQuitKeybindings()
@@ -132,7 +142,7 @@ func (m *Model) Reset() {
 	m.input.Reset()
 	m.inputWarning = ""
 	m.list.ResetFilter()
-	m.list.SetItems([]list.Item{row{}})
+	m.list.SetItems([]list.Item{row{kind: rowCreate}})
 	m.list.Select(0)
 }
 
@@ -206,9 +216,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		if result.operation == logging.ThoughtList {
 			rows := make([]list.Item, 0, len(result.items)+1)
-			rows = append(rows, row{})
+			rows = append(rows, row{kind: rowCreate})
 			for _, item := range result.items {
-				rows = append(rows, row{item: item})
+				rows = append(rows, row{kind: rowRecord, item: item})
 			}
 			m.stale = false
 			cmd := m.filter.SetItems(&m.list, rows)
@@ -276,14 +286,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 						return m, nil
 					}
 					m.err = nil
-					if item.item.ThoughtID == 0 {
+					switch item.kind {
+					case rowCreate:
 						m.request++
 						m.inputWarning = ""
 						m.screen = create
 						return m, m.input.Focus()
+					case rowRecord:
+						cmd := m.getThought(item.item.ThoughtID)
+						return m, cmd
 					}
-					cmd := m.getThought(item.item.ThoughtID)
-					return m, cmd
 				}
 			}
 		}

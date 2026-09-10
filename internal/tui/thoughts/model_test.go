@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
@@ -17,6 +18,36 @@ import (
 func key(code rune) tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: code}) }
 
 func TestModel_Thoughts(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		row   row
+		title string
+		desc  string
+	}{
+		{"create action does not depend on thought ID", row{kind: rowCreate, item: data.Thought{ThoughtID: 7}}, "Create thought…", "Add a thought to this subject"},
+		{"record with zero ID is not a create action", row{kind: rowRecord, item: data.Thought{Thought: "record"}}, "record", time.Time{}.UTC().Format("Jan 2, 2006 15:04 UTC")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.row.Title() != tt.title || tt.row.FilterValue() != tt.title || tt.row.Description() != tt.desc {
+				t.Fatalf("got row %q / %q / %q, want %q / %q / %q", tt.row.Title(), tt.row.FilterValue(), tt.row.Description(), tt.title, tt.title, tt.desc)
+			}
+			m := New(context.Background(), "u", thought.NewService(testutils.NewFakeThoughtStore()), logging.Nop())
+			m.list.SetItems([]list.Item{tt.row})
+			m, cmd := m.Update(key(tea.KeyEnter))
+			if tt.row.kind == rowCreate {
+				if m.screen != create || !m.input.Focused() || m.loading {
+					t.Fatal("create action did not open the editor")
+				}
+			} else {
+				if m.screen != browse || !m.loading || cmd == nil {
+					t.Fatal("record did not start loading its detail")
+				}
+				if result := cmd().(Result); result.operation != logging.ThoughtGet {
+					t.Fatal("record did not request a thought")
+				}
+			}
+		})
+	}
 	t.Run("editor treats Enter and subject shortcuts as input and Escape cancels", func(t *testing.T) {
 		m := New(context.Background(), "u", thought.NewService(testutils.NewFakeThoughtStore()), logging.Nop())
 		cmd := m.Open(1)
@@ -87,7 +118,7 @@ func TestModel_Thoughts(t *testing.T) {
 		_ = m.View()
 	})
 	t.Run("previews are bounded Unicode-safe single lines", func(t *testing.T) {
-		r := row{item: data.Thought{ThoughtID: 1, Thought: strings.Repeat("界\n", 100)}}
+		r := row{kind: rowRecord, item: data.Thought{ThoughtID: 1, Thought: strings.Repeat("界\n", 100)}}
 		got := r.Title()
 		if !utf8.ValidString(got) || utf8.RuneCountInString(got) != 81 || strings.Contains(got, "\n") {
 			t.Fatalf("invalid preview %q", got)
