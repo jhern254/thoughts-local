@@ -22,6 +22,8 @@ const (
 	screenSubjectList
 	screenSubjectCreate
 	screenSubjectDetail
+	screenSubjectEdit
+	screenSubjectDelete
 )
 
 type entityKind uint8
@@ -84,6 +86,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSubjectsListed(message)
 	case subjectCreatedMsg:
 		return m.handleSubjectCreated(message)
+	case subjectUpdatedMsg:
+		return m.handleSubjectUpdated(message)
+	case subjectDeletedMsg:
+		return m.handleSubjectDeleted(message)
 	case subjectFoundMsg:
 		return m.handleSubjectFound(message)
 	case tea.KeyPressMsg:
@@ -99,6 +105,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSubjectList(message)
 	case screenSubjectCreate:
 		return m.updateSubjectCreate(message)
+	case screenSubjectEdit:
+		return m.updateSubjectEdit(message)
+	case screenSubjectDelete:
+		return m.updateSubjectDelete(message)
 	case screenSubjectDetail:
 		return m.updateSubjectDetail(message)
 	default:
@@ -133,6 +143,10 @@ func (m Model) View() tea.View {
 		content = m.viewSubjectList()
 	case screenSubjectCreate:
 		content = m.viewSubjectCreate()
+	case screenSubjectEdit:
+		content = m.viewSubjectEdit()
+	case screenSubjectDelete:
+		content = m.viewSubjectDelete()
 	case screenSubjectDetail:
 		content = m.viewSubjectDetail()
 	}

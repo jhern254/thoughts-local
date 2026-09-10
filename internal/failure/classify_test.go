@@ -23,6 +23,14 @@ func TestClassify(t *testing.T) {
 		category logging.FailureCategory
 		emit     bool
 	}{
+		{"ignores update validation", logging.SubjectUpdate, &subject.ValidationError{}, logging.UnexpectedFailure, false},
+		{"ignores duplicate update", logging.SubjectUpdate, data.ErrDuplicateRecord, logging.UnexpectedFailure, false},
+		{"ignores missing update", logging.SubjectUpdate, data.ErrRecordNotFound, logging.UnexpectedFailure, false},
+		{"ignores missing delete", logging.SubjectDelete, data.ErrRecordNotFound, logging.UnexpectedFailure, false},
+		{"retains unexpected delete validation", logging.SubjectDelete, &subject.ValidationError{}, logging.UnexpectedFailure, true},
+		{"retains busy update", logging.SubjectUpdate, data.ErrDatabaseBusy, logging.DatabaseBusy, true},
+		{"retains read-only delete", logging.SubjectDelete, data.ErrDatabaseReadOnly, logging.DatabaseReadOnly, true},
+		{"retains combined update failure", logging.SubjectUpdate, errors.Join(data.ErrDuplicateRecord, errors.New("private")), logging.UnexpectedFailure, true},
 		{"ignores nil", logging.SubjectCreate, nil, logging.UnexpectedFailure, false},
 		{"recognizes wrapped busy failure", logging.SubjectCreate, fmt.Errorf("write: %w", data.ErrDatabaseBusy), logging.DatabaseBusy, true},
 		{"recognizes read-only startup", logging.ApplicationStart, data.ErrDatabaseReadOnly, logging.DatabaseReadOnly, true},

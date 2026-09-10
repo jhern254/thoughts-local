@@ -19,6 +19,8 @@ const (
 )
 
 type SubjectService interface {
+	Update(ctx context.Context, userID string, subjectID int64, name string) (*data.Subject, error)
+	Delete(ctx context.Context, userID string, subjectID int64) error
 	List(ctx context.Context, userID string) ([]data.Subject, error)
 	Create(ctx context.Context, userID, name string) (*data.Subject, error)
 	Get(ctx context.Context, userID string, subjectID int64) (*data.Subject, error)
@@ -27,13 +29,14 @@ type SubjectService interface {
 type subjectState struct {
 	service SubjectService
 
-	list       list.Model
-	input      textinput.Model
-	selected   *data.Subject
-	err        error
-	errMessage string
-	loading    bool
-	listStale  bool
+	list        list.Model
+	input       textinput.Model
+	selected    *data.Subject
+	err         error
+	errMessage  string
+	loading     bool
+	listStale   bool
+	detailTitle string
 }
 
 type subjectRowKind uint8
@@ -79,6 +82,16 @@ type subjectCreatedMsg struct {
 type subjectFoundMsg struct {
 	subject *data.Subject
 	err     error
+}
+
+type subjectUpdatedMsg struct {
+	subject *data.Subject
+	err     error
+}
+
+type subjectDeletedMsg struct {
+	subjectID int64
+	err       error
 }
 
 func subjectRows(subjects []data.Subject) []list.Item {
@@ -148,6 +161,28 @@ func (m Model) getSubject(subjectID int64) tea.Cmd {
 	}
 }
 
+func (m Model) updateSubject(name string) tea.Cmd {
+	ctx := m.ctx
+	userID := m.user.UserID
+	service := m.subjects.service
+	id := m.subjects.selected.SubjectID
+	return func() tea.Msg {
+		item, err := service.Update(ctx, userID, id, name)
+		return subjectUpdatedMsg{subject: item, err: err}
+	}
+}
+
+func (m Model) deleteSubject() tea.Cmd {
+	ctx := m.ctx
+	userID := m.user.UserID
+	service := m.subjects.service
+	id := m.subjects.selected.SubjectID
+	return func() tea.Msg {
+		err := service.Delete(ctx, userID, id)
+		return subjectDeletedMsg{subjectID: id, err: err}
+	}
+}
+
 func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.Cmd) {
 	m.subjects.loading = false
 	if message.err != nil {
@@ -175,6 +210,7 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.input.Reset()
 	m.subjects.err = nil
 	m.subjects.selected = message.subject
+	m.subjects.detailTitle = "Created subject"
 	m.subjects.listStale = true
 	m.logger.Mutation(logging.SubjectCreated, message.subject.SubjectID)
 	m.screen = screenSubjectDetail
@@ -192,8 +228,45 @@ func (m Model) handleSubjectFound(message subjectFoundMsg) (tea.Model, tea.Cmd) 
 
 	m.subjects.err = nil
 	m.subjects.selected = message.subject
+	m.subjects.detailTitle = "Subject"
 	m.screen = screenSubjectDetail
 	return m, nil
+}
+
+func (m Model) handleSubjectUpdated(message subjectUpdatedMsg) (tea.Model, tea.Cmd) {
+	m.subjects.loading = false
+	if message.err != nil {
+		logSubjectError(m.logger, logging.SubjectUpdate, message.err)
+		m.subjects.err = message.err
+		m.subjects.errMessage = diagnostics.SubjectMessage(message.err, "Could not save the subject.")
+		return m, m.subjects.input.Focus()
+	}
+	m.subjects.err = nil
+	m.subjects.input.Blur()
+	m.subjects.input.Reset()
+	m.subjects.selected = message.subject
+	m.subjects.detailTitle = "Updated subject"
+	m.subjects.listStale = true
+	m.screen = screenSubjectDetail
+	m.logger.Mutation(logging.SubjectUpdated, message.subject.SubjectID)
+	return m, nil
+}
+
+func (m Model) handleSubjectDeleted(message subjectDeletedMsg) (tea.Model, tea.Cmd) {
+	m.subjects.loading = false
+	if message.err != nil {
+		logSubjectError(m.logger, logging.SubjectDelete, message.err)
+		m.subjects.err = message.err
+		m.subjects.errMessage = diagnostics.SubjectMessage(message.err, "Could not delete the subject.")
+		return m, nil
+	}
+	m.subjects.err = nil
+	m.subjects.selected = nil
+	m.subjects.listStale = true
+	m.subjects.loading = true
+	m.screen = screenSubjectList
+	m.logger.Mutation(logging.SubjectDeleted, message.subjectID)
+	return m, m.listSubjects()
 }
 
 func logSubjectError(logger logging.Logger, operation logging.Operation, err error) {
@@ -269,6 +342,22 @@ func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
+		case "e":
+			if m.subjects.selected == nil {
+				return m, nil
+			}
+			m.screen = screenSubjectEdit
+			m.subjects.err = nil
+			m.subjects.input.SetValue(m.subjects.selected.SubjectName)
+			m.subjects.input.CursorEnd()
+			return m, m.subjects.input.Focus()
+		case "d":
+			if m.subjects.selected == nil {
+				return m, nil
+			}
+			m.screen = screenSubjectDelete
+			m.subjects.err = nil
+			return m, nil
 		case "q":
 			return m, tea.Quit
 		case "esc":
@@ -280,6 +369,54 @@ func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.listSubjects()
 			}
 			return m, nil
+		}
+	}
+	return m, nil
+}
+
+func (m Model) updateSubjectEdit(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.subjects.loading {
+		return m, nil
+	}
+	if key, ok := message.(tea.KeyPressMsg); ok {
+		switch key.String() {
+		case "esc":
+			m.subjects.input.Blur()
+			m.subjects.input.Reset()
+			m.subjects.err = nil
+			m.screen = screenSubjectDetail
+			return m, nil
+		case "enter":
+			if m.subjects.selected == nil {
+				return m, nil
+			}
+			m.subjects.loading = true
+			m.subjects.err = nil
+			m.subjects.input.Blur()
+			return m, m.updateSubject(m.subjects.input.Value())
+		}
+	}
+	var cmd tea.Cmd
+	m.subjects.input, cmd = m.subjects.input.Update(message)
+	return m, cmd
+}
+
+func (m Model) updateSubjectDelete(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.subjects.loading {
+		return m, nil
+	}
+	if key, ok := message.(tea.KeyPressMsg); ok {
+		switch key.String() {
+		case "esc", "n":
+			m.subjects.err = nil
+			m.screen = screenSubjectDetail
+		case "y":
+			if m.subjects.selected == nil {
+				return m, nil
+			}
+			m.subjects.loading = true
+			m.subjects.err = nil
+			return m, m.deleteSubject()
 		}
 	}
 	return m, nil
@@ -309,14 +446,37 @@ func (m Model) viewSubjectDetail() string {
 	if m.subjects.selected == nil {
 		return "Subject unavailable\n\nEsc: subjects • q: quit"
 	}
-	title := "Subject"
-	if m.subjects.listStale {
-		title = "Created subject"
+	title := m.subjects.detailTitle
+	if title == "" {
+		title = "Subject"
 	}
 	return fmt.Sprintf(
-		"%s\n\nName: %s\nAdded: %s\n\nEsc: subjects • q: quit",
+		"%s\n\nName: %s\nAdded: %s\n\ne: edit • d: delete • Esc: subjects • q: quit",
 		title,
 		m.subjects.selected.SubjectName,
 		m.subjects.selected.CreatedAt.UTC().Format(subjectDateLayout),
 	)
+}
+
+func (m Model) viewSubjectEdit() string {
+	status := ""
+	if m.subjects.loading {
+		status = "Saving subject…\n\n"
+	} else if m.subjects.err != nil {
+		status = fmt.Sprintf("Error: %s\n\n", m.subjects.errMessage)
+	}
+	return fmt.Sprintf("Edit subject\n\n%s%s\n\nEnter: save • Esc: cancel", status, m.subjects.input.View())
+}
+
+func (m Model) viewSubjectDelete() string {
+	if m.subjects.selected == nil {
+		return "Subject unavailable\n\nEsc: subject"
+	}
+	status := ""
+	if m.subjects.loading {
+		status = "Deleting subject…\n\n"
+	} else if m.subjects.err != nil {
+		status = fmt.Sprintf("Error: %s\n\n", m.subjects.errMessage)
+	}
+	return fmt.Sprintf("Delete subject\n\n%sDelete %q?\nIt will disappear from subjects. Existing thoughts will be kept.\n\ny: delete • n/Esc: cancel", status, m.subjects.selected.SubjectName)
 }
