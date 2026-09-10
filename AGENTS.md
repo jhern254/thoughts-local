@@ -479,5 +479,49 @@ Emit only approved typed metadata—never authored content or raw error text.
 Reuse existing categories; add events or classification rules only when the
 implemented feature requires them.
 
+Each entity reuses the injected logger, and the Bubble Tea
+“wrappers” are small asynchronous commands around the shared service—not another business-logic
+layer.
+
+For a new persisted entity, the usual pieces are:
+
+Piece                 What you add
+━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Schema and model      Migration, Go representation, relationships, ownership, constraints, and any
+                     soft-delete behavior.
+────────────────────  ──────────────────────────────────────────────────────────────────────────────
+Store                 SQLite operations and a narrow interface containing the operations the
+                     feature needs.
+────────────────────  ──────────────────────────────────────────────────────────────────────────────
+Service               Validation and domain operations, with rules matching the schema.
+────────────────────  ──────────────────────────────────────────────────────────────────────────────
+Application wiring    Construct the store/service using the existing database connection and
+                     inject the service into the relevant interface.
+────────────────────  ──────────────────────────────────────────────────────────────────────────────
+Presentation          TUI screens and interactions, or CLI commands/HTTP handlers for whichever
+                     surfaces you’re implementing.
+────────────────────  ──────────────────────────────────────────────────────────────────────────────
+Tests                 Service behavior, real migrated SQLite integration tests, and presentation
+                     behavior.
+
+For Bubble Tea specifically, you need more than views:
+
+- State: selected item, form input, loading state, and errors.
+- tea.Cmd functions that call the service.
+- Result messages carrying returned data and the original error.
+- Update handling for those messages and keyboard actions.
+- Navigation, focus, resizing, and refreshing lists after mutations.
+
+These commands call ordinary service methods. Add service methods when the feature needs new domain behavior; navigation and form focus belong in the TUI.
+
+For errors and logging, reuse the existing infrastructure:
+
+- Existing common sentinels where their meaning fits.
+- Entity validation errors with validator-produced public feedback.
+- Safe presentation messages and generic unexpected-error fallbacks.
+- failure.Classify plus the injected logger. Extend operation metadata/classification only when a new implemented operation requires it.
+
+
+
 
 When uncertain, choose the simplest implementation that preserves the architecture.
