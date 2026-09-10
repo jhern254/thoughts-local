@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/subject"
 )
 
@@ -15,7 +16,7 @@ func (a *application) showSubjectHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	item, err := a.subjectService.Get(r.Context(), a.userFromReq(r), id)
-	if errors.Is(err, data.ErrRecordNotFound) {
+	if errors.Is(diagnostics.SingleError(err), data.ErrRecordNotFound) {
 		a.notFoundResponse(w, r)
 		return
 	}
@@ -37,11 +38,11 @@ func (a *application) createSubjectHandler(w http.ResponseWriter, r *http.Reques
 	item, err := a.subjectService.Create(r.Context(), a.userFromReq(r), input.SubjectName)
 	var validationErr *subject.ValidationError
 	switch {
-	case errors.As(err, &validationErr):
-		a.failedValidationResponse(w, r, validationErr.Fields)
-	case errors.Is(err, data.ErrDuplicateRecord):
-		a.duplicateRecordResponse(w, r, input.SubjectName)
-	case errors.Is(err, data.ErrRecordNotFound):
+	case errors.As(diagnostics.SingleError(err), &validationErr):
+		a.failedValidationResponse(w, r, validationErr.PublicFields())
+	case errors.Is(diagnostics.SingleError(err), data.ErrDuplicateRecord):
+		a.duplicateRecordResponse(w, r)
+	case errors.Is(diagnostics.SingleError(err), data.ErrRecordNotFound):
 		a.notFoundResponse(w, r)
 	case err != nil:
 		a.serverErrorResponse(w, r, err)

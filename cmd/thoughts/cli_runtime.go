@@ -17,12 +17,13 @@ type cliRuntime interface {
 }
 
 type application struct {
-	runtime  cliRuntime
-	subjects SubjectService
-	userID   string
-	out      io.Writer
-	errOut   io.Writer
-	logger   logging.Logger
+	runtime        cliRuntime
+	subjects       SubjectService
+	userID         string
+	out            io.Writer
+	errOut         io.Writer
+	logger         logging.Logger
+	failureMessage string
 
 	openRuntime func(context.Context, string) (cliRuntime, error)
 }

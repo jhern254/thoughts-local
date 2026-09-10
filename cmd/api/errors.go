@@ -10,16 +10,14 @@ import (
 	//    "os"
 	//    "encoding/json"
 	//    "io"
+
+	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	//    "github.com/rs/zerolog"
 )
 
 // helpers
-func (a *application) logError(r *http.Request, err error) {
-	a.logger.Error().
-		Err(err).
-		Str("method", r.Method).
-		Str("url", r.URL.String()).
-		Msg("request error")
+func (a *application) logError(_ *http.Request, _ error) {
+	a.logger.Error().Str("operation", "http_request").Msg("request error")
 }
 
 func (a *application) errorResponse(w http.ResponseWriter, r *http.Request, status int, msg any) {
@@ -56,12 +54,15 @@ func (a *application) methodNotAllowedResponse(w http.ResponseWriter, r *http.Re
 // 400 Bad Request Error
 // TODO: log errs
 func (a *application) badRequestResponse(w http.ResponseWriter, r *http.Request, err error) {
-	a.errorResponse(w, r, http.StatusBadRequest, err.Error())
+	a.errorResponse(w, r, http.StatusBadRequest, "The request body is invalid.")
 }
 
 // 422 Unprocessable Entity
-func (a *application) failedValidationResponse(w http.ResponseWriter, r *http.Request, errors map[string]string) {
-	a.errorResponse(w, r, http.StatusUnprocessableEntity, errors)
+func (a *application) failedValidationResponse(w http.ResponseWriter, r *http.Request, publicFields map[string]string) {
+	if len(publicFields) == 0 {
+		publicFields = map[string]string{"request": "The submitted values are invalid."}
+	}
+	a.errorResponse(w, r, http.StatusUnprocessableEntity, publicFields)
 }
 
 // 409 Conflict (generic)
@@ -70,7 +71,6 @@ func (a *application) conflictResponse(w http.ResponseWriter, r *http.Request, m
 }
 
 // 409 Conflict (duplicate record convenience)
-// example use: a.duplicateRecordResponse(w, r, "subject")
-func (a *application) duplicateRecordResponse(w http.ResponseWriter, r *http.Request, resource string) {
-	a.conflictResponse(w, r, resource+" already exists")
+func (a *application) duplicateRecordResponse(w http.ResponseWriter, r *http.Request) {
+	a.conflictResponse(w, r, diagnostics.DuplicateSubjectMessage)
 }

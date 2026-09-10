@@ -5,6 +5,7 @@ import (
 	"io"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/jhern254/go-thoughts/cmd/internal/cliutil"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/failure"
@@ -23,10 +24,11 @@ type runtime interface {
 }
 
 type application struct {
-	in     io.Reader
-	out    io.Writer
-	errOut io.Writer
-	logger logging.Logger
+	in             io.Reader
+	out            io.Writer
+	errOut         io.Writer
+	logger         logging.Logger
+	failureMessage string
 
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
@@ -47,17 +49,17 @@ func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) 
 }
 
 func newTUI(app *application) *cli.Command {
-	return &cli.Command{
-		Name:      "thoughts-tui",
-		Usage:     "capture and organize thoughts",
-		Writer:    app.out,
-		ErrWriter: app.errOut,
+	cmd := &cli.Command{
+		Name:   "thoughts-tui",
+		Usage:  "capture and organize thoughts",
+		Writer: app.out,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "db-dsn",
-				Usage:   "SQLite data source name",
-				Value:   defaultSQLiteDSN,
-				Sources: cli.EnvVars("THOUGHTS_DB_DSN"),
+				Name:        "db-dsn",
+				Usage:       "SQLite data source name",
+				Value:       defaultSQLiteDSN,
+				DefaultText: "configured database",
+				Sources:     cli.EnvVars("THOUGHTS_DB_DSN"),
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
@@ -68,6 +70,7 @@ func newTUI(app *application) *cli.Command {
 			}
 			runtime, err := app.openRuntime(ctx, dsn)
 			if err != nil {
+				app.failureMessage = "Could not start the application."
 				if category, emit := failure.Classify(logging.ApplicationStart, err); emit {
 					app.logger.Failure(logging.ApplicationStart, category)
 				}
@@ -84,6 +87,7 @@ func newTUI(app *application) *cli.Command {
 				app.out,
 			)
 			if err != nil {
+				app.failureMessage = "Could not run the terminal interface."
 				if category, emit := failure.Classify(logging.TUIRun, err); emit {
 					app.logger.Failure(logging.TUIRun, category)
 				}
@@ -98,6 +102,7 @@ func newTUI(app *application) *cli.Command {
 			err := app.runtime.Close()
 			app.runtime = nil
 			if err != nil {
+				app.failureMessage = "Could not close the application database."
 				if category, emit := failure.Classify(logging.ApplicationClose, err); emit {
 					app.logger.Failure(logging.ApplicationClose, category)
 				}
@@ -106,6 +111,8 @@ func newTUI(app *application) *cli.Command {
 			return err
 		},
 	}
+	cliutil.ConfigureDiagnostics(cmd, &app.failureMessage)
+	return cmd
 }
 
 func runBubbleTea(ctx context.Context, model tea.Model, in io.Reader, out io.Writer) error {

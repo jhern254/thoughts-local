@@ -146,8 +146,12 @@ func TestCreateSubjectHandler(t *testing.T) {
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusUnprocessableEntity)
 		testutils.AssertCorrect(t, store.createCalls, 0)
-		if !strings.Contains(response.Body.String(), `"subject_name"`) {
-			t.Fatalf("got response body %s", response.Body.String())
+		var body bytes.Buffer
+		if err := json.Compact(&body, response.Body.Bytes()); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := body.String(), `{"error":{"subject_name":"must be between 1 and 255 characters long"}}`; got != want {
+			t.Fatalf("got response %q, want %q", got, want)
 		}
 	})
 
@@ -158,7 +162,7 @@ func TestCreateSubjectHandler(t *testing.T) {
 		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodPost, "/subjects", `{"subject_name":"coding"}`))
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusConflict)
-		if !strings.Contains(response.Body.String(), "coding already exists") {
+		if !strings.Contains(response.Body.String(), "A subject with that name already exists.") {
 			t.Fatalf("got response body %s", response.Body.String())
 		}
 	})
