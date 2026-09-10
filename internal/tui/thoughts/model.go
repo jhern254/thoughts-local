@@ -16,6 +16,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 )
 
 type Service interface {
@@ -53,6 +54,7 @@ type Model struct {
 	errMessage string
 
 	inputWarning string
+	filter       listfilter.Scope
 }
 
 type row struct{ item data.Thought }
@@ -118,6 +120,7 @@ func (m *Model) Resize(width, height int) {
 }
 
 func (m *Model) Reset() {
+	m.filter.Invalidate()
 	m.request++
 	m.subjectID = 0
 	m.selected = nil
@@ -165,6 +168,11 @@ func (m *Model) load(operation logging.Operation, id int64, body string) tea.Cmd
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	switch msg.(type) {
+	case listfilter.Reply, list.FilterMatchesMsg:
+		cmd := m.filter.Update(&m.list, msg)
+		return m, cmd
+	}
 	if result, ok := msg.(Result); ok {
 		if result.request != m.request {
 			return m, nil
@@ -189,7 +197,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				rows = append(rows, row{item: item})
 			}
 			m.stale = false
-			return m, m.list.SetItems(rows)
+			cmd := m.filter.SetItems(&m.list, rows)
+			return m, cmd
 		}
 		m.selected = result.item
 		m.screen = detail
@@ -265,7 +274,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch m.screen {
 	case browse:
-		m.list, cmd = m.list.Update(msg)
+		cmd = m.filter.Update(&m.list, msg)
 	case create:
 		return m.updateInput(msg)
 	case detail:

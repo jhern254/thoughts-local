@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
@@ -83,6 +84,16 @@ func (Model) Init() tea.Cmd {
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
+	case list.FilterMatchesMsg:
+		return m, nil
+	case listfilter.Reply:
+		if m.subjects.filter.Owns(message) {
+			cmd := m.subjects.filter.Update(&m.subjects.list, message)
+			return m, cmd
+		}
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		return m, cmd
 	case tea.WindowSizeMsg:
 		m.entityList.SetSize(message.Width, max(0, message.Height-3))
 		m.resizeSubjects(message.Width, message.Height)

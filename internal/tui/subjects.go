@@ -11,6 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 )
 
 const (
@@ -32,6 +33,7 @@ type MetricsService interface {
 
 type subjectState struct {
 	service SubjectService
+	filter  listfilter.Scope
 
 	list        list.Model
 	input       textinput.Model
@@ -138,6 +140,7 @@ func (m *Model) resizeSubjects(width, height int) {
 }
 
 func (m Model) openSubjects() (tea.Model, tea.Cmd) {
+	m.subjects.filter.Invalidate()
 	m.screen = screenSubjectList
 	m.subjects.err = nil
 	m.subjects.loading = true
@@ -230,7 +233,8 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 			}
 		}
 	}
-	return m, m.subjects.list.SetItems(rows)
+	cmd := m.subjects.filter.SetItems(&m.subjects.list, rows)
+	return m, cmd
 }
 
 func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.Cmd) {
@@ -323,6 +327,7 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "esc":
 			if !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered() {
+				m.subjects.filter.Invalidate()
 				m.screen = screenEntities
 				m.subjects.err = nil
 				return m, nil
@@ -351,8 +356,7 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	var command tea.Cmd
-	m.subjects.list, command = m.subjects.list.Update(message)
+	command := m.subjects.filter.Update(&m.subjects.list, message)
 	return m, command
 }
 
