@@ -51,6 +51,8 @@ type Model struct {
 	stale      bool
 	err        error
 	errMessage string
+
+	inputWarning string
 }
 
 type row struct{ item data.Thought }
@@ -125,6 +127,7 @@ func (m *Model) Reset() {
 	m.err = nil
 	m.input.Blur()
 	m.input.Reset()
+	m.inputWarning = ""
 	m.list.ResetFilter()
 	m.list.SetItems([]list.Item{row{}})
 	m.list.Select(0)
@@ -209,12 +212,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case create:
 			switch key.String() {
 			case "esc":
+				m.request++
 				m.input.Blur()
 				m.input.Reset()
 				m.err = nil
 				m.screen = browse
 				return m, nil
 			case "ctrl+s":
+				m.inputWarning = ""
 				m.input.Blur()
 				cmd := m.load(logging.ThoughtCreate, 0, m.input.Value())
 				return m, cmd
@@ -246,6 +251,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					}
 					m.err = nil
 					if item.item.ThoughtID == 0 {
+						m.request++
+						m.inputWarning = ""
 						m.screen = create
 						return m, m.input.Focus()
 					}
@@ -260,7 +267,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case browse:
 		m.list, cmd = m.list.Update(msg)
 	case create:
-		m.input, cmd = m.input.Update(msg)
+		return m.updateInput(msg)
 	case detail:
 		m.viewport, cmd = m.viewport.Update(msg)
 	}
@@ -276,6 +283,9 @@ func (m Model) View() string {
 	}
 	switch m.screen {
 	case create:
+		if m.inputWarning != "" {
+			status = m.inputWarning + "\n"
+		}
 		return "Create thought\n" + status + m.input.View() + "\nCtrl+S: save • Enter: newline • Esc: cancel"
 	case detail:
 		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload", m.selected.ThoughtID, m.selected.ObservedAt.UTC().Format(time.RFC3339), status, m.viewport.View())

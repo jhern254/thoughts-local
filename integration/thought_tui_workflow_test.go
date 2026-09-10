@@ -19,6 +19,57 @@ import (
 )
 
 func TestThoughtTUIWorkflow_SQLite(t *testing.T) {
+	t.Run("rejects unsupported input without saving a silently shortened thought", func(t *testing.T) {
+		db, dsn := openMigratedSQLite(t)
+		ctx := context.Background()
+		runtime, err := application.Open(ctx, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := runtime.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		if _, err := runtime.Subjects().Create(ctx, runtime.LocalUser().UserID, "coding"); err != nil {
+			t.Fatal(err)
+		}
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logging.Nop())
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tuiKey(tea.KeyDown))
+		model, cmd := model.Update(tuiKey(tea.KeyEnter))
+		if cmd == nil {
+			t.Fatal("got nil command, want subject get")
+		}
+		model, cmd = model.Update(cmd())
+		if cmd == nil {
+			t.Fatal("got nil command, want thought list")
+		}
+		model, _ = model.Update(cmd())
+		model = updateTUIModel(model, tuiKey(tea.KeyEnter))
+		const draft = "keep my complete draft"
+		model = updateTUIModel(model, tea.PasteMsg{Content: draft})
+		model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: 'g', Mod: tea.ModCtrl}))
+		model = updateTUIModel(model, tea.PasteMsg{Content: strings.Repeat("x\n", 499999) + "xy"})
+		if got := model.View().Content; !strings.Contains(got, "Input rejected") || !strings.Contains(got, "Draft unchanged") {
+			t.Fatalf("got view %q, want explicit rejection and unchanged-draft feedback", got)
+		}
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM thoughts").Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("got %d persisted thoughts after rejected input, want 0", count)
+		}
+		model = runTUIModelCommand(t, model, tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+		var body string
+		if err := db.QueryRow("SELECT thought FROM thoughts").Scan(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body != draft {
+			t.Fatalf("got saved text %q, want original draft %q", body, draft)
+		}
+	})
 	t.Run("creates a thought under a subject and refreshes TUI and CLI counts", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		ctx := context.Background()
