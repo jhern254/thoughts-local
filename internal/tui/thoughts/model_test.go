@@ -140,6 +140,28 @@ func TestModel_Thoughts(t *testing.T) {
 			t.Fatal("current result not handled")
 		}
 	})
+	t.Run("deferred creation keeps its original subject and cannot replace a reopened session", func(t *testing.T) {
+		service := thought.NewService(testutils.NewFakeThoughtStore())
+		m := New(context.Background(), "u", service, logging.Nop())
+		m.Open(1)
+		cmd := m.createThought("original draft")
+		current := m.Open(2)
+		result := cmd().(Result)
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if result.item.SubjectID == nil || *result.item.SubjectID != 1 || result.item.Thought != "original draft" {
+			t.Fatal("deferred creation lost its original subject or draft")
+		}
+		m, _ = m.Update(result)
+		if !m.loading || m.subjectID != 2 || m.selected != nil || m.stale {
+			t.Fatal("old creation result changed the reopened session")
+		}
+		m, _ = m.Update(current())
+		if m.loading || len(m.list.Items()) != 1 {
+			t.Fatal("new subject did not retain its empty thought list")
+		}
+	})
 	t.Run("validation preserves input and shows trusted guidance", func(t *testing.T) {
 		m := New(context.Background(), "u", thought.NewService(testutils.NewFakeThoughtStore()), logging.Nop())
 		cmd := m.Open(1)

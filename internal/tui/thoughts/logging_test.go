@@ -46,7 +46,7 @@ func TestModel_FailurePrivacy(t *testing.T) {
 			m.subjectID = 7
 			m.screen = create
 			m.input.SetValue("private-marker")
-			cmd := m.load(logging.ThoughtCreate, 0, m.input.Value())
+			cmd := m.createThought(m.input.Value())
 			m, _ = m.Update(cmd())
 			if m.err != tt.err || m.input.Value() != "private-marker" || !m.input.Focused() {
 				t.Fatal("lost original error or input")

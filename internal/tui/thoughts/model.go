@@ -139,7 +139,7 @@ func (m *Model) Reset() {
 func (m *Model) Open(subjectID int64) tea.Cmd {
 	m.Reset()
 	m.subjectID = subjectID
-	return m.load(logging.ThoughtList, 0, "")
+	return m.listThoughts()
 }
 
 // Browsing allows the parent to handle subject shortcuts, but not editor input
@@ -148,22 +148,36 @@ func (m Model) Browsing() bool {
 	return m.screen == browse && !m.list.SettingFilter() && !m.list.IsFiltered()
 }
 
-func (m *Model) load(operation logging.Operation, id int64, body string) tea.Cmd {
+func (m *Model) listThoughts() tea.Cmd {
 	m.request++
 	m.loading = true
 	m.err = nil
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
 	return func() tea.Msg {
-		result := Result{request: request, operation: operation}
-		switch operation {
-		case logging.ThoughtList:
-			result.items, result.err = service.List(ctx, userID, subjectID)
-		case logging.ThoughtGet:
-			result.item, result.err = service.Get(ctx, userID, id)
-		case logging.ThoughtCreate:
-			result.item, result.err = service.Create(ctx, userID, body, &subjectID, time.Time{})
-		}
-		return result
+		items, err := service.List(ctx, userID, subjectID)
+		return Result{request: request, operation: logging.ThoughtList, items: items, err: err}
+	}
+}
+
+func (m *Model) getThought(id int64) tea.Cmd {
+	m.request++
+	m.loading = true
+	m.err = nil
+	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
+	return func() tea.Msg {
+		item, err := service.Get(ctx, userID, id)
+		return Result{request: request, operation: logging.ThoughtGet, item: item, err: err}
+	}
+}
+
+func (m *Model) createThought(body string) tea.Cmd {
+	m.request++
+	m.loading = true
+	m.err = nil
+	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
+	return func() tea.Msg {
+		item, err := service.Create(ctx, userID, body, &subjectID, time.Time{})
+		return Result{request: request, operation: logging.ThoughtCreate, item: item, err: err}
 	}
 }
 
@@ -233,7 +247,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			case "ctrl+s":
 				m.inputWarning = ""
 				m.input.Blur()
-				cmd := m.load(logging.ThoughtCreate, 0, m.input.Value())
+				cmd := m.createThought(m.input.Value())
 				return m, cmd
 			}
 		case detail:
@@ -242,19 +256,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.screen = browse
 				m.err = nil
 				if m.stale {
-					cmd := m.load(logging.ThoughtList, 0, "")
+					cmd := m.listThoughts()
 					return m, cmd
 				}
 				return m, nil
 			case "r":
-				cmd := m.load(logging.ThoughtGet, m.selected.ThoughtID, "")
+				cmd := m.getThought(m.selected.ThoughtID)
 				return m, cmd
 			}
 		case browse:
 			if !m.list.SettingFilter() {
 				switch key.String() {
 				case "r":
-					cmd := m.load(logging.ThoughtList, 0, "")
+					cmd := m.listThoughts()
 					return m, cmd
 				case "enter":
 					item, ok := m.list.SelectedItem().(row)
@@ -268,7 +282,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 						m.screen = create
 						return m, m.input.Focus()
 					}
-					cmd := m.load(logging.ThoughtGet, item.item.ThoughtID, "")
+					cmd := m.getThought(item.item.ThoughtID)
 					return m, cmd
 				}
 			}
