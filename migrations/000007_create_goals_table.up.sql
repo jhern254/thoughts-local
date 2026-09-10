@@ -76,3 +76,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_goals_user_name
 -- Helpful for listing a user's goals quickly
 CREATE INDEX IF NOT EXISTS idx_goals_user
     ON goals (user_id);
+
+-- Composite parent key for enforcing common ownership in goal relationships.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_goals_id_user
+    ON goals (goal_id, user_id);
