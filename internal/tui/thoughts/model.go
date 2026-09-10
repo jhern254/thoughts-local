@@ -214,6 +214,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok {
+		if m.screen == detail && key.String() == "q" {
+			return m, tea.Quit
+		}
 		if m.loading {
 			return m, nil
 		}
@@ -297,7 +300,7 @@ func (m Model) View() string {
 		}
 		return "Create thought\n" + status + m.input.View() + "\nCtrl+S: save • Enter: newline • Esc: cancel"
 	case detail:
-		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload", m.selected.ThoughtID, m.selected.ObservedAt.UTC().Format(time.RFC3339), status, m.viewport.View())
+		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, m.selected.ObservedAt.UTC().Format(time.RFC3339), status, m.viewport.View())
 	default:
 		return strings.TrimSuffix(status+m.list.View(), "\n") + "\nr: refresh"
 	}

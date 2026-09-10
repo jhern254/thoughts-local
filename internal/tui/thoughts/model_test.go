@@ -39,6 +39,10 @@ func TestModel_Thoughts(t *testing.T) {
 		cmd := m.Open(1)
 		m, _ = m.Update(cmd())
 		m, _ = m.Update(key('/'))
+		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
+		if got := m.list.FilterValue(); got != "q" {
+			t.Fatalf("got filter %q, want q", got)
+		}
 		if m.Browsing() {
 			t.Fatal("subject shortcuts active while filtering")
 		}
