@@ -161,7 +161,7 @@ func (m Model) getSubject(subjectID int64) tea.Cmd {
 	}
 }
 
-func (m Model) saveSubject(name string) tea.Cmd {
+func (m Model) updateSubject(name string) tea.Cmd {
 	ctx := m.ctx
 	userID := m.user.UserID
 	service := m.subjects.service
@@ -393,7 +393,7 @@ func (m Model) updateSubjectEdit(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.subjects.loading = true
 			m.subjects.err = nil
 			m.subjects.input.Blur()
-			return m, m.saveSubject(m.subjects.input.Value())
+			return m, m.updateSubject(m.subjects.input.Value())
 		}
 	}
 	var cmd tea.Cmd
