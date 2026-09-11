@@ -102,7 +102,7 @@ func TestModel_AllThoughts(t *testing.T) {
 		m.all.rows[2].item.ObservedAt = time.Date(2026, 7, 2, 0, 4, 0, 0, time.UTC)
 		for _, width := range []int{80, 40} {
 			m.Resize(width, 14)
-			want := "│ Create thought…\n│ Write a new thought\n\n  Thought 2 • body 2\n   Writing  • Jul 2, 2026 5:04 PM PDT\n\n  Thought 1 • body 1\n   Misc  • Jul 1, 2026 5:04 PM PDT\n\n2 thoughts\n\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest"
+			want := "│ Create thought…\n│ Write a new thought\n\n   Writing  body 2\n  Thought 2 • Jul 2, 2026 5:04 PM PDT\n\n   Misc  body 1\n  Thought 1 • Jul 1, 2026 5:04 PM PDT\n\n2 thoughts\n\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest"
 			if got := ansi.Strip(m.View()); got != want {
 				t.Fatalf("width %d:\ngot %q\nwant %q", width, got, want)
 			}

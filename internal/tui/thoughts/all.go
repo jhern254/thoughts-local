@@ -220,12 +220,12 @@ func (m Model) viewAll(status string) string {
 		title, description := "Create thought…", "Write a new thought"
 		if row.kind == rowRecord {
 			count++
-			title = fmt.Sprintf("Thought %d • %s", row.item.ThoughtID, summaryText(row.item.Preview))
 			subject := "Misc"
 			if row.item.SubjectName != nil {
 				subject = summaryText(*row.item.SubjectName)
 			}
-			description = m.list.Styles.Title.Render(subject) + " • " + displaytime.Format(row.item.ObservedAt, "Jan 2, 2006 3:04 PM MST")
+			title = m.list.Styles.Title.Render(subject) + " " + summaryText(row.item.Preview)
+			description = fmt.Sprintf("Thought %d • %s", row.item.ThoughtID, displaytime.Format(row.item.ObservedAt, "Jan 2, 2006 3:04 PM MST"))
 		}
 		title = titleStyle.Render(ansi.Truncate(title, max(0, s.width-titleStyle.GetHorizontalFrameSize()), "…"))
 		description = descStyle.Render(ansi.Truncate(description, max(0, s.width-descStyle.GetHorizontalFrameSize()), "…"))
