@@ -59,8 +59,8 @@ func TestSubjectModel_List(t *testing.T) {
 
 		rows := model.subjects.list.Items()
 
-		if len(rows) != 1 || rows[0].(subjectRow).kind != subjectRowCreate {
-			t.Fatalf("got rows %#v, want only Create action", rows)
+		if len(rows) != 2 || rows[0].(subjectRow).kind != subjectRowCreate || rows[1].(subjectRow).kind != subjectRowMisc {
+			t.Fatalf("got rows %#v, want Create action and Misc thoughts", rows)
 		}
 	})
 
@@ -81,14 +81,14 @@ func TestSubjectModel_List(t *testing.T) {
 		if service.listCalls != 1 {
 			t.Fatalf("got %d List calls, want 1", service.listCalls)
 		}
-		if len(rows) != 3 {
-			t.Fatalf("got %d rows, want 3", len(rows))
+		if len(rows) != 4 {
+			t.Fatalf("got %d rows, want 4", len(rows))
 		}
 		createRow := rows[0].(subjectRow)
 		if createRow.kind != subjectRowCreate {
 			t.Fatalf("got first row kind %v, want Create", createRow.kind)
 		}
-		for index, item := range rows[1:] {
+		for index, item := range rows[2:] {
 			row := item.(subjectRow)
 			if row.kind != subjectRowRecord {
 				t.Fatalf("got row %d kind %v, want Subject", index+1, row.kind)
@@ -248,7 +248,7 @@ func TestSubjectModel_Get(t *testing.T) {
 			},
 		}
 		model := openSubjects(t, newSubjectTestModel(service))
-		model.subjects.list.Select(1)
+		model.subjects.list.Select(2)
 
 		model = runModelCommand(t, model, enterKey())
 
@@ -273,7 +273,7 @@ func TestSubjectModel_Get(t *testing.T) {
 			get: func(context.Context, string, int64) (*data.Subject, error) { return nil, want },
 		}
 		model := openSubjects(t, newSubjectTestModel(service))
-		model.subjects.list.Select(1)
+		model.subjects.list.Select(2)
 
 		model = runModelCommand(t, model, enterKey())
 
@@ -298,7 +298,7 @@ func TestSubjectModel_Get(t *testing.T) {
 			},
 		}
 		model := openSubjects(t, newSubjectTestModel(service))
-		model.subjects.list.Select(1)
+		model.subjects.list.Select(2)
 		model = runModelCommand(t, model, enterKey())
 
 		updated, command := model.Update(escapeKey())

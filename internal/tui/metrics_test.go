@@ -19,14 +19,14 @@ func TestSubjectModel_ThoughtCounts(t *testing.T) {
 		m := newSubjectTestModel(&subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return []data.Subject{{SubjectID: 1}}, nil }})
 		m.metrics = &metricsStub{counts: []data.SubjectThoughtCount{{SubjectID: 1, Count: 1}}}
 		m.screen = screenSubjectList
-		updated, cmd := m.Update(thoughts.ChangedMsg{SubjectID: 1})
+		updated, cmd := m.Update(thoughts.ChangedMsg{})
 		m = updated.(Model)
 		if cmd == nil {
 			t.Fatal("late creation notification left visible counts stale")
 		}
 		updated, _ = m.Update(cmd())
 		m = updated.(Model)
-		if got := m.subjects.list.Items()[1].(subjectRow).Description(); got != "1 thought" {
+		if got := m.subjects.list.Items()[2].(subjectRow).Description(); got != "1 thought" {
 			t.Fatalf("got %q, want refreshed count", got)
 		}
 	})
@@ -61,7 +61,7 @@ func TestSubjectModel_ThoughtCounts(t *testing.T) {
 		m.metrics = &metricsStub{counts: []data.SubjectThoughtCount{{SubjectID: 3, Count: 12}, {SubjectID: 1, Count: 0}, {SubjectID: 2, Count: 1}}}
 		m = openSubjects(t, m)
 		for i, want := range []string{"0 thoughts", "1 thought", "12 thoughts"} {
-			if got := m.subjects.list.Items()[i+1].(subjectRow).Description(); got != want {
+			if got := m.subjects.list.Items()[i+2].(subjectRow).Description(); got != want {
 				t.Fatalf("got %q, want %q", got, want)
 			}
 		}
@@ -79,7 +79,7 @@ func TestSubjectModel_ThoughtCounts(t *testing.T) {
 		}
 		m.logger = logger
 		m = openSubjects(t, m)
-		if len(m.subjects.list.Items()) != 2 || !strings.Contains(m.View().Content, "unavailable") || m.subjects.err != metrics.err {
+		if len(m.subjects.list.Items()) != 3 || !strings.Contains(m.View().Content, "unavailable") || m.subjects.err != metrics.err {
 			t.Fatal("failure discarded subjects or error")
 		}
 		var event map[string]any
@@ -95,7 +95,7 @@ func TestSubjectModel_ThoughtCounts(t *testing.T) {
 		metrics.err = nil
 		metrics.counts = []data.SubjectThoughtCount{{SubjectID: 1, Count: 2}}
 		m = runModelCommand(t, m, runeKey('r'))
-		if m.subjects.err != nil || m.subjects.list.Items()[1].(subjectRow).Description() != "2 thoughts" {
+		if m.subjects.err != nil || m.subjects.list.Items()[2].(subjectRow).Description() != "2 thoughts" {
 			t.Fatal("counts did not recover")
 		}
 	})

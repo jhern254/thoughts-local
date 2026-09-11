@@ -37,6 +37,7 @@ const (
 	ThoughtGet
 	ThoughtList
 	ThoughtCountsBySubject
+	ThoughtCountUnassigned
 )
 
 type FailureCategory uint8
@@ -57,6 +58,8 @@ func (operation Operation) name() string {
 		return "thought_list"
 	case ThoughtCountsBySubject:
 		return "thought_counts_by_subject"
+	case ThoughtCountUnassigned:
+		return "thought_count_unassigned"
 	case ApplicationStart:
 		return "application_start"
 	case ApplicationClose:

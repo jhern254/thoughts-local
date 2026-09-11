@@ -41,12 +41,20 @@ func (s *FakeThoughtStore) GetThought(ctx context.Context, userID string, though
 var _ data.ThoughtStore = (*FakeThoughtStore)(nil)
 
 func (s *FakeThoughtStore) ListThoughts(ctx context.Context, userID string, subjectID int64) ([]data.Thought, error) {
+	return s.list(ctx, userID, &subjectID)
+}
+
+func (s *FakeThoughtStore) ListUnassignedThoughts(ctx context.Context, userID string) ([]data.Thought, error) {
+	return s.list(ctx, userID, nil)
+}
+
+func (s *FakeThoughtStore) list(ctx context.Context, userID string, subjectID *int64) ([]data.Thought, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	rows := []data.Thought{}
 	for _, item := range s.thoughts {
-		if item.UserID == userID && item.SubjectID != nil && *item.SubjectID == subjectID {
+		if item.UserID == userID && ((item.SubjectID == nil && subjectID == nil) || (item.SubjectID != nil && subjectID != nil && *item.SubjectID == *subjectID)) {
 			rows = append(rows, item)
 		}
 	}

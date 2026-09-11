@@ -112,6 +112,21 @@ func (s *SQLiteThoughtStore) ListThoughts(ctx context.Context, userID string, su
 	if err != nil {
 		return nil, fmt.Errorf("list thoughts: %w", TranslateSQLiteError(err))
 	}
+	return readThoughtRows(rows)
+}
+
+func (s *SQLiteThoughtStore) ListUnassignedThoughts(ctx context.Context, userID string) ([]Thought, error) {
+	rows, err := s.db.QueryContext(ctx, thoughtSelect+`
+		WHERE user_id = ? AND subject_id IS NULL AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = thoughts.user_id AND users.deleted_at IS NULL)
+		ORDER BY observed_at DESC, thought_id DESC`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list unassigned thoughts: %w", TranslateSQLiteError(err))
+	}
+	return readThoughtRows(rows)
+}
+
+func readThoughtRows(rows *sql.Rows) ([]Thought, error) {
 	defer rows.Close()
 	thoughts := []Thought{}
 	for rows.Next() {

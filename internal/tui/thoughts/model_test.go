@@ -18,6 +18,53 @@ import (
 func key(code rune) tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: code}) }
 
 func TestModel_Thoughts(t *testing.T) {
+	t.Run("Create description follows the selected scope before and after loading", func(t *testing.T) {
+		m := New(context.Background(), "u", thought.NewService(testutils.NewFakeThoughtStore()), logging.Nop())
+		for _, misc := range []bool{true, false, true} {
+			want := "Add a thought to this subject"
+			var cmd tea.Cmd
+			if misc {
+				want = "Write a new thought"
+				cmd = m.OpenUnassigned()
+			} else {
+				cmd = m.Open(7)
+			}
+			for phase := range 2 {
+				if phase == 1 {
+					m, _ = m.Update(cmd())
+				}
+				if got := m.list.Items()[0].(row).Description(); got != want {
+					t.Fatalf("got Create description %q, want %q", got, want)
+				}
+			}
+		}
+	})
+	t.Run("late unassigned creation keeps its scope without replacing the active subject", func(t *testing.T) {
+		service := thought.NewService(testutils.NewFakeThoughtStore())
+		m := New(context.Background(), "u", service, logging.Nop())
+		m.OpenUnassigned()
+		old := m.createThought("complete Misc draft")
+		current := m.Open(7)
+		result := old().(Result)
+		if result.err != nil || result.item.SubjectID != nil || result.item.Thought != "complete Misc draft" {
+			t.Fatalf("got result %+v, want original unassigned creation", result)
+		}
+		m, cmd := m.Update(result)
+		if !m.loading || m.subjectID == nil || *m.subjectID != 7 || m.selected != nil || cmd != nil {
+			t.Fatal("late Misc creation replaced active subject")
+		}
+		m, _ = m.Update(current())
+		if m.loading || len(m.list.Items()) != 1 {
+			t.Fatal("active subject list lost its empty state")
+		}
+		old = m.listThoughts()
+		current = m.OpenUnassigned()
+		m, _ = m.Update(current())
+		m, _ = m.Update(old())
+		if m.subjectID != nil || len(m.list.Items()) != 2 {
+			t.Fatal("old subject list replaced Misc rows")
+		}
+	})
 	for _, tt := range []struct {
 		name  string
 		row   row
@@ -163,7 +210,7 @@ func TestModel_Thoughts(t *testing.T) {
 		old := m.Open(1)
 		current := m.Open(2)
 		m, _ = m.Update(old())
-		if !m.loading || m.subjectID != 2 {
+		if !m.loading || (m.subjectID == nil || *m.subjectID != 2) {
 			t.Fatal("stale result changed active request")
 		}
 		m, _ = m.Update(current())
@@ -185,7 +232,7 @@ func TestModel_Thoughts(t *testing.T) {
 			t.Fatal("deferred creation lost its original subject or draft")
 		}
 		m, _ = m.Update(result)
-		if !m.loading || m.subjectID != 2 || m.selected != nil || m.stale {
+		if !m.loading || (m.subjectID == nil || *m.subjectID != 2) || m.selected != nil || m.stale {
 			t.Fatal("old creation result changed the reopened session")
 		}
 		m, _ = m.Update(current())

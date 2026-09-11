@@ -71,7 +71,7 @@ func rootUpdate(m Model, msg tea.Msg) (Model, tea.Cmd) {
 
 func rootOpenThoughts(t *testing.T, m Model) Model {
 	t.Helper()
-	m.subjects.list.Select(1)
+	m.subjects.list.Select(2)
 	m, cmd := rootUpdate(m, enterKey())
 	if cmd == nil {
 		t.Fatal("missing subject get")

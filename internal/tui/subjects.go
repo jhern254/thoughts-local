@@ -28,6 +28,7 @@ type SubjectService interface {
 }
 
 type MetricsService interface {
+	CountUnassignedThoughts(context.Context, string) (int64, error)
 	ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCount, error)
 }
 
@@ -50,6 +51,7 @@ type subjectRowKind uint8
 const (
 	subjectRowCreate subjectRowKind = iota
 	subjectRowRecord
+	subjectRowMisc
 )
 
 type subjectRow struct {
@@ -59,6 +61,9 @@ type subjectRow struct {
 }
 
 func (row subjectRow) Title() string {
+	if row.kind == subjectRowMisc {
+		return "Misc thoughts"
+	}
 	if row.kind == subjectRowCreate {
 		return createSubjectLabel
 	}
@@ -83,10 +88,12 @@ func (row subjectRow) FilterValue() string {
 }
 
 type subjectsListedMsg struct {
-	subjects []data.Subject
-	err      error
-	counts   []data.SubjectThoughtCount
-	countErr error
+	miscCount    int64
+	miscCountErr error
+	subjects     []data.Subject
+	err          error
+	counts       []data.SubjectThoughtCount
+	countErr     error
 }
 
 type subjectCreatedMsg struct {
@@ -110,8 +117,9 @@ type subjectDeletedMsg struct {
 }
 
 func subjectRows(subjects []data.Subject) []list.Item {
-	rows := make([]list.Item, 0, len(subjects)+1)
+	rows := make([]list.Item, 0, len(subjects)+2)
 	rows = append(rows, subjectRow{kind: subjectRowCreate})
+	rows = append(rows, subjectRow{kind: subjectRowMisc})
 	for _, subject := range subjects {
 		rows = append(rows, subjectRow{kind: subjectRowRecord, subject: subject})
 	}
@@ -158,6 +166,7 @@ func (m Model) listSubjects() tea.Cmd {
 		result := subjectsListedMsg{subjects: subjects, err: err}
 		if err == nil {
 			result.counts, result.countErr = metrics.ThoughtCountsBySubject(ctx, userID)
+			result.miscCount, result.miscCountErr = metrics.CountUnassignedThoughts(ctx, userID)
 		}
 		return result
 	}
@@ -228,11 +237,20 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 		}
 		for i, item := range rows {
 			row := item.(subjectRow)
-			if count, ok := counts[row.subject.SubjectID]; ok {
+			if count, ok := counts[row.subject.SubjectID]; ok && row.kind == subjectRowRecord {
 				row.count = &count
 				rows[i] = row
 			}
 		}
+	}
+	if message.miscCountErr != nil {
+		logSubjectError(m.logger, logging.ThoughtCountUnassigned, message.miscCountErr)
+		m.subjects.err = message.miscCountErr
+		m.subjects.errMessage = "Could not load thought counts. Press r to retry."
+	} else {
+		misc := rows[1].(subjectRow)
+		misc.count = &message.miscCount
+		rows[1] = misc
 	}
 	cmd := m.subjects.filter.SetItems(&m.subjects.list, rows)
 	return m, cmd
@@ -345,6 +363,11 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.subjects.err = nil
 				switch row.kind {
+				case subjectRowMisc:
+					m.subjects.selected = nil
+					m.screen = screenMiscThoughts
+					cmd := m.thoughts.OpenUnassigned()
+					return m, cmd
 				case subjectRowCreate:
 					m.screen = screenSubjectCreate
 					m.subjects.input.Reset()

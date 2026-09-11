@@ -18,6 +18,24 @@ func (s *storeStub) ThoughtCountsBySubject(ctx context.Context, u string) ([]dat
 	s.ctx, s.userID = ctx, u
 	return []data.SubjectThoughtCount{{SubjectID: 7, Count: 2}}, s.err
 }
+
+func (s *storeStub) CountUnassignedThoughts(ctx context.Context, u string) (int64, error) {
+	s.ctx, s.userID = ctx, u
+	return 2, s.err
+}
+
+func TestService_CountUnassignedThoughts(t *testing.T) {
+	t.Run("preserves scope count and original error", func(t *testing.T) {
+		ctx := context.Background()
+		for _, err := range []error{nil, errors.New("store failure")} {
+			store := &storeStub{err: err}
+			count, gotErr := NewService(store).CountUnassignedThoughts(ctx, "u")
+			if store.ctx != ctx || store.userID != "u" || count != 2 || gotErr != err {
+				t.Fatalf("got count %d, error %v, scope %q", count, gotErr, store.userID)
+			}
+		}
+	})
+}
 func TestService_ThoughtCountsBySubject(t *testing.T) {
 	t.Run("preserves scope results and original error", func(t *testing.T) {
 		ctx := context.Background()

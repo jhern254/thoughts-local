@@ -122,6 +122,7 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logger)
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
+		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: 'e', Text: "e"}))
 		model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: 'u', Mod: tea.ModCtrl}))
@@ -177,6 +178,7 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 		}
 		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logger)
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tea.KeyPressMsg(tea.Key{Code: 'd', Text: "d"}))
