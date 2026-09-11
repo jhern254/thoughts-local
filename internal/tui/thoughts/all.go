@@ -225,7 +225,7 @@ func (m Model) viewAll(status string) string {
 			if row.item.SubjectName != nil {
 				subject = summaryText(*row.item.SubjectName)
 			}
-			description = displaytime.Format(row.item.ObservedAt, "Jan 2, 2006 3:04 PM MST") + " • " + m.list.Styles.Title.Render(subject)
+			description = m.list.Styles.Title.Render(subject) + " • " + displaytime.Format(row.item.ObservedAt, "Jan 2, 2006 3:04 PM MST")
 		}
 		title = titleStyle.Render(ansi.Truncate(title, max(0, s.width-titleStyle.GetHorizontalFrameSize()), "…"))
 		description = descStyle.Render(ansi.Truncate(description, max(0, s.width-descStyle.GetHorizontalFrameSize()), "…"))
@@ -240,5 +240,5 @@ func (m Model) viewAll(status string) string {
 	if count == 1 {
 		label = "thought"
 	}
-	return strings.Join(visible, "\n") + fmt.Sprintf("\n%d %s loaded\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest", count, label, strings.TrimSpace(status))
+	return strings.Join(visible, "\n") + fmt.Sprintf("\n%d %s\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest", count, label, strings.TrimSpace(status))
 }

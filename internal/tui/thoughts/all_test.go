@@ -40,6 +40,19 @@ func allKey(m Model, code rune) Model {
 }
 
 func TestModel_AllThoughts(t *testing.T) {
+	t.Run("counts records without loaded wording or the Create action", func(t *testing.T) {
+		for _, count := range []int{0, 1, 2} {
+			m := allModel(t, count)
+			label := "thoughts"
+			if count == 1 {
+				label = "thought"
+			}
+			want := fmt.Sprintf("\n%d %s\n", count, label)
+			if got := ansi.Strip(m.View()); !strings.Contains(got, want) || strings.Contains(got, "loaded") {
+				t.Fatalf("got %q, want count %q without loaded wording", got, want)
+			}
+		}
+	})
 	t.Run("uses the native picker style and subject color blocks for selected and unselected rows", func(t *testing.T) {
 		m := allModel(t, 2)
 		name := "Writing"
@@ -89,7 +102,7 @@ func TestModel_AllThoughts(t *testing.T) {
 		m.all.rows[2].item.ObservedAt = time.Date(2026, 7, 2, 0, 4, 0, 0, time.UTC)
 		for _, width := range []int{80, 40} {
 			m.Resize(width, 14)
-			want := "│ Create thought…\n│ Write a new thought\n\n  Thought 2 • body 2\n  Jul 2, 2026 5:04 PM PDT •  Writing \n\n  Thought 1 • body 1\n  Jul 1, 2026 5:04 PM PDT •  Misc \n\n2 thoughts loaded\n\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest"
+			want := "│ Create thought…\n│ Write a new thought\n\n  Thought 2 • body 2\n   Writing  • Jul 2, 2026 5:04 PM PDT\n\n  Thought 1 • body 1\n   Misc  • Jul 1, 2026 5:04 PM PDT\n\n2 thoughts\n\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest"
 			if got := ansi.Strip(m.View()); got != want {
 				t.Fatalf("width %d:\ngot %q\nwant %q", width, got, want)
 			}
@@ -201,7 +214,7 @@ func TestModel_AllThoughts(t *testing.T) {
 	})
 	t.Run("empty list keeps Create and editor retains complete input", func(t *testing.T) {
 		m := allModel(t, 0)
-		if !strings.Contains(m.View(), "0 thoughts loaded") {
+		if !strings.Contains(m.View(), "\n0 thoughts\n") {
 			t.Fatal(m.View())
 		}
 		m = allKey(m, tea.KeyEnter)
