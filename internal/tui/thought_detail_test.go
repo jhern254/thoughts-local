@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -14,6 +15,21 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
+// The SQLite browse projection supplies joined subject labels. This fixture
+// supplies that same label for its single-subject collection.
+type labeledThoughtService struct {
+	*thought.Service
+	name *string
+}
+
+func (s labeledThoughtService) Browse(ctx context.Context, userID string, request data.ThoughtPageRequest) (data.ThoughtPage, error) {
+	page, err := s.Service.Browse(ctx, userID, request)
+	for i := range page.Items {
+		page.Items[i].SubjectName = s.name
+	}
+	return page, err
+}
+
 func TestModel_SharedThoughtDetail(t *testing.T) {
 	for _, scope := range []string{"subject", "Misc"} {
 		t.Run(scope+" and All Thoughts show identical detail and restore their lists", func(t *testing.T) {
@@ -23,8 +39,12 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 				t.Fatal(err)
 			}
 			var subjectID *int64
+			var subjectName *string
+			heading := "Misc"
 			if scope == "subject" {
 				subjectID = &parent.SubjectID
+				subjectName = &parent.SubjectName
+				heading = parent.SubjectName
 			}
 			thoughts := thought.NewService(testutils.NewFakeThoughtStore())
 			for i := range 30 {
@@ -35,7 +55,7 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 			}
 			var details []string
 			for _, all := range []bool{false, true} {
-				m := NewModel(t.Context(), &data.User{UserID: "u"}, subjects, thoughts, &metricsStub{}, logging.Nop())
+				m := NewModel(t.Context(), &data.User{UserID: "u"}, subjects, labeledThoughtService{Service: thoughts, name: subjectName}, &metricsStub{}, logging.Nop())
 				m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 				if all {
 					m.entityList.Select(1)
@@ -54,6 +74,10 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 				}
 				listView, origin := m.View().Content, m.screen
 				m = runModelCommand(t, m, enterKey())
+				wantHeading := m.subjects.list.Styles.Title.Render(heading) + "\n\n"
+				if !strings.HasPrefix(m.View().Content, wantHeading) {
+					t.Fatalf("got detail %q, want styled subject heading %q", m.View().Content, wantHeading)
+				}
 				details = append(details, m.View().Content)
 				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
 				m, _ = rootUpdate(m, escapeKey())
@@ -64,7 +88,7 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 			if details[0] != details[1] {
 				t.Fatalf("detail differs by route:\n%s\nversus:\n%s", details[0], details[1])
 			}
-			if !strings.HasPrefix(details[0], "Thought 21 • ") || !strings.Contains(details[0], "Thought body 20") {
+			if !strings.Contains(details[0], "Thought 21 • ") || !strings.Contains(details[0], "Thought body 20") {
 				t.Fatalf("expected standalone thought detail, got %q", details[0])
 			}
 		})

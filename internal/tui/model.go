@@ -192,7 +192,12 @@ func (m Model) View() tea.View {
 	switch m.screen {
 	case screenSubjectDetail, screenMiscThoughts, screenAllThoughts:
 		if m.thoughts.ShowingDetail() {
-			return tea.NewView(m.thoughts.View())
+			name := m.thoughts.SelectedSubjectName()
+			if m.screen == screenSubjectDetail && m.subjects.selected != nil {
+				name = m.subjects.selected.SubjectName
+			}
+			heading := m.subjects.list.Styles.Title.Render(name)
+			return tea.NewView(heading + "\n\n" + m.thoughts.View())
 		}
 	}
 	var content string

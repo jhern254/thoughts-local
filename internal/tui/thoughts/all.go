@@ -40,6 +40,20 @@ type PageResult struct {
 	err     error
 }
 
+// SelectedSubjectName reads display metadata from the loaded browse projection.
+// Subject-scoped screens already have their own subject context.
+func (m Model) SelectedSubjectName() string {
+	if m.selected == nil || m.selected.SubjectID == nil {
+		return "Misc"
+	}
+	for _, row := range m.all.rows {
+		if row.kind == rowRecord && row.item.ThoughtID == m.selected.ThoughtID && row.item.SubjectName != nil {
+			return *row.item.SubjectName
+		}
+	}
+	return "Subject"
+}
+
 func (m *Model) OpenAll() tea.Cmd {
 	m.Reset()
 	m.allThoughts = true
