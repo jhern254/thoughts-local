@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/thought"
@@ -22,6 +23,7 @@ type Runtime struct {
 	subjects  *subject.Service
 	thoughts  *thought.Service
 	metrics   *metrics.Service
+	events    *event.Service
 }
 
 func Open(ctx context.Context, dsn string) (*Runtime, error) {
@@ -52,6 +54,7 @@ func open(
 		subjects:  subject.NewService(data.NewSQLiteSubjectStore(db)),
 		thoughts:  thought.NewService(data.NewSQLiteThoughtStore(db)),
 		metrics:   metrics.NewService(data.NewSQLiteMetricsStore(db)),
+		events:    event.NewService(data.NewSQLiteEventStore(db)),
 	}, nil
 }
 
@@ -65,6 +68,7 @@ func (runtime *Runtime) Subjects() *subject.Service {
 
 func (runtime *Runtime) Thoughts() *thought.Service { return runtime.thoughts }
 func (runtime *Runtime) Metrics() *metrics.Service  { return runtime.metrics }
+func (runtime *Runtime) Events() *event.Service     { return runtime.events }
 
 func ensureLocalUser(ctx context.Context, db *sql.DB) (*data.User, error) {
 	return user.NewService(data.NewSQLiteUserStore(db)).EnsureLocalUser(ctx)
@@ -81,6 +85,7 @@ func (runtime *Runtime) Close() error {
 	runtime.subjects = nil
 	runtime.thoughts = nil
 	runtime.metrics = nil
+	runtime.events = nil
 	return data.TranslateSQLiteError(err)
 }
 
