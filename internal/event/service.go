@@ -36,6 +36,7 @@ func (e *ValidationError) PublicFields() map[string]string {
 }
 
 // ThoughtReader keeps SQL and persistence filtering in the thought store.
+// Consider moving this coordination to a timeline service when it also combines goal progress.
 type ThoughtReader interface {
 	ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error)
 }
