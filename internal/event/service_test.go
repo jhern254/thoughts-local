@@ -11,10 +11,12 @@ import (
 )
 
 type storeStub struct {
-	start func(context.Context, *data.Event) (*data.Event, error)
-	past  func(context.Context, *data.Event) (*data.Event, error)
-	get   func(context.Context, string, int64) (*data.Event, error)
-	list  func(context.Context, string, time.Time, time.Time) ([]data.Event, error)
+	end    func(context.Context, string, int64, int64, time.Time, time.Time) (*data.Event, error)
+	update func(context.Context, *data.Event) (*data.Event, error)
+	start  func(context.Context, *data.Event) (*data.Event, error)
+	past   func(context.Context, *data.Event) (*data.Event, error)
+	get    func(context.Context, string, int64) (*data.Event, error)
+	list   func(context.Context, string, time.Time, time.Time) ([]data.Event, error)
 }
 
 func (s storeStub) StartEvent(ctx context.Context, e *data.Event) (*data.Event, error) {
