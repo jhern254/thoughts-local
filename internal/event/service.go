@@ -35,41 +35,17 @@ func (e *ValidationError) PublicFields() map[string]string {
 	return maps.Clone(e.publicFields)
 }
 
-// ThoughtReader keeps SQL and persistence filtering in the thought store.
-// Consider moving this coordination to a timeline service when it also combines goal progress.
-type ThoughtReader interface {
-	ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error)
-}
-
 type Service struct {
-	store    Store
-	thoughts ThoughtReader
-	now      func() time.Time
+	store Store
+	now   func() time.Time
 }
 
-func NewService(store Store, thoughts ThoughtReader) *Service {
-	return &Service{store: store, thoughts: thoughts, now: time.Now}
+func NewService(store Store) *Service {
+	return &Service{store: store, now: time.Now}
 }
 
 func (s *Service) Get(ctx context.Context, userID string, eventID int64) (*data.Event, error) {
 	return s.store.GetEvent(ctx, userID, eventID)
-}
-
-// ListThoughts matches observation times, not explicit event links or calendar
-// days. Completed intervals exclude their end; ongoing intervals include the
-// captured current second. The two reads are not a transactional snapshot.
-func (s *Service) ListThoughts(ctx context.Context, userID string, eventID int64) ([]data.Thought, error) {
-	item, err := s.store.GetEvent(ctx, userID, eventID)
-	if err != nil {
-		return nil, err
-	}
-	var until time.Time
-	if item.EndedAt == nil {
-		until = s.now().UTC().Truncate(time.Second).Add(time.Second)
-	} else {
-		until = *item.EndedAt
-	}
-	return s.thoughts.ListThoughtsInRange(ctx, userID, item.StartedAt, until)
 }
 
 // End finishes an ongoing event. A zero end requests the current time.

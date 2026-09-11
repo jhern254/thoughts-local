@@ -1,4 +1,4 @@
-package event
+package timeline
 
 import (
 	"context"
@@ -10,6 +10,12 @@ import (
 )
 
 type thoughtReaderStub func(context.Context, string, time.Time, time.Time) ([]data.Thought, error)
+
+type eventReaderStub func(context.Context, string, int64) (*data.Event, error)
+
+func (f eventReaderStub) Get(ctx context.Context, user string, id int64) (*data.Event, error) {
+	return f(ctx, user, id)
+}
 
 func (f thoughtReaderStub) ListThoughtsInRange(ctx context.Context, user string, from, until time.Time) ([]data.Thought, error) {
 	return f(ctx, user, from, until)
@@ -35,12 +41,12 @@ func TestService_ListThoughts(t *testing.T) {
 				}
 				return []data.Thought{{ThoughtID: 42}}, cause
 			})
-			s := NewService(storeStub{get: func(ctx context.Context, user string, id int64) (*data.Event, error) {
+			s := NewService(eventReaderStub(func(ctx context.Context, user string, id int64) (*data.Event, error) {
 				if ctx != t.Context() || user != "u" || id != 7 {
 					t.Fatal("event lookup lost request scope")
 				}
 				return item, nil
-			}}, reader)
+			}), reader)
 			calls := 0
 			s.now = func() time.Time { calls++; return time.Unix(100000, 999).In(time.FixedZone("offset", 3600)) }
 			got, err := s.ListThoughts(t.Context(), "u", 7)
@@ -54,7 +60,7 @@ func TestService_ListThoughts(t *testing.T) {
 	}
 	t.Run("preserves lookup failures without querying thoughts", func(t *testing.T) {
 		cause := errors.Join(data.ErrRecordNotFound, errors.New("PRIVATE_MARKER"))
-		s := NewService(storeStub{get: func(context.Context, string, int64) (*data.Event, error) { return nil, cause }}, thoughtReaderStub(func(context.Context, string, time.Time, time.Time) ([]data.Thought, error) {
+		s := NewService(eventReaderStub(func(context.Context, string, int64) (*data.Event, error) { return nil, cause }), thoughtReaderStub(func(context.Context, string, time.Time, time.Time) ([]data.Thought, error) {
 			t.Fatal("queried thoughts after failed event lookup")
 			return nil, nil
 		}))

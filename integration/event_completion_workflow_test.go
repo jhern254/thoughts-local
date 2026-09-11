@@ -11,6 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/event"
+	"github.com/jhern254/go-thoughts/internal/timeline"
 )
 
 func TestEventCompletionWorkflow_SQLite(t *testing.T) {
@@ -53,7 +54,7 @@ func TestEventCompletionWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		thoughts, err := s.ListThoughts(t.Context(), user, item.EventID)
+		thoughts, err := runtime.Timeline().ListThoughts(t.Context(), user, item.EventID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +96,7 @@ func TestEventCompletionWorkflow_SQLite(t *testing.T) {
 		t.Run(scenario.name+" leaves the saved event unchanged", func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			insertUsers(t, db, "u", "other")
-			s := event.NewService(data.NewSQLiteEventStore(db), data.NewSQLiteThoughtStore(db))
+			s := event.NewService(data.NewSQLiteEventStore(db))
 			item, err := s.CreatePast(t.Context(), "u", "original", eventTime(100), eventTime(200))
 			if err != nil {
 				t.Fatal(err)
@@ -126,7 +127,7 @@ func TestEventCompletionWorkflow_SQLite(t *testing.T) {
 		t.Run(scenario.name+" preserves the ongoing event", func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			insertUsers(t, db, "u")
-			s := event.NewService(data.NewSQLiteEventStore(db), data.NewSQLiteThoughtStore(db))
+			s := event.NewService(data.NewSQLiteEventStore(db))
 			item, err := s.Create(t.Context(), "u", "", eventTime(100))
 			if err != nil {
 				t.Fatal(err)
@@ -149,7 +150,8 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 	t.Run("matches the whole overnight interval across subjects regardless of event links", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u", "other")
-		s := event.NewService(data.NewSQLiteEventStore(db), data.NewSQLiteThoughtStore(db))
+		s := event.NewService(data.NewSQLiteEventStore(db))
+		view := timeline.NewService(s, data.NewSQLiteThoughtStore(db))
 		item, err := s.CreatePast(t.Context(), "u", "overnight", eventTime(80000), eventTime(90000))
 		if err != nil {
 			t.Fatal(err)
@@ -175,7 +177,7 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 		if _, err := db.Exec(`UPDATE thoughts SET deleted_at=updated_at WHERE thought_id=8`); err != nil {
 			t.Fatal(err)
 		}
-		got, err := s.ListThoughts(t.Context(), "u", item.EventID)
+		got, err := view.ListThoughts(t.Context(), "u", item.EventID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,7 +191,7 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 		if got[1].EventID == nil || *got[1].EventID != next.EventID {
 			t.Fatalf("got explicit link %v, want retained event %d", got[1].EventID, next.EventID)
 		}
-		got, err = s.ListThoughts(t.Context(), "u", next.EventID)
+		got, err = view.ListThoughts(t.Context(), "u", next.EventID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -201,7 +203,8 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 		t.Run(scenario+" exposes no event thoughts", func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			insertUsers(t, db, "u", "other")
-			s := event.NewService(data.NewSQLiteEventStore(db), data.NewSQLiteThoughtStore(db))
+			s := event.NewService(data.NewSQLiteEventStore(db))
+			view := timeline.NewService(s, data.NewSQLiteThoughtStore(db))
 			end := eventTime(200)
 			if scenario == "zero duration" {
 				end = eventTime(100)
@@ -226,7 +229,7 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			got, err := s.ListThoughts(t.Context(), user, item.EventID)
+			got, err := view.ListThoughts(t.Context(), user, item.EventID)
 			if scenario == "zero duration" {
 				if err != nil {
 					t.Fatal(err)
@@ -251,7 +254,8 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 	t.Run("ongoing events exclude future observations", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u")
-		s := event.NewService(data.NewSQLiteEventStore(db), data.NewSQLiteThoughtStore(db))
+		s := event.NewService(data.NewSQLiteEventStore(db))
+		view := timeline.NewService(s, data.NewSQLiteThoughtStore(db))
 		item, err := s.Create(t.Context(), "u", "", eventTime(100))
 		if err != nil {
 			t.Fatal(err)
@@ -259,7 +263,7 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 		if _, err := db.Exec(`INSERT INTO thoughts (thought_id,user_id,thought,observed_at) VALUES (1,'u','past',100),(2,'u','future',?)`, time.Now().Add(24*time.Hour).Unix()); err != nil {
 			t.Fatal(err)
 		}
-		got, err := s.ListThoughts(t.Context(), "u", item.EventID)
+		got, err := view.ListThoughts(t.Context(), "u", item.EventID)
 		if err != nil {
 			t.Fatal(err)
 		}

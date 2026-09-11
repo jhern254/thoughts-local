@@ -11,6 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/thought"
+	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/user"
 	_ "modernc.org/sqlite"
 )
@@ -24,6 +25,7 @@ type Runtime struct {
 	thoughts  *thought.Service
 	metrics   *metrics.Service
 	events    *event.Service
+	timeline  *timeline.Service
 }
 
 func Open(ctx context.Context, dsn string) (*Runtime, error) {
@@ -48,13 +50,16 @@ func open(
 		return nil, data.TranslateSQLiteError(err)
 	}
 
+	events := event.NewService(data.NewSQLiteEventStore(db))
+	thoughtStore := data.NewSQLiteThoughtStore(db)
 	return &Runtime{
 		db:        db,
 		localUser: localUser,
 		subjects:  subject.NewService(data.NewSQLiteSubjectStore(db)),
-		thoughts:  thought.NewService(data.NewSQLiteThoughtStore(db)),
+		thoughts:  thought.NewService(thoughtStore),
 		metrics:   metrics.NewService(data.NewSQLiteMetricsStore(db)),
-		events:    event.NewService(data.NewSQLiteEventStore(db), data.NewSQLiteThoughtStore(db)),
+		events:    events,
+		timeline:  timeline.NewService(events, thoughtStore),
 	}, nil
 }
 
@@ -66,9 +71,10 @@ func (runtime *Runtime) Subjects() *subject.Service {
 	return runtime.subjects
 }
 
-func (runtime *Runtime) Thoughts() *thought.Service { return runtime.thoughts }
-func (runtime *Runtime) Metrics() *metrics.Service  { return runtime.metrics }
-func (runtime *Runtime) Events() *event.Service     { return runtime.events }
+func (runtime *Runtime) Thoughts() *thought.Service  { return runtime.thoughts }
+func (runtime *Runtime) Metrics() *metrics.Service   { return runtime.metrics }
+func (runtime *Runtime) Events() *event.Service      { return runtime.events }
+func (runtime *Runtime) Timeline() *timeline.Service { return runtime.timeline }
 
 func ensureLocalUser(ctx context.Context, db *sql.DB) (*data.User, error) {
 	return user.NewService(data.NewSQLiteUserStore(db)).EnsureLocalUser(ctx)
@@ -86,6 +92,7 @@ func (runtime *Runtime) Close() error {
 	runtime.thoughts = nil
 	runtime.metrics = nil
 	runtime.events = nil
+	runtime.timeline = nil
 	return data.TranslateSQLiteError(err)
 }
 

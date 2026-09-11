@@ -52,7 +52,7 @@ func TestEventServiceWorkflow_SQLite(t *testing.T) {
 	t.Run("historical creation preserves the ongoing event and returns overlap and not-found contracts", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u", "other")
-		service := event.NewService(data.NewSQLiteEventStore(db), data.NewSQLiteThoughtStore(db))
+		service := event.NewService(data.NewSQLiteEventStore(db))
 		ongoing, err := service.Create(t.Context(), "u", "", eventTime(300))
 		if err != nil {
 			t.Fatal(err)
@@ -78,7 +78,7 @@ func TestEventServiceWorkflow_SQLite(t *testing.T) {
 	t.Run("optional label validation matches SQLite without losing text", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u")
-		service := event.NewService(data.NewSQLiteEventStore(db), data.NewSQLiteThoughtStore(db))
+		service := event.NewService(data.NewSQLiteEventStore(db))
 		for _, label := range []string{"", "   ", "\t", "  " + strings.Repeat("界", 4096) + "  ", "a\x00" + strings.Repeat("b", 4096)} {
 			got, err := service.CreatePast(t.Context(), "u", label, eventTime(100), eventTime(100))
 			if err != nil {

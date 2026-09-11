@@ -36,7 +36,7 @@ func TestService_End(t *testing.T) {
 					t.Fatalf("unexpected end request: %s %d %d %v %v", u, id, version, end, updated)
 				}
 				return want, cause
-			}}, nil)
+			}})
 			calls := 0
 			s.now = func() time.Time { calls++; return time.Unix(1000, 999) }
 			got, err := s.End(t.Context(), "u", 7, 3, supplied)
@@ -46,7 +46,7 @@ func TestService_End(t *testing.T) {
 		})
 	}
 	t.Run("rejects invalid requests before writing", func(t *testing.T) {
-		s := NewService(storeStub{}, nil)
+		s := NewService(storeStub{})
 		s.now = func() time.Time { return time.Unix(1000, 0) }
 		for _, input := range []struct {
 			user    string
@@ -74,7 +74,7 @@ func TestService_Update(t *testing.T) {
 				t.Fatalf("unexpected correction: %+v", item)
 			}
 			return want, cause
-		}}, nil)
+		}})
 		calls := 0
 		s.now = func() time.Time { calls++; return time.Unix(1000, 999) }
 		got, err := s.Update(t.Context(), "u", 7, 3, " label ", time.Unix(800, 123), &end)
@@ -88,13 +88,13 @@ func TestService_Update(t *testing.T) {
 				t.Fatalf("got %+v, want untitled ongoing correction", item)
 			}
 			return item, nil
-		}}, nil)
+		}})
 		if _, err := s.Update(t.Context(), "u", 7, 1, "   ", time.Unix(800, 0), nil); err != nil {
 			t.Fatal(err)
 		}
 	})
 	t.Run("rejects invalid corrections and exposes only fixed guidance", func(t *testing.T) {
-		s := NewService(storeStub{}, nil)
+		s := NewService(storeStub{})
 		s.now = func() time.Time { return time.Unix(1000, 0) }
 		for _, input := range []struct {
 			name, user, label string
