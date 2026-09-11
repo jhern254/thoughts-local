@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"time"
@@ -41,11 +40,10 @@ func (s *SQLiteEventStore) StartEvent(ctx context.Context, item *Event) (_ *Even
 	if item.EndedAt != nil {
 		return nil, ErrInvalidEventInterval
 	}
-	tx, conn, err := beginEventWrite(ctx, s.db)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 	defer tx.Rollback()
 	if err := requireEventOwner(ctx, tx, item.UserID); err != nil {
 		return nil, err
@@ -72,7 +70,7 @@ func (s *SQLiteEventStore) StartEvent(ctx context.Context, item *Event) (_ *Even
 	if err != nil {
 		return nil, err
 	}
-	if err := commitEventWrite(tx, conn); err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return created, nil
@@ -88,11 +86,10 @@ func (s *SQLiteEventStore) AddPastEvent(ctx context.Context, item *Event) (_ *Ev
 	if item.EndedAt == nil {
 		return nil, ErrInvalidEventInterval
 	}
-	tx, conn, err := beginEventWrite(ctx, s.db)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 	defer tx.Rollback()
 	if err := requireEventOwner(ctx, tx, item.UserID); err != nil {
 		return nil, err
@@ -104,7 +101,7 @@ func (s *SQLiteEventStore) AddPastEvent(ctx context.Context, item *Event) (_ *Ev
 	if err != nil {
 		return nil, err
 	}
-	if err := commitEventWrite(tx, conn); err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return created, nil
@@ -170,11 +167,10 @@ func (s *SQLiteEventStore) EndEvent(ctx context.Context, userID string, id, vers
 			err = fmt.Errorf("end event: %w", TranslateSQLiteError(err))
 		}
 	}()
-	tx, conn, err := beginEventWrite(ctx, s.db)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 	defer tx.Rollback()
 	item, err := eventForEdit(ctx, tx, userID, id, version)
 	if err != nil {
@@ -188,7 +184,7 @@ func (s *SQLiteEventStore) EndEvent(ctx context.Context, userID string, id, vers
 	if err != nil {
 		return nil, err
 	}
-	if err := commitEventWrite(tx, conn); err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -202,11 +198,10 @@ func (s *SQLiteEventStore) UpdateEvent(ctx context.Context, item *Event) (_ *Eve
 			err = fmt.Errorf("update event: %w", TranslateSQLiteError(err))
 		}
 	}()
-	tx, conn, err := beginEventWrite(ctx, s.db)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 	defer tx.Rollback()
 	current, err := eventForEdit(ctx, tx, item.UserID, item.EventID, item.Version)
 	if err != nil {
@@ -219,7 +214,7 @@ func (s *SQLiteEventStore) UpdateEvent(ctx context.Context, item *Event) (_ *Eve
 	if err != nil {
 		return nil, err
 	}
-	if err := commitEventWrite(tx, conn); err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -235,37 +230,6 @@ func eventForEdit(ctx context.Context, tx *sql.Tx, userID string, id, version in
 		return nil, ErrEventVersionConflict
 	}
 	return item, nil
-}
-
-// Retain the connection until commit cleanup completes. modernc v1.39 leaves
-// SQLite's transaction active on a busy COMMIT, but database/sql marks Tx done,
-// so Tx.Rollback cannot recover it. This is deliberately local to event writes.
-func beginEventWrite(ctx context.Context, db *sql.DB) (*sql.Tx, *sql.Conn, error) {
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	tx, err := conn.BeginTx(ctx, nil)
-	if err != nil {
-		conn.Close()
-		return nil, nil, err
-	}
-	return tx, conn, nil
-}
-
-func commitEventWrite(tx *sql.Tx, conn *sql.Conn) error {
-	err := tx.Commit()
-	if err == nil {
-		return nil
-	}
-	// Cleanup must run even if the request was canceled. If SQLite already
-	// rolled back, this may fail harmlessly; discard the connection rather than
-	// risk returning uncertain transaction state to the pool.
-	if _, cleanupErr := conn.ExecContext(context.Background(), "ROLLBACK"); cleanupErr != nil {
-		conn.Raw(func(any) error { return driver.ErrBadConn })
-		return errors.Join(TranslateSQLiteError(err), fmt.Errorf("rollback event commit: %w", TranslateSQLiteError(cleanupErr)))
-	}
-	return err
 }
 
 func updateEvent(ctx context.Context, tx *sql.Tx, item *Event) (*Event, error) {
