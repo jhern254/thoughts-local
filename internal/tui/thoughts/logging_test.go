@@ -17,6 +17,10 @@ import (
 
 type failingService struct{ err error }
 
+func (s failingService) Browse(context.Context, string, data.ThoughtPageRequest) (data.ThoughtPage, error) {
+	return data.ThoughtPage{}, s.err
+}
+
 func (s failingService) ListUnassigned(context.Context, string) ([]data.Thought, error) {
 	return nil, s.err
 }
@@ -30,6 +34,30 @@ func (s failingService) Create(context.Context, string, string, *int64, time.Tim
 }
 
 func TestModel_FailurePrivacy(t *testing.T) {
+	t.Run("all-thought browse logs only approved fields and preserves its original failure", func(t *testing.T) {
+		var logs bytes.Buffer
+		logger, err := logging.New(&logs, "test", "info")
+		if err != nil {
+			t.Fatal(err)
+		}
+		private := fmt.Errorf("PRIVATE-BROWSE-MARKER: %w", data.ErrDatabaseBusy)
+		m := New(t.Context(), "u", failingService{err: private}, logger)
+		cmd := m.OpenAll()
+		m, _ = m.Update(cmd())
+		if m.err != private || m.loading || !m.Browsing() {
+			t.Fatal("failure lost original error or navigation")
+		}
+		var event map[string]any
+		if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
+			t.Fatal(err)
+		}
+		if len(event) != 7 || event["operation"] != "thought_list" || event["category"] != "database_busy" || event["level"] != "error" || event["message"] != "operation failed" || event["application"] != "test" || event["time"] == nil || event["caller"] == nil {
+			t.Fatalf("unapproved event: %v", event)
+		}
+		if strings.Contains(logs.String()+m.View(), "PRIVATE-BROWSE-MARKER") {
+			t.Fatal("private error escaped")
+		}
+	})
 	t.Run("unassigned list failure retains original error and logs safe metadata", func(t *testing.T) {
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")

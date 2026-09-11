@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS thoughts (
 );
 
 -- Indexes
+CREATE INDEX IF NOT EXISTS idx_thoughts_active_user_observed_created_id
+    ON thoughts (user_id, observed_at DESC, created_at DESC, thought_id DESC)
+    WHERE deleted_at IS NULL;
+
 -- time grouping
 CREATE INDEX IF NOT EXISTS idx_thoughts_user_observed_at
     ON thoughts (user_id, observed_at);

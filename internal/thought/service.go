@@ -14,6 +14,7 @@ import (
 const maxThoughtCharacters = 1_000_000
 
 type Store interface {
+	BrowseThoughts(context.Context, string, data.ThoughtPageRequest) (data.ThoughtPage, error)
 	ListUnassignedThoughts(context.Context, string) ([]data.Thought, error)
 	CreateThought(context.Context, *data.Thought) (*data.Thought, error)
 	GetThought(context.Context, string, int64) (*data.Thought, error)
@@ -51,6 +52,14 @@ func (s *Service) List(ctx context.Context, userID string, subjectID int64) ([]d
 
 func (s *Service) ListUnassigned(ctx context.Context, userID string) ([]data.Thought, error) {
 	return s.store.ListUnassignedThoughts(ctx, userID)
+}
+
+func (s *Service) Browse(ctx context.Context, userID string, request data.ThoughtPageRequest) (data.ThoughtPage, error) {
+	if request.Direction != data.ThoughtsOlder && request.Direction != data.ThoughtsNewer || request.Direction == data.ThoughtsNewer && request.Cursor == nil {
+		fields := map[string]string{"cursor": "must specify a valid browse direction and cursor"}
+		return data.ThoughtPage{}, &ValidationError{Fields: fields, publicFields: maps.Clone(fields)}
+	}
+	return s.store.BrowseThoughts(ctx, userID, request)
 }
 
 func (s *Service) Create(ctx context.Context, userID, body string, subjectID *int64, observedAt time.Time) (*data.Thought, error) {

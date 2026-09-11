@@ -21,6 +21,7 @@ import (
 )
 
 type Service interface {
+	Browse(context.Context, string, data.ThoughtPageRequest) (data.ThoughtPage, error)
 	ListUnassigned(context.Context, string) ([]data.Thought, error)
 	List(context.Context, string, int64) ([]data.Thought, error)
 	Get(context.Context, string, int64) (*data.Thought, error)
@@ -57,6 +58,8 @@ type Model struct {
 
 	inputWarning string
 	filter       listfilter.Scope
+	allThoughts  bool
+	all          allState
 }
 
 type rowKind uint8
@@ -128,6 +131,8 @@ func New(ctx context.Context, userID string, service Service, logger logging.Log
 }
 
 func (m *Model) Resize(width, height int) {
+	m.all.width, m.all.height = max(1, width), max(1, height-5)
+	m.all.keepVisible()
 	m.list.SetSize(max(1, width), max(1, height-4))
 	m.input.SetWidth(max(1, width-2))
 	m.input.SetHeight(max(1, height-5))
@@ -136,6 +141,8 @@ func (m *Model) Resize(width, height int) {
 }
 
 func (m *Model) Reset() {
+	m.allThoughts = false
+	m.all = allState{width: m.all.width, height: m.all.height}
 	m.filter.Invalidate()
 	m.request++
 	m.subjectID = nil
@@ -210,6 +217,9 @@ func (m *Model) createThought(body string) tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	if result, ok := msg.(PageResult); ok {
+		return m.receivePage(result)
+	}
 	switch msg.(type) {
 	case listfilter.Reply, list.FilterMatchesMsg:
 		cmd := m.filter.Update(&m.list, msg)
@@ -256,6 +266,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok {
+		if m.allThoughts && m.screen == browse {
+			return m.updateAll(msg)
+		}
 		if m.screen == detail && key.String() == "q" {
 			return m, tea.Quit
 		}
@@ -284,6 +297,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.screen = browse
 				m.err = nil
 				if m.stale {
+					if m.allThoughts {
+						cmd := m.latestThoughts()
+						return m, cmd
+					}
 					cmd := m.listThoughts()
 					return m, cmd
 				}
@@ -346,6 +363,9 @@ func (m Model) View() string {
 	case detail:
 		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:
+		if m.allThoughts {
+			return m.all.view(status)
+		}
 		count := 0
 		for _, item := range m.list.VisibleItems() {
 			if row, ok := item.(row); ok && row.kind == rowRecord {

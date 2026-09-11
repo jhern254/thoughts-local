@@ -27,11 +27,15 @@ const (
 	screenSubjectEdit
 	screenSubjectDelete
 	screenMiscThoughts
+	screenAllThoughts
 )
 
 type entityKind uint8
 
-const entitySubjects entityKind = iota
+const (
+	entitySubjects entityKind = iota
+	entityThoughts
+)
 
 type entityRow struct {
 	kind        entityKind
@@ -62,6 +66,7 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 			title:       "Subjects",
 			description: "Browse and organize subjects",
 		},
+		entityRow{kind: entityThoughts, title: "Thoughts", description: "Browse all thoughts, newest observations first"},
 	}, list.NewDefaultDelegate(), defaultWidth, defaultHeight)
 	entities.Title = "Entities"
 	entities.SetFilteringEnabled(false)
@@ -100,7 +105,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
 		return m, nil
-	case thoughts.Result:
+	case thoughts.Result, thoughts.PageResult:
 		var cmd tea.Cmd
 		m.thoughts, cmd = m.thoughts.Update(message)
 		return m, cmd
@@ -141,6 +146,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSubjectDetail(message)
 	case screenMiscThoughts:
 		return m.updateMiscThoughts(message)
+	case screenAllThoughts:
+		if key, ok := message.(tea.KeyPressMsg); ok && m.thoughts.Browsing() {
+			switch key.String() {
+			case "q":
+				return m, tea.Quit
+			case "esc":
+				m.thoughts.Reset()
+				m.screen = screenEntities
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		return m, cmd
 	default:
 		return m, nil
 	}
@@ -155,6 +174,11 @@ func (m Model) updateEntities(message tea.Msg) (tea.Model, tea.Cmd) {
 			row, ok := m.entityList.SelectedItem().(entityRow)
 			if ok && row.kind == entitySubjects {
 				return m.openSubjects()
+			}
+			if ok && row.kind == entityThoughts {
+				m.screen = screenAllThoughts
+				cmd := m.thoughts.OpenAll()
+				return m, cmd
 			}
 		}
 	}
@@ -183,6 +207,11 @@ func (m Model) View() tea.View {
 		content = "Misc thoughts\n\n" + m.thoughts.View()
 		if m.thoughts.Browsing() {
 			content += "\nEsc: subjects • q: quit"
+		}
+	case screenAllThoughts:
+		content = "All thoughts\n\n" + m.thoughts.View()
+		if m.thoughts.Browsing() {
+			content += "\nEsc: entities • q: quit"
 		}
 	}
 	return tea.NewView(content)
