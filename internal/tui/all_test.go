@@ -18,7 +18,7 @@ func TestModel_AllThoughts(t *testing.T) {
 		m := newRootTestModel()
 		m.entityList.Select(1)
 		m = runModelCommand(t, m, enterKey())
-		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("All thoughts"))
+		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
 		if !strings.HasPrefix(m.View().Content, heading+"\n") {
 			t.Fatalf("got heading %q, want %q", m.View().Content, heading)
 		}
