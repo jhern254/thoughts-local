@@ -31,3 +31,15 @@ type Thought struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
+
+// Event is an activity interval. A nil EndedAt means the event is ongoing.
+type Event struct {
+	EventID      int64
+	UserID       string
+	ActivityType *string
+	StartedAt    time.Time
+	EndedAt      *time.Time
+	Version      int64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
