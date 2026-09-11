@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS events (
     user_id         TEXT    NOT NULL,
     activity_type   TEXT,
     started_at      INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
-    ended_at        INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
+    ended_at        INTEGER, -- NULL means ongoing; UTC epoch seconds otherwise
     created_at      INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     updated_at      INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     deleted_at      INTEGER, -- NULL means undeleted; UTC epoch seconds otherwise
@@ -13,8 +13,12 @@ CREATE TABLE IF NOT EXISTS events (
     CONSTRAINT ck_events_activity_type_len
         CHECK (activity_type IS NULL OR length(trim(activity_type)) BETWEEN 1 AND 4096),
 
+    CONSTRAINT ck_events_started_at
+        CHECK (typeof(started_at) = 'integer'),
+
     CONSTRAINT ck_ended_at_null_or_greater_than_started_at
-        CHECK (ended_at IS NULL OR ended_at >= started_at),
+        CHECK (ended_at IS NULL OR
+            (typeof(ended_at) = 'integer' AND ended_at >= started_at)),
 
     CONSTRAINT ck_events_deleted_at
         CHECK (deleted_at IS NULL OR
@@ -32,3 +36,8 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_user_started_at
     ON events (user_id, started_at);
+
+-- One ongoing, undeleted event per user. Historical overlap checks belong to
+-- transactional event operations; this index does not prevent those overlaps.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_events_ongoing_user
+    ON events (user_id) WHERE ended_at IS NULL AND deleted_at IS NULL;
