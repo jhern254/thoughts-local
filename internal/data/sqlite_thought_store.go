@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -179,6 +180,88 @@ func int64Pointer(value sql.NullInt64) *int64 {
 func isSQLiteForeignKeyConstraint(err error) bool {
 	var sqliteErr *sqlite.Error
 	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY
+}
+
+// UpdateThought changes only text, preserving relationships and observed time.
+func (s *SQLiteThoughtStore) UpdateThought(ctx context.Context, userID string, id int64, body string, version int64, updatedAt time.Time) (_ *Thought, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("update thought: %w", TranslateSQLiteError(err))
+		}
+	}()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE thoughts
+		SET thought = ?, version = version + 1, updated_at = max(updated_at, ?)
+		WHERE user_id = ? AND thought_id = ? AND version = ? AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = thoughts.user_id AND users.deleted_at IS NULL)`,
+		body, updatedAt.Unix(), userID, id, version)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkThoughtMutation(ctx, tx, result, userID, id); err != nil {
+		return nil, err
+	}
+	item, err := scanThought(tx.QueryRowContext(ctx, thoughtSelect+` WHERE user_id = ? AND thought_id = ?`, userID, id))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+// DeleteThought retains the row and its history, rejecting stale callers.
+func (s *SQLiteThoughtStore) DeleteThought(ctx context.Context, userID string, id, version int64) (err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("delete thought: %w", TranslateSQLiteError(err))
+		}
+	}()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE thoughts
+		SET deleted_at = max(unixepoch('now'), updated_at),
+		    updated_at = max(unixepoch('now'), updated_at), version = version + 1
+		WHERE user_id = ? AND thought_id = ? AND version = ? AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = thoughts.user_id AND users.deleted_at IS NULL)`, userID, id, version)
+	if err != nil {
+		return err
+	}
+	if err := checkThoughtMutation(ctx, tx, result, userID, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Check a missed conditional write in the same transaction so a concurrent
+// mutation cannot change whether the caller sees not-found or a stale version.
+func checkThoughtMutation(ctx context.Context, tx *sql.Tx, result sql.Result, userID string, id int64) error {
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 0 {
+		return nil
+	}
+	var active bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM thoughts
+		WHERE user_id = ? AND thought_id = ? AND deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = thoughts.user_id AND users.deleted_at IS NULL))`, userID, id).Scan(&active)
+	if err != nil {
+		return err
+	}
+	if !active {
+		return ErrRecordNotFound
+	}
+	return ErrVersionConflict
 }
 
 var _ ThoughtStore = (*SQLiteThoughtStore)(nil)

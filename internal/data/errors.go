@@ -25,3 +25,6 @@ var ErrDatabaseBusy = errors.New("database busy")
 
 // ErrDatabaseReadOnly identifies a write rejected by a read-only database.
 var ErrDatabaseReadOnly = errors.New("database read-only")
+
+// ErrVersionConflict requires reloading a thought before updating or deleting it.
+var ErrVersionConflict = errors.New("record version changed")
