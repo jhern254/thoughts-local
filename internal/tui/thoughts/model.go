@@ -16,6 +16,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 )
 
@@ -95,7 +96,7 @@ func (r row) Description() string {
 		}
 		return "Add a thought to this subject"
 	}
-	return r.item.ObservedAt.UTC().Format("Jan 2, 2006 15:04 UTC")
+	return displaytime.Format(r.item.ObservedAt, "Jan 2, 2006 3:04 PM MST")
 }
 func (r row) FilterValue() string { return r.Title() }
 
@@ -343,7 +344,7 @@ func (m Model) View() string {
 		}
 		return "Create thought\n" + status + m.input.View() + "\nCtrl+S: save • Enter: newline • Esc: cancel"
 	case detail:
-		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, m.selected.ObservedAt.UTC().Format(time.RFC3339), status, m.viewport.View())
+		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:
 		count := 0
 		for _, item := range m.list.VisibleItems() {

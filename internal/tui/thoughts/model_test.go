@@ -72,7 +72,7 @@ func TestModel_Thoughts(t *testing.T) {
 		desc  string
 	}{
 		{"create action does not depend on thought ID", row{kind: rowCreate, item: data.Thought{ThoughtID: 7}}, "Create thought…", "Add a thought to this subject"},
-		{"record with zero ID is not a create action", row{kind: rowRecord, item: data.Thought{Thought: "record"}}, "record", time.Time{}.UTC().Format("Jan 2, 2006 15:04 UTC")},
+		{"record with zero ID is not a create action", row{kind: rowRecord, item: data.Thought{Thought: "record", ObservedAt: time.Date(2026, time.January, 2, 15, 4, 0, 0, time.UTC)}}, "record", "Jan 2, 2026 7:04 AM PST"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.row.Title() != tt.title || tt.row.FilterValue() != tt.title || tt.row.Description() != tt.desc {
@@ -250,6 +250,30 @@ func TestModel_Thoughts(t *testing.T) {
 		m, _ = m.Update(cmd())
 		if m.input.Value() != "   " || !m.input.Focused() || !strings.Contains(m.View(), "must be provided") {
 			t.Fatal("validation did not preserve editor and guidance")
+		}
+	})
+}
+
+func TestModel_Timestamps(t *testing.T) {
+	t.Run("list and detail show Pacific time without changing thought data", func(t *testing.T) {
+		observedAt := time.Date(2026, time.July, 3, 0, 4, 5, 0, time.UTC)
+		item := data.Thought{ThoughtID: 7, Thought: "A thought to keep intact", ObservedAt: observedAt}
+		r := row{kind: rowRecord, item: item}
+		if got, want := r.Description(), "Jul 2, 2026 5:04 PM PDT"; got != want {
+			t.Errorf("got description %q, want %q", got, want)
+		}
+		m := New(context.Background(), "u", nil, logging.Nop())
+		m.screen = detail
+		m.selected = &item
+		m.viewport.SetContent(item.Thought)
+		view := m.View()
+		for _, want := range []string{"Thought 7 • Jul 2, 2026 5:04:05 PM PDT", item.Thought} {
+			if !strings.Contains(view, want) {
+				t.Errorf("got view %q, want to contain %q", view, want)
+			}
+		}
+		if got := m.selected.ObservedAt; got != observedAt {
+			t.Errorf("got observed time %v, want original UTC value %v", got, observedAt)
 		}
 	})
 }

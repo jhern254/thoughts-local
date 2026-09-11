@@ -528,3 +528,20 @@ func applyCommand(t *testing.T, model Model, command tea.Cmd) Model {
 	updated, _ := model.Update(command())
 	return updated.(Model)
 }
+
+func TestSubjectModel_Timestamps(t *testing.T) {
+	t.Run("added date uses the Pacific calendar without changing subject data", func(t *testing.T) {
+		createdAt := time.Date(2026, time.January, 1, 4, 0, 0, 0, time.UTC)
+		model := newSubjectTestModel(&subjectServiceStub{})
+		model.subjects.selected = &data.Subject{SubjectID: 7, SubjectName: "A subject to keep intact", CreatedAt: createdAt}
+		view := model.viewSubjectDetail()
+		for _, want := range []string{"Added: Dec 31, 2025", model.subjects.selected.SubjectName} {
+			if !strings.Contains(view, want) {
+				t.Errorf("got view %q, want to contain %q", view, want)
+			}
+		}
+		if got := model.subjects.selected.CreatedAt; got != createdAt {
+			t.Errorf("got creation time %v, want original UTC value %v", got, createdAt)
+		}
+	})
+}

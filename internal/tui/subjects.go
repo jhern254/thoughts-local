@@ -11,6 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 )
 
@@ -543,7 +544,7 @@ func (m Model) viewSubjectDetail() string {
 		"%s\n\nName: %s\nAdded: %s\n\n%s\n%s",
 		title,
 		m.subjects.selected.SubjectName,
-		m.subjects.selected.CreatedAt.UTC().Format(subjectDateLayout),
+		displaytime.Format(m.subjects.selected.CreatedAt, subjectDateLayout),
 		m.thoughts.View(), m.subjectDetailHelp(),
 	)
 }
