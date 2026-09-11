@@ -31,6 +31,19 @@ Operational logging accepts only approved typed metadata and uses fixed event me
 * Prefer small interfaces that describe behavior the app actually needs.
 * Avoid giant interfaces that mechanically mirror database tables.
 
+### Cross-entity coordination
+
+When a use case combines multiple entities, put that coordination in a small, dedicated application service with narrow, consumer-defined interfaces. Keep each entity service focused on its own operations rather than accumulating dependencies for combined views or workflows.
+
+* For example, a timeline service coordinates events and thoughts, and may later include goal progress. Event CRUD should not require a thought reader merely to support the timeline.
+* Inject only the collaborators the coordinating service actually needs. Keep dependencies one-way; do not make entity services depend back on the coordinator.
+* A narrow interface limits coupling but does not justify placing a dependency in the wrong service. Review responsibility before adding a constructor dependency.
+* Unrelated CRUD tests needing placeholder `nil` arguments or irrelevant fakes are a design warning. Reconsider the service boundary instead of adding optional dependencies or no-op collaborators to hide the problem.
+* Keep SQL and persistence filtering in stores. Coordinating services express the use case; presentation code calls them rather than duplicating cross-entity rules.
+* Test coordination separately with focused stubs, retain independent entity tests, and verify persistence behavior with real SQLite. Required collaborators should be supplied in coordination tests.
+* This is not a rule to create a service for every foreign key or hypothetical feature. Introduce coordination for a concrete use case, without generic frameworks or speculative dependencies.
+* Coordinating calls does not make writes atomic. When a workflow requires all-or-nothing changes, preserve an explicit transactional persistence boundary rather than relying on sequential service calls.
+
 ## Feature Development Scope
 
 For small feature pull requests:
