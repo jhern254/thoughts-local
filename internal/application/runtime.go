@@ -54,7 +54,7 @@ func open(
 		subjects:  subject.NewService(data.NewSQLiteSubjectStore(db)),
 		thoughts:  thought.NewService(data.NewSQLiteThoughtStore(db)),
 		metrics:   metrics.NewService(data.NewSQLiteMetricsStore(db)),
-		events:    event.NewService(data.NewSQLiteEventStore(db)),
+		events:    event.NewService(data.NewSQLiteEventStore(db), data.NewSQLiteThoughtStore(db)),
 	}, nil
 }
 

@@ -11,10 +11,12 @@ import (
 )
 
 type storeStub struct {
-	start func(context.Context, *data.Event) (*data.Event, error)
-	past  func(context.Context, *data.Event) (*data.Event, error)
-	get   func(context.Context, string, int64) (*data.Event, error)
-	list  func(context.Context, string, time.Time, time.Time) ([]data.Event, error)
+	end    func(context.Context, string, int64, int64, time.Time, time.Time) (*data.Event, error)
+	update func(context.Context, *data.Event) (*data.Event, error)
+	start  func(context.Context, *data.Event) (*data.Event, error)
+	past   func(context.Context, *data.Event) (*data.Event, error)
+	get    func(context.Context, string, int64) (*data.Event, error)
+	list   func(context.Context, string, time.Time, time.Time) ([]data.Event, error)
 }
 
 func (s storeStub) StartEvent(ctx context.Context, e *data.Event) (*data.Event, error) {
@@ -35,7 +37,7 @@ func TestService_Create(t *testing.T) {
 		want := errors.Join(data.ErrDatabaseReadOnly, errors.New("PRIVATE_MARKER"))
 		service := NewService(storeStub{start: func(context.Context, *data.Event) (*data.Event, error) {
 			return nil, want
-		}})
+		}}, nil)
 		if _, err := service.Create(t.Context(), "u", "", time.Time{}); err != want {
 			t.Fatalf("got %v, want original store failure", err)
 		}
@@ -54,7 +56,7 @@ func TestService_Create(t *testing.T) {
 				}
 			}
 			return want, nil
-		}})
+		}}, nil)
 		calls := 0
 		service.now = func() time.Time { calls++; return now }
 		got, err := service.Create(ctx, "u", " activity ", time.Time{})
@@ -77,7 +79,7 @@ func TestService_Create(t *testing.T) {
 					t.Fatal("got rewritten label, want complete normalized label")
 				}
 				return item, nil
-			}})
+			}}, nil)
 			service.now = func() time.Time { return time.Unix(1000, 0) }
 			if _, err := service.Create(t.Context(), "u", label, time.Unix(100, 999).In(time.FixedZone("offset", 3600))); err != nil {
 				t.Fatal(err)
@@ -94,7 +96,7 @@ func TestService_Create(t *testing.T) {
 			{"u", "label", "started_at", time.Unix(1001, 0)},
 			{"u", "\x00private", "activity_type", time.Time{}},
 		} {
-			service := NewService(storeStub{})
+			service := NewService(storeStub{}, nil)
 			service.now = func() time.Time { return time.Unix(1000, 0) }
 			_, err := service.Create(t.Context(), tc.user, tc.label, tc.start)
 			var validation *ValidationError
@@ -122,7 +124,7 @@ func TestService_Create(t *testing.T) {
 func TestService_CreatePast(t *testing.T) {
 	t.Run("requires explicit valid times before persistence", func(t *testing.T) {
 		for _, bounds := range [][2]time.Time{{{}, time.Unix(100, 0)}, {time.Unix(100, 0), {}}, {time.Unix(200, 0), time.Unix(100, 0)}, {time.Unix(100, 0), time.Unix(1001, 0)}} {
-			service := NewService(storeStub{})
+			service := NewService(storeStub{}, nil)
 			service.now = func() time.Time { return time.Unix(1000, 0) }
 			_, err := service.CreatePast(t.Context(), "u", "", bounds[0], bounds[1])
 			var validation *ValidationError
@@ -140,7 +142,7 @@ func TestService_CreatePast(t *testing.T) {
 				t.Fatalf("got event %+v, want equal scoped interval at second 1000", item)
 			}
 			return result, want
-		}})
+		}}, nil)
 		service.now = func() time.Time { return time.Unix(1000, 0) }
 		got, err := service.CreatePast(ctx, "u", "", time.Unix(1000, 900), time.Unix(1000, 100))
 		if got != result || err != want {
@@ -158,7 +160,7 @@ func TestService_Get(t *testing.T) {
 				t.Fatal("get lost scope or ID")
 			}
 			return nil, want
-		}})
+		}}, nil)
 		if _, err := service.Get(ctx, "u", 0); err != want {
 			t.Fatalf("got %v, want original not-found error", err)
 		}
@@ -176,7 +178,7 @@ func TestService_List(t *testing.T) {
 				t.Fatal("list lost scope or normalized bounds")
 			}
 			return []data.Event{{EventID: 7}}, want
-		}})
+		}}, nil)
 		got, err := service.List(ctx, "u", from, until)
 		if len(got) != 1 || got[0].EventID != 7 || err != want {
 			t.Fatalf("got %v, %v, want original rows/error", got, err)
@@ -184,7 +186,7 @@ func TestService_List(t *testing.T) {
 	})
 	t.Run("rejects absent reversed and subsecond empty ranges before persistence", func(t *testing.T) {
 		for _, bounds := range [][2]time.Time{{{}, time.Unix(200, 0)}, {time.Unix(100, 0), {}}, {time.Unix(200, 0), time.Unix(100, 0)}, {time.Unix(100, 0), time.Unix(100, 999)}} {
-			_, err := NewService(storeStub{}).List(t.Context(), "u", bounds[0], bounds[1])
+			_, err := NewService(storeStub{}, nil).List(t.Context(), "u", bounds[0], bounds[1])
 			var validation *ValidationError
 			if !errors.As(err, &validation) {
 				t.Fatalf("got %v, want validation", err)

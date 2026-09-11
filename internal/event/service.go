@@ -16,6 +16,8 @@ type Store interface {
 	StartEvent(context.Context, *data.Event) (*data.Event, error)
 	AddPastEvent(context.Context, *data.Event) (*data.Event, error)
 	ListEvents(context.Context, string, time.Time, time.Time) ([]data.Event, error)
+	EndEvent(context.Context, string, int64, int64, time.Time, time.Time) (*data.Event, error)
+	UpdateEvent(context.Context, *data.Event) (*data.Event, error)
 }
 
 type ValidationError struct {
@@ -33,15 +35,74 @@ func (e *ValidationError) PublicFields() map[string]string {
 	return maps.Clone(e.publicFields)
 }
 
-type Service struct {
-	store Store
-	now   func() time.Time
+// ThoughtReader keeps SQL and persistence filtering in the thought store.
+type ThoughtReader interface {
+	ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error)
 }
 
-func NewService(store Store) *Service { return &Service{store: store, now: time.Now} }
+type Service struct {
+	store    Store
+	thoughts ThoughtReader
+	now      func() time.Time
+}
+
+func NewService(store Store, thoughts ThoughtReader) *Service {
+	return &Service{store: store, thoughts: thoughts, now: time.Now}
+}
 
 func (s *Service) Get(ctx context.Context, userID string, eventID int64) (*data.Event, error) {
 	return s.store.GetEvent(ctx, userID, eventID)
+}
+
+// ListThoughts matches observation times, not explicit event links or calendar
+// days. Completed intervals exclude their end; ongoing intervals include the
+// captured current second. The two reads are not a transactional snapshot.
+func (s *Service) ListThoughts(ctx context.Context, userID string, eventID int64) ([]data.Thought, error) {
+	item, err := s.store.GetEvent(ctx, userID, eventID)
+	if err != nil {
+		return nil, err
+	}
+	var until time.Time
+	if item.EndedAt == nil {
+		until = s.now().UTC().Truncate(time.Second).Add(time.Second)
+	} else {
+		until = *item.EndedAt
+	}
+	return s.thoughts.ListThoughtsInRange(ctx, userID, item.StartedAt, until)
+}
+
+// End finishes an ongoing event. A zero end requests the current time.
+// The store checks the persisted start, lifecycle and version atomically.
+func (s *Service) End(ctx context.Context, userID string, eventID, version int64, endedAt time.Time) (*data.Event, error) {
+	now := s.now().UTC().Truncate(time.Second)
+	if endedAt.IsZero() {
+		endedAt = now
+	}
+	endedAt = endedAt.UTC().Truncate(time.Second)
+	v := validator.NewValidator()
+	v.Check(userID != "", "user_id", "must be provided")
+	v.Check(version > 0, "version", "must be greater than zero")
+	v.Check(!endedAt.After(now), "ended_at", "must not be in the future")
+	if !v.Valid() {
+		return nil, &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
+	}
+	return s.store.EndEvent(ctx, userID, eventID, version, endedAt, now)
+}
+
+// Update corrects label and explicit timestamps without changing lifecycle state.
+// A nil end keeps an ongoing event ongoing; completed events require an end.
+func (s *Service) Update(ctx context.Context, userID string, eventID, version int64, activity string, startedAt time.Time, endedAt *time.Time) (*data.Event, error) {
+	now := s.now().UTC().Truncate(time.Second)
+	item := newEvent(userID, activity, startedAt, now)
+	item.EventID, item.Version = eventID, version
+	if endedAt != nil {
+		end := endedAt.UTC().Truncate(time.Second)
+		item.EndedAt = &end
+	}
+	if err := validateEvent(item, now); err != nil {
+		return nil, err
+	}
+	return s.store.UpdateEvent(ctx, item)
 }
 
 // Create starts an ongoing event, atomically closing its predecessor in the store.
@@ -95,6 +156,7 @@ func newEvent(userID, activity string, start, now time.Time) *data.Event {
 func validateEvent(item *data.Event, now time.Time) error {
 	v := validator.NewValidator()
 	v.Check(item.UserID != "", "user_id", "must be provided")
+	v.Check(item.Version > 0, "version", "must be greater than zero")
 	v.Check(!item.StartedAt.IsZero(), "started_at", "must be provided")
 	v.Check(!item.StartedAt.After(now), "started_at", "must not be in the future")
 	if item.EndedAt != nil {
