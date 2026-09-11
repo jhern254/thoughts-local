@@ -26,6 +26,7 @@ const (
 	screenSubjectDetail
 	screenSubjectEdit
 	screenSubjectDelete
+	screenMiscThoughts
 )
 
 type entityKind uint8
@@ -138,6 +139,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSubjectDelete(message)
 	case screenSubjectDetail:
 		return m.updateSubjectDetail(message)
+	case screenMiscThoughts:
+		return m.updateMiscThoughts(message)
 	default:
 		return m, nil
 	}
@@ -176,6 +179,11 @@ func (m Model) View() tea.View {
 		content = m.viewSubjectDelete()
 	case screenSubjectDetail:
 		content = m.viewSubjectDetail()
+	case screenMiscThoughts:
+		content = "Misc thoughts\n\n" + m.thoughts.View()
+		if m.thoughts.Browsing() {
+			content += "\nEsc: subjects • q: quit"
+		}
 	}
 	return tea.NewView(content)
 }

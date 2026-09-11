@@ -19,6 +19,55 @@ import (
 )
 
 func TestThoughtTUIWorkflow_SQLite(t *testing.T) {
+	t.Run("creates unassigned thoughts in Misc without creating a subject", func(t *testing.T) {
+		db, dsn := openMigratedSQLite(t)
+		ctx := context.Background()
+		runtime, err := application.Open(ctx, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := runtime.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logging.Nop())
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tuiKey(tea.KeyDown))
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tuiKey(tea.KeyEnter))
+		const body = "unassigned\ncomplete draft"
+		model = updateTUIModel(model, tea.PasteMsg{Content: body})
+		model, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+		if cmd == nil {
+			t.Fatal("got nil command, want creation")
+		}
+		model, changed := model.Update(cmd())
+		if changed == nil {
+			t.Fatal("got nil command, want count invalidation")
+		}
+		model, _ = model.Update(changed())
+		var gotBody string
+		var unassigned bool
+		if err := db.QueryRow("SELECT thought, subject_id IS NULL FROM thoughts").Scan(&gotBody, &unassigned); err != nil {
+			t.Fatal(err)
+		}
+		if gotBody != body || !unassigned {
+			t.Fatalf("got body %q and unassigned %v, want %q and true", gotBody, unassigned, body)
+		}
+		var subjects int
+		if err := db.QueryRow("SELECT count(*) FROM subjects").Scan(&subjects); err != nil {
+			t.Fatal(err)
+		}
+		if subjects != 0 {
+			t.Fatalf("got %d subjects, want 0", subjects)
+		}
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEscape))
+		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEscape))
+		if got := model.View().Content; !strings.Contains(got, "Misc thoughts") || !strings.Contains(got, "1 thought") || !strings.Contains(got, "\n0 subjects\n") {
+			t.Fatalf("got view %q, want updated Misc count and zero subjects", got)
+		}
+	})
 	t.Run("rejects unsupported input without saving a silently shortened thought", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		ctx := context.Background()
@@ -36,6 +85,7 @@ func TestThoughtTUIWorkflow_SQLite(t *testing.T) {
 		}
 		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logging.Nop())
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
+		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model, cmd := model.Update(tuiKey(tea.KeyEnter))
 		if cmd == nil {
@@ -96,6 +146,7 @@ func TestThoughtTUIWorkflow_SQLite(t *testing.T) {
 		if got := model.View().Content; !strings.Contains(got, "0 thoughts") {
 			t.Fatalf("got view %q, want zero count", got)
 		}
+		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model, cmd := model.Update(tuiKey(tea.KeyEnter))
 		if cmd == nil {

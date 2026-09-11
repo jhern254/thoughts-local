@@ -14,6 +14,7 @@ import (
 const maxThoughtCharacters = 1_000_000
 
 type Store interface {
+	ListUnassignedThoughts(context.Context, string) ([]data.Thought, error)
 	CreateThought(context.Context, *data.Thought) (*data.Thought, error)
 	GetThought(context.Context, string, int64) (*data.Thought, error)
 	ListThoughts(context.Context, string, int64) ([]data.Thought, error)
@@ -46,6 +47,10 @@ func (s *Service) Get(ctx context.Context, userID string, thoughtID int64) (*dat
 
 func (s *Service) List(ctx context.Context, userID string, subjectID int64) ([]data.Thought, error) {
 	return s.store.ListThoughts(ctx, userID, subjectID)
+}
+
+func (s *Service) ListUnassigned(ctx context.Context, userID string) ([]data.Thought, error) {
+	return s.store.ListUnassignedThoughts(ctx, userID)
 }
 
 func (s *Service) Create(ctx context.Context, userID, body string, subjectID *int64, observedAt time.Time) (*data.Thought, error) {

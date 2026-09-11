@@ -1,4 +1,4 @@
-// Package thoughts owns the thought list, editor, and detail inside a subject.
+// Package thoughts owns the list, editor, and detail for subject and unassigned thoughts.
 package thoughts
 
 import (
@@ -20,13 +20,14 @@ import (
 )
 
 type Service interface {
+	ListUnassigned(context.Context, string) ([]data.Thought, error)
 	List(context.Context, string, int64) ([]data.Thought, error)
 	Get(context.Context, string, int64) (*data.Thought, error)
 	Create(context.Context, string, string, *int64, time.Time) (*data.Thought, error)
 }
 
-// ChangedMsg invalidates the parent subject counts after successful creation.
-type ChangedMsg struct{ SubjectID int64 }
+// ChangedMsg invalidates picker counts after creation; nil SubjectID means unassigned.
+type ChangedMsg struct{ SubjectID *int64 }
 
 type screen uint8
 
@@ -41,7 +42,7 @@ type Model struct {
 	userID     string
 	service    Service
 	logger     logging.Logger
-	subjectID  int64
+	subjectID  *int64
 	request    uint64
 	screen     screen
 	list       list.Model
@@ -132,7 +133,7 @@ func (m *Model) Resize(width, height int) {
 func (m *Model) Reset() {
 	m.filter.Invalidate()
 	m.request++
-	m.subjectID = 0
+	m.subjectID = nil
 	m.selected = nil
 	m.screen = browse
 	m.loading = false
@@ -148,7 +149,12 @@ func (m *Model) Reset() {
 
 func (m *Model) Open(subjectID int64) tea.Cmd {
 	m.Reset()
-	m.subjectID = subjectID
+	m.subjectID = &subjectID
+	return m.listThoughts()
+}
+
+func (m *Model) OpenUnassigned() tea.Cmd {
+	m.Reset()
 	return m.listThoughts()
 }
 
@@ -164,7 +170,13 @@ func (m *Model) listThoughts() tea.Cmd {
 	m.err = nil
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
 	return func() tea.Msg {
-		items, err := service.List(ctx, userID, subjectID)
+		var items []data.Thought
+		var err error
+		if subjectID == nil {
+			items, err = service.ListUnassigned(ctx, userID)
+		} else {
+			items, err = service.List(ctx, userID, *subjectID)
+		}
 		return Result{request: request, operation: logging.ThoughtList, items: items, err: err}
 	}
 }
@@ -186,7 +198,7 @@ func (m *Model) createThought(body string) tea.Cmd {
 	m.err = nil
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
 	return func() tea.Msg {
-		item, err := service.Create(ctx, userID, body, &subjectID, time.Time{})
+		item, err := service.Create(ctx, userID, body, subjectID, time.Time{})
 		return Result{request: request, operation: logging.ThoughtCreate, item: item, err: err}
 	}
 }

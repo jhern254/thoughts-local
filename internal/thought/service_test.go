@@ -11,10 +11,33 @@ import (
 )
 
 type thoughtServiceStoreStub struct {
-	list         func(context.Context, string, int64) ([]data.Thought, error)
-	create       func(context.Context, *data.Thought) (*data.Thought, error)
-	get          func(context.Context, string, int64) (*data.Thought, error)
-	createCalled bool
+	listUnassigned func(context.Context, string) ([]data.Thought, error)
+	list           func(context.Context, string, int64) ([]data.Thought, error)
+	create         func(context.Context, *data.Thought) (*data.Thought, error)
+	get            func(context.Context, string, int64) (*data.Thought, error)
+	createCalled   bool
+}
+
+func (s *thoughtServiceStoreStub) ListUnassignedThoughts(ctx context.Context, u string) ([]data.Thought, error) {
+	return s.listUnassigned(ctx, u)
+}
+
+func TestThoughtService_ListUnassigned(t *testing.T) {
+	t.Run("preserves scope results and original errors", func(t *testing.T) {
+		ctx := context.Background()
+		for _, wantErr := range []error{nil, errors.New("store failure")} {
+			service := NewService(&thoughtServiceStoreStub{listUnassigned: func(got context.Context, u string) ([]data.Thought, error) {
+				if got != ctx || u != "u" {
+					t.Fatal("unassigned list lost scope")
+				}
+				return []data.Thought{{ThoughtID: 7}}, wantErr
+			}})
+			rows, err := service.ListUnassigned(ctx, "u")
+			if err != wantErr || len(rows) != 1 || rows[0].ThoughtID != 7 {
+				t.Fatalf("got %v, %v, want original rows and error", rows, err)
+			}
+		}
+	})
 }
 
 func (s *thoughtServiceStoreStub) ListThoughts(ctx context.Context, u string, id int64) ([]data.Thought, error) {
