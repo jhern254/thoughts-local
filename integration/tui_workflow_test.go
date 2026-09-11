@@ -203,14 +203,14 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if kept.Thought != "keep this thought" || kept.SubjectID != nil {
-			t.Fatalf("got thought %v, want retained content with hidden subject reference", kept)
+			t.Fatalf("got thought %v, want retained content without subject assignment", kept)
 		}
-		var retainedID int64
-		if err := db.QueryRow("SELECT t.subject_id FROM thoughts t JOIN subjects s ON s.subject_id=t.subject_id WHERE t.thought_id=? AND s.deleted_at IS NOT NULL", linked.ThoughtID).Scan(&retainedID); err != nil {
+		var unlinked bool
+		if err := db.QueryRow("SELECT subject_id IS NULL FROM thoughts WHERE thought_id=?", linked.ThoughtID).Scan(&unlinked); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := retainedID, item.SubjectID; got != want {
-			t.Fatalf("got retained subject ID %d, want %d", got, want)
+		if !unlinked {
+			t.Fatalf("got stored subject unlinked %v, want true", unlinked)
 		}
 		if strings.Contains(logs.String(), name) || strings.Count(logs.String(), "subject deleted") != 1 {
 			t.Fatalf("got logs %q, want one metadata-only delete event", logs.String())

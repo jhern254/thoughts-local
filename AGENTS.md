@@ -99,6 +99,8 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 
 ## SQLite Principles
 
+Soft-deleting a subject retains its record but atomically clears `subject_id` on all linked thoughts, including soft-deleted thoughts. This changes assignment, not history: retain thought-tag associations, mindset periods, and event/goal-progress provenance.
+
 * Treat SQLite as a serious persistence layer, not a throwaway dev database.
 * Use migrations for schema changes.
 * Keep schema changes intentional and reviewable.

@@ -177,7 +177,7 @@ func TestSubjectCLIWorkflow_SQLite(t *testing.T) {
 		}
 	})
 
-	t.Run("deletes subject and hides its reference on linked thoughts", func(t *testing.T) {
+	t.Run("deletes subject and clears its reference on linked thoughts", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		localUser := ensureLocalUser(t, db)
 		ctx := context.Background()
@@ -209,6 +209,13 @@ func TestSubjectCLIWorkflow_SQLite(t *testing.T) {
 		}
 		if unlinked.SubjectID != nil {
 			t.Fatalf("got linked subject ID %d after deletion, want nil", *unlinked.SubjectID)
+		}
+		var storedNull bool
+		if err := db.QueryRow("SELECT subject_id IS NULL FROM thoughts WHERE thought_id=?", linked.ThoughtID).Scan(&storedNull); err != nil {
+			t.Fatal(err)
+		}
+		if !storedNull {
+			t.Fatalf("got stored subject ID NULL %v, want true", storedNull)
 		}
 	})
 }

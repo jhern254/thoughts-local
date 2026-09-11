@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 )
 
 func TestSoftDeletionWorkflow_SQLite(t *testing.T) {
-	t.Run("retains deleted subject and links after reopening", func(t *testing.T) {
+	t.Run("retains deleted subject and persists thought unlinking after reopening", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		insertUsers(t, db, "u")
 		ctx := context.Background()
@@ -49,12 +50,13 @@ func TestSoftDeletionWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got error %v, want nil", err)
 		}
 		reopened := openSQLite(t, dsn)
-		var storedID, deletedAt, updatedAt int64
-		if err := reopened.QueryRow(`SELECT t.subject_id,s.deleted_at,s.updated_at FROM thoughts t JOIN subjects s ON s.subject_id=t.subject_id WHERE t.thought_id=?`, linked.ThoughtID).Scan(&storedID, &deletedAt, &updatedAt); err != nil {
+		var storedID sql.NullInt64
+		var deletedAt, updatedAt int64
+		if err := reopened.QueryRow(`SELECT t.subject_id,s.deleted_at,s.updated_at FROM thoughts t CROSS JOIN subjects s WHERE t.thought_id=? AND s.subject_id=?`, linked.ThoughtID, item.SubjectID).Scan(&storedID, &deletedAt, &updatedAt); err != nil {
 			t.Fatalf("got error %v, want nil", err)
 		}
-		if got, want := storedID, item.SubjectID; got != want {
-			t.Fatalf("got stored subject ID %d, want %d", got, want)
+		if storedID.Valid {
+			t.Fatalf("got stored subject ID %d, want NULL", storedID.Int64)
 		}
 		if got, want := deletedAt, updatedAt; got != want {
 			t.Fatalf("got deletion timestamp %d, want updated timestamp %d", got, want)

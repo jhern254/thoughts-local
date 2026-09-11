@@ -129,7 +129,13 @@ func (s *SQLiteSubjectStore) UpdateSubject(ctx context.Context, userID string, s
 }
 
 func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, subjectID int64) error {
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin subject deletion: %w", TranslateSQLiteError(err))
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `
 		UPDATE subjects
 		SET deleted_at = max(unixepoch('now'), updated_at),
 		    updated_at = max(unixepoch('now'), updated_at)
@@ -147,6 +153,17 @@ func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, s
 	}
 	if deleted == 0 {
 		return ErrRecordNotFound
+	}
+	_, err = tx.ExecContext(ctx, `
+		UPDATE thoughts
+		SET subject_id = NULL, version = version + 1,
+		    updated_at = max(unixepoch('now'), updated_at)
+		WHERE user_id = ? AND subject_id = ?`, userID, subjectID)
+	if err != nil {
+		return fmt.Errorf("unlink subject thoughts: %w", TranslateSQLiteError(err))
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit subject deletion: %w", TranslateSQLiteError(err))
 	}
 	return nil
 }
