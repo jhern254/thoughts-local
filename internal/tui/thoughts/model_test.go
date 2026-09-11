@@ -18,6 +18,27 @@ import (
 func key(code rune) tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: code}) }
 
 func TestModel_Thoughts(t *testing.T) {
+	t.Run("Create description follows the selected scope before and after loading", func(t *testing.T) {
+		m := New(context.Background(), "u", thought.NewService(testutils.NewFakeThoughtStore()), logging.Nop())
+		for _, misc := range []bool{true, false, true} {
+			want := "Add a thought to this subject"
+			var cmd tea.Cmd
+			if misc {
+				want = "Write a new thought"
+				cmd = m.OpenUnassigned()
+			} else {
+				cmd = m.Open(7)
+			}
+			for phase := range 2 {
+				if phase == 1 {
+					m, _ = m.Update(cmd())
+				}
+				if got := m.list.Items()[0].(row).Description(); got != want {
+					t.Fatalf("got Create description %q, want %q", got, want)
+				}
+			}
+		}
+	})
 	t.Run("late unassigned creation keeps its scope without replacing the active subject", func(t *testing.T) {
 		service := thought.NewService(testutils.NewFakeThoughtStore())
 		m := New(context.Background(), "u", service, logging.Nop())

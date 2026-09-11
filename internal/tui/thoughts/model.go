@@ -66,8 +66,9 @@ const (
 )
 
 type row struct {
-	kind rowKind
-	item data.Thought
+	kind       rowKind
+	item       data.Thought
+	unassigned bool
 }
 
 func (r row) Title() string {
@@ -89,6 +90,9 @@ func (r row) Title() string {
 }
 func (r row) Description() string {
 	if r.kind == rowCreate {
+		if r.unassigned {
+			return "Write a new thought"
+		}
 		return "Add a thought to this subject"
 	}
 	return r.item.ObservedAt.UTC().Format("Jan 2, 2006 15:04 UTC")
@@ -155,6 +159,7 @@ func (m *Model) Open(subjectID int64) tea.Cmd {
 
 func (m *Model) OpenUnassigned() tea.Cmd {
 	m.Reset()
+	m.list.SetItems([]list.Item{row{kind: rowCreate, unassigned: true}})
 	return m.listThoughts()
 }
 
@@ -228,7 +233,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		if result.operation == logging.ThoughtList {
 			rows := make([]list.Item, 0, len(result.items)+1)
-			rows = append(rows, row{kind: rowCreate})
+			rows = append(rows, row{kind: rowCreate, unassigned: m.subjectID == nil})
 			for _, item := range result.items {
 				rows = append(rows, row{kind: rowRecord, item: item})
 			}
