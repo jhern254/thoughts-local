@@ -1,11 +1,13 @@
 package thoughts
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -38,6 +40,25 @@ func allKey(m Model, code rune) Model {
 }
 
 func TestModel_AllThoughts(t *testing.T) {
+	t.Run("uses the native picker style and subject color blocks for selected and unselected rows", func(t *testing.T) {
+		m := allModel(t, 2)
+		name := "Writing"
+		m.all.rows[1].item.SubjectName = &name
+		var native bytes.Buffer
+		list.NewDefaultDelegate().Render(&native, m.list, 0, row{kind: rowCreate, unassigned: true})
+		if !strings.HasPrefix(m.View(), native.String()+"\n") {
+			t.Fatalf("got picker %q, want native selection %q", m.View(), native.String())
+		}
+		for range 3 {
+			for _, label := range []string{"Writing", "Misc"} {
+				badge := m.list.Styles.Title.Render(label)
+				if !strings.Contains(m.View(), badge) {
+					t.Fatalf("missing subject color block %q in %q", badge, m.View())
+				}
+			}
+			m = allKey(m, tea.KeyDown)
+		}
+	})
 	t.Run("eviction preserves selected ID and its screen position at either edge", func(t *testing.T) {
 		m := allModel(t, 230)
 		for range 150 {
@@ -68,8 +89,8 @@ func TestModel_AllThoughts(t *testing.T) {
 		m.all.rows[2].item.ObservedAt = time.Date(2026, 7, 2, 0, 4, 0, 0, time.UTC)
 		for _, width := range []int{80, 40} {
 			m.Resize(width, 14)
-			want := "> Create thought…\n  Write a new thought\n\n  Thought 2 • body 2\n  Jul 2, 2026 5:04 PM PDT • Writing\n\n  Thought 1 • body 1\n  Jul 1, 2026 5:04 PM PDT • Misc\n\n2 thoughts loaded\n\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest"
-			if got := m.View(); got != want {
+			want := "│ Create thought…\n│ Write a new thought\n\n  Thought 2 • body 2\n  Jul 2, 2026 5:04 PM PDT •  Writing \n\n  Thought 1 • body 1\n  Jul 1, 2026 5:04 PM PDT •  Misc \n\n2 thoughts loaded\n\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest"
+			if got := ansi.Strip(m.View()); got != want {
 				t.Fatalf("width %d:\ngot %q\nwant %q", width, got, want)
 			}
 			for _, line := range strings.Split(m.View(), "\n") {
@@ -80,11 +101,30 @@ func TestModel_AllThoughts(t *testing.T) {
 		}
 		m = allKey(m, tea.KeyDown)
 		m.Resize(20, 8)
-		if m.all.rows[m.all.index].item.ThoughtID != 2 || !strings.Contains(m.View(), "> Thought 2") {
+		if m.all.rows[m.all.index].item.ThoughtID != 2 || !strings.Contains(ansi.Strip(m.View()), "│ Thought 2") {
 			t.Fatal("resize lost visible selection")
 		}
 		m.Resize(0, 0)
 		_ = m.View()
+	})
+	t.Run("styled Unicode rows stay within the viewport without altering their text", func(t *testing.T) {
+		m := allModel(t, 1)
+		name, preview := strings.Repeat("界", 80), strings.Repeat("語", 80)
+		m.all.rows[1].item.SubjectName = &name
+		m.all.rows[1].item.Preview = preview
+		m = allKey(m, tea.KeyDown)
+		for _, width := range []int{80, 40, 20, 2, 1} {
+			m.Resize(width, 14)
+			rows := strings.Split(m.View(), "\n")[:m.all.height]
+			for _, line := range rows {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("width %d exceeded by styled line %q", width, line)
+				}
+			}
+			if m.all.rows[m.all.index].item.Preview != preview || *m.all.rows[m.all.index].item.SubjectName != name {
+				t.Fatal("rendering changed stored display metadata")
+			}
+		}
 	})
 	t.Run("page keys move within the viewport and suppress duplicate pending requests", func(t *testing.T) {
 		m := allModel(t, 130)

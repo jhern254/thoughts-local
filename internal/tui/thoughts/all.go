@@ -208,13 +208,14 @@ func summaryText(value string) string {
 	}, value)
 }
 
-func (s allState) view(status string) string {
+func (m Model) viewAll(status string) string {
+	s := m.all
 	lines := make([]string, 0, len(s.rows)*summaryLines)
 	count := 0
 	for index, row := range s.rows {
-		prefix := "  "
+		titleStyle, descStyle := m.itemStyles.NormalTitle, m.itemStyles.NormalDesc
 		if index == s.index {
-			prefix = "> "
+			titleStyle, descStyle = m.itemStyles.SelectedTitle, m.itemStyles.SelectedDesc
 		}
 		title, description := "Create thought…", "Write a new thought"
 		if row.kind == rowRecord {
@@ -224,9 +225,12 @@ func (s allState) view(status string) string {
 			if row.item.SubjectName != nil {
 				subject = summaryText(*row.item.SubjectName)
 			}
-			description = displaytime.Format(row.item.ObservedAt, "Jan 2, 2006 3:04 PM MST") + " • " + subject
+			description = displaytime.Format(row.item.ObservedAt, "Jan 2, 2006 3:04 PM MST") + " • " + m.list.Styles.Title.Render(subject)
 		}
-		lines = append(lines, ansi.Truncate(prefix+title, s.width, "…"), ansi.Truncate("  "+description, s.width, "…"), "")
+		title = titleStyle.Render(ansi.Truncate(title, max(0, s.width-titleStyle.GetHorizontalFrameSize()), "…"))
+		description = descStyle.Render(ansi.Truncate(description, max(0, s.width-descStyle.GetHorizontalFrameSize()), "…"))
+		// Clip the selection rail/padding too when the terminal is only one cell wide.
+		lines = append(lines, ansi.Truncate(title, s.width, ""), ansi.Truncate(description, s.width, ""), "")
 	}
 	visible := append([]string{}, lines[min(s.offset, len(lines)):min(s.offset+s.height, len(lines))]...)
 	for len(visible) < s.height {

@@ -220,7 +220,8 @@ func (m Model) View() tea.View {
 			content += "\nEsc: subjects • q: quit"
 		}
 	case screenAllThoughts:
-		content = "All thoughts\n\n" + m.thoughts.View()
+		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("All thoughts"))
+		content = heading + "\n" + m.thoughts.View()
 		if m.thoughts.Browsing() {
 			content += "\nEsc: entities • q: quit"
 		}

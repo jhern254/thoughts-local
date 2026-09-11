@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/testutils"
@@ -13,6 +14,15 @@ import (
 )
 
 func TestModel_AllThoughts(t *testing.T) {
+	t.Run("uses the same colored heading as the Subjects picker", func(t *testing.T) {
+		m := newRootTestModel()
+		m.entityList.Select(1)
+		m = runModelCommand(t, m, enterKey())
+		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("All thoughts"))
+		if !strings.HasPrefix(m.View().Content, heading+"\n") {
+			t.Fatalf("got heading %q, want %q", m.View().Content, heading)
+		}
+	})
 	t.Run("late batch cannot replace a reopened list or another thought scope", func(t *testing.T) {
 		service := thought.NewService(testutils.NewFakeThoughtStore())
 		if _, err := service.Create(t.Context(), "u", "first observation", nil, time.Time{}); err != nil {
@@ -34,7 +44,7 @@ func TestModel_AllThoughts(t *testing.T) {
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
 		before := m.View().Content
 		m, _ = rootUpdate(m, old)
-		if m.View().Content != before || !strings.Contains(before, "> Thought 2") {
+		if m.View().Content != before || !strings.Contains(ansi.Strip(before), "│ Thought 2") {
 			t.Fatal("late batch changed active rows or selection")
 		}
 		m, cmd = rootUpdate(m, enterKey())

@@ -60,6 +60,7 @@ type Model struct {
 	filter       listfilter.Scope
 	allThoughts  bool
 	all          allState
+	itemStyles   list.DefaultItemStyles
 }
 
 type rowKind uint8
@@ -114,7 +115,8 @@ type Result struct {
 }
 
 func New(ctx context.Context, userID string, service Service, logger logging.Logger) Model {
-	items := list.New([]list.Item{row{kind: rowCreate}}, list.NewDefaultDelegate(), 80, 14)
+	delegate := list.NewDefaultDelegate()
+	items := list.New([]list.Item{row{kind: rowCreate}}, delegate, 80, 14)
 	items.Title = "Thoughts"
 	items.SetShowStatusBar(false)
 	items.DisableQuitKeybindings()
@@ -125,7 +127,7 @@ func New(ctx context.Context, userID string, service Service, logger logging.Log
 	input.MaxWidth = 0
 	view := viewport.New()
 	view.SoftWrap = true
-	m := Model{ctx: ctx, userID: userID, service: service, logger: logger, list: items, input: input, viewport: view}
+	m := Model{ctx: ctx, userID: userID, service: service, logger: logger, list: items, input: input, viewport: view, itemStyles: delegate.Styles}
 	m.Resize(80, 14)
 	return m
 }
@@ -367,7 +369,7 @@ func (m Model) View() string {
 		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:
 		if m.allThoughts {
-			return m.all.view(status)
+			return m.viewAll(status)
 		}
 		count := 0
 		for _, item := range m.list.VisibleItems() {
