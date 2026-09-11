@@ -189,6 +189,12 @@ func (m Model) updateEntities(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
+	switch m.screen {
+	case screenSubjectDetail, screenMiscThoughts, screenAllThoughts:
+		if m.thoughts.ShowingDetail() {
+			return tea.NewView(m.thoughts.View())
+		}
+	}
 	var content string
 	switch m.screen {
 	case screenEntities:

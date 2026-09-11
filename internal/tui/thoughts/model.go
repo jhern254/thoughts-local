@@ -177,6 +177,9 @@ func (m Model) Browsing() bool {
 	return m.screen == browse && !m.list.SettingFilter() && !m.list.IsFiltered()
 }
 
+// ShowingDetail lets the parent render the shared detail without list context.
+func (m Model) ShowingDetail() bool { return m.screen == detail }
+
 func (m *Model) listThoughts() tea.Cmd {
 	m.request++
 	m.loading = true
