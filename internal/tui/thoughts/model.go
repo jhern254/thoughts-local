@@ -60,6 +60,7 @@ type Model struct {
 	filter       listfilter.Scope
 	allThoughts  bool
 	all          allState
+	countRequest uint64
 	itemStyles   list.DefaultItemStyles
 }
 
@@ -143,6 +144,7 @@ func (m *Model) Resize(width, height int) {
 }
 
 func (m *Model) Reset() {
+	m.countRequest++
 	m.allThoughts = false
 	m.all = allState{width: m.all.width, height: m.all.height}
 	m.filter.Invalidate()
@@ -222,6 +224,9 @@ func (m *Model) createThought(body string) tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	if result, ok := msg.(CountResult); ok {
+		return m.receiveCount(result)
+	}
 	if result, ok := msg.(PageResult); ok {
 		return m.receivePage(result)
 	}

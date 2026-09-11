@@ -105,7 +105,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
 		return m, nil
-	case thoughts.Result, thoughts.PageResult:
+	case thoughts.Result, thoughts.PageResult, thoughts.CountResult:
 		var cmd tea.Cmd
 		m.thoughts, cmd = m.thoughts.Update(message)
 		return m, cmd
@@ -177,7 +177,7 @@ func (m Model) updateEntities(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if ok && row.kind == entityThoughts {
 				m.screen = screenAllThoughts
-				cmd := m.thoughts.OpenAll()
+				cmd := m.thoughts.OpenAll(m.metrics)
 				return m, cmd
 			}
 		}

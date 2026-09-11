@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,54 @@ import (
 )
 
 func TestModel_AllThoughts(t *testing.T) {
+	t.Run("Home and r refresh external count changes and reject superseded count replies", func(t *testing.T) {
+		counts := &metricsStub{total: 230}
+		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
+		m.entityList.Select(1)
+		m, cmd := rootUpdate(m, enterKey())
+		batch := cmd().(tea.BatchMsg)
+		old := batch[1]() // Execute the real count command, then delay delivery.
+		m = applyCommand(t, m, batch[0])
+		for _, change := range []struct {
+			key   tea.KeyPressMsg
+			total int64
+		}{
+			{tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}), 231},
+			{runeKey('r'), 229},
+		} {
+			counts.total = change.total // External insert/delete reported by metrics.
+			m = runModelCommand(t, m, change.key)
+			before := m.View().Content
+			m, _ = rootUpdate(m, old)
+			if m.View().Content != before || !strings.Contains(before, fmt.Sprintf("\n%d thoughts\n", change.total)) {
+				t.Fatal("refresh failed to replace the total or accepted a superseded count")
+			}
+		}
+	})
+	t.Run("late count cannot affect a reopened All Thoughts session or Misc", func(t *testing.T) {
+		counts := &metricsStub{total: 230}
+		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
+		m.entityList.Select(1)
+		m, cmd := rootUpdate(m, enterKey())
+		old := cmd().(tea.BatchMsg)[1]()
+		m, _ = rootUpdate(m, escapeKey())
+		counts.total = 1
+		m = runModelCommand(t, m, enterKey())
+		before := m.View().Content
+		m, _ = rootUpdate(m, old)
+		if m.View().Content != before || !strings.Contains(before, "\n1 thought\n") {
+			t.Fatal("old count changed reopened collection")
+		}
+		m, _ = rootUpdate(m, escapeKey())
+		m.screen = screenMiscThoughts
+		cmd = m.thoughts.OpenUnassigned()
+		m = applyCommand(t, m, cmd)
+		before = m.View().Content
+		m, _ = rootUpdate(m, old)
+		if m.View().Content != before {
+			t.Fatal("old count changed Misc")
+		}
+	})
 	t.Run("uses the same colored heading as the Subjects picker", func(t *testing.T) {
 		m := newRootTestModel()
 		m.entityList.Select(1)
@@ -31,7 +80,7 @@ func TestModel_AllThoughts(t *testing.T) {
 		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, service, &metricsStub{}, logging.Nop())
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
 		m, cmd := rootUpdate(m, enterKey())
-		old := cmd() // Real command result, deliberately held across navigation.
+		old := cmd().(tea.BatchMsg)[0]() // Actual page reply held across navigation.
 		m, _ = rootUpdate(m, escapeKey())
 		if m.screen != screenEntities {
 			t.Fatal("Escape did not leave pending list")
@@ -40,7 +89,7 @@ func TestModel_AllThoughts(t *testing.T) {
 			t.Fatal(err)
 		}
 		m, cmd = rootUpdate(m, enterKey())
-		m, _ = rootUpdate(m, cmd())
+		m = applyCommand(t, m, cmd)
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
 		before := m.View().Content
 		m, _ = rootUpdate(m, old)

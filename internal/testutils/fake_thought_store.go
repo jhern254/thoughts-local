@@ -17,6 +17,19 @@ func NewFakeThoughtStore() *FakeThoughtStore {
 	return &FakeThoughtStore{thoughts: make(map[int64]data.Thought)}
 }
 
+func (s *FakeThoughtStore) CountThoughts(ctx context.Context, userID string) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	var count int64
+	for _, item := range s.thoughts {
+		if item.UserID == userID {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (s *FakeThoughtStore) CreateThought(ctx context.Context, thought *data.Thought) (*data.Thought, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

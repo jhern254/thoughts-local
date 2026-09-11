@@ -1,6 +1,7 @@
 package thoughts
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -17,6 +18,17 @@ import (
 
 const summaryLines = 3
 
+type Metrics interface {
+	CountThoughts(context.Context, string) (int64, error)
+}
+
+// CountResult has refresh ownership independent of individual cursor requests.
+type CountResult struct {
+	request uint64
+	total   int64
+	err     error
+}
+
 type summaryRow struct {
 	kind rowKind
 	item data.ThoughtSummary
@@ -29,6 +41,10 @@ type allState struct {
 	index, offset        int
 	width, height        int
 	moreOlder, moreNewer bool
+	metrics              Metrics
+	total                int64
+	countPending         bool
+	countErr             error
 }
 
 // PageResult belongs to one request/session, like the existing detail results.
@@ -54,9 +70,10 @@ func (m Model) SelectedSubjectName() string {
 	return "Subject"
 }
 
-func (m *Model) OpenAll() tea.Cmd {
+func (m *Model) OpenAll(metrics Metrics) tea.Cmd {
 	m.Reset()
 	m.allThoughts = true
+	m.all.metrics = metrics
 	return m.latestThoughts()
 }
 
@@ -64,7 +81,25 @@ func (m *Model) latestThoughts() tea.Cmd {
 	m.all.rows = []summaryRow{{kind: rowCreate}}
 	m.all.index, m.all.offset = 0, 0
 	m.all.moreOlder, m.all.moreNewer = false, false
-	return m.browseThoughts(data.ThoughtPageRequest{}, 0)
+	m.countRequest++
+	m.all.countPending, m.all.countErr = true, nil
+	request, ctx, userID, metrics := m.countRequest, m.ctx, m.userID, m.all.metrics
+	count := func() tea.Msg {
+		total, err := metrics.CountThoughts(ctx, userID)
+		return CountResult{request: request, total: total, err: err}
+	}
+	return tea.Batch(m.browseThoughts(data.ThoughtPageRequest{}, 0), count)
+}
+
+func (m Model) receiveCount(result CountResult) (Model, tea.Cmd) {
+	if !m.allThoughts || result.request != m.countRequest {
+		return m, nil
+	}
+	m.all.total, m.all.countErr, m.all.countPending = result.total, result.err, false
+	if category, emit := failure.Classify(logging.ThoughtCountAll, result.err); emit {
+		m.logger.Failure(logging.ThoughtCountAll, category)
+	}
+	return m, nil
 }
 
 func (m *Model) browseThoughts(query data.ThoughtPageRequest, move int) tea.Cmd {
@@ -211,7 +246,6 @@ func summaryText(value string) string {
 func (m Model) viewAll(status string) string {
 	s := m.all
 	lines := make([]string, 0, len(s.rows)*summaryLines)
-	count := 0
 	for index, row := range s.rows {
 		titleStyle, descStyle := m.itemStyles.NormalTitle, m.itemStyles.NormalDesc
 		if index == s.index {
@@ -219,7 +253,6 @@ func (m Model) viewAll(status string) string {
 		}
 		title, description := "Create thought…", "Write a new thought"
 		if row.kind == rowRecord {
-			count++
 			subject := "Misc"
 			if row.item.SubjectName != nil {
 				subject = summaryText(*row.item.SubjectName)
@@ -237,8 +270,14 @@ func (m Model) viewAll(status string) string {
 		visible = append(visible, "")
 	}
 	label := "thoughts"
-	if count == 1 {
+	if s.total == 1 {
 		label = "thought"
 	}
-	return strings.Join(visible, "\n") + fmt.Sprintf("\n%d %s\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest", count, label, strings.TrimSpace(status))
+	count := fmt.Sprintf("%d %s", s.total, label)
+	if s.countPending {
+		count = "Counting thoughts…"
+	} else if s.countErr != nil {
+		count = "Thought count unavailable"
+	}
+	return strings.Join(visible, "\n") + fmt.Sprintf("\n%s\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest", count, strings.TrimSpace(status))
 }

@@ -133,10 +133,16 @@ func newRootTestModel() Model {
 }
 
 type metricsStub struct {
+	total     int64
+	totalErr  error
 	miscCount int64
 	miscErr   error
 	counts    []data.SubjectThoughtCount
 	err       error
+}
+
+func (s *metricsStub) CountThoughts(context.Context, string) (int64, error) {
+	return s.total, s.totalErr
 }
 
 func (s *metricsStub) CountUnassignedThoughts(context.Context, string) (int64, error) {

@@ -29,6 +29,7 @@ type SubjectService interface {
 }
 
 type MetricsService interface {
+	CountThoughts(context.Context, string) (int64, error)
 	CountUnassignedThoughts(context.Context, string) (int64, error)
 	ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCount, error)
 }

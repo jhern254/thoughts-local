@@ -26,15 +26,29 @@ func allModel(t *testing.T, count int) Model {
 		}
 	}
 	m := New(t.Context(), "u", thought.NewService(store), logging.Nop())
-	cmd := m.OpenAll()
-	m, _ = m.Update(cmd())
+	cmd := m.OpenAll(store)
+	return allCommand(m, cmd)
+}
+
+func allCommand(m Model, cmd tea.Cmd) Model {
+	if cmd == nil {
+		return m
+	}
+	message := cmd()
+	if batch, ok := message.(tea.BatchMsg); ok {
+		for _, child := range batch {
+			m = allCommand(m, child)
+		}
+		return m
+	}
+	m, _ = m.Update(message)
 	return m
 }
 
 func allKey(m Model, code rune) Model {
 	m, cmd := m.Update(key(code))
 	if cmd != nil {
-		m, _ = m.Update(cmd())
+		m = allCommand(m, cmd)
 	}
 	return m
 }
@@ -202,7 +216,7 @@ func TestModel_AllThoughts(t *testing.T) {
 		m, cmd := m.Update(key(tea.KeyDown))
 		old := cmd()
 		m, cmd = m.Update(key(tea.KeyHome))
-		m, _ = m.Update(cmd())
+		m = allCommand(m, cmd)
 		m, _ = m.Update(old)
 		if len(m.all.rows) != 51 || m.all.index != 0 || m.loading {
 			t.Fatal("old reply replaced refreshed list")

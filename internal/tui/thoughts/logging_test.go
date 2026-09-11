@@ -12,6 +12,7 @@ import (
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/testutils"
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
@@ -42,8 +43,8 @@ func TestModel_FailurePrivacy(t *testing.T) {
 		}
 		private := fmt.Errorf("PRIVATE-BROWSE-MARKER: %w", data.ErrDatabaseBusy)
 		m := New(t.Context(), "u", failingService{err: private}, logger)
-		cmd := m.OpenAll()
-		m, _ = m.Update(cmd())
+		cmd := m.OpenAll(testutils.NewFakeThoughtStore())
+		m = allCommand(m, cmd)
 		if m.err != private || m.loading || !m.Browsing() {
 			t.Fatal("failure lost original error or navigation")
 		}

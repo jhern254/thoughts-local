@@ -14,6 +14,24 @@ type storeStub struct {
 	userID string
 }
 
+func (s *storeStub) CountThoughts(ctx context.Context, u string) (int64, error) {
+	s.ctx, s.userID = ctx, u
+	return 230, s.err
+}
+
+func TestService_CountThoughts(t *testing.T) {
+	t.Run("preserves scope total and original error", func(t *testing.T) {
+		for _, err := range []error{nil, errors.New("store failure")} {
+			store := &storeStub{err: err}
+			ctx := t.Context()
+			count, gotErr := NewService(store).CountThoughts(ctx, "u")
+			if store.ctx != ctx || store.userID != "u" || count != 230 || gotErr != err {
+				t.Fatalf("got count %d, error %v, scope %q; want 230, %v, u", count, gotErr, store.userID, err)
+			}
+		}
+	})
+}
+
 func (s *storeStub) ThoughtCountsBySubject(ctx context.Context, u string) ([]data.SubjectThoughtCount, error) {
 	s.ctx, s.userID = ctx, u
 	return []data.SubjectThoughtCount{{SubjectID: 7, Count: 2}}, s.err
