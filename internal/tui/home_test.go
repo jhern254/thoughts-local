@@ -132,8 +132,8 @@ func TestModel_EventsHome(t *testing.T) {
 	}
 	t.Run("boots into owned Events data and wraps horizontal navigation both ways", func(t *testing.T) {
 		m, events := newHome(t)
-		if events.user != "home-user" || !strings.Contains(m.View().Content, "Events") || strings.Contains(m.View().Content, "home-user") {
-			t.Fatal("home did not use bootstrapped user or leaked header metadata")
+		if events.user != "home-user" || !strings.Contains(m.View().Content, "Events") || !strings.HasPrefix(m.View().Content, "Local user: home-user\n") {
+			t.Fatal("home did not use or display bootstrapped user")
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 		for _, key := range []rune{tea.KeyRight, tea.KeyLeft} {

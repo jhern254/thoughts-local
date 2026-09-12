@@ -97,8 +97,8 @@ func TestTUI_RuntimeLifecycle(t *testing.T) {
 		}
 		app.runProgram = func(_ context.Context, model tea.Model, _ io.Reader, _ io.Writer) error {
 			programCalls++
-			if view := model.View().Content; !strings.Contains(view, "Events") || strings.Contains(view, "local-user-id") {
-				t.Fatalf("got view %q, want Events home without local user ID", view)
+			if view := model.View().Content; !strings.Contains(view, "Events") || !strings.HasPrefix(view, "Local user: local-user-id\n") {
+				t.Fatalf("got view %q, want local user above Events home", view)
 			}
 			return nil
 		}
