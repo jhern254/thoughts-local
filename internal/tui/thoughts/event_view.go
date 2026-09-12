@@ -8,6 +8,9 @@ import (
 	"github.com/jhern254/go-thoughts/internal/timeline"
 )
 
+// Fixed presentation label until selectable event-thought ordering is implemented.
+const eventThoughtOrderLabel = "Newest first"
+
 // TimelineReader supplies a resolved event interval; the thought picker owns
 // the same summary window, selection and detail as the collection screen.
 type TimelineReader interface {

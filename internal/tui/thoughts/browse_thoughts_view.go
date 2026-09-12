@@ -202,11 +202,7 @@ func (m Model) receiveBrowseThoughts(result BrowseThoughtsResult) (Model, tea.Cm
 			break
 		}
 	}
-	if m.browseThoughts.eventScope != nil {
-		m.browseThoughts.offset += (len(m.browseThoughts.rows) - oldLength - m.browseThoughts.index + oldIndex) * summaryLines
-	} else {
-		m.browseThoughts.offset += (m.browseThoughts.index - oldIndex) * summaryLines
-	}
+	m.browseThoughts.offset += (m.browseThoughts.index - oldIndex) * summaryLines
 	m.browseThoughts.index = min(max(0, m.browseThoughts.index+result.move), max(0, len(m.browseThoughts.rows)-1))
 	m.browseThoughts.keepVisible()
 	return m, nil
@@ -246,9 +242,6 @@ func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 		cmd := m.getThought(row.item.ThoughtID)
 		return m, cmd
 	}
-	if m.browseThoughts.eventScope != nil {
-		move = -move
-	}
 	if move == 0 {
 		return m, nil
 	}
@@ -268,11 +261,7 @@ func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (s *browseThoughtsState) keepVisible() {
-	index := s.index
-	if s.eventScope != nil {
-		index = max(0, len(s.rows)-1-index)
-	}
-	top := index * summaryLines
+	top := s.index * summaryLines
 	if s.eventScope != nil {
 		s.offset = max(0, s.offset/summaryLines*summaryLines)
 		if top < s.offset {
@@ -306,12 +295,7 @@ func summaryText(value string) string {
 func (m Model) renderBrowseThoughtsView(status string) string {
 	s := m.browseThoughts
 	lines := make([]string, 0, len(s.rows)*summaryLines)
-	for visualIndex := range s.rows {
-		index := visualIndex
-		if s.eventScope != nil {
-			index = len(s.rows) - 1 - visualIndex
-		}
-		row := s.rows[index]
+	for index, row := range s.rows {
 		titleStyle, descStyle := m.itemStyles.NormalTitle, m.itemStyles.NormalDesc
 		if index == s.index {
 			titleStyle, descStyle = m.itemStyles.SelectedTitle, m.itemStyles.SelectedDesc
@@ -342,6 +326,7 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		count = "Thought count unavailable"
 	}
 	if s.eventScope != nil {
+		count += " · " + eventThoughtOrderLabel
 		if len(s.rows) == 0 && !m.loading && m.err == nil {
 			visible = []string{"No thoughts yet"}
 		}

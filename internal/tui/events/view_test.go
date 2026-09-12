@@ -15,6 +15,16 @@ import (
 )
 
 func TestModel_Layout(t *testing.T) {
+	t.Run("heading gap fits within the existing height budget", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		for _, height := range []int{20, 27} {
+			m.Resize(80, height)
+			lines := strings.Split(m.View(), "\n")
+			if len(lines) != height || lines[1] != "" || !strings.Contains(lines[len(lines)-1], "q: quit") {
+				t.Fatalf("got %d lines at height %d, want heading gap and visible footer", len(lines), height)
+			}
+		}
+	})
 	t.Run("compact adjacent cards share one boundary label with a small gap", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.day = m.day.AddDate(0, 0, -1)

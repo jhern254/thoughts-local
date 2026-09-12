@@ -276,7 +276,7 @@ func (m *Model) clampOffset() {
 	// viewport rows belong below it, not before it as unrelated earlier hours.
 	m.offset = min(max(0, m.offset), max(0, len(lines)-1))
 }
-func (m Model) bodyHeight() int { return max(1, m.height-3) }
+func (m Model) bodyHeight() int { return max(1, m.height-4) }
 func (m *Model) revealSelected() {
 	if len(m.items) == 0 {
 		m.clampOffset()
@@ -338,5 +338,5 @@ func (m Model) View() string {
 	if m.inside {
 		help = "r: refresh event • q: quit"
 	}
-	return heading + "\n" + strings.Join(visible, "\n") + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")
+	return heading + "\n\n" + strings.Join(visible, "\n") + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")
 }
