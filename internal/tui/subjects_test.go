@@ -500,7 +500,7 @@ func TestSubjectModel_Mutations(t *testing.T) {
 }
 
 func newSubjectTestModel(service SubjectService) Model {
-	return NewModel(context.Background(), &data.User{UserID: "local-user-id"}, service, thought.NewService(testutils.NewFakeThoughtStore()), &metricsStub{}, logging.Nop())
+	return newScreenTestModel(context.Background(), &data.User{UserID: "local-user-id"}, service, thought.NewService(testutils.NewFakeThoughtStore()), &metricsStub{}, logging.Nop())
 }
 
 func openSubjects(t *testing.T, model Model) Model {

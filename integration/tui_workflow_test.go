@@ -72,7 +72,8 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 		})
 
 		wantUserID := runtime.LocalUser().UserID
-		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logging.Nop())
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
+		model = updateTUIModel(model, tuiKey(tea.KeyTab)) // Focus entity navigation.
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tuiKey(tea.KeyEnter))
 		for _, value := range wantName {
@@ -119,7 +120,8 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logger)
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logger)
+		model = updateTUIModel(model, tuiKey(tea.KeyTab)) // Focus entity navigation.
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
@@ -176,7 +178,8 @@ func TestSubjectTUIWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logger)
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logger)
+		model = updateTUIModel(model, tuiKey(tea.KeyTab)) // Focus entity navigation.
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))

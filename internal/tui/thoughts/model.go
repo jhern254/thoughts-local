@@ -40,6 +40,7 @@ const (
 )
 
 type Model struct {
+	owner      *int
 	ctx        context.Context
 	userID     string
 	service    Service
@@ -62,7 +63,11 @@ type Model struct {
 	browseThoughts       browseThoughtsState
 	countRequest         uint64
 	itemStyles           list.DefaultItemStyles
+	blurred              bool
 }
+
+// SetFocused changes selection styling without changing the selected row.
+func (m *Model) SetFocused(focused bool) { m.blurred = !focused }
 
 type rowKind uint8
 
@@ -108,6 +113,7 @@ func (r row) FilterValue() string { return r.Title() }
 // Result carries one asynchronous service result with its request context.
 // Only the component constructs and interprets these messages.
 type Result struct {
+	owner     *int
 	request   uint64
 	operation logging.Operation
 	items     []data.Thought
@@ -128,7 +134,7 @@ func New(ctx context.Context, userID string, service Service, logger logging.Log
 	input.MaxWidth = 0
 	view := viewport.New()
 	view.SoftWrap = true
-	m := Model{ctx: ctx, userID: userID, service: service, logger: logger, list: items, input: input, viewport: view, itemStyles: delegate.Styles}
+	m := Model{owner: new(int), ctx: ctx, userID: userID, service: service, logger: logger, list: items, input: input, viewport: view, itemStyles: delegate.Styles}
 	m.Resize(80, 14)
 	return m
 }
@@ -188,6 +194,7 @@ func (m *Model) listThoughts() tea.Cmd {
 	m.request++
 	m.loading = true
 	m.err = nil
+	owner := m.owner
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
 	return func() tea.Msg {
 		var items []data.Thought
@@ -197,7 +204,7 @@ func (m *Model) listThoughts() tea.Cmd {
 		} else {
 			items, err = service.List(ctx, userID, *subjectID)
 		}
-		return Result{request: request, operation: logging.ThoughtList, items: items, err: err}
+		return Result{owner: owner, request: request, operation: logging.ThoughtList, items: items, err: err}
 	}
 }
 
@@ -205,10 +212,11 @@ func (m *Model) getThought(id int64) tea.Cmd {
 	m.request++
 	m.loading = true
 	m.err = nil
+	owner := m.owner
 	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
 	return func() tea.Msg {
 		item, err := service.Get(ctx, userID, id)
-		return Result{request: request, operation: logging.ThoughtGet, item: item, err: err}
+		return Result{owner: owner, request: request, operation: logging.ThoughtGet, item: item, err: err}
 	}
 }
 
@@ -216,10 +224,11 @@ func (m *Model) createThought(body string) tea.Cmd {
 	m.request++
 	m.loading = true
 	m.err = nil
+	owner := m.owner
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
 	return func() tea.Msg {
 		item, err := service.Create(ctx, userID, body, subjectID, time.Time{})
-		return Result{request: request, operation: logging.ThoughtCreate, item: item, err: err}
+		return Result{owner: owner, request: request, operation: logging.ThoughtCreate, item: item, err: err}
 	}
 }
 
@@ -236,7 +245,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 	}
 	if result, ok := msg.(Result); ok {
-		if result.request != m.request {
+		if result.owner != m.owner || result.request != m.request {
 			return m, nil
 		}
 		m.loading = false

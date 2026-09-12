@@ -17,8 +17,8 @@ import (
 func TestModel_BrowseThoughtsView(t *testing.T) {
 	t.Run("Home and r refresh external count changes and reject superseded count replies", func(t *testing.T) {
 		counts := &metricsStub{total: 230}
-		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
-		m.entityList.Select(1)
+		m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
+		m.selectedEntity = entityThoughts
 		m, cmd := rootUpdate(m, enterKey())
 		batch := cmd().(tea.BatchMsg)
 		old := batch[1]() // Execute the real count command, then delay delivery.
@@ -41,8 +41,8 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 	})
 	t.Run("late count cannot affect a reopened thought browse view session or Misc", func(t *testing.T) {
 		counts := &metricsStub{total: 230}
-		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
-		m.entityList.Select(1)
+		m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
+		m.selectedEntity = entityThoughts
 		m, cmd := rootUpdate(m, enterKey())
 		old := cmd().(tea.BatchMsg)[1]()
 		m, _ = rootUpdate(m, escapeKey())
@@ -65,7 +65,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 	})
 	t.Run("uses the same colored heading as the Subjects picker", func(t *testing.T) {
 		m := newRootTestModel()
-		m.entityList.Select(1)
+		m.selectedEntity = entityThoughts
 		m = runModelCommand(t, m, enterKey())
 		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
 		if !strings.HasPrefix(m.View().Content, heading+"\n") {
@@ -77,12 +77,12 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		if _, err := service.Create(t.Context(), "u", "first observation", nil, time.Time{}); err != nil {
 			t.Fatal(err)
 		}
-		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, service, &metricsStub{}, logging.Nop())
-		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, service, &metricsStub{}, logging.Nop())
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
 		m, cmd := rootUpdate(m, enterKey())
 		old := cmd().(tea.BatchMsg)[0]() // Actual page reply held across navigation.
 		m, _ = rootUpdate(m, escapeKey())
-		if m.screen != screenEntities {
+		if m.screen != screenEvents {
 			t.Fatal("Escape did not leave pending list")
 		}
 		if _, err := service.Create(t.Context(), "u", "newer observation", nil, time.Now().Add(time.Hour)); err != nil {
@@ -116,7 +116,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 	})
 	t.Run("Create treats q as text while control C always quits", func(t *testing.T) {
 		m := newRootTestModel()
-		m.entityList.Select(1)
+		m.selectedEntity = entityThoughts
 		m = runModelCommand(t, m, enterKey())
 		m, _ = rootUpdate(m, enterKey())
 		m, cmd := rootUpdate(m, runeKey('q'))

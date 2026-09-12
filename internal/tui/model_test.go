@@ -13,9 +13,9 @@ import (
 )
 
 func TestModel_View(t *testing.T) {
-	t.Run("renders local user and entity menu", func(t *testing.T) {
+	t.Run("renders Events heading and entity navigation", func(t *testing.T) {
 		handle := "local"
-		model := NewModel(
+		model := newScreenTestModel(
 			context.Background(),
 			&data.User{UserID: "local-user-id", Handle: &handle},
 			&subjectServiceStub{},
@@ -24,8 +24,17 @@ func TestModel_View(t *testing.T) {
 		)
 
 		view := model.View().Content
+		if got := strings.Count(view, "\n") + 1; got > defaultHeight {
+			t.Fatalf("got %d startup rows, want at most %d including panel divider", got, defaultHeight)
+		}
+		if !model.View().AltScreen {
+			t.Fatal("home should use a fresh alternate screen")
+		}
 
-		for _, want := range []string{"Thoughts", "local-user-id", "local", "Subjects"} {
+		if !strings.HasPrefix(view, "Local user: local (local-user-id)\n\n") {
+			t.Fatalf("got header %q, want local user above Events", view)
+		}
+		for _, want := range []string{"Events", "Thoughts", "Subjects"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("view %q does not contain %q", view, want)
 			}
@@ -48,7 +57,7 @@ func TestModel_Update(t *testing.T) {
 		}
 	})
 
-	t.Run("returns from Subjects to entity menu", func(t *testing.T) {
+	t.Run("returns from Subjects to Events home", func(t *testing.T) {
 		model := newRootTestModel()
 		updated, _ := model.Update(enterKey())
 		model = updated.(Model)
@@ -56,11 +65,11 @@ func TestModel_Update(t *testing.T) {
 		updated, command := model.Update(escapeKey())
 		got := updated.(Model)
 
-		if command != nil {
-			t.Fatal("got command, want cached entity menu")
+		if command == nil {
+			t.Fatal("got nil command, want home refresh")
 		}
-		if got.screen != screenEntities {
-			t.Fatalf("got screen %v, want entity menu", got.screen)
+		if got.screen != screenEvents {
+			t.Fatalf("got screen %v, want Events home", got.screen)
 		}
 	})
 
@@ -123,7 +132,7 @@ func TestModel_ThoughtQuitKeys(t *testing.T) {
 }
 
 func newRootTestModel() Model {
-	return NewModel(
+	return newScreenTestModel(
 		context.Background(),
 		&data.User{UserID: "local-user-id"},
 		&subjectServiceStub{},

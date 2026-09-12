@@ -90,6 +90,63 @@ fresh unit tests, integration tests, and build. Keep the required hooks enabled.
 For timing comparisons, run tests without other test/build processes competing
 for resources, and measure compilation separately from test execution.
 
+### TUI acceptance and visual testing
+
+Test the intended interaction and appearance, not just the current implementation.
+Passing tests or snapshots alone do not establish visual correctness. Use this
+workflow for TUI changes, scaling coverage to the behavior and risk involved:
+
+1. **Define acceptance rules before implementation.** Describe what the user
+   sees before and after the affected actions, including focus, selection,
+   scroll position, and return navigation. For substantial layouts, agree on a
+   small annotated example. State spatial relationships explicitly: a calendar
+   card is anchored at its start, touching intervals share one boundary label, and
+   expansion preserves the time column while moving later content down.
+2. **Write focused, deterministic presentation tests.** Reuse existing fakes;
+   fix terminal dimensions, clock, timezone, and fixture data. Assert observable
+   relationships in rendered rows/columns as well as state, not merely that
+   labels exist. Derive expectations from the acceptance rules, not the layout
+   helper being tested. Use terminal cell widths rather than byte counts for
+   Unicode geometry. Keep database semantics in SQLite tests; do not add a
+   database setup for each visual case.
+3. **Exercise transitions through root dispatch where routing matters.** Send
+   actual keys and execute the returned data commands, including normal Bubbles
+   batches. Verify the resulting view, active panel, selection, and scroll
+   anchor. For async ownership regressions, obtain a real command result and
+   deliberately deliver it after navigation or a newer request. Deliver clock
+   ticks and controlled replies explicitly instead of sleeping; do not run
+   recurring timers indefinitely or add a generic test message framework.
+4. **Use a few reviewed snapshots as a supplement.** Keep representative normal
+   and narrow layouts. Inspect every changed golden against the acceptance
+   rules; never regenerate expectations solely to make tests pass. Preserve
+   whitespace when testing geometry. ANSI-stripped text cannot verify color or
+   focus highlighting; use focused style assertions and terminal review for
+   those behaviors.
+5. **Run the actual app before handing off visible changes.** Use synthetic data
+   in a disposable migrated database, reusing the seeded demo when available.
+   For substantial screens, inspect normal and narrow terminal sizes and resize
+   during interaction. Walk through entry, panel switching, scrolling,
+   expansion/detail and return, and any changed create/save/cancel flow. Include
+   empty, populated, and overflow cases as relevant—not just one happy-path
+   record. Choose feature-specific boundaries, such as adjacent/gapped events,
+   midnight, or long Unicode input; avoid an exhaustive cross-product. Test
+   loading/error states with controlled fakes. Check displayed help and focus
+   styling; verify terminal restoration when changing startup/quit behavior.
+6. **Review and report evidence.** Inspect terminal captures before and after
+   the important actions; use a short terminal recording when timing, redraw,
+   or flicker matters. A recording without review is not validation. Use only
+   synthetic content, and keep transient captures outside the source tree.
+   Report the scenarios, dimensions, checks actually run, and any unverified
+   behavior or unavailable terminal tooling. Do not claim a visual review from
+   string assertions alone. Turn manually discovered bugs into focused
+   regressions before fixing them where practical, then repeat the affected
+   walkthrough and run the required repository checks.
+
+Prefer existing Go tests and terminal tools over a new UI-testing framework.
+A small key or wording correction needs its affected interaction checked, not
+an unrelated full-screen test matrix. New tooling or broad harness work should
+be justified separately rather than bundled into a feature PR.
+
 ### Layered test structure
 
 Use each test layer for a distinct purpose:

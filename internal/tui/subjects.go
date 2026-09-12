@@ -343,9 +343,8 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			if !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered() {
 				m.subjects.filter.Invalidate()
-				m.screen = screenEntities
 				m.subjects.err = nil
-				return m, nil
+				return m.openHome()
 			}
 		case "q":
 			if !m.subjects.list.SettingFilter() {
