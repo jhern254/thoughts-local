@@ -113,7 +113,7 @@ func TestModel_DayArrival(t *testing.T) {
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
 		m, cmd := m.Update(eventKey("["))
 		m = execute(t, m, cmd)
-		if m.inside || m.expanded != 0 || m.index != 0 || !strings.HasPrefix(strings.Split(ansi.Strip(m.View()), "\n")[1], "09:00 PM  ╭") {
+		if m.inside || m.expanded != 0 || m.index != 0 || !strings.HasPrefix(strings.Split(ansi.Strip(m.View()), "\n")[2], "09:00 PM  ╭") {
 			t.Fatalf("got day view %q, want first event visible with calendar focus", ansi.Strip(m.View()))
 		}
 	})
@@ -182,27 +182,27 @@ func fixture(t *testing.T) (Model, *eventStub, *viewStore) {
 }
 
 func TestModel_EventThoughtPicker(t *testing.T) {
-	t.Run("starts newest at bottom and scrolls beyond the bounded window in both directions", func(t *testing.T) {
+	t.Run("starts newest at top and scrolls beyond the bounded window in both directions", func(t *testing.T) {
 		m, _, v := fixture(t)
 		m, cmd := m.Update(eventKey("enter"))
 		m = execute(t, m, cmd)
 		view := ansi.Strip(m.View())
-		if !strings.Contains(view, "230 thoughts") || !strings.Contains(view, "preview 229") || strings.Contains(view, "Create thought") {
+		if !strings.Contains(view, "230 thoughts · Newest first") || !strings.Contains(view, "preview 229") || strings.Contains(view, "Create thought") {
 			t.Fatalf("unexpected expanded view:\n%s", view)
 		}
-		if strings.Index(view, "preview 228") > strings.Index(view, "preview 229") {
-			t.Fatal("not chronological")
+		if strings.Index(view, "preview 229") > strings.Index(view, "preview 228") || !strings.Contains(view, "││  Misc  preview 229") {
+			t.Fatal("newest thought is not first and selected")
 		}
 		counts := v.counts
 		for range 210 {
-			m, cmd = m.Update(eventKey("up"))
+			m, cmd = m.Update(eventKey("down"))
 			m = execute(t, m, cmd)
 		}
 		if v.counts != counts || !strings.Contains(ansi.Strip(m.View()), "preview 019") {
 			t.Fatal("older scrolling lost selection or recounted")
 		}
 		for range 210 {
-			m, cmd = m.Update(eventKey("down"))
+			m, cmd = m.Update(eventKey("up"))
 			m = execute(t, m, cmd)
 		}
 		if !strings.Contains(ansi.Strip(m.View()), "preview 229") || v.counts != counts {
@@ -244,8 +244,8 @@ func TestModel_EventThoughtPicker(t *testing.T) {
 		m, _, _ := fixture(t)
 		m, cmd := m.Update(eventKey("enter"))
 		m = execute(t, m, cmd)
-		m, _ = m.Update(eventKey("up"))
-		m, _ = m.Update(eventKey("up"))
+		m, _ = m.Update(eventKey("down"))
+		m, _ = m.Update(eventKey("down"))
 		before := m.View()
 		m, cmd = m.Update(eventKey("r"))
 		m = execute(t, m, cmd)

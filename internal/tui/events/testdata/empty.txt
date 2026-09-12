@@ -1,4 +1,5 @@
  Events  September 11, 2026
+
 12:00 AM  │
           │
           │
@@ -20,7 +21,6 @@
           │
           │
 04:00 AM  │
-          │
           │
           │
 No events on this day. n: start event
