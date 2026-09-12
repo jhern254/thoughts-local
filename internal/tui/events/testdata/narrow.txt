@@ -1,0 +1,20 @@
+ Events  September 11, 2026
+╭────────────────────────────────╮
+│Reading · 1h · ongoing          │
+│Started Sep 11 10:37 PDT        │
+│230 thoughts                    │
+│   Misc  preview 227            │
+│  Thought 228 • Sep 11, 2026 10…│
+│                                │
+│   Misc  preview 228            │
+│  Thought 229 • Sep 11, 2026 10…│
+│                                │
+││  Misc  preview 229            │
+││ Thought 230 • Sep 11, 2026 10…│
+│                                │
+│                                │
+│↑/↓: thoughts • Enter: open • E…│
+╰────────────────────────────────╯
+11:00 PDT -07:00
+↑/↓: thoughts • PgUp/PgDn: scroll • Ent…
+r: refresh event • q: quit

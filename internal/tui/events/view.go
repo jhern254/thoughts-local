@@ -1,0 +1,238 @@
+package events
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+	"unicode"
+
+	"charm.land/bubbles/v2/list"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
+)
+
+func duration(start, end time.Time, ongoing bool) string {
+	minutes := int64(max(0, end.Sub(start)) / time.Minute)
+	if minutes == 0 {
+		if ongoing {
+			return "<1m"
+		}
+		return "0m"
+	}
+	if minutes < 60 {
+		return fmt.Sprintf("%dm", minutes)
+	}
+	if minutes < 1440 {
+		if minutes%60 == 0 {
+			return fmt.Sprintf("%dh", minutes/60)
+		}
+		return fmt.Sprintf("%dh %dm", minutes/60, minutes%60)
+	}
+	return fmt.Sprintf("%dd %dh", minutes/1440, (minutes%1440)/60)
+}
+func singleLine(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.IsSpace(r) {
+			return ' '
+		}
+		return r
+	}, value)
+}
+func (m Model) count(id int64) string {
+	if m.countPending {
+		return "Counting thoughts…"
+	}
+	if m.countErr != nil {
+		return "Thought count unavailable"
+	}
+	for _, item := range m.counts {
+		if item.EventID == id {
+			if item.Count == 1 {
+				return "1 thought"
+			}
+			return fmt.Sprintf("%d thoughts", item.Count)
+		}
+	}
+	return "Thought count unavailable"
+}
+func (m Model) card(item data.Event, selected bool) string {
+	label := "Event"
+	if item.ActivityType != nil {
+		label = singleLine(*item.ActivityType)
+	}
+	end := m.clock
+	if item.EndedAt != nil {
+		end = *item.EndedAt
+	}
+	heading := label + " · " + duration(item.StartedAt, end, item.EndedAt == nil)
+	interval := displaytime.Format(item.StartedAt, "Jan 2 15:04 MST")
+	if item.EndedAt == nil {
+		heading += " · ongoing"
+		interval = "Started " + interval
+	} else {
+		interval += "–" + displaytime.Format(end, "Jan 2 15:04 MST")
+	}
+	if item.StartedAt.Before(m.day) {
+		interval = "← " + interval
+	}
+	if end.After(m.day.AddDate(0, 0, 1)) {
+		interval += " →"
+	}
+	width := max(1, m.width-8)
+	heading = ansi.Truncate(heading, width, "…")
+	interval = ansi.Truncate(interval, width, "…")
+	content := heading + "\n" + interval + "\n"
+	if item.EventID == m.expanded {
+		if m.opening {
+			content += "Loading thoughts…"
+		} else if m.err != nil {
+			content += m.message
+		} else {
+			content += m.picker.View()
+		}
+	} else {
+		if item.EndedAt == nil {
+			switch {
+			case m.latestPending:
+				content += "Loading latest thought…\n"
+			case m.latestErr != nil:
+				content += "Latest thought unavailable\n"
+			case m.latest != nil:
+				content += m.picker.SummaryPreview(*m.latest, width, false) + "\n"
+			default:
+				content += "No thoughts yet\n"
+			}
+		}
+		content += m.count(item.EventID)
+	}
+	// Lip Gloss Width includes the border. Clip each logical row before
+	// wrapping so narrow cards cannot split a two-line thought preview.
+	lines := strings.Split(content, "\n")
+	for i := range lines {
+		lines[i] = ansi.Truncate(lines[i], width, "…")
+	}
+	content = strings.Join(lines, "\n")
+	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(width + 2)
+	if selected {
+		style = style.BorderForeground(lipgloss.Color("62"))
+	}
+	return style.Render(content)
+}
+
+type railEntry struct {
+	at       time.Time
+	priority int
+	id       int64
+	text     string
+	now      bool
+}
+
+// layout returns actual rendered row positions, so expansion and the live
+// marker share the same chronological rail without assuming fixed card heights.
+func (m Model) layout() ([]string, map[int64]int, int) {
+	entries := []railEntry{}
+	until := m.day.AddDate(0, 0, 1)
+	for hour := m.day; hour.Before(until); hour = hour.Add(time.Hour) {
+		entries = append(entries, railEntry{at: hour, text: displaytime.Format(hour, "15:04 MST -07:00")})
+	}
+	for i, item := range m.items {
+		at := item.StartedAt
+		if at.Before(m.day) {
+			at = m.day
+		}
+		entries = append(entries, railEntry{at: at, priority: 1, id: item.EventID, text: m.card(item, i == m.index)})
+	}
+	if !m.clock.Before(m.day) && m.clock.Before(until) {
+		entries = append(entries, railEntry{at: m.clock, priority: 2, now: true, text: "── Now · " + displaytime.Format(m.clock, "15:04 MST") + " ──"})
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].at.Equal(entries[j].at) {
+			return entries[i].priority < entries[j].priority
+		}
+		return entries[i].at.Before(entries[j].at)
+	})
+	lines := []string{}
+	positions := make(map[int64]int)
+	nowLine := -1
+	for _, entry := range entries {
+		if entry.id != 0 {
+			positions[entry.id] = len(lines)
+		}
+		if entry.now {
+			nowLine = len(lines)
+		}
+		lines = append(lines, strings.Split(entry.text, "\n")...)
+	}
+	return lines, positions, nowLine
+}
+func (m *Model) clampOffset() {
+	lines, _, _ := m.layout()
+	m.offset = min(max(0, m.offset), max(0, len(lines)-m.bodyHeight()))
+}
+func (m Model) bodyHeight() int { return max(1, m.height-3) }
+func (m *Model) revealSelected() {
+	if len(m.items) == 0 {
+		m.clampOffset()
+		return
+	}
+	_, positions, _ := m.layout()
+	top := positions[m.items[m.index].EventID]
+	if top < m.offset || top >= m.offset+m.bodyHeight()-3 || m.inside {
+		m.offset = top
+	}
+	m.clampOffset()
+}
+func (m *Model) anchor() {
+	if m.day.IsZero() {
+		return
+	}
+	if m.following {
+		_, _, now := m.layout()
+		if now >= 0 {
+			m.offset = max(0, now-m.bodyHeight()+2)
+		}
+	} else if m.inside {
+		m.revealSelected()
+	}
+	m.clampOffset()
+}
+
+func (m Model) View() string {
+	styles := list.DefaultStyles(true)
+	heading := styles.Title.Render("Events") + " " + displaytime.Format(m.day, "January 2, 2006")
+	if m.width < 24 || m.height < 14 {
+		return heading + "\nResize terminal to view events."
+	}
+	if m.form.open {
+		return heading + "\n" + m.formView()
+	}
+	if m.picker.ShowingDetail() {
+		return styles.Title.Render(m.picker.SelectedSubjectName()) + "\n\n" + m.picker.View()
+	}
+	lines, _, _ := m.layout()
+	offset := min(max(0, m.offset), max(0, len(lines)-m.bodyHeight()))
+	visible := append([]string{}, lines[offset:min(len(lines), offset+m.bodyHeight())]...)
+	for len(visible) < m.bodyHeight() {
+		visible = append(visible, "")
+	}
+	status := m.message
+	if m.loading {
+		status = "Loading events…"
+	} else if len(m.items) == 0 && status == "" {
+		status = "No events on this day. n: start event"
+	}
+	if m.inside {
+		status = "↑/↓: thoughts • PgUp/PgDn: scroll • Enter: open • Esc: timeline"
+	}
+	for i := range visible {
+		visible[i] = ansi.Truncate(visible[i], m.width, "")
+	}
+	help := "Home: first • End: now • [/]: day • r: refresh • n: start • e: end • q: quit"
+	if m.inside {
+		help = "r: refresh event • q: quit"
+	}
+	return heading + "\n" + strings.Join(visible, "\n") + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")
+}

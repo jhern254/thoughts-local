@@ -60,7 +60,7 @@ func open(
 		metrics:      metrics.NewService(data.NewSQLiteMetricsStore(db)),
 		events:       event.NewService(data.NewSQLiteEventStore(db)),
 		goals:        goal.NewService(data.NewSQLiteGoalStore(db)),
-		timelineView: timeline.NewService(event.NewService(data.NewSQLiteEventStore(db)), data.NewSQLiteThoughtStore(db)),
+		timelineView: timeline.NewService(event.NewService(data.NewSQLiteEventStore(db)), data.NewSQLiteThoughtStore(db), metrics.NewService(data.NewSQLiteMetricsStore(db))),
 	}, nil
 }
 

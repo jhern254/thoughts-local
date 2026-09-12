@@ -46,7 +46,7 @@ func TestService_ListThoughts(t *testing.T) {
 					t.Fatal("event lookup lost request scope")
 				}
 				return item, nil
-			}), reader)
+			}), reader, metricsStub{})
 			calls := 0
 			s.now = func() time.Time { calls++; return time.Unix(100000, 999).In(time.FixedZone("offset", 3600)) }
 			got, err := s.ListThoughts(t.Context(), "u", 7)
@@ -63,7 +63,7 @@ func TestService_ListThoughts(t *testing.T) {
 		s := NewService(eventReaderStub(func(context.Context, string, int64) (*data.Event, error) { return nil, cause }), thoughtReaderStub(func(context.Context, string, time.Time, time.Time) ([]data.Thought, error) {
 			t.Fatal("queried thoughts after failed event lookup")
 			return nil, nil
-		}))
+		}), metricsStub{})
 		if got, err := s.ListThoughts(t.Context(), "u", 7); got != nil || err != cause {
 			t.Fatalf("got %v, %v, want nil and original failure", got, err)
 		}

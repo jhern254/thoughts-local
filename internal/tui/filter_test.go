@@ -32,7 +32,7 @@ func filterRoot(t *testing.T) Model {
 			t.Fatal(err)
 		}
 	}
-	m := NewModel(ctx, &data.User{UserID: "u"}, subjects, thoughts, &metricsStub{}, logging.Nop())
+	m := newScreenTestModel(ctx, &data.User{UserID: "u"}, subjects, thoughts, &metricsStub{}, logging.Nop())
 	// Filter ownership needs real results, not cursor animation timers.
 	m.subjects.list.FilterInput.SetVirtualCursor(false)
 	return openSubjects(t, m)
