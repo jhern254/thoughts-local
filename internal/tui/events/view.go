@@ -333,7 +333,7 @@ func (m Model) View() string {
 		status = "No events on this day. n: start event"
 	}
 	if m.inside {
-		status = "↑/↓: thoughts • PgUp/PgDn: scroll • Enter: open • Esc: collapse"
+		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
 	}
 	for i := range visible {
 		visible[i] = ansi.Truncate(visible[i], m.width, "")

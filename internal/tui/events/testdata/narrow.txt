@@ -16,5 +16,5 @@
 
 
 
-↑/↓: thoughts • PgUp/PgDn: scroll • Ent…
+←: collapse • →: open • ↑/↓: thoughts •…
 r: refresh event • q: quit

@@ -339,7 +339,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 	}
 	if m.inside {
-		if key.String() == "esc" {
+		if key.String() == "esc" || key.String() == "left" || key.String() == "h" {
 			m.inside = false
 			m.expansion++
 			m.expanded = 0
@@ -351,6 +351,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if key.String() == "r" {
 			cmd := m.openEvent(m.expanded)
 			return m, cmd
+		}
+		if key.String() == "right" || key.String() == "l" {
+			msg = tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
 		}
 		var cmd tea.Cmd
 		m.picker, cmd = m.picker.Update(msg)
