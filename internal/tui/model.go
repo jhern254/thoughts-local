@@ -40,15 +40,12 @@ const (
 	entityThoughts
 )
 
-type entityRow struct {
-	kind        entityKind
-	title       string
-	description string
+func (entity entityKind) title() string {
+	if entity == entityThoughts {
+		return "Thoughts"
+	}
+	return "Subjects"
 }
-
-func (row entityRow) Title() string       { return row.title }
-func (row entityRow) Description() string { return row.description }
-func (row entityRow) FilterValue() string { return row.title }
 
 type Model struct {
 	ctx    context.Context
@@ -56,39 +53,26 @@ type Model struct {
 	screen screen
 	logger logging.Logger
 
-	entityList    list.Model
-	entityFocused bool
-	width         int
-	events        events.Model
-	subjects      subjectState
-	thoughts      thoughts.Model
-	metrics       MetricsService
+	selectedEntity entityKind
+	entityFocused  bool
+	width          int
+	events         events.Model
+	subjects       subjectState
+	thoughts       thoughts.Model
+	metrics        MetricsService
 }
 
 func NewModel(ctx context.Context, user *data.User, subjects SubjectService, thoughtService thoughts.Service, metrics MetricsService, eventService events.Service, timelineView events.TimelineView, logger logging.Logger) Model {
-	entities := list.New([]list.Item{
-		entityRow{
-			kind:        entitySubjects,
-			title:       "Subjects",
-			description: "Browse and organize subjects",
-		},
-		entityRow{kind: entityThoughts, title: "Thoughts", description: "Browse all thoughts, newest observations first"},
-	}, list.NewDefaultDelegate(), defaultWidth, defaultHeight)
-	entities.Title = "Entities"
-	entities.SetFilteringEnabled(false)
-	entities.SetShowStatusBar(false)
-
 	model := Model{
-		ctx:        ctx,
-		user:       user,
-		screen:     screenEvents,
-		logger:     logger,
-		entityList: entities,
-		width:      defaultWidth,
-		events:     events.New(ctx, user.UserID, eventService, timelineView, thoughtService, logger),
-		subjects:   newSubjectState(subjects),
-		thoughts:   thoughts.New(ctx, user.UserID, thoughtService, logger),
-		metrics:    metrics,
+		ctx:      ctx,
+		user:     user,
+		screen:   screenEvents,
+		logger:   logger,
+		width:    defaultWidth,
+		events:   events.New(ctx, user.UserID, eventService, timelineView, thoughtService, logger),
+		subjects: newSubjectState(subjects),
+		thoughts: thoughts.New(ctx, user.UserID, thoughtService, logger),
+		metrics:  metrics,
 	}
 	model.events.Resize(defaultWidth, defaultHeight-6)
 	return model
@@ -128,7 +112,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = message.Width
 		m.events.Resize(message.Width, max(1, message.Height-6))
-		m.entityList.SetSize(message.Width, max(0, message.Height-3))
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
 		return m, nil
@@ -209,20 +192,15 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "q":
 				return m, tea.Quit
 			case "left", "right", "h", "l":
-				delta := 1
-				if key.String() == "left" || key.String() == "h" {
-					delta = -1
+				if m.selectedEntity == entitySubjects {
+					m.selectedEntity = entityThoughts
+				} else {
+					m.selectedEntity = entitySubjects
 				}
-				count := len(m.entityList.Items())
-				m.entityList.Select((m.entityList.Index() + delta + count) % count)
 				return m, nil
 			case "enter":
-				row, ok := m.entityList.SelectedItem().(entityRow)
-				if !ok {
-					return m, nil
-				}
 				m.events.Close()
-				if row.kind == entitySubjects {
+				if m.selectedEntity == entitySubjects {
 					return m.openSubjects()
 				}
 				m.screen = screenBrowseThoughts
@@ -238,11 +216,10 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) entityStrip() string {
-	selected := m.entityList.Index()
 	parts := []string{}
-	for _, index := range []int{1, 0} {
-		label := m.entityList.Items()[index].(entityRow).title
-		if selected == index && m.entityFocused {
+	for _, entity := range []entityKind{entityThoughts, entitySubjects} {
+		label := entity.title()
+		if m.selectedEntity == entity && m.entityFocused {
 			label = m.subjects.list.Styles.Title.Render(label)
 		}
 		parts = append(parts, label)
@@ -250,7 +227,7 @@ func (m Model) entityStrip() string {
 	line := strings.Join(parts, "   ")
 	if ansi.StringWidth(line) > m.width {
 		// Keep the selected entry visible instead of clipping it off-screen.
-		line = m.entityList.Items()[selected].(entityRow).title
+		line = m.selectedEntity.title()
 		if m.entityFocused {
 			line = m.subjects.list.Styles.Title.Render(line)
 		}

@@ -284,7 +284,7 @@ func (m *Model) revealSelected() {
 	lines, positions, _ := m.layout()
 	if len(m.items) > 0 {
 		top := positions[m.items[m.index].EventID]
-		if top < m.offset || top >= m.offset+m.bodyHeight()-3 || m.inside {
+		if top < m.offset || top >= m.offset+m.bodyHeight()-3 || m.expanded != 0 {
 			m.offset = top
 		}
 	}
@@ -294,7 +294,7 @@ func (m *Model) anchor() {
 	if m.day.IsZero() {
 		return
 	}
-	if !m.following && m.inside {
+	if !m.following && m.expanded != 0 {
 		m.revealSelected()
 		return
 	}
@@ -329,7 +329,7 @@ func (m Model) View() string {
 	} else if len(m.items) == 0 && status == "" {
 		status = "No events on this day. n: start event"
 	}
-	if m.inside {
+	if m.expanded != 0 {
 		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
 	}
 	for i := range visible {
@@ -339,7 +339,7 @@ func (m Model) View() string {
 	if m.day.Equal(displaytime.Day(m.clock)) {
 		help = "← day / → open • Home/End: first/now • r: refresh • n: start • e: end • q: quit"
 	}
-	if m.inside {
+	if m.expanded != 0 {
 		help = "r: refresh event • q: quit"
 	}
 	return heading + "\n\n" + strings.Join(visible, "\n") + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")

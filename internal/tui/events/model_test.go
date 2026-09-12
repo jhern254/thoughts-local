@@ -113,7 +113,7 @@ func TestModel_DayArrival(t *testing.T) {
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
-		if m.inside || m.expanded != 0 || m.index != 0 || !strings.HasPrefix(strings.Split(ansi.Strip(m.View()), "\n")[2], "09:00 PM  ╭") {
+		if m.expanded != 0 || m.index != 0 || !strings.HasPrefix(strings.Split(ansi.Strip(m.View()), "\n")[2], "09:00 PM  ╭") {
 			t.Fatalf("got day view %q, want first event visible with calendar focus", ansi.Strip(m.View()))
 		}
 	})
@@ -186,6 +186,17 @@ func fixture(t testing.TB) (Model, *eventStub, *viewStore) {
 }
 
 func TestModel_EventThoughtPicker(t *testing.T) {
+	t.Run("a delayed opening cannot undo an inline collapse", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m, cmd := m.Update(eventKey("enter"))
+		reply := cmd()
+		m, _ = m.Update(eventKey("left"))
+		before := m.View()
+		m, cmd = m.Update(reply)
+		if cmd != nil || m.View() != before || strings.Contains(before, "←: collapse") {
+			t.Fatal("delayed opening restored a collapsed event")
+		}
+	})
 	t.Run("starts newest at top and scrolls beyond the bounded window in both directions", func(t *testing.T) {
 		m, _, v := fixture(t)
 		m, cmd := m.Update(eventKey("enter"))
@@ -240,7 +251,7 @@ func TestModel_EventThoughtPicker(t *testing.T) {
 			t.Fatal("detail return lost anchors")
 		}
 		m, _ = m.Update(eventKey("esc"))
-		if m.inside || m.expanded != 0 {
+		if m.expanded != 0 {
 			t.Fatal("one Escape should collapse inline picker")
 		}
 	})
