@@ -24,4 +24,4 @@
           │
           │
 No events on this day. n: start event
-Home: first • End: now • [/]: day • r: refresh • n: start • e: end • q: quit
+Home: first • End: now • ←/→: day • r: refresh • n: start • e: end • q: quit
