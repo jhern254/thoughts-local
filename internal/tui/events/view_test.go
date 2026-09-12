@@ -10,10 +10,55 @@ import (
 	"charm.land/bubbles/v2/list"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
 func TestModel_Layout(t *testing.T) {
+	t.Run("adjacent event borders align with their intervals and contain intervening hours", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m.day = m.day.AddDate(0, 0, -1)
+		start := m.day.Add(21*time.Hour + 7*time.Minute)
+		end := start.Add(time.Hour)
+		nextEnd := end.Add(time.Hour)
+		m.items = []data.Event{{EventID: 1, StartedAt: start, EndedAt: &end}, {EventID: 2, StartedAt: end, EndedAt: &nextEnd}}
+		lines, positions, _ := m.layout()
+		first, second := positions[1], positions[2]
+		if !strings.HasPrefix(ansi.Strip(lines[second-1]), "10:07 PM  ╰") || !strings.HasPrefix(ansi.Strip(lines[second]), "10:07 PM  ╭") {
+			t.Fatalf("got boundary rows %q, want adjacent end/start borders at 10:07 PM", lines[second-1:second+1])
+		}
+		hour := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(line, "10:00 PM") })
+		if hour <= first || hour >= second-1 || !strings.Contains(ansi.Strip(lines[hour]), "│") {
+			t.Fatalf("got hour row %d, want inside event rows %d..%d", hour, first, second-1)
+		}
+		m.items[1].StartedAt = end.Add(30 * time.Minute)
+		lines, positions, _ = m.layout()
+		bottom := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(ansi.Strip(line), "10:07 PM  ╰") })
+		if positions[2] <= bottom+1 {
+			t.Fatal("a real half-hour gap did not leave space between boxes")
+		}
+	})
+	t.Run("short zero-duration and cross-day events retain their exact border labels", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		for _, span := range []time.Duration{0, time.Minute, 3 * time.Hour} {
+			start := m.day.Add(8 * time.Hour)
+			end := start.Add(span)
+			m.items = []data.Event{{EventID: 1, StartedAt: start, EndedAt: &end}}
+			lines, positions, _ := m.layout()
+			top := positions[1]
+			bottom := top + len(strings.Split(m.card(m.items[0], true), "\n")) - 1
+			if !strings.HasPrefix(ansi.Strip(lines[bottom]), displaytime.Format(end, "03:04 PM")+"  ╰") || bottom-top < 3 {
+				t.Fatalf("got span %s rows %q, want readable card ending at its timestamp", span, lines[top:bottom+1])
+			}
+		}
+		m.items[0].StartedAt = m.day.Add(-time.Hour)
+		m.items[0].EndedAt = nil
+		m.day = m.day.AddDate(0, 0, -1)
+		lines, positions, now := m.layout()
+		if now != -1 || !strings.HasPrefix(ansi.Strip(lines[len(lines)-1]), "12:00 AM  ╰") || positions[1] >= len(lines)-1 {
+			t.Fatal("ongoing event on completed day did not end at the midnight boundary")
+		}
+	})
 	t.Run("thought count precedes collapsed and expanded previews", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		for _, expanded := range []bool{false, true} {

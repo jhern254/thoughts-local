@@ -105,6 +105,20 @@ func (s *viewStore) CountThoughtsInRange(context.Context, string, time.Time, tim
 	return int64(len(s.items)), s.err
 }
 
+func TestModel_DayArrival(t *testing.T) {
+	t.Run("previous day opens at first event without entering its thought picker", func(t *testing.T) {
+		m, service, _ := fixture(t)
+		start := m.day.AddDate(0, 0, -1).Add(time.Hour)
+		end := start.Add(time.Hour)
+		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
+		m, cmd := m.Update(eventKey("["))
+		m = execute(t, m, cmd)
+		if m.inside || m.expanded != 0 || m.index != 0 || !strings.HasPrefix(strings.Split(ansi.Strip(m.View()), "\n")[1], "01:00 AM  ╭") {
+			t.Fatalf("got day view %q, want first event visible with calendar focus", ansi.Strip(m.View()))
+		}
+	})
+}
+
 func eventKey(name string) tea.KeyPressMsg {
 	switch name {
 	case "enter":

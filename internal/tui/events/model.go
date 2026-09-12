@@ -241,6 +241,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.picker.Reset()
 		}
 		m.anchor()
+		if selected == 0 && !m.following && len(m.items) > 0 {
+			_, positions, _ := m.layout()
+			m.offset = positions[m.items[0].EventID]
+			m.clampOffset()
+		}
 		return m, tea.Batch(latest, open)
 	case Counts:
 		if result.owner != m.owner || result.request != m.request {

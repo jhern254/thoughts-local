@@ -14,6 +14,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/testutils"
 	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/timeline"
+	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
@@ -152,6 +153,18 @@ func TestModel_EventsHome(t *testing.T) {
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 24, Height: 16})
 		if !strings.Contains(m.View().Content, "Subjects") {
 			t.Fatal("selected entity clipped away")
+		}
+	})
+	t.Run("previous day arrives at its first event in calendar navigation", func(t *testing.T) {
+		m, service := newHome(t)
+		start := displaytime.Day(time.Now()).AddDate(0, 0, -1).Add(21 * time.Hour)
+		end := start.Add(time.Hour)
+		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
+		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: '[', Text: "["}))
+		m = runHomeData(t, m, cmd)
+		view := ansi.Strip(m.View().Content)
+		if m.entityFocused || !strings.Contains(view, "09:00 PM  ╭") || strings.Contains(view, "Esc: collapse") {
+			t.Fatalf("got %q, want first event visible in timeline navigation", view)
 		}
 	})
 	t.Run("Tab transfers highlighting without losing event or thought selection", func(t *testing.T) {
