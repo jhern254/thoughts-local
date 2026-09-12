@@ -19,13 +19,13 @@ import (
 const DefaultSQLiteDSN = "file:data/thoughts.db"
 
 type Runtime struct {
-	db        *sql.DB
-	localUser *data.User
-	subjects  *subject.Service
-	thoughts  *thought.Service
-	metrics   *metrics.Service
-	events    *event.Service
-	timeline  *timeline.Service
+	db           *sql.DB
+	localUser    *data.User
+	subjects     *subject.Service
+	thoughts     *thought.Service
+	metrics      *metrics.Service
+	events       *event.Service
+	timelineView *timeline.Service
 }
 
 func Open(ctx context.Context, dsn string) (*Runtime, error) {
@@ -51,13 +51,13 @@ func open(
 	}
 
 	return &Runtime{
-		db:        db,
-		localUser: localUser,
-		subjects:  subject.NewService(data.NewSQLiteSubjectStore(db)),
-		thoughts:  thought.NewService(data.NewSQLiteThoughtStore(db)),
-		metrics:   metrics.NewService(data.NewSQLiteMetricsStore(db)),
-		events:    event.NewService(data.NewSQLiteEventStore(db)),
-		timeline:  timeline.NewService(event.NewService(data.NewSQLiteEventStore(db)), data.NewSQLiteThoughtStore(db)),
+		db:           db,
+		localUser:    localUser,
+		subjects:     subject.NewService(data.NewSQLiteSubjectStore(db)),
+		thoughts:     thought.NewService(data.NewSQLiteThoughtStore(db)),
+		metrics:      metrics.NewService(data.NewSQLiteMetricsStore(db)),
+		events:       event.NewService(data.NewSQLiteEventStore(db)),
+		timelineView: timeline.NewService(event.NewService(data.NewSQLiteEventStore(db)), data.NewSQLiteThoughtStore(db)),
 	}, nil
 }
 
@@ -69,10 +69,10 @@ func (runtime *Runtime) Subjects() *subject.Service {
 	return runtime.subjects
 }
 
-func (runtime *Runtime) Thoughts() *thought.Service  { return runtime.thoughts }
-func (runtime *Runtime) Metrics() *metrics.Service   { return runtime.metrics }
-func (runtime *Runtime) Events() *event.Service      { return runtime.events }
-func (runtime *Runtime) Timeline() *timeline.Service { return runtime.timeline }
+func (runtime *Runtime) Thoughts() *thought.Service      { return runtime.thoughts }
+func (runtime *Runtime) Metrics() *metrics.Service       { return runtime.metrics }
+func (runtime *Runtime) Events() *event.Service          { return runtime.events }
+func (runtime *Runtime) TimelineView() *timeline.Service { return runtime.timelineView }
 
 func ensureLocalUser(ctx context.Context, db *sql.DB) (*data.User, error) {
 	return user.NewService(data.NewSQLiteUserStore(db)).EnsureLocalUser(ctx)
@@ -90,7 +90,7 @@ func (runtime *Runtime) Close() error {
 	runtime.thoughts = nil
 	runtime.metrics = nil
 	runtime.events = nil
-	runtime.timeline = nil
+	runtime.timelineView = nil
 	return data.TranslateSQLiteError(err)
 }
 

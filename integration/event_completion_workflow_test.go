@@ -54,7 +54,7 @@ func TestEventCompletionWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		thoughts, err := runtime.Timeline().ListThoughts(t.Context(), user, item.EventID)
+		thoughts, err := runtime.TimelineView().ListThoughts(t.Context(), user, item.EventID)
 		if err != nil {
 			t.Fatal(err)
 		}
