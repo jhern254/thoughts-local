@@ -34,7 +34,7 @@ type summaryRow struct {
 	item data.ThoughtSummary
 }
 
-// Only All Thoughts uses a bounded, bidirectional window. Subject lists retain
+// The thought browse view uses a bounded, bidirectional window. Subject lists retain
 // their existing Bubbles filtering and navigation.
 type browseThoughtsState struct {
 	rows                 []summaryRow

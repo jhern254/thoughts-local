@@ -32,7 +32,7 @@ func (s labeledThoughtService) BrowseView(ctx context.Context, userID string, re
 
 func TestModel_SharedThoughtDetail(t *testing.T) {
 	for _, scope := range []string{"subject", "Misc"} {
-		t.Run(scope+" and All Thoughts show identical detail and restore their lists", func(t *testing.T) {
+		t.Run(scope+" and the thought browse view show identical detail and restore their lists", func(t *testing.T) {
 			subjects := subject.NewService(testutils.NewFakeSubjectStore())
 			parent, err := subjects.Create(t.Context(), "u", "Writing")
 			if err != nil {

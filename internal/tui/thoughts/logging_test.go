@@ -35,7 +35,7 @@ func (s failingService) Create(context.Context, string, string, *int64, time.Tim
 }
 
 func TestModel_FailurePrivacy(t *testing.T) {
-	t.Run("all-thought browse logs only approved fields and preserves its original failure", func(t *testing.T) {
+	t.Run("thought browse view logs only approved fields and preserves its original failure", func(t *testing.T) {
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")
 		if err != nil {

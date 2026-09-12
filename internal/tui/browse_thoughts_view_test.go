@@ -39,7 +39,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 			}
 		}
 	})
-	t.Run("late count cannot affect a reopened All Thoughts session or Misc", func(t *testing.T) {
+	t.Run("late count cannot affect a reopened thought browse view session or Misc", func(t *testing.T) {
 		counts := &metricsStub{total: 230}
 		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
 		m.entityList.Select(1)
@@ -111,7 +111,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		before = m.View().Content
 		m, _ = rootUpdate(m, old)
 		if m.View().Content != before {
-			t.Fatal("All Thoughts result changed Misc")
+			t.Fatal("thought browse view result changed Misc")
 		}
 	})
 	t.Run("Create treats q as text while control C always quits", func(t *testing.T) {

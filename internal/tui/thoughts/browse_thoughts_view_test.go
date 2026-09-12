@@ -223,7 +223,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		}
 		m = browseThoughtsKey(m, '/')
 		if !m.Browsing() || m.list.SettingFilter() {
-			t.Fatal("All Thoughts enabled partial filtering")
+			t.Fatal("thought browse view enabled partial filtering")
 		}
 	})
 	t.Run("empty list keeps Create and editor retains complete input", func(t *testing.T) {
