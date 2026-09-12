@@ -170,8 +170,11 @@ func TestModel_EventsHome(t *testing.T) {
 	t.Run("horizontal keys open thoughts and collapse events without changing days", func(t *testing.T) {
 		for _, keys := range [][2]rune{{tea.KeyRight, tea.KeyLeft}, {'l', 'h'}} {
 			m, _ := newHome(t)
-			m, cmd := rootUpdate(m, enterKey())
+			m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: keys[0]}))
 			m = runHomeData(t, m, cmd)
+			if !strings.Contains(m.View().Content, "←: collapse") {
+				t.Fatalf("key %q did not expand today's selected event", keys[0])
+			}
 			expanded := m.View().Content
 			collapsed, _ := rootUpdate(m, escapeKey())
 			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: keys[0]}))
@@ -241,7 +244,7 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal("return changed event anchors")
 		}
 		m, _ = rootUpdate(m, escapeKey())
-		if strings.Contains(m.View().Content, "r: refresh event") || !strings.Contains(m.View().Content, "Home: first") {
+		if strings.Contains(m.View().Content, "r: refresh event") || !strings.Contains(m.View().Content, "Home/End: first/now") {
 			t.Fatal("one Escape from expanded event should return to timeline navigation")
 		}
 	})
