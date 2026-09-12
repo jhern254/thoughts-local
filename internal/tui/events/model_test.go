@@ -335,6 +335,28 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 }
 
 func TestModel_EventForms(t *testing.T) {
+	t.Run("creating after scrolling selects the new event before the next clock tick", func(t *testing.T) {
+		m, s, _ := fixture(t)
+		m, _ = m.Update(eventKey("home"))
+		openedAt := m.clock.Add(20 * time.Second)
+		m.now = func() time.Time { return openedAt }
+		m, _ = m.Update(eventKey("n"))
+		m.form.fields[0].SetValue("new activity")
+		m.now = func() time.Time { return openedAt.Add(10 * time.Second) }
+		m, cmd := m.Update(eventKey("enter"))
+		saved := cmd().(Saved)
+		saved.item.ActivityType = &s.label
+		// Supply the persisted list returned after the existing Create call.
+		s.items[0].EndedAt = &saved.item.StartedAt
+		s.items = append(s.items, *saved.item)
+		m, cmd = m.Update(saved)
+		m = execute(t, m, cmd)
+		view := ansi.Strip(m.View())
+		box, now := strings.Index(view, "new activity"), strings.Index(view, "Now ·")
+		if box < 0 || now < box || !m.following || m.items[m.index].EventID != saved.item.EventID || !m.clock.Equal(m.now()) {
+			t.Fatalf("got selection %d and view:\n%s\nwant new event selected and visible above Now", m.items[m.index].EventID, view)
+		}
+	})
 	t.Run("friendly input is converted before calling the existing service", func(t *testing.T) {
 		m, s, _ := fixture(t)
 		m, _ = m.Update(eventKey("n"))
