@@ -134,7 +134,8 @@ func (m Model) card(item data.Event, selected bool) string {
 	}
 	content = strings.Join(lines, "\n")
 	start, finish := m.interval(item)
-	height := int(math.Ceil(finish.Sub(start).Hours()*float64(m.hourHeight()))) + 1
+	// Keep every whole-hour marker readable, without duration-based padding.
+	height := len(m.hoursBetween(start, finish)) + 2
 	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(width + 2).Height(height)
 	if selected && !m.blurred {
 		style = style.BorderForeground(lipgloss.Color("62"))
@@ -163,6 +164,16 @@ func (m Model) interval(item data.Event) (time.Time, time.Time) {
 
 func (m Model) hourHeight() int { return max(4, (m.bodyHeight()+4)/5) }
 
+func (m Model) hoursBetween(start, end time.Time) []time.Time {
+	var hours []time.Time
+	for hour := m.day; hour.Before(end); hour = hour.Add(time.Hour) {
+		if hour.After(start) {
+			hours = append(hours, hour)
+		}
+	}
+	return hours
+}
+
 type railEntry struct {
 	at       time.Time
 	priority int
@@ -170,6 +181,7 @@ type railEntry struct {
 	text     string
 	now      bool
 	end      time.Time
+	hideEnd  bool
 }
 
 // layout returns actual rendered row positions, so expansion and the live
@@ -182,7 +194,11 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 	}
 	for i, item := range m.items {
 		at, end := m.interval(item)
-		entries = append(entries, railEntry{at: at, end: end, priority: 1, id: item.EventID, text: m.card(item, i == m.index)})
+		hideEnd := at.Equal(end) || (end.Equal(m.clock) && m.clock.Before(until))
+		if i+1 < len(m.items) && m.items[i+1].StartedAt.Equal(end) {
+			hideEnd = true
+		}
+		entries = append(entries, railEntry{at: at, end: end, hideEnd: hideEnd, priority: 1, id: item.EventID, text: m.card(item, i == m.index)})
 	}
 	if !m.clock.Before(m.day) && m.clock.Before(until) {
 		entries = append(entries, railEntry{at: m.clock, priority: 2, now: true, text: "── Now · " + displaytime.Format(m.clock, "03:04 PM") + " ──"})
@@ -214,6 +230,10 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 				lines = append(lines, "          │")
 			}
 		}
+		if entry.id != 0 && len(lines) == previousTop+1 && !previousTime.IsZero() {
+			// A small visual separator is not an elapsed-time gap.
+			lines = append(lines, "")
+		}
 		previousTop, previousTime = len(lines), entry.at
 		if entry.id != 0 {
 			positions[entry.id] = len(lines)
@@ -229,14 +249,18 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 			card := strings.Split(entry.text, "\n")
 			labels := make([]string, len(card))
 			labels[0] = displaytime.Format(entry.at, "03:04 PM")
-			labels[len(card)-1] = displaytime.Format(entry.end, "03:04 PM")
-			for hour := m.day; hour.Before(entry.end); hour = hour.Add(time.Hour) {
-				if !hour.After(entry.at) {
-					continue
-				}
+			if !entry.hideEnd {
+				labels[len(card)-1] = displaytime.Format(entry.end, "03:04 PM")
+			}
+			hours := m.hoursBetween(entry.at, entry.end)
+			previousRow := 0
+			for i, hour := range hours {
 				fraction := float64(hour.Sub(entry.at)) / float64(entry.end.Sub(entry.at))
-				row := min(len(card)-2, max(1, int(math.Round(fraction*float64(len(card)-1)))))
+				// Reserve a distinct row for each remaining marker, including
+				// repeated local hours across a daylight-saving transition.
+				row := min(len(card)-1-(len(hours)-i), max(previousRow+1, int(math.Round(fraction*float64(len(card)-1)))))
 				labels[row] = displaytime.Format(hour, "03:04 PM")
+				previousRow = row
 			}
 			for row, text := range card {
 				lines = append(lines, fmt.Sprintf("%-10s%s", labels[row], text))
@@ -248,7 +272,9 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 }
 func (m *Model) clampOffset() {
 	lines, _, _ := m.layout()
-	m.offset = min(max(0, m.offset), max(0, len(lines)-m.bodyHeight()))
+	// Keep the chosen card at the top even near the end of the day; unused
+	// viewport rows belong below it, not before it as unrelated earlier hours.
+	m.offset = min(max(0, m.offset), max(0, len(lines)-1))
 }
 func (m Model) bodyHeight() int { return max(1, m.height-3) }
 func (m *Model) revealSelected() {
@@ -291,7 +317,7 @@ func (m Model) View() string {
 		return styles.Title.Render(m.picker.SelectedSubjectName()) + "\n\n" + m.picker.View()
 	}
 	lines, _, _ := m.layout()
-	offset := min(max(0, m.offset), max(0, len(lines)-m.bodyHeight()))
+	offset := min(max(0, m.offset), max(0, len(lines)-1))
 	visible := append([]string{}, lines[offset:min(len(lines), offset+m.bodyHeight())]...)
 	for len(visible) < m.bodyHeight() {
 		visible = append(visible, "")
