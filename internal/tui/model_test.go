@@ -31,7 +31,7 @@ func TestModel_View(t *testing.T) {
 			t.Fatal("home should use a fresh alternate screen")
 		}
 
-		if !strings.HasPrefix(view, "Local user: local (local-user-id)\n") {
+		if !strings.HasPrefix(view, "Local user: local (local-user-id)\n\n") {
 			t.Fatalf("got header %q, want local user above Events", view)
 		}
 		for _, want := range []string{"Events", "Thoughts", "Subjects"} {

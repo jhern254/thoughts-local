@@ -103,6 +103,7 @@ func (m Model) card(item data.Event, selected bool) string {
 	}
 	content := ansi.Truncate(heading, width, "…") + "\n"
 	if item.EventID == m.expanded {
+		content += "\n"
 		if m.opening {
 			content += "Loading thoughts…"
 		} else if m.err != nil {
@@ -268,6 +269,9 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 			previousTop, previousTime = len(lines)-1, entry.end
 		}
 	}
+	if m.day.Before(displaytime.Day(m.clock)) {
+		lines = append(lines, "          ...")
+	}
 	return lines, positions, nowLine
 }
 func (m *Model) clampOffset() {
@@ -334,7 +338,7 @@ func (m Model) View() string {
 	for i := range visible {
 		visible[i] = ansi.Truncate(visible[i], m.width, "")
 	}
-	help := "Home: first • End: now • [/]: day • r: refresh • n: start • e: end • q: quit"
+	help := "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end • q: quit"
 	if m.inside {
 		help = "r: refresh event • q: quit"
 	}

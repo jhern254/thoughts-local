@@ -78,7 +78,7 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 	entities.SetFilteringEnabled(false)
 	entities.SetShowStatusBar(false)
 
-	return Model{
+	model := Model{
 		ctx:        ctx,
 		user:       user,
 		screen:     screenEvents,
@@ -90,6 +90,8 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 		thoughts:   thoughts.New(ctx, user.UserID, thoughtService, logger),
 		metrics:    metrics,
 	}
+	model.events.Resize(defaultWidth, defaultHeight-6)
+	return model
 }
 
 type homeOpened struct{}
@@ -125,7 +127,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case tea.WindowSizeMsg:
 		m.width = message.Width
-		m.events.Resize(message.Width, max(1, message.Height-5))
+		m.events.Resize(message.Width, max(1, message.Height-6))
 		m.entityList.SetSize(message.Width, max(0, message.Height-3))
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
@@ -277,7 +279,7 @@ func (m Model) View() tea.View {
 		m.events.SetFocused(!m.entityFocused)
 		content = m.events.View()
 		if m.events.CanLeave() {
-			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n" + content
+			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content
 			content += "\n" + strings.Repeat("─", max(1, m.width)) + "\n" + m.entityStrip()
 		}
 	case screenSubjectList:

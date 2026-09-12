@@ -135,7 +135,7 @@ func TestModel_EventsHome(t *testing.T) {
 	}
 	t.Run("boots into owned Events data and wraps horizontal navigation both ways", func(t *testing.T) {
 		m, events := newHome(t)
-		if events.user != "home-user" || !strings.Contains(m.View().Content, "Events") || !strings.HasPrefix(m.View().Content, "Local user: home-user\n") {
+		if events.user != "home-user" || !strings.Contains(m.View().Content, "Events") || !strings.HasPrefix(m.View().Content, "Local user: home-user\n\n") {
 			t.Fatal("home did not use or display bootstrapped user")
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
@@ -160,7 +160,7 @@ func TestModel_EventsHome(t *testing.T) {
 		start := displaytime.Day(time.Now()).AddDate(0, 0, -1).Add(21 * time.Hour)
 		end := start.Add(time.Hour)
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
-		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: '[', Text: "["}))
+		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
 		m = runHomeData(t, m, cmd)
 		view := ansi.Strip(m.View().Content)
 		if m.entityFocused || !strings.Contains(view, "09:00 PM  ╭") || strings.Contains(view, "Esc: collapse") {

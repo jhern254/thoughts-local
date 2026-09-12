@@ -374,9 +374,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.index = 0
 		m.offset = 0
 		m.revealSelected()
-	case "[", "]":
+	case "left", "right", "h", "l":
 		delta := 1
-		if key.String() == "[" {
+		if key.String() == "left" || key.String() == "h" {
 			delta = -1
 		}
 		day := m.day.AddDate(0, 0, delta)

@@ -111,9 +111,9 @@ func TestModel_Layout(t *testing.T) {
 			m, _, store := fixture(t)
 			store.items = store.items[:count]
 			m = execute(t, m, m.openEvent(1))
-			want := 3*count + 3
+			want := 3*count + 4
 			if count == 0 {
-				want = 5
+				want = 6
 			}
 			if got := len(strings.Split(m.card(m.items[0], true), "\n")); got != want {
 				t.Fatalf("got %d rows for %d thoughts, want %d without empty slots", got, count, want)
@@ -141,7 +141,7 @@ func TestModel_Layout(t *testing.T) {
 		m.items[0].EndedAt = nil
 		m.day = m.day.AddDate(0, 0, -1)
 		lines, positions, now := m.layout()
-		if now != -1 || !strings.HasPrefix(ansi.Strip(lines[len(lines)-1]), "12:00 AM  ╰") || positions[1] >= len(lines)-1 {
+		if now != -1 || !strings.HasPrefix(ansi.Strip(lines[len(lines)-2]), "12:00 AM  ╰") || positions[1] >= len(lines)-2 || strings.TrimSpace(lines[len(lines)-1]) != "..." {
 			t.Fatal("ongoing event on completed day did not end at the midnight boundary")
 		}
 	})
@@ -152,6 +152,9 @@ func TestModel_Layout(t *testing.T) {
 				m = execute(t, m, m.openEvent(1))
 			}
 			card := ansi.Strip(m.card(m.items[0], true))
+			if expanded && strings.Trim(strings.Split(card, "\n")[2], "│ ") != "" {
+				t.Fatal("expanded header should have a blank row before the thought list")
+			}
 			if count, preview := strings.Index(card, "230 thoughts"), strings.Index(card, "preview"); count < 0 || preview < 0 || count > preview {
 				t.Fatalf("got card %q, want thought count above previews", card)
 			}
@@ -239,7 +242,7 @@ func TestModel_Layout(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.items = nil
 		lines, _, now := m.layout()
-		if now != len(lines)-1 || strings.TrimSpace(lines[now]) != "── Now · 11:37 AM ──" {
+		if now != len(lines)-1 || strings.TrimSpace(lines[now]) != "── Now · 11:37 AM ──" || strings.Contains(strings.Join(lines, "\n"), "...") {
 			t.Fatalf("got current rail %q, want midnight through 11 AM ending at Now", lines)
 		}
 		m.clock = m.day.Add(12 * time.Hour)
@@ -249,8 +252,8 @@ func TestModel_Layout(t *testing.T) {
 		}
 		m.day = m.day.AddDate(0, 0, -1)
 		lines, _, now = m.layout()
-		if now != -1 || !strings.HasPrefix(lines[len(lines)-1], "11:00 PM") {
-			t.Fatalf("got past rail %q, want 24 hours without Now", lines)
+		if now != -1 || !strings.HasPrefix(lines[len(lines)-2], "11:00 PM") || strings.TrimSpace(lines[len(lines)-1]) != "..." {
+			t.Fatalf("got past rail %q, want 24 hours ending in ... without Now", lines)
 		}
 		m.day = m.day.AddDate(0, 0, 2)
 		lines, _, now = m.layout()

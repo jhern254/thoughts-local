@@ -111,7 +111,7 @@ func TestModel_DayArrival(t *testing.T) {
 		start := m.day.AddDate(0, 0, -1).Add(21 * time.Hour)
 		end := start.Add(time.Hour)
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
-		m, cmd := m.Update(eventKey("["))
+		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
 		if m.inside || m.expanded != 0 || m.index != 0 || !strings.HasPrefix(strings.Split(ansi.Strip(m.View()), "\n")[2], "09:00 PM  ╭") {
 			t.Fatalf("got day view %q, want first event visible with calendar focus", ansi.Strip(m.View()))
@@ -121,6 +121,10 @@ func TestModel_DayArrival(t *testing.T) {
 
 func eventKey(name string) tea.KeyPressMsg {
 	switch name {
+	case "left":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft})
+	case "right":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyRight})
 	case "enter":
 		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
 	case "esc":
@@ -260,19 +264,29 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 		m, s, _ := fixture(t)
 		today, calls := m.day, s.lists
 		before := m.View()
-		m, cmd := m.Update(eventKey("]"))
+		m, cmd := m.Update(eventKey("right"))
 		if cmd != nil || m.View() != before || s.lists != calls {
 			t.Fatal("next day changed today's view or requested future data")
 		}
-		m, cmd = m.Update(eventKey("["))
+		m, cmd = m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
 		if !m.day.Equal(today.AddDate(0, 0, -1)) {
 			t.Fatal("previous day unavailable")
 		}
-		m, cmd = m.Update(eventKey("]"))
+		m, cmd = m.Update(eventKey("right"))
 		m = execute(t, m, cmd)
 		if !m.day.Equal(today) || s.lists != calls+2 {
 			t.Fatal("could not navigate back to today")
+		}
+		m, cmd = m.Update(eventKey("h"))
+		m = execute(t, m, cmd)
+		if !m.day.Equal(today.AddDate(0, 0, -1)) {
+			t.Fatal("h did not navigate to the previous day")
+		}
+		m, cmd = m.Update(eventKey("l"))
+		m = execute(t, m, cmd)
+		if !m.day.Equal(today) || s.lists != calls+4 {
+			t.Fatal("l did not navigate back to today")
 		}
 	})
 	t.Run("ticks update time without reads and navigation pauses following", func(t *testing.T) {
