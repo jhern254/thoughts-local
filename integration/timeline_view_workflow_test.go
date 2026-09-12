@@ -20,7 +20,7 @@ func TestTimelineViewWorkflow_SQLite(t *testing.T) {
 			`INSERT INTO events(event_id,user_id,started_at,ended_at) VALUES (1,'u',100,200),(2,'u',200,200),(3,'u',200,NULL),(4,'other',100,200),(5,'deleted',100,200)`,
 			`INSERT INTO thoughts(user_id,subject_id,thought,observed_at) VALUES ('u',1,'assigned',100),('u',NULL,'Misc',199),('u',NULL,'current',200),('u',NULL,'future',301),('other',NULL,'foreign',150),('deleted',NULL,'hidden',150)`,
 			`INSERT INTO thoughts(user_id,thought,observed_at,deleted_at) VALUES ('u','deleted',150,unixepoch())`,
-			`UPDATE users SET deleted_at=unixepoch() WHERE user_id='deleted'`,
+			`UPDATE users SET deleted_at=unixepoch(), updated_at=unixepoch() WHERE user_id='deleted'`,
 		} {
 			if _, err := db.Exec(query); err != nil {
 				t.Fatal(err)
