@@ -26,33 +26,33 @@ func (s *totalSpy) CountThoughts(ctx context.Context, userID string) (int64, err
 	return s.Metrics.CountThoughts(ctx, userID)
 }
 
-func TestModel_AllThoughtsTotal(t *testing.T) {
+func TestModel_BrowseThoughtsViewTotal(t *testing.T) {
 	t.Run("keeps the collection total while scrolling older and newer through a bounded window", func(t *testing.T) {
-		m := allModel(t, 230)
-		spy := &totalSpy{Metrics: m.all.metrics}
-		cmd := m.OpenAll(spy)
+		m := browseThoughtsModel(t, 230)
+		spy := &totalSpy{Metrics: m.browseThoughts.metrics}
+		cmd := m.OpenBrowseThoughtsView(spy)
 		batch := cmd().(tea.BatchMsg)
 		// Browsing remains usable before the independent count arrives.
-		m = allCommand(m, batch[0])
-		if len(m.all.rows) != 51 || m.loading || !strings.Contains(m.View(), "Counting thoughts…") {
+		m = runBrowseThoughtsCommand(m, batch[0])
+		if len(m.browseThoughts.rows) != 51 || m.loading || !strings.Contains(m.View(), "Counting thoughts…") {
 			t.Fatal("initial page did not become usable independently of the count")
 		}
 		count := batch[1]()
 		for range 60 {
-			m = allKey(m, tea.KeyDown)
+			m = browseThoughtsKey(m, tea.KeyDown)
 		}
 		m, _ = m.Update(count) // Cursor requests must not invalidate the count.
-		if m.all.countPending || m.all.total != 230 {
+		if m.browseThoughts.countPending || m.browseThoughts.total != 230 {
 			t.Fatal("scrolling invalidated count reply")
 		}
-		m = allKey(m, tea.KeyHome)
-		if len(m.all.rows) != 51 || !strings.Contains(m.View(), "\n230 thoughts\n") {
+		m = browseThoughtsKey(m, tea.KeyHome)
+		if len(m.browseThoughts.rows) != 51 || !strings.Contains(m.View(), "\n230 thoughts\n") {
 			t.Fatal("first 50 summaries did not display the full total")
 		}
 		for _, key := range []rune{tea.KeyDown, tea.KeyUp} {
 			calls := spy.calls
 			for range 220 {
-				m = allKey(m, key)
+				m = browseThoughtsKey(m, key)
 			}
 			if spy.calls != calls || !strings.Contains(m.View(), "\n230 thoughts\n") {
 				t.Fatalf("scroll count calls: got %d, want %d", spy.calls, calls)
@@ -60,18 +60,18 @@ func TestModel_AllThoughtsTotal(t *testing.T) {
 		}
 	})
 	t.Run("creation refreshes the total when returning to the collection", func(t *testing.T) {
-		m := allModel(t, 1)
-		m = allKey(m, tea.KeyEnter)
+		m := browseThoughtsModel(t, 1)
+		m = browseThoughtsKey(m, tea.KeyEnter)
 		m, _ = m.Update(tea.PasteMsg{Content: "new thought"})
 		m, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
-		m = allCommand(m, cmd)
-		m = allKey(m, tea.KeyEscape)
+		m = runBrowseThoughtsCommand(m, cmd)
+		m = browseThoughtsKey(m, tea.KeyEscape)
 		if !strings.Contains(m.View(), "\n2 thoughts\n") {
 			t.Fatalf("got %q, want refreshed collection with 2 thoughts", m.View())
 		}
 	})
 	t.Run("count failure preserves browsing and the original error without private logging", func(t *testing.T) {
-		m := allModel(t, 2)
+		m := browseThoughtsModel(t, 2)
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")
 		if err != nil {
@@ -79,12 +79,12 @@ func TestModel_AllThoughtsTotal(t *testing.T) {
 		}
 		m.logger = logger
 		private := errors.New("PRIVATE-TOTAL-MARKER")
-		spy := &totalSpy{Metrics: m.all.metrics, err: private}
-		cmd := m.OpenAll(spy)
+		spy := &totalSpy{Metrics: m.browseThoughts.metrics, err: private}
+		cmd := m.OpenBrowseThoughtsView(spy)
 		batch := cmd().(tea.BatchMsg)
-		m = allCommand(m, batch[1]) // Count may fail before the page finishes.
-		m = allCommand(m, batch[0])
-		if m.all.countErr != private || m.err != nil || m.loading || !strings.Contains(m.View(), "Thought count unavailable") || strings.Contains(m.View(), "\n2 thoughts\n") {
+		m = runBrowseThoughtsCommand(m, batch[1]) // Count may fail before the page finishes.
+		m = runBrowseThoughtsCommand(m, batch[0])
+		if m.browseThoughts.countErr != private || m.err != nil || m.loading || !strings.Contains(m.View(), "Thought count unavailable") || strings.Contains(m.View(), "\n2 thoughts\n") {
 			t.Fatalf("count failure replaced browsing or invented a total: %q", m.View())
 		}
 		var event map[string]any
@@ -97,15 +97,15 @@ func TestModel_AllThoughtsTotal(t *testing.T) {
 		if strings.Contains(logs.String()+m.View(), "PRIVATE-TOTAL-MARKER") {
 			t.Fatal("private error escaped")
 		}
-		m = allKey(m, tea.KeyDown)
-		m = allKey(m, tea.KeyEnter)
+		m = browseThoughtsKey(m, tea.KeyDown)
+		m = browseThoughtsKey(m, tea.KeyEnter)
 		if !m.ShowingDetail() {
 			t.Fatal("count failure prevented opening a thought")
 		}
-		m = allKey(m, tea.KeyEscape)
+		m = browseThoughtsKey(m, tea.KeyEscape)
 		spy.err = nil
-		m = allKey(m, 'r')
-		if m.all.countErr != nil || !strings.Contains(m.View(), "\n2 thoughts\n") {
+		m = browseThoughtsKey(m, 'r')
+		if m.browseThoughts.countErr != nil || !strings.Contains(m.View(), "\n2 thoughts\n") {
 			t.Fatal("count did not recover on refresh")
 		}
 	})

@@ -22,8 +22,8 @@ type Metrics interface {
 	CountThoughts(context.Context, string) (int64, error)
 }
 
-// CountResult has refresh ownership independent of individual cursor requests.
-type CountResult struct {
+// ThoughtCountResult has refresh ownership independent of individual cursor requests.
+type ThoughtCountResult struct {
 	request uint64
 	total   int64
 	err     error
@@ -36,7 +36,7 @@ type summaryRow struct {
 
 // Only All Thoughts uses a bounded, bidirectional window. Subject lists retain
 // their existing Bubbles filtering and navigation.
-type allState struct {
+type browseThoughtsState struct {
 	rows                 []summaryRow
 	index, offset        int
 	width, height        int
@@ -47,12 +47,12 @@ type allState struct {
 	countErr             error
 }
 
-// PageResult belongs to one request/session, like the existing detail results.
-type PageResult struct {
+// BrowseThoughtsResult belongs to one request/session, like the existing detail results.
+type BrowseThoughtsResult struct {
 	request uint64
-	query   data.ThoughtPageRequest
+	query   data.ThoughtViewRequest
 	move    int
-	page    data.ThoughtPage
+	view    data.ThoughtView
 	err     error
 }
 
@@ -62,7 +62,7 @@ func (m Model) SelectedSubjectName() string {
 	if m.selected == nil || m.selected.SubjectID == nil {
 		return "Misc"
 	}
-	for _, row := range m.all.rows {
+	for _, row := range m.browseThoughts.rows {
 		if row.kind == rowRecord && row.item.ThoughtID == m.selected.ThoughtID && row.item.SubjectName != nil {
 			return *row.item.SubjectName
 		}
@@ -70,50 +70,50 @@ func (m Model) SelectedSubjectName() string {
 	return "Subject"
 }
 
-func (m *Model) OpenAll(metrics Metrics) tea.Cmd {
+func (m *Model) OpenBrowseThoughtsView(metrics Metrics) tea.Cmd {
 	m.Reset()
-	m.allThoughts = true
-	m.all.metrics = metrics
-	return m.latestThoughts()
+	m.browsingThoughtsView = true
+	m.browseThoughts.metrics = metrics
+	return m.reloadBrowseThoughtsView()
 }
 
-func (m *Model) latestThoughts() tea.Cmd {
-	m.all.rows = []summaryRow{{kind: rowCreate}}
-	m.all.index, m.all.offset = 0, 0
-	m.all.moreOlder, m.all.moreNewer = false, false
+func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
+	m.browseThoughts.rows = []summaryRow{{kind: rowCreate}}
+	m.browseThoughts.index, m.browseThoughts.offset = 0, 0
+	m.browseThoughts.moreOlder, m.browseThoughts.moreNewer = false, false
 	m.countRequest++
-	m.all.countPending, m.all.countErr = true, nil
-	request, ctx, userID, metrics := m.countRequest, m.ctx, m.userID, m.all.metrics
+	m.browseThoughts.countPending, m.browseThoughts.countErr = true, nil
+	request, ctx, userID, metrics := m.countRequest, m.ctx, m.userID, m.browseThoughts.metrics
 	count := func() tea.Msg {
 		total, err := metrics.CountThoughts(ctx, userID)
-		return CountResult{request: request, total: total, err: err}
+		return ThoughtCountResult{request: request, total: total, err: err}
 	}
-	return tea.Batch(m.browseThoughts(data.ThoughtPageRequest{}, 0), count)
+	return tea.Batch(m.loadThoughtsView(data.ThoughtViewRequest{}, 0), count)
 }
 
-func (m Model) receiveCount(result CountResult) (Model, tea.Cmd) {
-	if !m.allThoughts || result.request != m.countRequest {
+func (m Model) receiveThoughtCount(result ThoughtCountResult) (Model, tea.Cmd) {
+	if !m.browsingThoughtsView || result.request != m.countRequest {
 		return m, nil
 	}
-	m.all.total, m.all.countErr, m.all.countPending = result.total, result.err, false
+	m.browseThoughts.total, m.browseThoughts.countErr, m.browseThoughts.countPending = result.total, result.err, false
 	if category, emit := failure.Classify(logging.ThoughtCountAll, result.err); emit {
 		m.logger.Failure(logging.ThoughtCountAll, category)
 	}
 	return m, nil
 }
 
-func (m *Model) browseThoughts(query data.ThoughtPageRequest, move int) tea.Cmd {
+func (m *Model) loadThoughtsView(query data.ThoughtViewRequest, move int) tea.Cmd {
 	m.request++
 	m.loading, m.err = true, nil
 	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
 	return func() tea.Msg {
-		page, err := service.Browse(ctx, userID, query)
-		return PageResult{request: request, query: query, move: move, page: page, err: err}
+		view, err := service.BrowseView(ctx, userID, query)
+		return BrowseThoughtsResult{request: request, query: query, move: move, view: view, err: err}
 	}
 }
 
-func (m Model) receivePage(result PageResult) (Model, tea.Cmd) {
-	if !m.allThoughts || result.request != m.request {
+func (m Model) receiveBrowseThoughts(result BrowseThoughtsResult) (Model, tea.Cmd) {
+	if !m.browsingThoughtsView || result.request != m.request {
 		return m, nil
 	}
 	m.loading, m.err = false, result.err
@@ -124,60 +124,60 @@ func (m Model) receivePage(result PageResult) (Model, tea.Cmd) {
 		m.errMessage = diagnostics.ThoughtMessage(result.err, "Could not load thoughts.")
 		return m, nil
 	}
-	selected, oldIndex := m.all.rows[m.all.index], m.all.index
-	rows := make([]summaryRow, 0, len(result.page.Items))
-	for _, item := range result.page.Items {
+	selected, oldIndex := m.browseThoughts.rows[m.browseThoughts.index], m.browseThoughts.index
+	rows := make([]summaryRow, 0, len(result.view.Items))
+	for _, item := range result.view.Items {
 		rows = append(rows, summaryRow{kind: rowRecord, item: item})
 	}
 	switch {
 	case result.query.Cursor == nil:
-		m.all.rows = append([]summaryRow{{kind: rowCreate}}, rows...)
-		m.all.moreOlder = result.page.More
+		m.browseThoughts.rows = append([]summaryRow{{kind: rowCreate}}, rows...)
+		m.browseThoughts.moreOlder = result.view.More
 		m.stale = false
 	case result.query.Direction == data.ThoughtsNewer:
-		m.all.rows = append(rows, m.all.rows...)
-		m.all.moreNewer = result.page.More
-		if !result.page.More {
-			m.all.rows = append([]summaryRow{{kind: rowCreate}}, m.all.rows...)
+		m.browseThoughts.rows = append(rows, m.browseThoughts.rows...)
+		m.browseThoughts.moreNewer = result.view.More
+		if !result.view.More {
+			m.browseThoughts.rows = append([]summaryRow{{kind: rowCreate}}, m.browseThoughts.rows...)
 		}
 	default:
-		m.all.rows = append(m.all.rows, rows...)
-		m.all.moreOlder = result.page.More
+		m.browseThoughts.rows = append(m.browseThoughts.rows, rows...)
+		m.browseThoughts.moreOlder = result.view.More
 	}
 	// Evict the opposite edge, copying so old previews are no longer retained.
 	actions := 0
-	if m.all.rows[0].kind == rowCreate {
+	if m.browseThoughts.rows[0].kind == rowCreate {
 		actions = 1
 	}
-	if excess := len(m.all.rows) - actions - 3*data.ThoughtPageSize; excess > 0 {
+	if excess := len(m.browseThoughts.rows) - actions - 3*data.ThoughtViewBatchSize; excess > 0 {
 		if result.query.Direction == data.ThoughtsNewer {
-			m.all.rows = slices.Clone(m.all.rows[:len(m.all.rows)-excess])
-			m.all.moreOlder = true
+			m.browseThoughts.rows = slices.Clone(m.browseThoughts.rows[:len(m.browseThoughts.rows)-excess])
+			m.browseThoughts.moreOlder = true
 		} else {
-			m.all.rows = slices.Clone(m.all.rows[excess+actions:])
-			m.all.moreNewer = true
+			m.browseThoughts.rows = slices.Clone(m.browseThoughts.rows[excess+actions:])
+			m.browseThoughts.moreNewer = true
 		}
 	}
-	for index, row := range m.all.rows {
+	for index, row := range m.browseThoughts.rows {
 		if row.kind == selected.kind && (row.kind == rowCreate || row.item.ThoughtID == selected.item.ThoughtID) {
-			m.all.index = index
+			m.browseThoughts.index = index
 			break
 		}
 	}
-	m.all.offset += (m.all.index - oldIndex) * summaryLines
-	m.all.index = min(max(0, m.all.index+result.move), len(m.all.rows)-1)
-	m.all.keepVisible()
+	m.browseThoughts.offset += (m.browseThoughts.index - oldIndex) * summaryLines
+	m.browseThoughts.index = min(max(0, m.browseThoughts.index+result.move), len(m.browseThoughts.rows)-1)
+	m.browseThoughts.keepVisible()
 	return m, nil
 }
 
-func (m Model) updateAll(msg tea.Msg) (Model, tea.Cmd) {
+func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return m, nil
 	}
 	// Refresh may supersede a pending batch. Other commands wait for that batch.
 	if key.String() == "home" || key.String() == "r" {
-		cmd := m.latestThoughts()
+		cmd := m.reloadBrowseThoughtsView()
 		return m, cmd
 	}
 	if m.loading {
@@ -190,11 +190,11 @@ func (m Model) updateAll(msg tea.Msg) (Model, tea.Cmd) {
 	case "down", "j":
 		move = 1
 	case "pgup":
-		move = -max(1, m.all.height/summaryLines)
+		move = -max(1, m.browseThoughts.height/summaryLines)
 	case "pgdown":
-		move = max(1, m.all.height/summaryLines)
+		move = max(1, m.browseThoughts.height/summaryLines)
 	case "enter":
-		row := m.all.rows[m.all.index]
+		row := m.browseThoughts.rows[m.browseThoughts.index]
 		m.err = nil
 		if row.kind == rowCreate {
 			m.request++
@@ -207,22 +207,22 @@ func (m Model) updateAll(msg tea.Msg) (Model, tea.Cmd) {
 	if move == 0 {
 		return m, nil
 	}
-	if m.all.index+move < 0 && m.all.moreNewer {
-		cursor := m.all.rows[0].item.Cursor()
-		cmd := m.browseThoughts(data.ThoughtPageRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, move)
+	if m.browseThoughts.index+move < 0 && m.browseThoughts.moreNewer {
+		cursor := m.browseThoughts.rows[0].item.Cursor()
+		cmd := m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, move)
 		return m, cmd
 	}
-	if m.all.index+move >= len(m.all.rows) && m.all.moreOlder {
-		cursor := m.all.rows[len(m.all.rows)-1].item.Cursor()
-		cmd := m.browseThoughts(data.ThoughtPageRequest{Cursor: &cursor}, move)
+	if m.browseThoughts.index+move >= len(m.browseThoughts.rows) && m.browseThoughts.moreOlder {
+		cursor := m.browseThoughts.rows[len(m.browseThoughts.rows)-1].item.Cursor()
+		cmd := m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor}, move)
 		return m, cmd
 	}
-	m.all.index = min(max(0, m.all.index+move), len(m.all.rows)-1)
-	m.all.keepVisible()
+	m.browseThoughts.index = min(max(0, m.browseThoughts.index+move), len(m.browseThoughts.rows)-1)
+	m.browseThoughts.keepVisible()
 	return m, nil
 }
 
-func (s *allState) keepVisible() {
+func (s *browseThoughtsState) keepVisible() {
 	top := s.index * summaryLines
 	if top < s.offset {
 		s.offset = top
@@ -243,8 +243,8 @@ func summaryText(value string) string {
 	}, value)
 }
 
-func (m Model) viewAll(status string) string {
-	s := m.all
+func (m Model) renderBrowseThoughtsView(status string) string {
+	s := m.browseThoughts
 	lines := make([]string, 0, len(s.rows)*summaryLines)
 	for index, row := range s.rows {
 		titleStyle, descStyle := m.itemStyles.NormalTitle, m.itemStyles.NormalDesc

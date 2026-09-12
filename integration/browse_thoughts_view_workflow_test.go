@@ -11,7 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 )
 
-func TestThoughtBrowseWorkflow_SQLite(t *testing.T) {
+func TestBrowseThoughtsViewWorkflow_SQLite(t *testing.T) {
 	t.Run("uses the ordered active-owner index for cursor traversal", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		rows, err := db.Query(`EXPLAIN QUERY PLAN
@@ -61,29 +61,29 @@ func TestThoughtBrowseWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		store := data.NewSQLiteThoughtStore(db)
-		page, err := store.BrowseThoughts(t.Context(), "u", data.ThoughtPageRequest{})
+		view, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		ids := []int64{}
-		for _, item := range page.Items {
+		for _, item := range view.Items {
 			ids = append(ids, item.ThoughtID)
 		}
 		if want := []int64{4, 3, 1, 2}; !reflect.DeepEqual(ids, want) {
 			t.Fatalf("got IDs %v, want %v", ids, want)
 		}
-		if page.Items[1].SubjectName != nil || page.Items[2].SubjectName == nil || *page.Items[2].SubjectName != "Writing" || page.More {
-			t.Fatalf("got page %+v, want only active subject label and no more rows", page)
+		if view.Items[1].SubjectName != nil || view.Items[2].SubjectName == nil || *view.Items[2].SubjectName != "Writing" || view.More {
+			t.Fatalf("got page %+v, want only active subject label and no more rows", view)
 		}
 		if _, err := db.Exec(`UPDATE users SET deleted_at=updated_at WHERE user_id='u'`); err != nil {
 			t.Fatal(err)
 		}
-		page, err = store.BrowseThoughts(t.Context(), "u", data.ThoughtPageRequest{})
+		view, err = store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(page.Items) != 0 {
-			t.Fatalf("got %d inactive-owner rows, want 0", len(page.Items))
+		if len(view.Items) != 0 {
+			t.Fatalf("got %d inactive-owner rows, want 0", len(view.Items))
 		}
 	})
 	t.Run("walks tied timestamps in both directions without offset shifts", func(t *testing.T) {
@@ -95,7 +95,7 @@ func TestThoughtBrowseWorkflow_SQLite(t *testing.T) {
 			}
 		}
 		store := data.NewSQLiteThoughtStore(db)
-		first, err := store.BrowseThoughts(t.Context(), "u", data.ThoughtPageRequest{})
+		first, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -106,7 +106,7 @@ func TestThoughtBrowseWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		cursor := first.Items[49].Cursor()
-		second, err := store.BrowseThoughts(t.Context(), "u", data.ThoughtPageRequest{Cursor: &cursor})
+		second, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{Cursor: &cursor})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,7 +114,7 @@ func TestThoughtBrowseWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got second page %+v, want IDs 70 through 21", second)
 		}
 		cursor = second.Items[0].Cursor()
-		back, err := store.BrowseThoughts(t.Context(), "u", data.ThoughtPageRequest{Cursor: &cursor, Direction: data.ThoughtsNewer})
+		back, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestThoughtBrowseWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got reverse page %+v, want remaining 50 newer rows", back)
 		}
 		cursor = second.Items[49].Cursor()
-		last, err := store.BrowseThoughts(t.Context(), "u", data.ThoughtPageRequest{Cursor: &cursor})
+		last, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{Cursor: &cursor})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -139,12 +139,12 @@ func TestThoughtBrowseWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		page, err := store.BrowseThoughts(t.Context(), "u", data.ThoughtPageRequest{})
+		view, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(page.Items) != 1 || len([]rune(page.Items[0].Preview)) != 81 {
-			t.Fatalf("got preview page %+v, want one 81-character preview", page)
+		if len(view.Items) != 1 || len([]rune(view.Items[0].Preview)) != 81 {
+			t.Fatalf("got preview page %+v, want one 81-character preview", view)
 		}
 		full, err := store.GetThought(t.Context(), "u", item.ThoughtID)
 		if err != nil {

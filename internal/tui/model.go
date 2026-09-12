@@ -27,7 +27,7 @@ const (
 	screenSubjectEdit
 	screenSubjectDelete
 	screenMiscThoughts
-	screenAllThoughts
+	screenBrowseThoughts
 )
 
 type entityKind uint8
@@ -105,7 +105,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
 		return m, nil
-	case thoughts.Result, thoughts.PageResult, thoughts.CountResult:
+	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtCountResult:
 		var cmd tea.Cmd
 		m.thoughts, cmd = m.thoughts.Update(message)
 		return m, cmd
@@ -146,7 +146,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSubjectDetail(message)
 	case screenMiscThoughts:
 		return m.updateMiscThoughts(message)
-	case screenAllThoughts:
+	case screenBrowseThoughts:
 		if key, ok := message.(tea.KeyPressMsg); ok && m.thoughts.Browsing() {
 			switch key.String() {
 			case "q":
@@ -176,8 +176,8 @@ func (m Model) updateEntities(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m.openSubjects()
 			}
 			if ok && row.kind == entityThoughts {
-				m.screen = screenAllThoughts
-				cmd := m.thoughts.OpenAll(m.metrics)
+				m.screen = screenBrowseThoughts
+				cmd := m.thoughts.OpenBrowseThoughtsView(m.metrics)
 				return m, cmd
 			}
 		}
@@ -190,7 +190,7 @@ func (m Model) updateEntities(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() tea.View {
 	switch m.screen {
-	case screenSubjectDetail, screenMiscThoughts, screenAllThoughts:
+	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts:
 		if m.thoughts.ShowingDetail() {
 			name := m.thoughts.SelectedSubjectName()
 			if m.screen == screenSubjectDetail && m.subjects.selected != nil {
@@ -219,7 +219,7 @@ func (m Model) View() tea.View {
 		if m.thoughts.Browsing() {
 			content += "\nEsc: subjects • q: quit"
 		}
-	case screenAllThoughts:
+	case screenBrowseThoughts:
 		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
 		content = heading + "\n" + m.thoughts.View()
 		if m.thoughts.Browsing() {

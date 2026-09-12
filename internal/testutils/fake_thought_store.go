@@ -54,9 +54,9 @@ func (s *FakeThoughtStore) GetThought(ctx context.Context, userID string, though
 
 var _ data.ThoughtStore = (*FakeThoughtStore)(nil)
 
-func (s *FakeThoughtStore) BrowseThoughts(ctx context.Context, userID string, request data.ThoughtPageRequest) (data.ThoughtPage, error) {
+func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string, request data.ThoughtViewRequest) (data.ThoughtView, error) {
 	if err := ctx.Err(); err != nil {
-		return data.ThoughtPage{}, err
+		return data.ThoughtView{}, err
 	}
 	items := []data.ThoughtSummary{}
 	for _, item := range s.thoughts {
@@ -97,14 +97,14 @@ func (s *FakeThoughtStore) BrowseThoughts(ctx context.Context, userID string, re
 	if request.Direction == data.ThoughtsNewer {
 		slices.Reverse(items)
 	}
-	more := len(items) > data.ThoughtPageSize
+	more := len(items) > data.ThoughtViewBatchSize
 	if more {
-		items = items[:data.ThoughtPageSize]
+		items = items[:data.ThoughtViewBatchSize]
 	}
 	if request.Direction == data.ThoughtsNewer {
 		slices.Reverse(items)
 	}
-	return data.ThoughtPage{Items: items, More: more}, nil
+	return data.ThoughtView{Items: items, More: more}, nil
 }
 
 func (s *FakeThoughtStore) ListThoughts(ctx context.Context, userID string, subjectID int64) ([]data.Thought, error) {

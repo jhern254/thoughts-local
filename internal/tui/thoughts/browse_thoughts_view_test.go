@@ -16,7 +16,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
-func allModel(t *testing.T, count int) Model {
+func browseThoughtsModel(t *testing.T, count int) Model {
 	t.Helper()
 	store := testutils.NewFakeThoughtStore()
 	for id := 1; id <= count; id++ {
@@ -26,18 +26,18 @@ func allModel(t *testing.T, count int) Model {
 		}
 	}
 	m := New(t.Context(), "u", thought.NewService(store), logging.Nop())
-	cmd := m.OpenAll(store)
-	return allCommand(m, cmd)
+	cmd := m.OpenBrowseThoughtsView(store)
+	return runBrowseThoughtsCommand(m, cmd)
 }
 
-func allCommand(m Model, cmd tea.Cmd) Model {
+func runBrowseThoughtsCommand(m Model, cmd tea.Cmd) Model {
 	if cmd == nil {
 		return m
 	}
 	message := cmd()
 	if batch, ok := message.(tea.BatchMsg); ok {
 		for _, child := range batch {
-			m = allCommand(m, child)
+			m = runBrowseThoughtsCommand(m, child)
 		}
 		return m
 	}
@@ -45,18 +45,18 @@ func allCommand(m Model, cmd tea.Cmd) Model {
 	return m
 }
 
-func allKey(m Model, code rune) Model {
+func browseThoughtsKey(m Model, code rune) Model {
 	m, cmd := m.Update(key(code))
 	if cmd != nil {
-		m = allCommand(m, cmd)
+		m = runBrowseThoughtsCommand(m, cmd)
 	}
 	return m
 }
 
-func TestModel_AllThoughts(t *testing.T) {
+func TestModel_BrowseThoughtsView(t *testing.T) {
 	t.Run("counts records without loaded wording or the Create action", func(t *testing.T) {
 		for _, count := range []int{0, 1, 2} {
-			m := allModel(t, count)
+			m := browseThoughtsModel(t, count)
 			label := "thoughts"
 			if count == 1 {
 				label = "thought"
@@ -68,9 +68,9 @@ func TestModel_AllThoughts(t *testing.T) {
 		}
 	})
 	t.Run("uses the native picker style and subject color blocks for selected and unselected rows", func(t *testing.T) {
-		m := allModel(t, 2)
+		m := browseThoughtsModel(t, 2)
 		name := "Writing"
-		m.all.rows[1].item.SubjectName = &name
+		m.browseThoughts.rows[1].item.SubjectName = &name
 		var native bytes.Buffer
 		list.NewDefaultDelegate().Render(&native, m.list, 0, row{kind: rowCreate, unassigned: true})
 		if !strings.HasPrefix(m.View(), native.String()+"\n") {
@@ -83,37 +83,37 @@ func TestModel_AllThoughts(t *testing.T) {
 					t.Fatalf("missing subject color block %q in %q", badge, m.View())
 				}
 			}
-			m = allKey(m, tea.KeyDown)
+			m = browseThoughtsKey(m, tea.KeyDown)
 		}
 	})
 	t.Run("eviction preserves selected ID and its screen position at either edge", func(t *testing.T) {
-		m := allModel(t, 230)
+		m := browseThoughtsModel(t, 230)
 		for range 150 {
-			m = allKey(m, tea.KeyDown)
+			m = browseThoughtsKey(m, tea.KeyDown)
 		}
-		id, position := m.all.rows[m.all.index].item.ThoughtID, m.all.index*summaryLines-m.all.offset
-		cursor := m.all.rows[len(m.all.rows)-1].item.Cursor()
-		cmd := m.browseThoughts(data.ThoughtPageRequest{Cursor: &cursor}, 0)
+		id, position := m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID, m.browseThoughts.index*summaryLines-m.browseThoughts.offset
+		cursor := m.browseThoughts.rows[len(m.browseThoughts.rows)-1].item.Cursor()
+		cmd := m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor}, 0)
 		m, _ = m.Update(cmd())
-		if m.all.rows[m.all.index].item.ThoughtID != id || m.all.index*summaryLines-m.all.offset != position || len(m.all.rows) != 150 {
+		if m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID != id || m.browseThoughts.index*summaryLines-m.browseThoughts.offset != position || len(m.browseThoughts.rows) != 150 {
 			t.Fatal("older merge moved anchor or exceeded window")
 		}
-		m.all.index = 0
-		m.all.keepVisible()
-		id, position = m.all.rows[m.all.index].item.ThoughtID, m.all.index*summaryLines-m.all.offset
-		cursor = m.all.rows[0].item.Cursor()
-		cmd = m.browseThoughts(data.ThoughtPageRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, 0)
+		m.browseThoughts.index = 0
+		m.browseThoughts.keepVisible()
+		id, position = m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID, m.browseThoughts.index*summaryLines-m.browseThoughts.offset
+		cursor = m.browseThoughts.rows[0].item.Cursor()
+		cmd = m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, 0)
 		m, _ = m.Update(cmd())
-		if m.all.rows[m.all.index].item.ThoughtID != id || m.all.index*summaryLines-m.all.offset != position || len(m.all.rows) != 151 {
+		if m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID != id || m.browseThoughts.index*summaryLines-m.browseThoughts.offset != position || len(m.browseThoughts.rows) != 151 {
 			t.Fatal("newer merge moved anchor or exceeded window plus Create")
 		}
 	})
 	t.Run("renders observation time and subject labels with bounded normal and narrow layouts", func(t *testing.T) {
-		m := allModel(t, 2)
+		m := browseThoughtsModel(t, 2)
 		name := "Writing"
-		m.all.rows[1].item.SubjectName = &name
-		m.all.rows[1].item.ObservedAt = time.Date(2026, 7, 3, 0, 4, 0, 0, time.UTC)
-		m.all.rows[2].item.ObservedAt = time.Date(2026, 7, 2, 0, 4, 0, 0, time.UTC)
+		m.browseThoughts.rows[1].item.SubjectName = &name
+		m.browseThoughts.rows[1].item.ObservedAt = time.Date(2026, 7, 3, 0, 4, 0, 0, time.UTC)
+		m.browseThoughts.rows[2].item.ObservedAt = time.Date(2026, 7, 2, 0, 4, 0, 0, time.UTC)
 		for _, width := range []int{80, 40} {
 			m.Resize(width, 14)
 			want := "│ Create thought…\n│ Write a new thought\n\n   Writing  body 2\n  Thought 2 • Jul 2, 2026 5:04 PM PDT\n\n   Misc  body 1\n  Thought 1 • Jul 1, 2026 5:04 PM PDT\n\n2 thoughts\n\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest"
@@ -126,46 +126,46 @@ func TestModel_AllThoughts(t *testing.T) {
 				}
 			}
 		}
-		m = allKey(m, tea.KeyDown)
+		m = browseThoughtsKey(m, tea.KeyDown)
 		m.Resize(20, 8)
-		if m.all.rows[m.all.index].item.ThoughtID != 2 || !strings.Contains(ansi.Strip(m.View()), "│ Thought 2") {
+		if m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID != 2 || !strings.Contains(ansi.Strip(m.View()), "│ Thought 2") {
 			t.Fatal("resize lost visible selection")
 		}
 		m.Resize(0, 0)
 		_ = m.View()
 	})
 	t.Run("styled Unicode rows stay within the viewport without altering their text", func(t *testing.T) {
-		m := allModel(t, 1)
+		m := browseThoughtsModel(t, 1)
 		name, preview := strings.Repeat("界", 80), strings.Repeat("語", 80)
-		m.all.rows[1].item.SubjectName = &name
-		m.all.rows[1].item.Preview = preview
-		m = allKey(m, tea.KeyDown)
+		m.browseThoughts.rows[1].item.SubjectName = &name
+		m.browseThoughts.rows[1].item.Preview = preview
+		m = browseThoughtsKey(m, tea.KeyDown)
 		for _, width := range []int{80, 40, 20, 2, 1} {
 			m.Resize(width, 14)
-			rows := strings.Split(m.View(), "\n")[:m.all.height]
+			rows := strings.Split(m.View(), "\n")[:m.browseThoughts.height]
 			for _, line := range rows {
 				if ansi.StringWidth(line) > width {
 					t.Fatalf("width %d exceeded by styled line %q", width, line)
 				}
 			}
-			if m.all.rows[m.all.index].item.Preview != preview || *m.all.rows[m.all.index].item.SubjectName != name {
+			if m.browseThoughts.rows[m.browseThoughts.index].item.Preview != preview || *m.browseThoughts.rows[m.browseThoughts.index].item.SubjectName != name {
 				t.Fatal("rendering changed stored display metadata")
 			}
 		}
 	})
 	t.Run("page keys move within the viewport and suppress duplicate pending requests", func(t *testing.T) {
-		m := allModel(t, 130)
+		m := browseThoughtsModel(t, 130)
 		m.Resize(60, 17)
-		m = allKey(m, tea.KeyPgDown)
-		if m.all.index != 4 {
-			t.Fatalf("got selection %d, want four records down", m.all.index)
+		m = browseThoughtsKey(m, tea.KeyPgDown)
+		if m.browseThoughts.index != 4 {
+			t.Fatalf("got selection %d, want four records down", m.browseThoughts.index)
 		}
-		m = allKey(m, tea.KeyPgUp)
-		if m.all.index != 0 {
+		m = browseThoughtsKey(m, tea.KeyPgUp)
+		if m.browseThoughts.index != 0 {
 			t.Fatal("page up did not return to Create")
 		}
 		for range 50 {
-			m = allKey(m, tea.KeyDown)
+			m = browseThoughtsKey(m, tea.KeyDown)
 		}
 		m, cmd := m.Update(key(tea.KeyDown))
 		if cmd == nil || !strings.Contains(m.View(), "Loading…") {
@@ -177,61 +177,61 @@ func TestModel_AllThoughts(t *testing.T) {
 			t.Fatal("pending boundary request duplicated or moved selection")
 		}
 		m, _ = m.Update(cmd())
-		if m.all.rows[m.all.index].item.ThoughtID != 80 {
+		if m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID != 80 {
 			t.Fatal("boundary did not select next record")
 		}
 	})
 	t.Run("loads bounded batches in both directions and restores detail position", func(t *testing.T) {
-		m := allModel(t, 230)
-		if len(m.all.rows) != 51 || m.all.rows[0].kind != rowCreate {
+		m := browseThoughtsModel(t, 230)
+		if len(m.browseThoughts.rows) != 51 || m.browseThoughts.rows[0].kind != rowCreate {
 			t.Fatal("missing first batch or typed Create row")
 		}
 		for range 201 {
-			m = allKey(m, tea.KeyDown)
+			m = browseThoughtsKey(m, tea.KeyDown)
 		}
-		if len(m.all.rows) > 150 || m.all.rows[m.all.index].item.ThoughtID != 30 {
-			t.Fatalf("unexpected older window: %d rows, selection %+v", len(m.all.rows), m.all.rows[m.all.index])
+		if len(m.browseThoughts.rows) > 150 || m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID != 30 {
+			t.Fatalf("unexpected older window: %d rows, selection %+v", len(m.browseThoughts.rows), m.browseThoughts.rows[m.browseThoughts.index])
 		}
-		index, offset := m.all.index, m.all.offset
-		m = allKey(m, tea.KeyEnter)
+		index, offset := m.browseThoughts.index, m.browseThoughts.offset
+		m = browseThoughtsKey(m, tea.KeyEnter)
 		if m.selected == nil || m.selected.ThoughtID != 30 {
 			t.Fatal("did not fetch full thought")
 		}
-		m = allKey(m, tea.KeyEscape)
-		if m.all.index != index || m.all.offset != offset {
+		m = browseThoughtsKey(m, tea.KeyEscape)
+		if m.browseThoughts.index != index || m.browseThoughts.offset != offset {
 			t.Fatal("detail return moved list")
 		}
 		for range 201 {
-			m = allKey(m, tea.KeyUp)
+			m = browseThoughtsKey(m, tea.KeyUp)
 		}
-		if m.all.rows[m.all.index].kind != rowCreate || len(m.all.rows) > 151 {
+		if m.browseThoughts.rows[m.browseThoughts.index].kind != rowCreate || len(m.browseThoughts.rows) > 151 {
 			t.Fatal("reverse scrolling did not restore Create within bounded window")
 		}
 	})
 	t.Run("Home supersedes an actual pending reply and slash does not filter a partial list", func(t *testing.T) {
-		m := allModel(t, 120)
+		m := browseThoughtsModel(t, 120)
 		for range 50 {
-			m = allKey(m, tea.KeyDown)
+			m = browseThoughtsKey(m, tea.KeyDown)
 		}
 		m, cmd := m.Update(key(tea.KeyDown))
 		old := cmd()
 		m, cmd = m.Update(key(tea.KeyHome))
-		m = allCommand(m, cmd)
+		m = runBrowseThoughtsCommand(m, cmd)
 		m, _ = m.Update(old)
-		if len(m.all.rows) != 51 || m.all.index != 0 || m.loading {
+		if len(m.browseThoughts.rows) != 51 || m.browseThoughts.index != 0 || m.loading {
 			t.Fatal("old reply replaced refreshed list")
 		}
-		m = allKey(m, '/')
+		m = browseThoughtsKey(m, '/')
 		if !m.Browsing() || m.list.SettingFilter() {
 			t.Fatal("All Thoughts enabled partial filtering")
 		}
 	})
 	t.Run("empty list keeps Create and editor retains complete input", func(t *testing.T) {
-		m := allModel(t, 0)
+		m := browseThoughtsModel(t, 0)
 		if !strings.Contains(m.View(), "\n0 thoughts\n") {
 			t.Fatal(m.View())
 		}
-		m = allKey(m, tea.KeyEnter)
+		m = browseThoughtsKey(m, tea.KeyEnter)
 		body := "q\n" + strings.Repeat("界", 100000)
 		m, _ = m.Update(tea.PasteMsg{Content: body})
 		if m.input.Value() != body {
@@ -242,8 +242,8 @@ func TestModel_AllThoughts(t *testing.T) {
 		if m.selected.SubjectID != nil || m.selected.Thought != body {
 			t.Fatal("Create altered unassigned thought")
 		}
-		m = allKey(m, tea.KeyEscape)
-		if len(m.all.rows) != 2 || m.all.index != 0 {
+		m = browseThoughtsKey(m, tea.KeyEscape)
+		if len(m.browseThoughts.rows) != 2 || m.browseThoughts.index != 0 {
 			t.Fatal("creation did not reload latest batch")
 		}
 	})

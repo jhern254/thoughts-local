@@ -22,12 +22,12 @@ type labeledThoughtService struct {
 	name *string
 }
 
-func (s labeledThoughtService) Browse(ctx context.Context, userID string, request data.ThoughtPageRequest) (data.ThoughtPage, error) {
-	page, err := s.Service.Browse(ctx, userID, request)
-	for i := range page.Items {
-		page.Items[i].SubjectName = s.name
+func (s labeledThoughtService) BrowseView(ctx context.Context, userID string, request data.ThoughtViewRequest) (data.ThoughtView, error) {
+	view, err := s.Service.BrowseView(ctx, userID, request)
+	for i := range view.Items {
+		view.Items[i].SubjectName = s.name
 	}
-	return page, err
+	return view, err
 }
 
 func TestModel_SharedThoughtDetail(t *testing.T) {
@@ -54,10 +54,10 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 				}
 			}
 			var details []string
-			for _, all := range []bool{false, true} {
+			for _, browseThoughtsView := range []bool{false, true} {
 				m := NewModel(t.Context(), &data.User{UserID: "u"}, subjects, labeledThoughtService{Service: thoughts, name: subjectName}, &metricsStub{}, logging.Nop())
 				m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 24})
-				if all {
+				if browseThoughtsView {
 					m.entityList.Select(1)
 					m = runModelCommand(t, m, enterKey())
 				} else {

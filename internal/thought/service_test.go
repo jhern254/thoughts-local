@@ -11,7 +11,7 @@ import (
 )
 
 type thoughtServiceStoreStub struct {
-	browse         func(context.Context, string, data.ThoughtPageRequest) (data.ThoughtPage, error)
+	browseView     func(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error)
 	listUnassigned func(context.Context, string) ([]data.Thought, error)
 	list           func(context.Context, string, int64) ([]data.Thought, error)
 	create         func(context.Context, *data.Thought) (*data.Thought, error)
@@ -19,8 +19,8 @@ type thoughtServiceStoreStub struct {
 	createCalled   bool
 }
 
-func (s *thoughtServiceStoreStub) BrowseThoughts(ctx context.Context, userID string, request data.ThoughtPageRequest) (data.ThoughtPage, error) {
-	return s.browse(ctx, userID, request)
+func (s *thoughtServiceStoreStub) BrowseThoughtsView(ctx context.Context, userID string, request data.ThoughtViewRequest) (data.ThoughtView, error) {
+	return s.browseView(ctx, userID, request)
 }
 
 func (s *thoughtServiceStoreStub) ListUnassignedThoughts(ctx context.Context, u string) ([]data.Thought, error) {

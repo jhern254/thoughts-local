@@ -18,8 +18,8 @@ import (
 
 type failingService struct{ err error }
 
-func (s failingService) Browse(context.Context, string, data.ThoughtPageRequest) (data.ThoughtPage, error) {
-	return data.ThoughtPage{}, s.err
+func (s failingService) BrowseView(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error) {
+	return data.ThoughtView{}, s.err
 }
 
 func (s failingService) ListUnassigned(context.Context, string) ([]data.Thought, error) {
@@ -43,8 +43,8 @@ func TestModel_FailurePrivacy(t *testing.T) {
 		}
 		private := fmt.Errorf("PRIVATE-BROWSE-MARKER: %w", data.ErrDatabaseBusy)
 		m := New(t.Context(), "u", failingService{err: private}, logger)
-		cmd := m.OpenAll(testutils.NewFakeThoughtStore())
-		m = allCommand(m, cmd)
+		cmd := m.OpenBrowseThoughtsView(testutils.NewFakeThoughtStore())
+		m = runBrowseThoughtsCommand(m, cmd)
 		if m.err != private || m.loading || !m.Browsing() {
 			t.Fatal("failure lost original error or navigation")
 		}

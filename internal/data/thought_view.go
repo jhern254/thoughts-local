@@ -2,7 +2,7 @@ package data
 
 import "time"
 
-const ThoughtPageSize = 50
+const ThoughtViewBatchSize = 50
 
 type ThoughtDirection uint8
 
@@ -31,13 +31,13 @@ func (s ThoughtSummary) Cursor() ThoughtCursor {
 	return ThoughtCursor{ObservedAt: s.ObservedAt, CreatedAt: s.CreatedAt, ThoughtID: s.ThoughtID}
 }
 
-type ThoughtPageRequest struct {
+type ThoughtViewRequest struct {
 	Cursor    *ThoughtCursor
 	Direction ThoughtDirection
 }
 
 // Items are always newest first. More refers to the requested direction.
-type ThoughtPage struct {
+type ThoughtView struct {
 	Items []ThoughtSummary
 	More  bool
 }

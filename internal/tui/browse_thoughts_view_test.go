@@ -14,7 +14,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
-func TestModel_AllThoughts(t *testing.T) {
+func TestModel_BrowseThoughtsView(t *testing.T) {
 	t.Run("Home and r refresh external count changes and reject superseded count replies", func(t *testing.T) {
 		counts := &metricsStub{total: 230}
 		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())

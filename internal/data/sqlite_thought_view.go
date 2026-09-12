@@ -14,7 +14,7 @@ const thoughtSummarySelect = `SELECT t.thought_id, substr(t.thought, 1, 81), s.s
 	WHERE t.user_id = ? AND t.deleted_at IS NULL
 	AND EXISTS (SELECT 1 FROM users u WHERE u.user_id = t.user_id AND u.deleted_at IS NULL)`
 
-func (s *SQLiteThoughtStore) BrowseThoughts(ctx context.Context, userID string, request ThoughtPageRequest) (ThoughtPage, error) {
+func (s *SQLiteThoughtStore) BrowseThoughtsView(ctx context.Context, userID string, request ThoughtViewRequest) (ThoughtView, error) {
 	query := thoughtSummarySelect
 	args := []any{userID}
 	comparison, order := "<", " DESC"
@@ -26,19 +26,19 @@ func (s *SQLiteThoughtStore) BrowseThoughts(ctx context.Context, userID string, 
 		args = append(args, cursor.ObservedAt.Unix(), cursor.CreatedAt.Unix(), cursor.ThoughtID)
 	}
 	query += " ORDER BY t.observed_at" + order + ", t.created_at" + order + ", t.thought_id" + order + " LIMIT ?"
-	args = append(args, ThoughtPageSize+1)
+	args = append(args, ThoughtViewBatchSize+1)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return ThoughtPage{}, fmt.Errorf("browse thoughts: %w", TranslateSQLiteError(err))
+		return ThoughtView{}, fmt.Errorf("browse thoughts: %w", TranslateSQLiteError(err))
 	}
 	defer rows.Close()
-	page := ThoughtPage{Items: make([]ThoughtSummary, 0, ThoughtPageSize+1)}
+	view := ThoughtView{Items: make([]ThoughtSummary, 0, ThoughtViewBatchSize+1)}
 	for rows.Next() {
 		var item ThoughtSummary
 		var subject sql.NullString
 		var observed, created int64
 		if err := rows.Scan(&item.ThoughtID, &item.Preview, &subject, &observed, &created); err != nil {
-			return ThoughtPage{}, fmt.Errorf("scan thought summary: %w", TranslateSQLiteError(err))
+			return ThoughtView{}, fmt.Errorf("scan thought summary: %w", TranslateSQLiteError(err))
 		}
 		if subject.Valid {
 			item.SubjectName = &subject.String
@@ -48,17 +48,17 @@ func (s *SQLiteThoughtStore) BrowseThoughts(ctx context.Context, userID string, 
 			item.Preview = string(preview[:80]) + "…"
 		}
 		item.ObservedAt, item.CreatedAt = TimeFromUnixSec(observed), TimeFromUnixSec(created)
-		page.Items = append(page.Items, item)
+		view.Items = append(view.Items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return ThoughtPage{}, fmt.Errorf("read thought summaries: %w", TranslateSQLiteError(err))
+		return ThoughtView{}, fmt.Errorf("read thought summaries: %w", TranslateSQLiteError(err))
 	}
-	page.More = len(page.Items) > ThoughtPageSize
-	if page.More {
-		page.Items = page.Items[:ThoughtPageSize]
+	view.More = len(view.Items) > ThoughtViewBatchSize
+	if view.More {
+		view.Items = view.Items[:ThoughtViewBatchSize]
 	}
 	if request.Direction == ThoughtsNewer {
-		slices.Reverse(page.Items)
+		slices.Reverse(view.Items)
 	}
-	return page, nil
+	return view, nil
 }
