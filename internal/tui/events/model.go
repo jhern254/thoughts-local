@@ -317,6 +317,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtCountResult:
 		var cmd tea.Cmd
 		m.picker, cmd = m.picker.Update(msg)
+		if !m.picker.ShowingDetail() {
+			m.anchor()
+		}
 		return m, cmd
 	}
 	if m.form.open {

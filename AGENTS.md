@@ -100,7 +100,7 @@ workflow for TUI changes, scaling coverage to the behavior and risk involved:
    sees before and after the affected actions, including focus, selection,
    scroll position, and return navigation. For substantial layouts, agree on a
    small annotated example. State spatial relationships explicitly: a calendar
-   box spans its start/end times, touching intervals have adjacent boxes, and
+   card is anchored at its start, touching intervals share one boundary label, and
    expansion preserves the time column while moving later content down.
 2. **Write focused, deterministic presentation tests.** Reuse existing fakes;
    fix terminal dimensions, clock, timezone, and fixture data. Assert observable
