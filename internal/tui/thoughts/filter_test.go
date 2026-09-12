@@ -25,6 +25,8 @@ func filteringThoughts(t *testing.T) Model {
 	m := New(context.Background(), "u", service, logging.Nop())
 	cmd := m.Open(1)
 	m, _ = m.Update(cmd())
+	// Filter ownership needs real results, not cursor animation timers.
+	m.list.FilterInput.SetVirtualCursor(false)
 	m, _ = m.Update(key('/'))
 	return m
 }

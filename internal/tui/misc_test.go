@@ -54,6 +54,7 @@ func TestModel_MiscThoughts(t *testing.T) {
 				t.Fatalf("got row %+v and view %q, want Misc with %s and zero subjects", row, m.View().Content, want)
 			}
 		}
+		m.subjects.list.FilterInput.SetVirtualCursor(false)
 		m, _ = rootUpdate(m, runeKey('/'))
 		m, cmd := rootUpdate(m, tea.PasteMsg{Content: "Misc"})
 		m, _ = rootUpdate(m, rootFilterReply(t, cmd))

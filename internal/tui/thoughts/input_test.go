@@ -67,7 +67,7 @@ func TestModel_InputIntegrity(t *testing.T) {
 			m.input.CursorStart()
 			line, column := m.input.Line(), m.input.Column()
 			m, _ = m.Update(msg)
-			if m.input.Value() != body || m.input.Line() != line || m.input.Column() != column || !strings.Contains(m.View(), "Input rejected") {
+			if m.input.Value() != body || m.input.Line() != line || m.input.Column() != column || !strings.Contains(m.inputWarning, "10,000 lines") {
 				t.Fatalf("edit %T changed draft/cursor or lacked rejection feedback", msg)
 			}
 			m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'z', Text: "z"}))
@@ -102,7 +102,7 @@ func TestModel_InputIntegrity(t *testing.T) {
 		if !m.input.HasSelection() || m.input.SelectedText() != "existing draft" || !m.input.Focused() {
 			t.Fatal("rejected paste changed selection or focus")
 		}
-		if cmd != nil || !strings.Contains(m.View(), "Input rejected") {
+		if cmd != nil || !strings.Contains(m.View(), "Input rejected: this editor supports at most 10,000 lines. Draft unchanged.") {
 			t.Fatal("unsupported paste was not explicitly rejected")
 		}
 	})
