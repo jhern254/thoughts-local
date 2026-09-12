@@ -2,6 +2,7 @@ package events
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -68,9 +69,12 @@ func (m Model) card(item data.Event, selected bool) string {
 		end = *item.EndedAt
 	}
 	heading := label + " · " + duration(item.StartedAt, end, item.EndedAt == nil)
-	layout := "Jan 2 03:04:05 PM"
-	if selected {
-		layout += " MST"
+	layout := "03:04 PM"
+	if item.EventID == m.expanded {
+		layout = "03:04:05 PM MST"
+	}
+	if item.StartedAt.Before(m.day) || end.After(m.day.AddDate(0, 0, 1)) {
+		layout = "Jan 2 " + layout
 	}
 	interval := displaytime.Format(item.StartedAt, layout)
 	if item.EndedAt == nil {
@@ -85,7 +89,7 @@ func (m Model) card(item data.Event, selected bool) string {
 	if end.After(m.day.AddDate(0, 0, 1)) {
 		interval += " →"
 	}
-	width := max(1, m.width-8)
+	width := max(1, m.width-12)
 	heading = ansi.Truncate(heading, width, "…")
 	interval = ansi.Truncate(interval, width, "…")
 	content := heading + "\n" + interval + "\n"
@@ -105,7 +109,7 @@ func (m Model) card(item data.Event, selected bool) string {
 			case m.latestErr != nil:
 				content += "Latest thought unavailable\n"
 			case m.latest != nil:
-				content += m.picker.SummaryPreview(*m.latest, width, false) + "\n"
+				content += m.picker.TimelinePreview(*m.latest, width) + "\n"
 			default:
 				content += "No thoughts yet\n"
 			}
@@ -161,14 +165,40 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 	lines := []string{}
 	positions := make(map[int64]int)
 	nowLine := -1
-	for _, entry := range entries {
+	hourHeight := max(4, (m.bodyHeight()+4)/5)
+	previousTop := 0
+	var previousTime time.Time
+	for i, entry := range entries {
+		// An event starting on the hour owns that label's row, not a row below it.
+		if entry.id == 0 && !entry.now && i+1 < len(entries) && entries[i+1].id != 0 && entry.at.Equal(entries[i+1].at) {
+			continue
+		}
+		if !previousTime.IsZero() {
+			gap := int(math.Ceil(entry.at.Sub(previousTime).Hours() * float64(hourHeight)))
+			for len(lines) < previousTop+gap {
+				lines = append(lines, "          │")
+			}
+		}
+		previousTop, previousTime = len(lines), entry.at
 		if entry.id != 0 {
 			positions[entry.id] = len(lines)
 		}
 		if entry.now {
 			nowLine = len(lines)
 		}
-		lines = append(lines, strings.Split(entry.text, "\n")...)
+		if entry.now {
+			lines = append(lines, "          "+entry.text)
+		} else if entry.id == 0 {
+			lines = append(lines, fmt.Sprintf("%-10s│", entry.text))
+		} else {
+			for row, text := range strings.Split(entry.text, "\n") {
+				label := ""
+				if row == 0 {
+					label = displaytime.Format(entry.at, "03:04 PM")
+				}
+				lines = append(lines, fmt.Sprintf("%-10s%s", label, text))
+			}
+		}
 	}
 	return lines, positions, nowLine
 }
@@ -229,7 +259,7 @@ func (m Model) View() string {
 		status = "No events on this day. n: start event"
 	}
 	if m.inside {
-		status = "↑/↓: thoughts • PgUp/PgDn: scroll • Enter: open • Esc: timeline"
+		status = "↑/↓: thoughts • PgUp/PgDn: scroll • Enter: open • Esc: collapse"
 	}
 	for i := range visible {
 		visible[i] = ansi.Truncate(visible[i], m.width, "")

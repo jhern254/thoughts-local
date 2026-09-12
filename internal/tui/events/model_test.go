@@ -222,12 +222,8 @@ func TestModel_EventThoughtPicker(t *testing.T) {
 			t.Fatal("detail return lost anchors")
 		}
 		m, _ = m.Update(eventKey("esc"))
-		if m.inside || m.expanded == 0 {
-			t.Fatal("first Escape should focus event header")
-		}
-		m, _ = m.Update(eventKey("esc"))
-		if m.expanded != 0 {
-			t.Fatal("second Escape should collapse")
+		if m.inside || m.expanded != 0 {
+			t.Fatal("one Escape should collapse inline picker")
 		}
 	})
 	t.Run("refresh retains a selected thought still in the latest batch", func(t *testing.T) {
