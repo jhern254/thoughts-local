@@ -66,6 +66,8 @@ type Saved struct {
 
 type Model struct {
 	ctx                                  context.Context
+	readCtx                              context.Context
+	cancelRead                           context.CancelFunc
 	userID                               string
 	service                              Service
 	timelineView                         TimelineView
@@ -104,6 +106,9 @@ func (m *Model) Open() tea.Cmd {
 	return tea.Batch(m.reload(), m.tick())
 }
 func (m *Model) Close() {
+	if m.cancelRead != nil {
+		m.cancelRead()
+	}
 	m.active = false
 	m.session++
 	m.request++
@@ -135,17 +140,27 @@ func (m Model) tick() tea.Cmd {
 	return tea.Tick(delay, func(at time.Time) tea.Msg { return Tick{owner, session, at} })
 }
 func (m *Model) reload() tea.Cmd {
+	if m.cancelRead != nil {
+		m.cancelRead()
+	}
+	m.readCtx, m.cancelRead = context.WithCancel(m.ctx)
 	m.request++
 	m.expansion++
 	m.opening = false
 	m.loading, m.countPending, m.latestPending = true, true, false
 	m.err, m.countErr, m.latestErr = nil, nil, nil
 	m.message = ""
-	owner, request, ctx, user, service, view, day := m.owner, m.request, m.ctx, m.userID, m.service, m.timelineView, m.day
+	owner, request, ctx, user, service, view, day := m.owner, m.request, m.readCtx, m.userID, m.service, m.timelineView, m.day
 	return tea.Batch(func() tea.Msg {
+		if err := ctx.Err(); err != nil {
+			return Listed{owner: owner, request: request, err: err}
+		}
 		items, err := service.List(ctx, user, day, day.AddDate(0, 0, 1))
 		return Listed{owner, request, items, err}
 	}, func() tea.Msg {
+		if err := ctx.Err(); err != nil {
+			return Counts{owner: owner, request: request, err: err}
+		}
 		items, err := view.ThoughtCounts(ctx, user, day, day.AddDate(0, 0, 1))
 		return Counts{owner, request, items, err}
 	})
@@ -228,8 +243,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					m.index = i
 				}
 				m.latestPending = true
-				owner, request, ctx, user, view, id := m.owner, m.request, m.ctx, m.userID, m.timelineView, item.EventID
+				owner, request, ctx, user, view, id := m.owner, m.request, m.readCtx, m.userID, m.timelineView, item.EventID
 				latest = func() tea.Msg {
+					if err := ctx.Err(); err != nil {
+						return Latest{owner: owner, request: request, err: err}
+					}
 					item, err := view.LatestThought(ctx, user, id)
 					return Latest{owner, request, item, err}
 				}
@@ -242,9 +260,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.anchor()
 		if selected == 0 && !m.following && len(m.items) > 0 {
-			_, positions, _ := m.layout()
+			lines, positions, _ := m.layout()
 			m.offset = positions[m.items[0].EventID]
-			m.clampOffset()
+			m.clampOffset(len(lines))
 		}
 		return m, tea.Batch(latest, open)
 	case Counts:
@@ -417,7 +435,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			delta = -delta
 		}
 		m.offset += delta
-		m.clampOffset()
+		lines, _, _ := m.layout()
+		m.clampOffset(len(lines))
 	case "enter":
 		if len(m.items) > 0 {
 			id := m.items[m.index].EventID
@@ -433,7 +452,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.expanded = 0
 		m.opening = false
 		m.picker.Reset()
-		m.clampOffset()
+		lines, _, _ := m.layout()
+		m.clampOffset(len(lines))
 	case "n":
 		cmd := m.startForm(false)
 		return m, cmd

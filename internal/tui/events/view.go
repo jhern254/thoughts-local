@@ -274,38 +274,35 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 	}
 	return lines, positions, nowLine
 }
-func (m *Model) clampOffset() {
-	lines, _, _ := m.layout()
+func (m *Model) clampOffset(lineCount int) {
 	// Keep the chosen card at the top even near the end of the day; unused
 	// viewport rows belong below it, not before it as unrelated earlier hours.
-	m.offset = min(max(0, m.offset), max(0, len(lines)-1))
+	m.offset = min(max(0, m.offset), max(0, lineCount-1))
 }
 func (m Model) bodyHeight() int { return max(1, m.height-4) }
 func (m *Model) revealSelected() {
-	if len(m.items) == 0 {
-		m.clampOffset()
-		return
+	lines, positions, _ := m.layout()
+	if len(m.items) > 0 {
+		top := positions[m.items[m.index].EventID]
+		if top < m.offset || top >= m.offset+m.bodyHeight()-3 || m.inside {
+			m.offset = top
+		}
 	}
-	_, positions, _ := m.layout()
-	top := positions[m.items[m.index].EventID]
-	if top < m.offset || top >= m.offset+m.bodyHeight()-3 || m.inside {
-		m.offset = top
-	}
-	m.clampOffset()
+	m.clampOffset(len(lines))
 }
 func (m *Model) anchor() {
 	if m.day.IsZero() {
 		return
 	}
-	if m.following {
-		_, _, now := m.layout()
-		if now >= 0 {
-			m.offset = max(0, now-m.bodyHeight()+2)
-		}
-	} else if m.inside {
+	if !m.following && m.inside {
 		m.revealSelected()
+		return
 	}
-	m.clampOffset()
+	lines, _, now := m.layout()
+	if m.following && now >= 0 {
+		m.offset = max(0, now-m.bodyHeight()+2)
+	}
+	m.clampOffset(len(lines))
 }
 
 func (m Model) View() string {

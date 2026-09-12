@@ -29,10 +29,12 @@ func newScreenTestModel(ctx context.Context, user *data.User, subjects SubjectSe
 type homeEventStub struct {
 	items []data.Event
 	user  string
+	lists int
 }
 
 func (s *homeEventStub) List(_ context.Context, user string, _, _ time.Time) ([]data.Event, error) {
 	s.user = user
+	s.lists++
 	return s.items, nil
 }
 
@@ -153,6 +155,35 @@ func TestModel_EventsHome(t *testing.T) {
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 24, Height: 16})
 		if !strings.Contains(m.View().Content, "Subjects") {
 			t.Fatal("selected entity clipped away")
+		}
+	})
+	t.Run("rapid day changes discard obsolete batches and late replies", func(t *testing.T) {
+		m, service := newHome(t)
+		m, cmd := rootUpdate(m, runeKey('r'))
+		batch := cmd().(tea.BatchMsg)
+		lateList, lateCounts := batch[0](), batch[1]()
+		_, lateLatest := rootUpdate(m, lateList)
+		var pending []tea.Cmd
+		calls := service.lists
+		for i := 0; i < 40; i++ {
+			key := tea.KeyLeft
+			if i%2 != 0 {
+				key = tea.KeyRight
+			}
+			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
+			pending = append(pending, cmd)
+		}
+		m, cmd = rootUpdate(m, runeKey('r'))
+		m = runHomeData(t, m, cmd)
+		before := m.View().Content
+		for i := len(pending) - 1; i >= 0; i-- {
+			m = runHomeData(t, m, pending[i])
+		}
+		m, _ = rootUpdate(m, lateList)
+		m, _ = rootUpdate(m, lateCounts)
+		m = runHomeData(t, m, lateLatest)
+		if m.View().Content != before || strings.Contains(before, "Loading events") || service.lists != calls+1 {
+			t.Fatalf("obsolete batches affected current screen or reads: got %d new reads, want 1", service.lists-calls)
 		}
 	})
 	t.Run("previous day arrives at its first event in calendar navigation", func(t *testing.T) {
