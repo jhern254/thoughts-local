@@ -86,7 +86,7 @@ type Model struct {
 	counts                               []data.EventThoughtCount
 	latest                               *data.ThoughtSummary
 	expanded                             int64
-	inside, opening                      bool
+	opening                              bool
 	picker                               thoughts.Model
 	form                                 eventForm
 }
@@ -115,7 +115,6 @@ func (m *Model) Close() {
 	m.expansion++
 	m.picker.Reset()
 	m.expanded = 0
-	m.inside = false
 }
 func (m *Model) Pause() { m.following = false }
 func (m *Model) SetFocused(focused bool) {
@@ -171,7 +170,6 @@ func (m *Model) openEvent(id int64) tea.Cmd {
 	}
 	m.expansion++
 	m.expanded = id
-	m.inside = true
 	m.opening = true
 	m.following = false
 	owner, request, ctx, user, view := m.owner, m.expansion, m.ctx, m.userID, m.timelineView
@@ -234,9 +232,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			if item.EventID == m.expanded {
 				foundExpanded = true
-				inside := m.inside
 				open = m.openEvent(item.EventID)
-				m.inside = inside
 			}
 			if item.EndedAt == nil {
 				if m.following {
@@ -255,7 +251,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		if !foundExpanded {
 			m.expanded = 0
-			m.inside = false
 			m.picker.Reset()
 		}
 		m.anchor()
@@ -356,9 +351,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.picker, cmd = m.picker.Update(msg)
 		return m, cmd
 	}
-	if m.inside {
+	if m.expanded != 0 {
 		if key.String() == "esc" || key.String() == "left" || key.String() == "h" {
-			m.inside = false
 			m.expansion++
 			m.expanded = 0
 			m.opening = false
@@ -439,12 +433,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.clampOffset(len(lines))
 	case "enter":
 		if len(m.items) > 0 {
-			id := m.items[m.index].EventID
-			if id == m.expanded {
-				m.inside = true
-				return m, nil
-			}
-			cmd := m.openEvent(id)
+			cmd := m.openEvent(m.items[m.index].EventID)
 			return m, cmd
 		}
 	case "esc":

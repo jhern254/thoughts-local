@@ -142,13 +142,13 @@ func TestModel_EventsHome(t *testing.T) {
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 		for _, key := range []rune{tea.KeyRight, tea.KeyLeft, 'h', 'l'} {
-			before := m.entityList.Index()
+			before := m.entityStrip()
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
-			if m.entityList.Index() == before {
+			if m.entityStrip() == before {
 				t.Fatalf("key %q did not move entity selection", key)
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
-			if m.entityList.Index() != before {
+			if m.entityStrip() != before {
 				t.Fatal("entity navigation did not wrap")
 			}
 		}

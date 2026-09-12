@@ -58,7 +58,7 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 				m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, subjects, labeledThoughtService{Service: thoughts, name: subjectName}, &metricsStub{}, logging.Nop())
 				m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 				if browseThoughtsView {
-					m.entityList.Select(1)
+					m.selectedEntity = entityThoughts
 					m = runModelCommand(t, m, enterKey())
 				} else {
 					m = openSubjects(t, m)
