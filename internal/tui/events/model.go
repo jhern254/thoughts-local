@@ -116,8 +116,9 @@ func (m Model) CanLeave() bool { return !m.form.open && !m.picker.ShowingDetail(
 func (m Model) FormOpen() bool { return m.form.open }
 func (m *Model) Resize(width, height int) {
 	m.width, m.height = max(1, width), max(1, height)
-	m.picker.Resize(max(1, width-8), max(1, height-2))
-	m.picker.ResizeEventView(max(1, width-8), max(1, (height-11)/3))
+	m.picker.Resize(max(1, width-12), max(1, height-2))
+	// Leave calendar context around the expanded box, not just room for the picker.
+	m.picker.ResizeEventView(max(1, width-12), max(1, (height-14)/3))
 	if m.form.open {
 		m.resizeForm()
 	}
@@ -322,6 +323,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if m.inside {
 		if key.String() == "esc" {
 			m.inside = false
+			m.expansion++
+			m.expanded = 0
+			m.opening = false
+			m.picker.Reset()
+			m.revealSelected()
 			return m, nil
 		}
 		if key.String() == "r" {
