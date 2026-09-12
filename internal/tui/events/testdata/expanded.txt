@@ -23,5 +23,5 @@
 
 
 
-↑/↓: thoughts • PgUp/PgDn: scroll • Enter: open • Esc: collapse
+←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll
 r: refresh event • q: quit
