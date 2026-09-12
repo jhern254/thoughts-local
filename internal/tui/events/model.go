@@ -362,12 +362,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.offset = 0
 		m.revealSelected()
 	case "[", "]":
-		m.following = false
 		delta := 1
 		if key.String() == "[" {
 			delta = -1
 		}
-		m.day = m.day.AddDate(0, 0, delta)
+		day := m.day.AddDate(0, 0, delta)
+		if day.After(displaytime.Day(m.now())) {
+			return m, nil
+		}
+		m.following = false
+		m.day = day
 		m.offset = 0
 		m.index = 0
 		m.items = nil

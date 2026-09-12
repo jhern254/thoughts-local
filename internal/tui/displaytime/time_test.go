@@ -37,15 +37,30 @@ func TestFormat(t *testing.T) {
 }
 
 func TestCalendarInput(t *testing.T) {
+	t.Run("friendly input preserves UTC instants including both repeated hours", func(t *testing.T) {
+		for _, utc := range []string{"2026-09-12T05:47:00Z", "2026-01-02T08:00:00Z", "2026-07-02T19:00:00Z", "2026-11-01T08:30:00Z", "2026-11-01T09:30:00Z"} {
+			want, err := time.Parse(time.RFC3339, utc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := FormatInput(want)
+			got, err := ParseInput(input)
+			if err != nil || !got.Equal(want) || got.Location() != time.UTC {
+				t.Fatalf("got %v, %v from %q, want UTC %v", got, err, input, want)
+			}
+		}
+	})
 	for _, test := range []struct {
 		name, input string
 		valid       bool
 	}{
-		{"first repeated hour", "2026-11-01 01:30:00 -07:00", true},
-		{"second repeated hour", "2026-11-01 01:30:00 -08:00", true},
-		{"missing spring hour", "2026-03-08 02:30:00 -08:00", false},
-		{"wrong summer offset", "2026-07-01 12:00:00 -08:00", false},
-		{"invalid date", "2026-02-30 12:00:00 -08:00", false},
+		{"ordinary Pacific time", "2026-09-11 10:47:00 PM", true},
+		{"first repeated hour", "2026-11-01 01:30:00 AM PDT", true},
+		{"second repeated hour", "2026-11-01 01:30:00 AM PST", true},
+		{"ambiguous hour needs a zone", "2026-11-01 01:30:00 AM", false},
+		{"missing spring hour", "2026-03-08 02:30:00 AM", false},
+		{"wrong summer zone", "2026-07-01 12:00:00 PM PST", false},
+		{"invalid date", "2026-02-30 12:00:00 PM", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := ParseInput(test.input)
@@ -58,7 +73,7 @@ func TestCalendarInput(t *testing.T) {
 		for _, test := range []struct {
 			date  string
 			hours time.Duration
-		}{{"2026-03-08 12:00:00 -07:00", 23}, {"2026-11-01 12:00:00 -08:00", 25}} {
+		}{{"2026-03-08 12:00:00 PM", 23}, {"2026-11-01 12:00:00 PM", 25}} {
 			at, err := ParseInput(test.date)
 			if err != nil {
 				t.Fatal(err)

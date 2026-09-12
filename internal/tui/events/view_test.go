@@ -155,7 +155,7 @@ func TestModel_Layout(t *testing.T) {
 	t.Run("hour rail handles missing and repeated hours", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.items = nil
-		for _, date := range []string{"2026-03-08 12:00:00 -07:00", "2026-11-01 12:00:00 -08:00"} {
+		for _, date := range []string{"2026-03-08 12:00:00 PM", "2026-11-01 12:00:00 PM"} {
 			at, err := displaytime.ParseInput(date)
 			if err != nil {
 				t.Fatal(err)

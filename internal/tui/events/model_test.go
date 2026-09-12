@@ -242,6 +242,25 @@ func TestModel_EventThoughtPicker(t *testing.T) {
 }
 
 func TestModel_ClockAndOwnership(t *testing.T) {
+	t.Run("next day stops at today without fetching future data", func(t *testing.T) {
+		m, s, _ := fixture(t)
+		today, calls := m.day, s.lists
+		before := m.View()
+		m, cmd := m.Update(eventKey("]"))
+		if cmd != nil || m.View() != before || s.lists != calls {
+			t.Fatal("next day changed today's view or requested future data")
+		}
+		m, cmd = m.Update(eventKey("["))
+		m = execute(t, m, cmd)
+		if !m.day.Equal(today.AddDate(0, 0, -1)) {
+			t.Fatal("previous day unavailable")
+		}
+		m, cmd = m.Update(eventKey("]"))
+		m = execute(t, m, cmd)
+		if !m.day.Equal(today) || s.lists != calls+2 {
+			t.Fatal("could not navigate back to today")
+		}
+	})
 	t.Run("ticks update time without reads and navigation pauses following", func(t *testing.T) {
 		m, s, v := fixture(t)
 		lists, counts, reads := s.lists, v.counts, v.reads
@@ -316,6 +335,25 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 }
 
 func TestModel_EventForms(t *testing.T) {
+	t.Run("friendly input is converted before calling the existing service", func(t *testing.T) {
+		m, s, _ := fixture(t)
+		m, _ = m.Update(eventKey("n"))
+		if got := m.form.fields[1].Value(); got != "2026-09-11 11:37:00 AM" {
+			t.Fatalf("got default time %q, want full date and AM/PM", got)
+		}
+		m.form.fields[1].SetValue("2026-11-01 01:30:00 AM")
+		m, cmd := m.Update(eventKey("enter"))
+		if cmd != nil || s.creates != 0 || m.form.fields[1].Value() != "2026-11-01 01:30:00 AM" || !strings.Contains(m.form.message, "PDT or PST") {
+			t.Fatal("ambiguous input should preserve draft and request a zone without saving")
+		}
+		m.form.fields[1].SetValue("2026-09-11 10:47:00 AM")
+		m, cmd = m.Update(eventKey("enter"))
+		cmd()
+		want := time.Date(2026, 9, 11, 17, 47, 0, 0, time.UTC)
+		if s.creates != 1 || !s.start.Equal(want) || s.start.Location() != time.UTC {
+			t.Fatalf("got service time %v, want UTC %v", s.start, want)
+		}
+	})
 	t.Run("End writes only after saving and retains version context", func(t *testing.T) {
 		m, s, _ := fixture(t)
 		m, _ = m.Update(eventKey("e"))
