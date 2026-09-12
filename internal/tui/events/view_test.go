@@ -15,7 +15,7 @@ import (
 )
 
 func TestModel_Layout(t *testing.T) {
-	t.Run("adjacent event borders align with their intervals and contain intervening hours", func(t *testing.T) {
+	t.Run("compact adjacent cards share one boundary label with a small gap", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.day = m.day.AddDate(0, 0, -1)
 		start := m.day.Add(21*time.Hour + 7*time.Minute)
@@ -24,8 +24,8 @@ func TestModel_Layout(t *testing.T) {
 		m.items = []data.Event{{EventID: 1, StartedAt: start, EndedAt: &end}, {EventID: 2, StartedAt: end, EndedAt: &nextEnd}}
 		lines, positions, _ := m.layout()
 		first, second := positions[1], positions[2]
-		if !strings.HasPrefix(ansi.Strip(lines[second-1]), "10:07 PM  ╰") || !strings.HasPrefix(ansi.Strip(lines[second]), "10:07 PM  ╭") {
-			t.Fatalf("got boundary rows %q, want adjacent end/start borders at 10:07 PM", lines[second-1:second+1])
+		if second-first != 5 || lines[second-1] != "" || !strings.HasPrefix(ansi.Strip(lines[second-2]), "          ╰") || !strings.HasPrefix(ansi.Strip(lines[second]), "10:07 PM  ╭") {
+			t.Fatalf("got adjacent rows %q, want four-row card, blank separator, and next start labeled once", lines[first:second+1])
 		}
 		hour := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(line, "10:00 PM") })
 		if hour <= first || hour >= second-1 || !strings.Contains(ansi.Strip(lines[hour]), "│") {
@@ -34,8 +34,80 @@ func TestModel_Layout(t *testing.T) {
 		m.items[1].StartedAt = end.Add(30 * time.Minute)
 		lines, positions, _ = m.layout()
 		bottom := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(ansi.Strip(line), "10:07 PM  ╰") })
-		if positions[2] <= bottom+1 {
+		if bottom < 0 || positions[2] <= bottom+1 {
 			t.Fatal("a real half-hour gap did not leave space between boxes")
+		}
+	})
+	t.Run("long compact cards retain every hour including repeated local hours", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		for _, date := range []string{"2026-03-08 12:00:00 PM", "2026-11-01 12:00:00 PM"} {
+			end, err := displaytime.ParseInput(date)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.day = displaytime.Day(end)
+			m.clock = end.Add(time.Hour)
+			m.items = []data.Event{{EventID: 1, StartedAt: m.day, EndedAt: &end}}
+			lines, positions, _ := m.layout()
+			top := positions[1]
+			bottom := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(ansi.Strip(line), "12:00 PM  ╰") })
+			var labels []string
+			for _, line := range lines[top : bottom+1] {
+				if label := strings.TrimSpace(line[:10]); label != "" {
+					labels = append(labels, label)
+				}
+			}
+			var want []string
+			for hour := m.day; !hour.After(end); hour = hour.Add(time.Hour) {
+				want = append(want, displaytime.Format(hour, "03:04 PM"))
+			}
+			if !slices.Equal(labels, want) || bottom-top+1 != len(want) {
+				t.Fatalf("got %d rows with markers %v, want one row per marker %v", bottom-top+1, labels, want)
+			}
+		}
+	})
+	t.Run("Now owns the ongoing end label and minute formatting does not merge distinct boundaries", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		lines, _, now := m.layout()
+		if now != len(lines)-1 || !strings.HasPrefix(ansi.Strip(lines[now-1]), "          ╰") {
+			t.Fatal("Now should appear below an unlabeled ongoing bottom border")
+		}
+		end := m.items[0].StartedAt.Add(10 * time.Second)
+		next := end.Add(10 * time.Second)
+		m.items[0].EndedAt = &end
+		m.items = append(m.items, data.Event{EventID: 2, StartedAt: next})
+		lines, positions, _ := m.layout()
+		if !strings.HasPrefix(ansi.Strip(lines[positions[1]+3]), "10:37 AM  ╰") || !strings.HasPrefix(ansi.Strip(lines[positions[2]]), "10:37 AM  ╭") {
+			t.Fatal("distinct boundaries within one displayed minute were incorrectly merged")
+		}
+	})
+	t.Run("card height follows content rather than terminal height or duration", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		for _, height := range []int{20, 50} {
+			m.Resize(80, height)
+			item := m.items[0]
+			end := m.clock
+			item.EndedAt = &end
+			if got := len(strings.Split(m.card(item, true), "\n")); got != 4 {
+				t.Fatalf("got completed card height %d, want 4 at terminal height %d", got, height)
+			}
+			if got := len(strings.Split(m.card(m.items[0], true), "\n")); got != 6 {
+				t.Fatalf("got ongoing card height %d, want 6 including latest preview", got)
+			}
+		}
+	})
+	t.Run("expanded cards use only occupied thought slots", func(t *testing.T) {
+		for _, count := range []int{0, 1, 2} {
+			m, _, store := fixture(t)
+			store.items = store.items[:count]
+			m = execute(t, m, m.openEvent(1))
+			want := 3*count + 3
+			if count == 0 {
+				want = 5
+			}
+			if got := len(strings.Split(m.card(m.items[0], true), "\n")); got != want {
+				t.Fatalf("got %d rows for %d thoughts, want %d without empty slots", got, count, want)
+			}
 		}
 	})
 	t.Run("short zero-duration and cross-day events retain their exact border labels", func(t *testing.T) {
@@ -47,7 +119,11 @@ func TestModel_Layout(t *testing.T) {
 			lines, positions, _ := m.layout()
 			top := positions[1]
 			bottom := top + len(strings.Split(m.card(m.items[0], true), "\n")) - 1
-			if !strings.HasPrefix(ansi.Strip(lines[bottom]), displaytime.Format(end, "03:04 PM")+"  ╰") || bottom-top < 3 {
+			endLabel := displaytime.Format(end, "03:04 PM")
+			if span == 0 {
+				endLabel = "        " // The start already labels this exact instant.
+			}
+			if !strings.HasPrefix(ansi.Strip(lines[bottom]), endLabel+"  ╰") || bottom-top < 3 {
 				t.Fatalf("got span %s rows %q, want readable card ending at its timestamp", span, lines[top:bottom+1])
 			}
 		}

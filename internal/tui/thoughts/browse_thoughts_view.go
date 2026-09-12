@@ -328,7 +328,7 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		lines = append(lines, ansi.Truncate(title, s.width, ""), ansi.Truncate(description, s.width, ""), "")
 	}
 	visible := append([]string{}, lines[min(s.offset, len(lines)):min(s.offset+s.height, len(lines))]...)
-	for len(visible) < s.height {
+	for s.eventScope == nil && len(visible) < s.height {
 		visible = append(visible, "")
 	}
 	label := "thoughts"
@@ -343,9 +343,21 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 	}
 	if s.eventScope != nil {
 		if len(s.rows) == 0 && !m.loading && m.err == nil {
-			visible[0] = "No thoughts yet"
+			visible = []string{"No thoughts yet"}
 		}
-		return count + "\n" + strings.Join(visible, "\n") + "\n" + strings.TrimSpace(status)
+		// Only event cards shrink to their occupied preview slots. Keep the
+		// collection viewport and its scrolling geometry unchanged.
+		if len(visible) > 0 && visible[len(visible)-1] == "" {
+			visible = visible[:len(visible)-1]
+		}
+		content := count
+		if len(visible) > 0 {
+			content += "\n" + strings.Join(visible, "\n")
+		}
+		if status = strings.TrimSpace(status); status != "" {
+			content += "\n" + status
+		}
+		return content
 	}
 	return strings.Join(visible, "\n") + fmt.Sprintf("\n%s\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest", count, strings.TrimSpace(status))
 }
