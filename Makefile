@@ -1,4 +1,5 @@
 .PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed tui tui/demo tui/demo/seeded tui/build migrate/new migrate/up migrate/down migrate/version
+.PHONY: tui/demo/stress
 
 help:
 	@echo "Available commands:"
@@ -21,6 +22,7 @@ help:
 	@echo "  make tui          Migrate, build, and start the persistent TUI"
 	@echo "  make tui/demo     Start the TUI with a disposable migrated database"
 	@echo "  make tui/demo/seeded Start a disposable TUI with sample events and thoughts"
+	@echo "  make tui/demo/stress Start a disposable agent diary (721 events, 20,000 thoughts)"
 	@echo "  make tui/build    Build the TUI binary"
 	@echo "  make migrate/new  Create a migration (name=<description>)"
 	@echo "  make migrate/up   Apply all pending migrations"
@@ -112,6 +114,9 @@ tui: migrate/up tui/build
 
 tui/demo/seeded: DEMO_SEED = ./scripts/demo.sql
 tui/demo/seeded: tui/demo
+
+tui/demo/stress: DEMO_SEED = ./scripts/demo_stress.sql
+tui/demo/stress: tui/demo
 
 tui/demo: tui/build
 	@set -eu; \
