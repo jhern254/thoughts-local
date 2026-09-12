@@ -35,10 +35,15 @@ func TestEventTUIWorkflow_SQLite(t *testing.T) {
 		// The other startup command is the minute timer; data execution below
 		// deliberately leaves time progression to the clock unit tests.
 		m = executeEventData(t, m, cmd().(tea.BatchMsg)[0])
+		m, _ = m.Update(tuiKey(tea.KeyHome))
 		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
 		m, _ = m.Update(tea.PasteMsg{Content: "new activity"})
 		m, cmd = m.Update(tuiKey(tea.KeyEnter))
 		m = executeEventData(t, m, cmd)
+		view := m.View().Content
+		if box, now := strings.Index(view, "new activity"), strings.Index(view, "Now ·"); box < 0 || now < box {
+			t.Fatalf("got view %q, want new event visible above Now immediately after saving", view)
+		}
 		var id, start, oldEnd int64
 		if err := db.QueryRow(`SELECT event_id,started_at FROM events WHERE ended_at IS NULL`).Scan(&id, &start); err != nil {
 			t.Fatal(err)
