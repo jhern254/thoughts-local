@@ -339,6 +339,9 @@ func (m Model) View() string {
 		visible[i] = ansi.Truncate(visible[i], m.width, "")
 	}
 	help := "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end • q: quit"
+	if m.day.Equal(displaytime.Day(m.clock)) {
+		help = "← day / → open • Home/End: first/now • r: refresh • n: start • e: end • q: quit"
+	}
 	if m.inside {
 		help = "r: refresh event • q: quit"
 	}
