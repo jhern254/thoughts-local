@@ -302,6 +302,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.logger.Mutation(mutation, result.item.EventID)
 		m.form = eventForm{}
+		if !result.ending {
+			m.clock = m.now()
+			m.day = displaytime.Day(m.clock)
+			m.following = true
+		}
 		cmd := m.reload()
 		return m, cmd
 	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtCountResult:
