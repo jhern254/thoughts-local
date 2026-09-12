@@ -111,19 +111,20 @@ func (m Model) card(item data.Event, selected bool) string {
 			content += m.picker.View()
 		}
 	} else {
+		content += m.count(item.EventID)
 		if item.EndedAt == nil {
+			content += "\n"
 			switch {
 			case m.latestPending:
-				content += "Loading latest thought…\n"
+				content += "Loading latest thought…"
 			case m.latestErr != nil:
-				content += "Latest thought unavailable\n"
+				content += "Latest thought unavailable"
 			case m.latest != nil:
-				content += m.picker.TimelinePreview(*m.latest, width) + "\n"
+				content += m.picker.TimelinePreview(*m.latest, width)
 			default:
-				content += "No thoughts yet\n"
+				content += "No thoughts yet"
 			}
 		}
-		content += m.count(item.EventID)
 	}
 	// Lip Gloss Width includes the border. Clip each logical row before
 	// wrapping so narrow cards cannot split a two-line thought preview.
@@ -133,7 +134,7 @@ func (m Model) card(item data.Event, selected bool) string {
 	}
 	content = strings.Join(lines, "\n")
 	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(width + 2)
-	if selected {
+	if selected && !m.blurred {
 		style = style.BorderForeground(lipgloss.Color("62"))
 	}
 	return style.Render(content)

@@ -125,7 +125,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case tea.WindowSizeMsg:
 		m.width = message.Width
-		m.events.Resize(message.Width, max(1, message.Height-4))
+		m.events.Resize(message.Width, max(1, message.Height-5))
 		m.entityList.SetSize(message.Width, max(0, message.Height-3))
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
@@ -269,10 +269,11 @@ func (m Model) View() tea.View {
 	var content string
 	switch m.screen {
 	case screenEvents:
+		m.events.SetFocused(!m.entityFocused)
 		content = m.events.View()
 		if m.events.CanLeave() {
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n" + content
-			content += "\n" + m.entityStrip()
+			content += "\n" + strings.Repeat("─", max(1, m.width)) + "\n" + m.entityStrip()
 		}
 	case screenSubjectList:
 		content = m.viewSubjectList()
