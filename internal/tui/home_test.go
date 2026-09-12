@@ -138,9 +138,12 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal("home did not use or display bootstrapped user")
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
-		for _, key := range []rune{tea.KeyRight, tea.KeyLeft} {
+		for _, key := range []rune{tea.KeyRight, tea.KeyLeft, 'j', 'k'} {
 			before := m.entityList.Index()
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
+			if m.entityList.Index() == before {
+				t.Fatalf("key %q did not move entity selection", key)
+			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
 			if m.entityList.Index() != before {
 				t.Fatal("entity navigation did not wrap")
