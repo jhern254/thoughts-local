@@ -35,3 +35,38 @@ func TestFormat(t *testing.T) {
 		})
 	}
 }
+
+func TestCalendarInput(t *testing.T) {
+	for _, test := range []struct {
+		name, input string
+		valid       bool
+	}{
+		{"first repeated hour", "2026-11-01 01:30:00 -07:00", true},
+		{"second repeated hour", "2026-11-01 01:30:00 -08:00", true},
+		{"missing spring hour", "2026-03-08 02:30:00 -08:00", false},
+		{"wrong summer offset", "2026-07-01 12:00:00 -08:00", false},
+		{"invalid date", "2026-02-30 12:00:00 -08:00", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := ParseInput(test.input)
+			if (err == nil) != test.valid {
+				t.Fatalf("got error %v, want valid %v", err, test.valid)
+			}
+		})
+	}
+	t.Run("calendar days use local midnights rather than fixed durations", func(t *testing.T) {
+		for _, test := range []struct {
+			date  string
+			hours time.Duration
+		}{{"2026-03-08 12:00:00 -07:00", 23}, {"2026-11-01 12:00:00 -08:00", 25}} {
+			at, err := ParseInput(test.date)
+			if err != nil {
+				t.Fatal(err)
+			}
+			day := Day(at)
+			if got := day.AddDate(0, 0, 1).Sub(day); got != test.hours*time.Hour {
+				t.Fatalf("got day length %v, want %dh", got, test.hours)
+			}
+		}
+	})
+}

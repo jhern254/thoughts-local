@@ -8,11 +8,13 @@ import (
 	"github.com/jhern254/go-thoughts/cmd/internal/cliutil"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/thought"
+	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	cli "github.com/urfave/cli/v3"
 )
@@ -24,6 +26,8 @@ type runtime interface {
 	Subjects() *subject.Service
 	Thoughts() *thought.Service
 	Metrics() *metrics.Service
+	Events() *event.Service
+	TimelineView() *timeline.Service
 	Close() error
 }
 
@@ -86,7 +90,7 @@ func newTUI(app *application) *cli.Command {
 		Action: func(ctx context.Context, _ *cli.Command) error {
 			err := app.runProgram(
 				ctx,
-				tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.logger),
+				tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.runtime.Events(), app.runtime.TimelineView(), app.logger),
 				app.in,
 				app.out,
 			)

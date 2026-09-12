@@ -57,7 +57,7 @@ func open(
 		thoughts:     thought.NewService(data.NewSQLiteThoughtStore(db)),
 		metrics:      metrics.NewService(data.NewSQLiteMetricsStore(db)),
 		events:       event.NewService(data.NewSQLiteEventStore(db)),
-		timelineView: timeline.NewService(event.NewService(data.NewSQLiteEventStore(db)), data.NewSQLiteThoughtStore(db)),
+		timelineView: timeline.NewService(event.NewService(data.NewSQLiteEventStore(db)), data.NewSQLiteThoughtStore(db), metrics.NewService(data.NewSQLiteMetricsStore(db))),
 	}, nil
 }
 

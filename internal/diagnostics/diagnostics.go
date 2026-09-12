@@ -7,11 +7,31 @@ import (
 	"strings"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
 const DuplicateSubjectMessage = "A subject with that name already exists."
+
+func EventMessage(err error, fallback string) string {
+	cause := SingleError(err)
+	var validation *event.ValidationError
+	switch {
+	case errors.As(cause, &validation):
+		return validationMessage(validation.PublicFields(), "The event details are invalid.")
+	case errors.Is(cause, data.ErrEventOverlap):
+		return "This time overlaps another event. Adjust the timestamp."
+	case errors.Is(cause, data.ErrInvalidEventInterval):
+		return "The event end must not precede its start."
+	case errors.Is(cause, data.ErrEventVersionConflict), errors.Is(cause, data.ErrEventStateConflict):
+		return "The event changed. Cancel and refresh before trying again."
+	case errors.Is(cause, data.ErrRecordNotFound):
+		return "The requested event was not found."
+	default:
+		return fallback
+	}
+}
 
 // SingleError returns the original error for a supported, non-aggregate chain.
 // Aggregates (including urfave MultiError) and chains exceeding the inspection

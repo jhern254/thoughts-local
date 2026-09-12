@@ -46,7 +46,7 @@ func TestModel_MiscThoughts(t *testing.T) {
 	t.Run("always shows a typed filterable entry without counting it as a subject", func(t *testing.T) {
 		m := newSubjectTestModel(&subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }})
 		for count, want := range []string{"0 thoughts", "1 thought", "2 thoughts"} {
-			m.screen = screenEntities
+			m.screen = screenEvents
 			m.metrics = &metricsStub{miscCount: int64(count)}
 			m = openSubjects(t, m)
 			row := m.subjects.list.Items()[1].(subjectRow)
@@ -66,7 +66,7 @@ func TestModel_MiscThoughts(t *testing.T) {
 		ctx := context.Background()
 		service := thought.NewService(testutils.NewFakeThoughtStore())
 		counts := &metricsStub{}
-		m := NewModel(ctx, &data.User{UserID: "u"}, &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }}, service, counts, logging.Nop())
+		m := newScreenTestModel(ctx, &data.User{UserID: "u"}, &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }}, service, counts, logging.Nop())
 		m = openMisc(t, openSubjects(t, m))
 		for _, r := range "ed" {
 			m, _ = rootUpdate(m, runeKey(r))
@@ -161,7 +161,7 @@ func TestModel_MiscFilterOwnership(t *testing.T) {
 					}
 				}
 			}
-			m := openSubjects(t, NewModel(ctx, &data.User{UserID: "u"}, subjects, service, &metricsStub{}, logging.Nop()))
+			m := openSubjects(t, newScreenTestModel(ctx, &data.User{UserID: "u"}, subjects, service, &metricsStub{}, logging.Nop()))
 			if tt.fromMisc {
 				m = openMisc(t, m)
 			} else {

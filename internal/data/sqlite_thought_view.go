@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"slices"
+	"time"
 )
 
 const thoughtSummarySelect = `SELECT t.thought_id, substr(t.thought, 1, 81), s.subject_name,
@@ -15,8 +16,22 @@ const thoughtSummarySelect = `SELECT t.thought_id, substr(t.thought, 1, 81), s.s
 	AND EXISTS (SELECT 1 FROM users u WHERE u.user_id = t.user_id AND u.deleted_at IS NULL)`
 
 func (s *SQLiteThoughtStore) BrowseThoughtsView(ctx context.Context, userID string, request ThoughtViewRequest) (ThoughtView, error) {
-	query := thoughtSummarySelect
-	args := []any{userID}
+	return s.browseThoughtSummaries(ctx, thoughtSummarySelect, []any{userID}, request, ThoughtViewBatchSize)
+}
+
+func (s *SQLiteThoughtStore) BrowseThoughtsViewInRange(ctx context.Context, userID string, from, until time.Time, request ThoughtViewRequest) (ThoughtView, error) {
+	return s.browseThoughtSummaries(ctx, thoughtSummarySelect+" AND t.observed_at >= ? AND t.observed_at < ?", []any{userID, from.Unix(), until.Unix()}, request, ThoughtViewBatchSize)
+}
+
+func (s *SQLiteThoughtStore) LatestThoughtInRange(ctx context.Context, userID string, from, until time.Time) (*ThoughtSummary, error) {
+	view, err := s.browseThoughtSummaries(ctx, thoughtSummarySelect+" AND t.observed_at >= ? AND t.observed_at < ?", []any{userID, from.Unix(), until.Unix()}, ThoughtViewRequest{}, 1)
+	if err != nil || len(view.Items) == 0 {
+		return nil, err
+	}
+	return &view.Items[0], nil
+}
+
+func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query string, args []any, request ThoughtViewRequest, limit int) (ThoughtView, error) {
 	comparison, order := "<", " DESC"
 	if request.Direction == ThoughtsNewer {
 		comparison, order = ">", " ASC"
@@ -26,13 +41,17 @@ func (s *SQLiteThoughtStore) BrowseThoughtsView(ctx context.Context, userID stri
 		args = append(args, cursor.ObservedAt.Unix(), cursor.CreatedAt.Unix(), cursor.ThoughtID)
 	}
 	query += " ORDER BY t.observed_at" + order + ", t.created_at" + order + ", t.thought_id" + order + " LIMIT ?"
-	args = append(args, ThoughtViewBatchSize+1)
+	fetchLimit := limit + 1
+	if limit == 1 {
+		fetchLimit = 1
+	} // Latest preview does not need a pagination lookahead.
+	args = append(args, fetchLimit)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return ThoughtView{}, fmt.Errorf("browse thoughts: %w", TranslateSQLiteError(err))
 	}
 	defer rows.Close()
-	view := ThoughtView{Items: make([]ThoughtSummary, 0, ThoughtViewBatchSize+1)}
+	view := ThoughtView{Items: make([]ThoughtSummary, 0, limit+1)}
 	for rows.Next() {
 		var item ThoughtSummary
 		var subject sql.NullString
@@ -53,9 +72,9 @@ func (s *SQLiteThoughtStore) BrowseThoughtsView(ctx context.Context, userID stri
 	if err := rows.Err(); err != nil {
 		return ThoughtView{}, fmt.Errorf("read thought summaries: %w", TranslateSQLiteError(err))
 	}
-	view.More = len(view.Items) > ThoughtViewBatchSize
+	view.More = len(view.Items) > limit
 	if view.More {
-		view.Items = view.Items[:ThoughtViewBatchSize]
+		view.Items = view.Items[:limit]
 	}
 	if request.Direction == ThoughtsNewer {
 		slices.Reverse(view.Items)

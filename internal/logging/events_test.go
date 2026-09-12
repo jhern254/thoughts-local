@@ -12,7 +12,7 @@ import (
 )
 
 func TestLogger_Events(t *testing.T) {
-	for _, name := range []string{"started", "stopped", "created", "thought created", "failure", "database_busy", "database_read_only", "unknown mutation", "unknown failure"} {
+	for _, name := range []string{"started", "stopped", "created", "thought created", "event created", "event ended", "failure", "database_busy", "database_read_only", "unknown mutation", "unknown failure"} {
 		t.Run(name+" emits only approved fields from the public caller", func(t *testing.T) {
 			var output bytes.Buffer
 			logger, err := logging.New(&output, "test", "")
@@ -23,6 +23,14 @@ func TestLogger_Events(t *testing.T) {
 			var file string
 			var line int
 			switch name {
+			case "event created", "event ended":
+				mutation := logging.EventCreated
+				if name == "event ended" {
+					mutation = logging.EventEnded
+				}
+				_, file, line, _ = runtime.Caller(0)
+				logger.Mutation(mutation, 7)
+				want["message"], want["event_id"] = name, float64(7)
 			case "thought created":
 				_, file, line, _ = runtime.Caller(0)
 				logger.Mutation(logging.ThoughtCreated, 7)

@@ -15,17 +15,25 @@ type EventReader interface {
 
 type ThoughtReader interface {
 	ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error)
+	BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtViewRequest) (data.ThoughtView, error)
+	LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummary, error)
+}
+
+type MetricsReader interface {
+	ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCount, error)
+	CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error)
 }
 
 type Service struct {
 	events   EventReader
 	thoughts ThoughtReader
+	metrics  MetricsReader
 	now      func() time.Time
 }
 
-// NewService requires both readers; neither is an optional dependency.
-func NewService(events EventReader, thoughts ThoughtReader) *Service {
-	return &Service{events: events, thoughts: thoughts, now: time.Now}
+// NewService requires all readers; none is an optional dependency.
+func NewService(events EventReader, thoughts ThoughtReader, metrics MetricsReader) *Service {
+	return &Service{events: events, thoughts: thoughts, metrics: metrics, now: time.Now}
 }
 
 // ListThoughts matches observation times, not explicit event links or calendar

@@ -31,7 +31,8 @@ func TestThoughtTUIWorkflow_SQLite(t *testing.T) {
 				t.Error(err)
 			}
 		})
-		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logging.Nop())
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
+		model = updateTUIModel(model, tuiKey(tea.KeyTab)) // Focus entity navigation.
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
@@ -83,7 +84,8 @@ func TestThoughtTUIWorkflow_SQLite(t *testing.T) {
 		if _, err := runtime.Subjects().Create(ctx, runtime.LocalUser().UserID, "coding"); err != nil {
 			t.Fatal(err)
 		}
-		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logging.Nop())
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
+		model = updateTUIModel(model, tuiKey(tea.KeyTab)) // Focus entity navigation.
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
 		model = updateTUIModel(model, tuiKey(tea.KeyDown))
@@ -141,7 +143,8 @@ func TestThoughtTUIWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), logger)
+		var model tea.Model = tui.NewModel(ctx, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logger)
+		model = updateTUIModel(model, tuiKey(tea.KeyTab)) // Focus entity navigation.
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEnter))
 		if got := model.View().Content; !strings.Contains(got, "0 thoughts") {
 			t.Fatalf("got view %q, want zero count", got)
