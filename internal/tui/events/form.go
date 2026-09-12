@@ -37,7 +37,7 @@ func (m *Model) startForm(ending bool) tea.Cmd {
 		m.form.fields[i].CharLimit = 0
 	}
 	m.form.fields[0].Placeholder = "Activity (optional)"
-	m.form.fields[1].SetValue(displaytime.Format(m.now(), displaytime.InputLayout))
+	m.form.fields[1].SetValue(displaytime.FormatInput(m.now()))
 	if ending {
 		m.form.event = m.items[m.index]
 		m.form.index = 1
@@ -91,7 +91,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 			at, err := displaytime.ParseInput(m.form.fields[1].Value())
 			if err != nil {
 				m.form.err = err
-				m.form.message = "Enter a Pacific timestamp: YYYY-MM-DD HH:MM:SS ±HH:MM (matching offset)."
+				m.form.message = displaytime.InputHelp
 				return nil
 			}
 			m.form.saving = true

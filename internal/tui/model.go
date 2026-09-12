@@ -206,8 +206,13 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 			switch key.String() {
 			case "q":
 				return m, tea.Quit
-			case "left", "right":
-				m.entityList.Select((m.entityList.Index() + 1) % len(m.entityList.Items()))
+			case "left", "right", "j", "k":
+				delta := 1
+				if key.String() == "left" || key.String() == "k" {
+					delta = -1
+				}
+				count := len(m.entityList.Items())
+				m.entityList.Select((m.entityList.Index() + delta + count) % count)
 				return m, nil
 			case "enter":
 				row, ok := m.entityList.SelectedItem().(entityRow)
