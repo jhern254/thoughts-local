@@ -318,7 +318,7 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		}
 		title, description := "Create thought…", "Write a new thought"
 		if row.kind == rowRecord {
-			lines = append(lines, strings.Split(m.SummaryPreview(row.item, s.width, index == s.index), "\n")...)
+			lines = append(lines, strings.Split(m.SummaryPreview(row.item, s.width, index == s.index && !m.blurred), "\n")...)
 			lines = append(lines, "")
 			continue
 		}

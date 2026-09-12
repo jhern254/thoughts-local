@@ -14,6 +14,18 @@ import (
 )
 
 func TestModel_Layout(t *testing.T) {
+	t.Run("thought count precedes collapsed and expanded previews", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		for _, expanded := range []bool{false, true} {
+			if expanded {
+				m = execute(t, m, m.openEvent(1))
+			}
+			card := ansi.Strip(m.card(m.items[0], true))
+			if count, preview := strings.Index(card, "230 thoughts"), strings.Index(card, "preview"); count < 0 || preview < 0 || count > preview {
+				t.Fatalf("got card %q, want thought count above previews", card)
+			}
+		}
+	})
 	t.Run("styled header combines duration and compact timestamp range", func(t *testing.T) {
 		for _, tc := range []struct{ start, end, want string }{
 			{"10:47 PM", "11:00 PM", "13m · 10:47 - 11:00 PM"},

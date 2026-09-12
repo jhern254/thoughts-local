@@ -63,7 +63,11 @@ type Model struct {
 	browseThoughts       browseThoughtsState
 	countRequest         uint64
 	itemStyles           list.DefaultItemStyles
+	blurred              bool
 }
+
+// SetFocused changes selection styling without changing the selected row.
+func (m *Model) SetFocused(focused bool) { m.blurred = !focused }
 
 type rowKind uint8
 

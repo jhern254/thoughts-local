@@ -24,6 +24,9 @@ func TestModel_View(t *testing.T) {
 		)
 
 		view := model.View().Content
+		if got := strings.Count(view, "\n") + 1; got > defaultHeight {
+			t.Fatalf("got %d startup rows, want at most %d including panel divider", got, defaultHeight)
+		}
 		if !model.View().AltScreen {
 			t.Fatal("home should use a fresh alternate screen")
 		}

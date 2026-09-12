@@ -74,6 +74,7 @@ type Model struct {
 	now                                  func() time.Time
 	clock, day                           time.Time
 	active, following                    bool
+	blurred                              bool
 	session, request, expansion, save    uint64
 	items                                []data.Event
 	index, offset, width, height         int
@@ -111,7 +112,11 @@ func (m *Model) Close() {
 	m.expanded = 0
 	m.inside = false
 }
-func (m *Model) Pause()        { m.following = false }
+func (m *Model) Pause() { m.following = false }
+func (m *Model) SetFocused(focused bool) {
+	m.blurred = !focused
+	m.picker.SetFocused(focused)
+}
 func (m Model) CanLeave() bool { return !m.form.open && !m.picker.ShowingDetail() }
 func (m Model) FormOpen() bool { return m.form.open }
 func (m *Model) Resize(width, height int) {
