@@ -133,12 +133,35 @@ func (m Model) card(item data.Event, selected bool) string {
 		lines[i] = ansi.Truncate(lines[i], width, "…")
 	}
 	content = strings.Join(lines, "\n")
-	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(width + 2)
+	start, finish := m.interval(item)
+	height := int(math.Ceil(finish.Sub(start).Hours()*float64(m.hourHeight()))) + 1
+	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(width + 2).Height(height)
 	if selected && !m.blurred {
 		style = style.BorderForeground(lipgloss.Color("62"))
 	}
 	return style.Render(content)
 }
+
+// Clip only the calendar geometry, not the event's actual timestamps or count.
+func (m Model) interval(item data.Event) (time.Time, time.Time) {
+	start := item.StartedAt
+	if start.Before(m.day) {
+		start = m.day
+	}
+	end := m.clock
+	if item.EndedAt != nil {
+		end = *item.EndedAt
+	}
+	if boundary := m.day.AddDate(0, 0, 1); end.After(boundary) {
+		end = boundary
+	}
+	if end.Before(start) {
+		end = start
+	}
+	return start, end
+}
+
+func (m Model) hourHeight() int { return max(4, (m.bodyHeight()+4)/5) }
 
 type railEntry struct {
 	at       time.Time
@@ -146,6 +169,7 @@ type railEntry struct {
 	id       int64
 	text     string
 	now      bool
+	end      time.Time
 }
 
 // layout returns actual rendered row positions, so expansion and the live
@@ -157,11 +181,8 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 		entries = append(entries, railEntry{at: hour, text: displaytime.Format(hour, "03:04 PM")})
 	}
 	for i, item := range m.items {
-		at := item.StartedAt
-		if at.Before(m.day) {
-			at = m.day
-		}
-		entries = append(entries, railEntry{at: at, priority: 1, id: item.EventID, text: m.card(item, i == m.index)})
+		at, end := m.interval(item)
+		entries = append(entries, railEntry{at: at, end: end, priority: 1, id: item.EventID, text: m.card(item, i == m.index)})
 	}
 	if !m.clock.Before(m.day) && m.clock.Before(until) {
 		entries = append(entries, railEntry{at: m.clock, priority: 2, now: true, text: "── Now · " + displaytime.Format(m.clock, "03:04 PM") + " ──"})
@@ -175,10 +196,14 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 	lines := []string{}
 	positions := make(map[int64]int)
 	nowLine := -1
-	hourHeight := max(4, (m.bodyHeight()+4)/5)
+	hourHeight := m.hourHeight()
 	previousTop := 0
 	var previousTime time.Time
 	for i, entry := range entries {
+		// Hours within an event are drawn alongside its box below.
+		if entry.id == 0 && !entry.now && !previousTime.IsZero() && !entry.at.After(previousTime) {
+			continue
+		}
 		// An event starting on the hour owns that label's row, not a row below it.
 		if entry.id == 0 && !entry.now && i+1 < len(entries) && entries[i+1].id != 0 && entry.at.Equal(entries[i+1].at) {
 			continue
@@ -201,13 +226,22 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 		} else if entry.id == 0 {
 			lines = append(lines, fmt.Sprintf("%-10s│", entry.text))
 		} else {
-			for row, text := range strings.Split(entry.text, "\n") {
-				label := ""
-				if row == 0 {
-					label = displaytime.Format(entry.at, "03:04 PM")
+			card := strings.Split(entry.text, "\n")
+			labels := make([]string, len(card))
+			labels[0] = displaytime.Format(entry.at, "03:04 PM")
+			labels[len(card)-1] = displaytime.Format(entry.end, "03:04 PM")
+			for hour := m.day; hour.Before(entry.end); hour = hour.Add(time.Hour) {
+				if !hour.After(entry.at) {
+					continue
 				}
-				lines = append(lines, fmt.Sprintf("%-10s%s", label, text))
+				fraction := float64(hour.Sub(entry.at)) / float64(entry.end.Sub(entry.at))
+				row := min(len(card)-2, max(1, int(math.Round(fraction*float64(len(card)-1)))))
+				labels[row] = displaytime.Format(hour, "03:04 PM")
 			}
+			for row, text := range card {
+				lines = append(lines, fmt.Sprintf("%-10s%s", labels[row], text))
+			}
+			previousTop, previousTime = len(lines)-1, entry.end
 		}
 	}
 	return lines, positions, nowLine
