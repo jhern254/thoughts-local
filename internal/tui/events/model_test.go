@@ -263,11 +263,14 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 	t.Run("next day stops at today without fetching future data", func(t *testing.T) {
 		m, s, _ := fixture(t)
 		today, calls := m.day, s.lists
+		items := m.items
+		m.items = nil
 		before := m.View()
 		m, cmd := m.Update(eventKey("right"))
 		if cmd != nil || m.View() != before || s.lists != calls {
 			t.Fatal("next day changed today's view or requested future data")
 		}
+		m.items = items
 		m, cmd = m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
 		if !m.day.Equal(today.AddDate(0, 0, -1)) {

@@ -24,4 +24,4 @@
           ── Now · 11:37 AM ──
 
 
-Home: first • End: now • ←/→: day • r: refresh • n: start • e: end • q: quit
+← day / → open • Home/End: first/now • r: refresh • n: start • e: end • q: quit

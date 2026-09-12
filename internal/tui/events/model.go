@@ -359,7 +359,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.picker, cmd = m.picker.Update(msg)
 		return m, cmd
 	}
-	switch key.String() {
+	navigation := key.String()
+	if (navigation == "right" || navigation == "l") && m.day.Equal(displaytime.Day(m.now())) {
+		navigation = "enter"
+	}
+	switch navigation {
 	case "end":
 		m.following = true
 		m.clock = m.now()
