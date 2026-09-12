@@ -145,7 +145,7 @@ func eventKey(name string) tea.KeyPressMsg {
 
 // Execute ordinary data commands and batches; Open's timer is deliberately
 // not executed in fixtures. Clock tests deliver ticks without sleeping.
-func execute(t *testing.T, m Model, cmd tea.Cmd) Model {
+func execute(t testing.TB, m Model, cmd tea.Cmd) Model {
 	t.Helper()
 	if cmd == nil {
 		return m
@@ -160,7 +160,7 @@ func execute(t *testing.T, m Model, cmd tea.Cmd) Model {
 	m, next := m.Update(msg)
 	return execute(t, m, next)
 }
-func fixture(t *testing.T) (Model, *eventStub, *viewStore) {
+func fixture(t testing.TB) (Model, *eventStub, *viewStore) {
 	t.Helper()
 	at := time.Date(2026, 9, 11, 18, 37, 0, 0, time.UTC)
 	label := "Reading"
