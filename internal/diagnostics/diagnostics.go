@@ -38,6 +38,8 @@ func ThoughtMessage(err error, fallback string) string {
 	switch {
 	case errors.Is(cause, data.ErrRecordNotFound):
 		return "The requested resource was not found."
+	case errors.Is(cause, data.ErrVersionConflict):
+		return "The thought has changed. Reload it before trying again."
 	case errors.As(cause, &validation):
 		return validationMessage(validation.PublicFields(), "The thought details are invalid.")
 	default:

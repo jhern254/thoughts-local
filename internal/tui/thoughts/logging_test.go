@@ -2,6 +2,7 @@ package thoughts
 
 import (
 	"bytes"
+	tea "charm.land/bubbletea/v2"
 	"context"
 	"encoding/json"
 	"errors"
@@ -124,6 +125,110 @@ func TestModel_FailurePrivacy(t *testing.T) {
 			}
 			if len(event) != 7 || event["level"] != "error" || event["category"] != tt.category || event["operation"] != "thought_create" || event["message"] != "operation failed" || event["application"] != "test" || event["caller"] == nil || event["time"] == nil {
 				t.Fatalf("unexpected fields %v", event)
+			}
+		})
+	}
+}
+
+func (s failingService) Update(context.Context, string, int64, string, int64) (*data.Thought, error) {
+	return nil, s.err
+}
+func (s failingService) Delete(context.Context, string, int64, int64) error { return s.err }
+
+func TestModel_MutationPrivacy(t *testing.T) {
+	_, validation := thought.NewService(nil).Update(t.Context(), "u", 1, "", 1)
+	for _, tt := range []struct {
+		name              string
+		err               error
+		update            bool
+		message, category string
+	}{
+		{"wrapped edit conflict", fmt.Errorf("PRIVATE-ERROR: %w", data.ErrVersionConflict), true, "The thought has changed.", ""},
+		{"wrapped missing delete", fmt.Errorf("PRIVATE-ERROR: %w", data.ErrRecordNotFound), false, "The requested resource was not found.", ""},
+		{"actionable edit validation", fmt.Errorf("PRIVATE-ERROR: %w", validation), true, "thought: must be provided", ""},
+		{"friendly delete validation still logs", validation, false, "thought: must be provided", "unexpected_failure"},
+		{"busy edit", fmt.Errorf("PRIVATE-ERROR: %w", data.ErrDatabaseBusy), true, "Could not save the thought.", "database_busy"},
+		{"read only delete", fmt.Errorf("PRIVATE-ERROR: %w", data.ErrDatabaseReadOnly), false, "Could not delete the thought.", "database_read_only"},
+		{"unknown edit", errors.New("PRIVATE-ERROR"), true, "Could not save the thought.", "unexpected_failure"},
+		{"combined delete", errors.Join(data.ErrVersionConflict, errors.New("PRIVATE-ERROR")), false, "Could not delete the thought.", "unexpected_failure"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			logger, err := logging.New(&logs, "test", "info")
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := thoughtDetail(t, "PRIVATE-CONTENT")
+			m.logger = logger
+			m.service = failingService{err: tt.err}
+			original := m.selected
+			var cmd tea.Cmd
+			if tt.update {
+				m, _ = m.Update(key('e'))
+				m, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+			} else {
+				m, _ = m.Update(key('d'))
+				m, cmd = m.Update(key('y'))
+			}
+			m, _ = m.Update(cmd())
+			if m.err != tt.err || m.selected != original || m.loading {
+				t.Fatal("mutation lost original error, selected revision, or pending state")
+			}
+			if tt.update && (!m.input.Focused() || m.input.Value() != "PRIVATE-CONTENT") {
+				t.Fatal("update failure lost focused draft")
+			}
+			if !strings.Contains(m.errMessage, tt.message) || strings.Contains(m.errMessage+logs.String(), "PRIVATE-") {
+				t.Fatalf("got diagnostic %q and logs %q, want safe guidance %q", m.errMessage, logs.String(), tt.message)
+			}
+			if tt.category == "" {
+				if logs.Len() != 0 {
+					t.Fatal("expected failure logged")
+				}
+				return
+			}
+			var event map[string]any
+			if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
+				t.Fatal(err)
+			}
+			operation := "thought_delete"
+			if tt.update {
+				operation = "thought_update"
+			}
+			if len(event) != 7 || event["category"] != tt.category || event["operation"] != operation {
+				t.Fatalf("got metadata %v, want one safe %s/%s failure", event, operation, tt.category)
+			}
+		})
+	}
+	for _, update := range []bool{true, false} {
+		t.Run(fmt.Sprintf("success metadata update=%v", update), func(t *testing.T) {
+			var logs bytes.Buffer
+			logger, err := logging.New(&logs, "test", "info")
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := thoughtDetail(t, "PRIVATE-SUCCESS")
+			m.logger = logger
+			var cmd tea.Cmd
+			if update {
+				m, _ = m.Update(key('e'))
+				m, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+			} else {
+				m, _ = m.Update(key('d'))
+				m, cmd = m.Update(key('y'))
+			}
+			result := cmd()
+			m, _ = m.Update(result)
+			m, _ = m.Update(result)
+			var event map[string]any
+			if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
+				t.Fatal(err)
+			}
+			message := "thought deleted"
+			if update {
+				message = "thought updated"
+			}
+			if len(event) != 6 || event["thought_id"] != float64(1) || event["message"] != message || strings.Contains(logs.String(), "PRIVATE") {
+				t.Fatalf("got mutation log %v, want one thought ID event", event)
 			}
 		})
 	}

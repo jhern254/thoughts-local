@@ -3,6 +3,7 @@ package thoughts
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ import (
 )
 
 type Service interface {
+	Update(context.Context, string, int64, string, int64) (*data.Thought, error)
+	Delete(context.Context, string, int64, int64) error
 	BrowseView(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error)
 	ListUnassigned(context.Context, string) ([]data.Thought, error)
 	List(context.Context, string, int64) ([]data.Thought, error)
@@ -28,7 +31,7 @@ type Service interface {
 	Create(context.Context, string, string, *int64, time.Time) (*data.Thought, error)
 }
 
-// ChangedMsg invalidates picker counts after creation; nil SubjectID means unassigned.
+// ChangedMsg invalidates picker counts after mutations; nil SubjectID means unassigned.
 type ChangedMsg struct{ SubjectID *int64 }
 
 type screen uint8
@@ -37,6 +40,8 @@ const (
 	browse screen = iota
 	create
 	detail
+	edit
+	confirmDelete
 )
 
 type Model struct {
@@ -181,8 +186,10 @@ func (m Model) Browsing() bool {
 	return m.screen == browse && !m.list.SettingFilter() && !m.list.IsFiltered()
 }
 
-// ShowingDetail lets the parent render the shared detail without list context.
-func (m Model) ShowingDetail() bool { return m.screen == detail }
+// ShowingDetail keeps detail, editing, and confirmation under the shared thought heading.
+func (m Model) ShowingDetail() bool {
+	return m.screen == detail || m.screen == edit || m.screen == confirmDelete
+}
 
 func (m *Model) listThoughts() tea.Cmd {
 	m.request++
@@ -202,6 +209,7 @@ func (m *Model) listThoughts() tea.Cmd {
 }
 
 func (m *Model) getThought(id int64) tea.Cmd {
+	m.inputWarning = ""
 	m.request++
 	m.loading = true
 	m.err = nil
@@ -221,6 +229,43 @@ func (m *Model) createThought(body string) tea.Cmd {
 		item, err := service.Create(ctx, userID, body, subjectID, time.Time{})
 		return Result{request: request, operation: logging.ThoughtCreate, item: item, err: err}
 	}
+}
+
+func (m *Model) updateThought(body string) tea.Cmd {
+	m.request++
+	m.loading, m.err = true, nil
+	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
+	id, version := m.selected.ThoughtID, m.selected.Version
+	return func() tea.Msg {
+		item, err := service.Update(ctx, userID, id, body, version)
+		return Result{request: request, operation: logging.ThoughtUpdate, item: item, err: err}
+	}
+}
+
+func (m *Model) deleteThought() tea.Cmd {
+	m.request++
+	m.loading, m.err = true, nil
+	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
+	item := *m.selected
+	return func() tea.Msg {
+		err := service.Delete(ctx, userID, item.ThoughtID, item.Version)
+		return Result{request: request, operation: logging.ThoughtDelete, item: &item, err: err}
+	}
+}
+
+// A mutation invalidates list contents. Clear them before requesting fresh rows
+// so a failed refresh cannot leave a deleted thought available to open.
+func (m *Model) reloadOrigin() tea.Cmd {
+	m.screen, m.selected, m.stale = browse, nil, true
+	m.err, m.inputWarning = nil, ""
+	if m.browsingThoughtsView {
+		return m.reloadBrowseThoughtsView()
+	}
+	m.filter.Invalidate()
+	m.list.ResetFilter()
+	m.list.SetItems([]list.Item{row{kind: rowCreate, unassigned: m.subjectID == nil}})
+	m.list.Select(0)
+	return m.listThoughts()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -246,7 +291,17 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.logger.Failure(result.operation, category)
 			}
 			m.errMessage = diagnostics.ThoughtMessage(result.err, "Could not load thoughts.")
-			if result.operation == logging.ThoughtCreate {
+			if result.operation == logging.ThoughtUpdate || result.operation == logging.ThoughtDelete {
+				cause := diagnostics.SingleError(result.err)
+				if errors.Is(cause, data.ErrVersionConflict) || errors.Is(cause, data.ErrRecordNotFound) {
+					m.stale = true
+				}
+			}
+			if result.operation == logging.ThoughtDelete {
+				m.errMessage = diagnostics.ThoughtMessage(result.err, "Could not delete the thought.")
+				return m, nil
+			}
+			if result.operation == logging.ThoughtCreate || result.operation == logging.ThoughtUpdate {
 				m.errMessage = diagnostics.ThoughtMessage(result.err, "Could not save the thought.")
 				return m, m.input.Focus()
 			}
@@ -262,15 +317,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			cmd := m.filter.SetItems(&m.list, rows)
 			return m, cmd
 		}
+		if result.operation == logging.ThoughtDelete {
+			m.request++
+			m.logger.Mutation(logging.ThoughtDeleted, result.item.ThoughtID)
+			id := result.item.SubjectID
+			refresh := m.reloadOrigin()
+			return m, tea.Batch(refresh, func() tea.Msg { return ChangedMsg{SubjectID: id} })
+		}
 		m.selected = result.item
 		m.screen = detail
 		m.viewport.SetContent(result.item.Thought)
 		m.viewport.GotoTop()
-		if result.operation == logging.ThoughtCreate {
+		if result.operation == logging.ThoughtCreate || result.operation == logging.ThoughtUpdate {
 			m.input.Reset()
 			m.stale = true
-			m.logger.Mutation(logging.ThoughtCreated, result.item.ThoughtID)
-			id := m.subjectID
+			event := logging.ThoughtCreated
+			if result.operation == logging.ThoughtUpdate {
+				event = logging.ThoughtUpdated
+				m.request++
+			}
+			m.logger.Mutation(event, result.item.ThoughtID)
+			id := result.item.SubjectID
 			return m, func() tea.Msg { return ChangedMsg{SubjectID: id} }
 		}
 		return m, nil
@@ -286,32 +353,69 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		switch m.screen {
-		case create:
+		case create, edit:
 			switch key.String() {
 			case "esc":
 				m.request++
 				m.input.Blur()
 				m.input.Reset()
 				m.err = nil
-				m.screen = browse
+				if m.screen == edit {
+					m.screen = detail
+				} else {
+					m.screen = browse
+				}
+				m.inputWarning = ""
 				return m, nil
 			case "ctrl+s":
 				m.inputWarning = ""
 				m.input.Blur()
-				cmd := m.createThought(m.input.Value())
+				var cmd tea.Cmd
+				if m.screen == edit {
+					cmd = m.updateThought(m.input.Value())
+				} else {
+					cmd = m.createThought(m.input.Value())
+				}
+				return m, cmd
+			}
+		case confirmDelete:
+			switch key.String() {
+			case "n", "esc":
+				m.request++
+				m.screen, m.err = detail, nil
+				return m, nil
+			case "y":
+				cmd := m.deleteThought()
 				return m, cmd
 			}
 		case detail:
 			switch key.String() {
+			case "e":
+				m.request++
+				m.err, m.inputWarning = nil, ""
+				m.input.Reset()
+				focus := m.input.Focus()
+				m, _ = m.updateInput(tea.PasteMsg{Content: m.selected.Thought})
+				if m.inputWarning != "" || m.input.Value() != m.selected.Thought {
+					if m.inputWarning == "" {
+						m.inputWarning = "Input rejected: this editor cannot preserve the complete thought."
+					}
+					m.input.Reset()
+					m.input.Blur()
+					return m, nil
+				}
+				m.screen = edit
+				return m, focus
+			case "d":
+				m.request++
+				m.screen, m.err, m.inputWarning = confirmDelete, nil, ""
+				return m, nil
+
 			case "esc":
 				m.screen = browse
 				m.err = nil
 				if m.stale {
-					if m.browsingThoughtsView {
-						cmd := m.reloadBrowseThoughtsView()
-						return m, cmd
-					}
-					cmd := m.listThoughts()
+					cmd := m.reloadOrigin()
 					return m, cmd
 				}
 				return m, nil
@@ -349,7 +453,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch m.screen {
 	case browse:
 		cmd = m.filter.Update(&m.list, msg)
-	case create:
+	case create, edit:
 		return m.updateInput(msg)
 	case detail:
 		m.viewport, cmd = m.viewport.Update(msg)
@@ -365,13 +469,28 @@ func (m Model) View() string {
 		status = m.errMessage + "\n"
 	}
 	switch m.screen {
-	case create:
+	case create, edit:
 		if m.inputWarning != "" {
 			status = m.inputWarning + "\n"
 		}
-		return "Create thought\n" + status + m.input.View() + "\nCtrl+S: save • Enter: newline • Esc: cancel"
+		title := "Create thought"
+		if m.screen == edit {
+			title = "Edit thought"
+			if m.loading {
+				status = "Updating thought…\n"
+			}
+		}
+		return title + "\n" + status + m.input.View() + "\nCtrl+S: save • Enter: newline • Esc: cancel"
+	case confirmDelete:
+		if m.loading {
+			status = "Deleting thought…\n"
+		}
+		return fmt.Sprintf("Delete thought %d?\n%sIt will disappear from active lists. Stored history will be kept.\n\ny: delete • n/Esc: cancel", m.selected.ThoughtID, status)
 	case detail:
-		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
+		if m.inputWarning != "" {
+			status = m.inputWarning + "\n"
+		}
+		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page\ne: edit • d: delete • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:
 		if m.browsingThoughtsView {
 			return m.renderBrowseThoughtsView(status)

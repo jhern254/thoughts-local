@@ -111,3 +111,20 @@ func TestSubjectMessage_ValidatorFeedback(t *testing.T) {
 		}
 	})
 }
+
+func TestThoughtMessage_VersionConflict(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"wrapped conflict", fmt.Errorf("PRIVATE-CONFLICT: %w", data.ErrVersionConflict), "The thought has changed. Reload it before trying again."},
+		{"combined conflict", errors.Join(data.ErrVersionConflict, errors.New("PRIVATE-CONFLICT")), "Could not save the thought."},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ThoughtMessage(tt.err, "Could not save the thought."); got != tt.want {
+				t.Fatalf("got diagnostic %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
