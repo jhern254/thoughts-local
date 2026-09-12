@@ -163,8 +163,31 @@ func TestModel_EventsHome(t *testing.T) {
 		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
 		m = runHomeData(t, m, cmd)
 		view := ansi.Strip(m.View().Content)
-		if m.entityFocused || !strings.Contains(view, "09:00 PM  ╭") || strings.Contains(view, "Esc: collapse") {
+		if m.entityFocused || !strings.Contains(view, "09:00 PM  ╭") || strings.Contains(view, "←: collapse") {
 			t.Fatalf("got %q, want first event visible in timeline navigation", view)
+		}
+	})
+	t.Run("horizontal keys open thoughts and collapse events without changing days", func(t *testing.T) {
+		for _, keys := range [][2]rune{{tea.KeyRight, tea.KeyLeft}, {'l', 'h'}} {
+			m, _ := newHome(t)
+			m, cmd := rootUpdate(m, enterKey())
+			m = runHomeData(t, m, cmd)
+			expanded := m.View().Content
+			collapsed, _ := rootUpdate(m, escapeKey())
+			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: keys[0]}))
+			m = runHomeData(t, m, cmd)
+			if !strings.Contains(m.View().Content, "complete thought detail") {
+				t.Fatalf("key %q did not open the selected thought", keys[0])
+			}
+			// Detail navigation is unchanged: Escape returns to the event list.
+			m, _ = rootUpdate(m, escapeKey())
+			if m.View().Content != expanded {
+				t.Fatal("detail return changed the expanded event or selection")
+			}
+			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: keys[1]}))
+			if cmd != nil || m.View().Content != collapsed.View().Content {
+				t.Fatalf("key %q should collapse the event without navigating days", keys[1])
+			}
 		}
 	})
 	t.Run("Tab transfers highlighting without losing event or thought selection", func(t *testing.T) {
