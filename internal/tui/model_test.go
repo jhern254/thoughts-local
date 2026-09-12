@@ -24,6 +24,9 @@ func TestModel_View(t *testing.T) {
 		)
 
 		view := model.View().Content
+		if !model.View().AltScreen {
+			t.Fatal("home should use a fresh alternate screen")
+		}
 
 		if !strings.HasPrefix(view, "Local user: local (local-user-id)\n") {
 			t.Fatalf("got header %q, want local user above Events", view)
