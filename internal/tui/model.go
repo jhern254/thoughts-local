@@ -206,9 +206,9 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 			switch key.String() {
 			case "q":
 				return m, tea.Quit
-			case "left", "right", "j", "k":
+			case "left", "right", "h", "l":
 				delta := 1
-				if key.String() == "left" || key.String() == "k" {
+				if key.String() == "left" || key.String() == "h" {
 					delta = -1
 				}
 				count := len(m.entityList.Items())

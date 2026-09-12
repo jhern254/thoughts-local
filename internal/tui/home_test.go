@@ -138,7 +138,7 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal("home did not use or display bootstrapped user")
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
-		for _, key := range []rune{tea.KeyRight, tea.KeyLeft, 'j', 'k'} {
+		for _, key := range []rune{tea.KeyRight, tea.KeyLeft, 'h', 'l'} {
 			before := m.entityList.Index()
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
 			if m.entityList.Index() == before {
