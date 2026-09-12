@@ -169,6 +169,10 @@ func TestModel_EventsHome(t *testing.T) {
 		if m.View().Content != before {
 			t.Fatal("return changed event anchors")
 		}
+		m, _ = rootUpdate(m, escapeKey())
+		if strings.Contains(m.View().Content, "r: refresh event") || !strings.Contains(m.View().Content, "Home: first") {
+			t.Fatal("one Escape from expanded event should return to timeline navigation")
+		}
 	})
 	t.Run("delayed expansion cannot reopen after leaving and returning home", func(t *testing.T) {
 		m, _ := newHome(t)

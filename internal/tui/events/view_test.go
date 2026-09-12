@@ -2,6 +2,7 @@ package events
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,42 +12,74 @@ import (
 )
 
 func TestModel_Layout(t *testing.T) {
-	t.Run("timeline uses hour and minute with seconds and zone on focused event", func(t *testing.T) {
+	t.Run("event expands beside its time and pushes later hours down", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m.items[0].StartedAt = m.day.Add(10 * time.Hour)
+		lines, positions, _ := m.layout()
+		top := positions[1]
+		if !strings.HasPrefix(ansi.Strip(lines[top]), "10:00 AM  ╭") {
+			t.Fatalf("got event row %q, want time beside top border", lines[top])
+		}
+		before := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(line, "11:00 AM") })
+		m = execute(t, m, m.openEvent(1))
+		lines, positions, _ = m.layout()
+		after := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(line, "11:00 AM") })
+		if after <= before || !strings.HasPrefix(ansi.Strip(lines[positions[1]]), "10:00 AM  ╭") {
+			t.Fatal("inline expansion lost time column or failed to push later hour down")
+		}
+		if !strings.Contains(ansi.Strip(m.View()), "10:00 AM  ╭") {
+			t.Fatal("expanded viewport hides event time")
+		}
+	})
+	t.Run("default viewport spaces hours and shows only recent hours", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m.items = nil
+		m.anchor()
+		view := ansi.Strip(m.View())
+		if strings.Contains(view, "12:00 AM") || strings.Contains(view, "06:00 AM") || !strings.Contains(view, "11:00 AM") {
+			t.Fatalf("got default view %q, want recent hours rather than full day", view)
+		}
+		lines, _, _ := m.layout()
+		if !strings.HasPrefix(lines[0], "12:00 AM") || !strings.Contains(lines[1], "│") || strings.Contains(lines[1], "AM") {
+			t.Fatal("earlier hours unavailable or hour spacing missing")
+		}
+		m, _ = m.Update(eventKey("home"))
+		if !strings.Contains(m.View(), "12:00 AM") {
+			t.Fatal("Home cannot reach beginning of empty day")
+		}
+	})
+	t.Run("collapsed calendar has no timezone even on selected event", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		lines, _, _ := m.layout()
 		view := ansi.Strip(strings.Join(lines, "\n"))
-		for _, want := range []string{"12:00 AM\n", "11:00 AM\n", "Now · 11:37 AM ──", "Started Sep 11 10:37:00 AM PDT"} {
+		for _, want := range []string{"12:00 AM", "11:00 AM", "Now · 11:37 AM ──", "Started 10:37 AM"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("got timeline %q, want %q", view, want)
 			}
 		}
-		if strings.Contains(view, "-07:00") || strings.Contains(view, "13:00") {
+		if strings.Contains(view, "PDT") || strings.Contains(view, "PST") || strings.Contains(view, "-07:00") {
 			t.Fatalf("unexpected offset or 24-hour label: %s", view)
 		}
-		if strings.Contains(m.card(m.items[0], false), "Started Sep 11 10:37:00 AM PDT") {
-			t.Fatal("unfocused event interval includes timezone")
-		}
-		m.items = nil
-		lines, _, _ = m.layout()
-		if strings.Contains(strings.Join(lines, "\n"), "PDT") {
-			t.Fatal("hour rail or Now marker includes timezone")
+		m = execute(t, m, m.openEvent(1))
+		if !strings.Contains(ansi.Strip(m.View()), "Started 10:37:00 AM PDT") {
+			t.Fatal("expanded event lost precise Pacific timestamp")
 		}
 	})
 	t.Run("current day ends at Now and completed days retain every hour", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.items = nil
 		lines, _, now := m.layout()
-		if now != len(lines)-1 || len(lines) != 13 || lines[now] != "── Now · 11:37 AM ──" {
+		if now != len(lines)-1 || strings.TrimSpace(lines[now]) != "── Now · 11:37 AM ──" {
 			t.Fatalf("got current rail %q, want midnight through 11 AM ending at Now", lines)
 		}
 		m.clock = m.day.Add(12 * time.Hour)
 		lines, _, now = m.layout()
-		if now != len(lines)-1 || lines[now-1] != "12:00 PM" {
+		if now != len(lines)-1 || !strings.HasPrefix(lines[now-1], "12:00 PM") {
 			t.Fatalf("got noon rail %q, want noon hour followed by Now", lines)
 		}
 		m.day = m.day.AddDate(0, 0, -1)
 		lines, _, now = m.layout()
-		if len(lines) != 24 || now != -1 || lines[23] != "11:00 PM" {
+		if now != -1 || !strings.HasPrefix(lines[len(lines)-1], "11:00 PM") {
 			t.Fatalf("got past rail %q, want 24 hours without Now", lines)
 		}
 		m.day = m.day.AddDate(0, 0, 2)
@@ -106,8 +139,8 @@ func TestModel_Layout(t *testing.T) {
 		end := item.StartedAt.Add(time.Hour)
 		item.EndedAt = &end
 		card := ansi.Strip(m.card(item, false))
-		if !strings.Contains(card, "Sep 11 10:37:00 AM–Sep 11 11:37:00 AM") {
-			t.Fatalf("got completed interval %q, want 12-hour start and end with seconds", card)
+		if !strings.Contains(card, "10:37 AM–11:37 AM") {
+			t.Fatalf("got completed interval %q, want compact 12-hour start and end", card)
 		}
 		if strings.Contains(card, "preview") || !strings.Contains(card, "230 thoughts") || !strings.Contains(card, "Reading · 1h") {
 			t.Fatal("completed summary did not retain duration/count only")

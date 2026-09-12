@@ -345,13 +345,22 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		if len(s.rows) == 0 && !m.loading && m.err == nil {
 			visible[0] = "No thoughts yet"
 		}
-		return count + "\n" + strings.Join(visible, "\n") + "\n" + strings.TrimSpace(status) + "\n↑/↓: thoughts • Enter: open • Esc: timeline"
+		return count + "\n" + strings.Join(visible, "\n") + "\n" + strings.TrimSpace(status)
 	}
 	return strings.Join(visible, "\n") + fmt.Sprintf("\n%s\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest", count, strings.TrimSpace(status))
 }
 
 // SummaryPreview is shared by the collection picker and event cards.
 func (m Model) SummaryPreview(item data.ThoughtSummary, width int, selected bool) string {
+	return m.summaryPreview(item, width, selected, "Jan 2, 2006 3:04 PM MST")
+}
+
+// TimelinePreview keeps collapsed calendar cards free of timezone detail.
+func (m Model) TimelinePreview(item data.ThoughtSummary, width int) string {
+	return m.summaryPreview(item, width, false, "3:04 PM")
+}
+
+func (m Model) summaryPreview(item data.ThoughtSummary, width int, selected bool, layout string) string {
 	titleStyle, descStyle := m.itemStyles.NormalTitle, m.itemStyles.NormalDesc
 	if selected {
 		titleStyle, descStyle = m.itemStyles.SelectedTitle, m.itemStyles.SelectedDesc
@@ -361,7 +370,7 @@ func (m Model) SummaryPreview(item data.ThoughtSummary, width int, selected bool
 		subject = summaryText(*item.SubjectName)
 	}
 	title := m.list.Styles.Title.Render(subject) + " " + summaryText(item.Preview)
-	description := fmt.Sprintf("Thought %d • %s", item.ThoughtID, displaytime.Format(item.ObservedAt, "Jan 2, 2006 3:04 PM MST"))
+	description := fmt.Sprintf("Thought %d • %s", item.ThoughtID, displaytime.Format(item.ObservedAt, layout))
 	title = titleStyle.Render(ansi.Truncate(title, max(0, width-titleStyle.GetHorizontalFrameSize()), "…"))
 	description = descStyle.Render(ansi.Truncate(description, max(0, width-descStyle.GetHorizontalFrameSize()), "…"))
 	return ansi.Truncate(title, width, "") + "\n" + ansi.Truncate(description, width, "")
