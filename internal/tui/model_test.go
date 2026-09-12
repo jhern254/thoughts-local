@@ -25,6 +25,9 @@ func TestModel_View(t *testing.T) {
 
 		view := model.View().Content
 
+		if !strings.HasPrefix(view, "Local user: local (local-user-id)\n") {
+			t.Fatalf("got header %q, want local user above Events", view)
+		}
 		for _, want := range []string{"Events", "Thoughts", "Subjects"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("view %q does not contain %q", view, want)

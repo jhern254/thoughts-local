@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/tui/events"
 	"strings"
@@ -124,7 +125,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case tea.WindowSizeMsg:
 		m.width = message.Width
-		m.events.Resize(message.Width, max(1, message.Height-3))
+		m.events.Resize(message.Width, max(1, message.Height-4))
 		m.entityList.SetSize(message.Width, max(0, message.Height-3))
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
@@ -267,6 +268,7 @@ func (m Model) View() tea.View {
 	case screenEvents:
 		content = m.events.View()
 		if m.events.CanLeave() {
+			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n" + content
 			content += "\n" + m.entityStrip()
 		}
 	case screenSubjectList:
@@ -292,4 +294,11 @@ func (m Model) View() tea.View {
 		}
 	}
 	return tea.NewView(content)
+}
+
+func localUserLabel(user *data.User) string {
+	if user.Handle != nil {
+		return fmt.Sprintf("%s (%s)", *user.Handle, user.UserID)
+	}
+	return user.UserID
 }

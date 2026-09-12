@@ -68,12 +68,16 @@ func (m Model) card(item data.Event, selected bool) string {
 		end = *item.EndedAt
 	}
 	heading := label + " · " + duration(item.StartedAt, end, item.EndedAt == nil)
-	interval := displaytime.Format(item.StartedAt, "Jan 2 15:04 MST")
+	layout := "Jan 2 03:04:05 PM"
+	if selected {
+		layout += " MST"
+	}
+	interval := displaytime.Format(item.StartedAt, layout)
 	if item.EndedAt == nil {
 		heading += " · ongoing"
 		interval = "Started " + interval
 	} else {
-		interval += "–" + displaytime.Format(end, "Jan 2 15:04 MST")
+		interval += "–" + displaytime.Format(end, layout)
 	}
 	if item.StartedAt.Before(m.day) {
 		interval = "← " + interval
@@ -135,8 +139,8 @@ type railEntry struct {
 func (m Model) layout() ([]string, map[int64]int, int) {
 	entries := []railEntry{}
 	until := m.day.AddDate(0, 0, 1)
-	for hour := m.day; hour.Before(until); hour = hour.Add(time.Hour) {
-		entries = append(entries, railEntry{at: hour, text: displaytime.Format(hour, "15:04 MST -07:00")})
+	for hour := m.day; hour.Before(until) && !hour.After(m.clock); hour = hour.Add(time.Hour) {
+		entries = append(entries, railEntry{at: hour, text: displaytime.Format(hour, "03:04 PM")})
 	}
 	for i, item := range m.items {
 		at := item.StartedAt
@@ -146,7 +150,7 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 		entries = append(entries, railEntry{at: at, priority: 1, id: item.EventID, text: m.card(item, i == m.index)})
 	}
 	if !m.clock.Before(m.day) && m.clock.Before(until) {
-		entries = append(entries, railEntry{at: m.clock, priority: 2, now: true, text: "── Now · " + displaytime.Format(m.clock, "15:04 MST") + " ──"})
+		entries = append(entries, railEntry{at: m.clock, priority: 2, now: true, text: "── Now · " + displaytime.Format(m.clock, "03:04 PM") + " ──"})
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].at.Equal(entries[j].at) {
