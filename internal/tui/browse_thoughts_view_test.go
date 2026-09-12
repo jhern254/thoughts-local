@@ -17,7 +17,7 @@ import (
 func TestModel_BrowseThoughtsView(t *testing.T) {
 	t.Run("Home and r refresh external count changes and reject superseded count replies", func(t *testing.T) {
 		counts := &metricsStub{total: 230}
-		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
+		m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
 		m.entityList.Select(1)
 		m, cmd := rootUpdate(m, enterKey())
 		batch := cmd().(tea.BatchMsg)
@@ -41,7 +41,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 	})
 	t.Run("late count cannot affect a reopened thought browse view session or Misc", func(t *testing.T) {
 		counts := &metricsStub{total: 230}
-		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
+		m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), counts, logging.Nop())
 		m.entityList.Select(1)
 		m, cmd := rootUpdate(m, enterKey())
 		old := cmd().(tea.BatchMsg)[1]()
@@ -77,12 +77,12 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		if _, err := service.Create(t.Context(), "u", "first observation", nil, time.Time{}); err != nil {
 			t.Fatal(err)
 		}
-		m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, service, &metricsStub{}, logging.Nop())
-		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, service, &metricsStub{}, logging.Nop())
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
 		m, cmd := rootUpdate(m, enterKey())
 		old := cmd().(tea.BatchMsg)[0]() // Actual page reply held across navigation.
 		m, _ = rootUpdate(m, escapeKey())
-		if m.screen != screenEntities {
+		if m.screen != screenEvents {
 			t.Fatal("Escape did not leave pending list")
 		}
 		if _, err := service.Create(t.Context(), "u", "newer observation", nil, time.Now().Add(time.Hour)); err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/thought"
@@ -25,11 +26,16 @@ func Classify(operation logging.Operation, err error) (logging.FailureCategory, 
 		}
 	}
 	var validation *thought.ValidationError
+	var eventValidation *event.ValidationError
 	switch {
 	case errors.Is(err, data.ErrDatabaseBusy):
 		return logging.DatabaseBusy, true
 	case errors.Is(err, data.ErrDatabaseReadOnly):
 		return logging.DatabaseReadOnly, true
+	case (operation == logging.EventCreate || operation == logging.EventEnd) && (errors.As(err, &eventValidation) || errors.Is(err, data.ErrEventOverlap) || errors.Is(err, data.ErrInvalidEventInterval) || errors.Is(err, data.ErrEventVersionConflict) || errors.Is(err, data.ErrEventStateConflict) || errors.Is(err, data.ErrRecordNotFound)):
+		return logging.UnexpectedFailure, false
+	case (operation == logging.EventGet || operation == logging.EventThoughtList) && errors.Is(err, data.ErrRecordNotFound):
+		return logging.UnexpectedFailure, false
 	case (operation == logging.SubjectCreate || operation == logging.SubjectUpdate) && subject.IsExpectedError(err):
 		return logging.UnexpectedFailure, false
 	case (operation == logging.SubjectGet || operation == logging.SubjectDelete) && errors.Is(err, data.ErrRecordNotFound):

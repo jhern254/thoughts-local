@@ -20,6 +20,8 @@ const (
 	SubjectUpdated
 	SubjectDeleted
 	ThoughtCreated
+	EventCreated
+	EventEnded
 )
 
 type Operation uint8
@@ -39,6 +41,12 @@ const (
 	ThoughtCountsBySubject
 	ThoughtCountUnassigned
 	ThoughtCountAll
+	EventList
+	EventGet
+	EventCreate
+	EventEnd
+	EventThoughtCount
+	EventThoughtList
 )
 
 type FailureCategory uint8
@@ -51,6 +59,18 @@ const (
 
 func (operation Operation) name() string {
 	switch operation {
+	case EventList:
+		return "event_list"
+	case EventGet:
+		return "event_get"
+	case EventCreate:
+		return "event_create"
+	case EventEnd:
+		return "event_end"
+	case EventThoughtCount:
+		return "event_thought_count"
+	case EventThoughtList:
+		return "event_thought_list"
 	case ThoughtCreate:
 		return "thought_create"
 	case ThoughtGet:
@@ -86,6 +106,10 @@ func (operation Operation) name() string {
 
 func (event MutationEvent) message() string {
 	switch event {
+	case EventCreated:
+		return "event created"
+	case EventEnded:
+		return "event ended"
 	case ThoughtCreated:
 		return "thought created"
 	case SubjectUpdated:
@@ -200,7 +224,9 @@ func (l Logger) Mutation(event MutationEvent, recordID int64) {
 	if entry == nil {
 		return
 	}
-	if event == ThoughtCreated {
+	if event == EventCreated || event == EventEnded {
+		entry.Int64("event_id", recordID)
+	} else if event == ThoughtCreated {
 		entry.Int64("thought_id", recordID)
 	} else {
 		entry.Int64("subject_id", recordID)

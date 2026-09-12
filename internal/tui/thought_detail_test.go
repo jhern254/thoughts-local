@@ -55,7 +55,7 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 			}
 			var details []string
 			for _, browseThoughtsView := range []bool{false, true} {
-				m := NewModel(t.Context(), &data.User{UserID: "u"}, subjects, labeledThoughtService{Service: thoughts, name: subjectName}, &metricsStub{}, logging.Nop())
+				m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, subjects, labeledThoughtService{Service: thoughts, name: subjectName}, &metricsStub{}, logging.Nop())
 				m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 				if browseThoughtsView {
 					m.entityList.Select(1)

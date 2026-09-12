@@ -151,7 +151,7 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u", "other")
 		s := event.NewService(data.NewSQLiteEventStore(db))
-		view := timeline.NewService(s, data.NewSQLiteThoughtStore(db))
+		view := timeline.NewService(s, data.NewSQLiteThoughtStore(db), data.NewSQLiteMetricsStore(db))
 		item, err := s.CreatePast(t.Context(), "u", "overnight", eventTime(80000), eventTime(90000))
 		if err != nil {
 			t.Fatal(err)
@@ -204,7 +204,7 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			insertUsers(t, db, "u", "other")
 			s := event.NewService(data.NewSQLiteEventStore(db))
-			view := timeline.NewService(s, data.NewSQLiteThoughtStore(db))
+			view := timeline.NewService(s, data.NewSQLiteThoughtStore(db), data.NewSQLiteMetricsStore(db))
 			end := eventTime(200)
 			if scenario == "zero duration" {
 				end = eventTime(100)
@@ -255,7 +255,7 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u")
 		s := event.NewService(data.NewSQLiteEventStore(db))
-		view := timeline.NewService(s, data.NewSQLiteThoughtStore(db))
+		view := timeline.NewService(s, data.NewSQLiteThoughtStore(db), data.NewSQLiteMetricsStore(db))
 		item, err := s.Create(t.Context(), "u", "", eventTime(100))
 		if err != nil {
 			t.Fatal(err)
