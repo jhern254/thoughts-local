@@ -165,6 +165,9 @@ func TestModel_EventsHome(t *testing.T) {
 		if !strings.Contains(m.View().Content, "complete thought detail") {
 			t.Fatal("did not open shared detail")
 		}
+		if !m.View().AltScreen {
+			t.Fatal("detail must remain in the alternate screen")
+		}
 		m, _ = rootUpdate(m, escapeKey())
 		if m.View().Content != before {
 			t.Fatal("return changed event anchors")

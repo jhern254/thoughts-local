@@ -75,6 +75,9 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 				listView, origin := m.View().Content, m.screen
 				m = runModelCommand(t, m, enterKey())
 				wantHeading := m.subjects.list.Styles.Title.Render(heading) + "\n\n"
+				if !m.View().AltScreen {
+					t.Fatal("shared thought detail must remain in the alternate screen")
+				}
 				if !strings.HasPrefix(m.View().Content, wantHeading) {
 					t.Fatalf("got detail %q, want styled subject heading %q", m.View().Content, wantHeading)
 				}

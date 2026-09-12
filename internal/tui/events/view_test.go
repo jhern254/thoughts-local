@@ -7,11 +7,38 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/list"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
 func TestModel_Layout(t *testing.T) {
+	t.Run("styled header combines duration and compact timestamp range", func(t *testing.T) {
+		for _, tc := range []struct{ start, end, want string }{
+			{"10:47 PM", "11:00 PM", "13m · 10:47 - 11:00 PM"},
+			{"10:47 AM", "11:00 AM", "13m · 10:47 - 11:00 AM"},
+			{"11:30 AM", "12:30 PM", "1h · 11:30 AM - 12:30 PM"},
+		} {
+			t.Run(tc.want, func(t *testing.T) {
+				m, _, _ := fixture(t)
+				start, err := time.Parse("2006-01-02 03:04 PM -07:00", "2026-09-11 "+tc.start+" -07:00")
+				if err != nil {
+					t.Fatal(err)
+				}
+				end, err := time.Parse("2006-01-02 03:04 PM -07:00", "2026-09-11 "+tc.end+" -07:00")
+				if err != nil {
+					t.Fatal(err)
+				}
+				item := m.items[0]
+				item.StartedAt, item.EndedAt = start, &end
+				card := m.card(item, true)
+				if !strings.Contains(card, list.DefaultStyles(true).Title.Render("Reading")) || !strings.Contains(ansi.Strip(strings.Split(card, "\n")[1]), tc.want) {
+					t.Fatalf("got card %q, want styled Reading and %q on first content line", card, tc.want)
+				}
+			})
+		}
+	})
 	t.Run("event expands beside its time and pushes later hours down", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.items[0].StartedAt = m.day.Add(10 * time.Hour)
@@ -52,7 +79,7 @@ func TestModel_Layout(t *testing.T) {
 		m, _, _ := fixture(t)
 		lines, _, _ := m.layout()
 		view := ansi.Strip(strings.Join(lines, "\n"))
-		for _, want := range []string{"12:00 AM", "11:00 AM", "Now · 11:37 AM ──", "Started 10:37 AM"} {
+		for _, want := range []string{"12:00 AM", "11:00 AM", "Now · 11:37 AM ──", "1h · Started at 10:37 AM · ongoing"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("got timeline %q, want %q", view, want)
 			}
@@ -61,8 +88,8 @@ func TestModel_Layout(t *testing.T) {
 			t.Fatalf("unexpected offset or 24-hour label: %s", view)
 		}
 		m = execute(t, m, m.openEvent(1))
-		if !strings.Contains(ansi.Strip(m.View()), "Started 10:37:00 AM PDT") {
-			t.Fatal("expanded event lost precise Pacific timestamp")
+		if !strings.Contains(ansi.Strip(m.View()), "Started at 10:37 AM PDT · ongoing") {
+			t.Fatal("expanded event lost Pacific timestamp")
 		}
 	})
 	t.Run("current day ends at Now and completed days retain every hour", func(t *testing.T) {
@@ -139,10 +166,10 @@ func TestModel_Layout(t *testing.T) {
 		end := item.StartedAt.Add(time.Hour)
 		item.EndedAt = &end
 		card := ansi.Strip(m.card(item, false))
-		if !strings.Contains(card, "10:37 AM–11:37 AM") {
+		if !strings.Contains(card, "10:37 - 11:37 AM") {
 			t.Fatalf("got completed interval %q, want compact 12-hour start and end", card)
 		}
-		if strings.Contains(card, "preview") || !strings.Contains(card, "230 thoughts") || !strings.Contains(card, "Reading · 1h") {
+		if strings.Contains(card, "preview") || !strings.Contains(card, "230 thoughts") || !strings.Contains(card, " · 1h · ") {
 			t.Fatal("completed summary did not retain duration/count only")
 		}
 		item.StartedAt = m.day.Add(-time.Hour)

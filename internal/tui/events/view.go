@@ -68,20 +68,27 @@ func (m Model) card(item data.Event, selected bool) string {
 	if item.EndedAt != nil {
 		end = *item.EndedAt
 	}
-	heading := label + " · " + duration(item.StartedAt, end, item.EndedAt == nil)
-	layout := "03:04 PM"
+	heading := list.DefaultStyles(true).Title.Render(label) + " · " + duration(item.StartedAt, end, item.EndedAt == nil)
+	startLayout, endLayout := "03:04", "03:04 PM"
+	crossDay := !displaytime.Day(item.StartedAt).Equal(displaytime.Day(end))
+	differentZone := displaytime.Format(item.StartedAt, "MST") != displaytime.Format(end, "MST")
+	if crossDay || displaytime.Format(item.StartedAt, "PM") != displaytime.Format(end, "PM") || (item.EventID == m.expanded && differentZone) {
+		startLayout = "03:04 PM"
+	}
+	if crossDay {
+		startLayout, endLayout = "Jan 2 "+startLayout, "Jan 2 "+endLayout
+	}
 	if item.EventID == m.expanded {
-		layout = "03:04:05 PM MST"
+		endLayout += " MST"
+		if differentZone {
+			startLayout += " MST"
+		}
 	}
-	if item.StartedAt.Before(m.day) || end.After(m.day.AddDate(0, 0, 1)) {
-		layout = "Jan 2 " + layout
-	}
-	interval := displaytime.Format(item.StartedAt, layout)
+	interval := ""
 	if item.EndedAt == nil {
-		heading += " · ongoing"
-		interval = "Started " + interval
+		interval = "Started at " + displaytime.Format(item.StartedAt, endLayout)
 	} else {
-		interval += "–" + displaytime.Format(end, layout)
+		interval = displaytime.Format(item.StartedAt, startLayout) + " - " + displaytime.Format(end, endLayout)
 	}
 	if item.StartedAt.Before(m.day) {
 		interval = "← " + interval
@@ -90,9 +97,11 @@ func (m Model) card(item data.Event, selected bool) string {
 		interval += " →"
 	}
 	width := max(1, m.width-12)
-	heading = ansi.Truncate(heading, width, "…")
-	interval = ansi.Truncate(interval, width, "…")
-	content := heading + "\n" + interval + "\n"
+	heading += " · " + interval
+	if item.EndedAt == nil {
+		heading += " · ongoing"
+	}
+	content := ansi.Truncate(heading, width, "…") + "\n"
 	if item.EventID == m.expanded {
 		if m.opening {
 			content += "Loading thoughts…"

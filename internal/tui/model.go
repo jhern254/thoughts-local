@@ -252,6 +252,8 @@ func (m Model) entityStrip() string {
 }
 
 func (m Model) View() tea.View {
+	view := tea.NewView("")
+	view.AltScreen = true
 	switch m.screen {
 	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts:
 		if m.thoughts.ShowingDetail() {
@@ -260,7 +262,8 @@ func (m Model) View() tea.View {
 				name = m.subjects.selected.SubjectName
 			}
 			heading := m.subjects.list.Styles.Title.Render(name)
-			return tea.NewView(heading + "\n\n" + m.thoughts.View())
+			view.Content = heading + "\n\n" + m.thoughts.View()
+			return view
 		}
 	}
 	var content string
@@ -293,7 +296,8 @@ func (m Model) View() tea.View {
 			content += "\nEsc: events • q: quit"
 		}
 	}
-	return tea.NewView(content)
+	view.Content = content
+	return view
 }
 
 func localUserLabel(user *data.User) string {
