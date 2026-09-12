@@ -29,6 +29,7 @@ func TestModel_SubjectListCount(t *testing.T) {
 			m.subjects.list.SetItems(subjectRows(records[:tt.records]))
 			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 14})
 			if tt.query != "" {
+				m.subjects.list.FilterInput.SetVirtualCursor(false)
 				m, _ = rootUpdate(m, runeKey('/'))
 				var cmd tea.Cmd
 				m, cmd = rootUpdate(m, tea.PasteMsg{Content: tt.query})

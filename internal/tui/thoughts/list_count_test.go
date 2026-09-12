@@ -33,6 +33,7 @@ func TestModel_ListCount(t *testing.T) {
 			m.list.SetItems(rows[:tt.records+1])
 			m.Resize(80, 14)
 			if tt.query != "" {
+				m.list.FilterInput.SetVirtualCursor(false)
 				m, _ = m.Update(key('/'))
 				var cmd tea.Cmd
 				m, cmd = m.Update(tea.PasteMsg{Content: tt.query})

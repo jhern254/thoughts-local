@@ -232,7 +232,8 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 			t.Fatal(m.View())
 		}
 		m = browseThoughtsKey(m, tea.KeyEnter)
-		body := "q\n" + strings.Repeat("界", 100000)
+		// Exceed the bounded preview; domain-size boundaries live in InputIntegrity.
+		body := "q\n" + strings.Repeat("界", 100)
 		m, _ = m.Update(tea.PasteMsg{Content: body})
 		if m.input.Value() != body {
 			t.Fatal("editor shortened draft")
