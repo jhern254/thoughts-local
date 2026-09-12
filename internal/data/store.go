@@ -20,6 +20,8 @@ type SubjectStore interface {
 
 type ThoughtStore interface {
 	BrowseThoughtsView(context.Context, string, ThoughtViewRequest) (ThoughtView, error)
+	UpdateThought(context.Context, string, int64, string, int64, time.Time) (*Thought, error)
+	DeleteThought(context.Context, string, int64, int64) error
 	ListUnassignedThoughts(context.Context, string) ([]Thought, error)
 	ListThoughts(context.Context, string, int64) ([]Thought, error)
 	CreateThought(context.Context, *Thought) (*Thought, error)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"sort"
+	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 )
@@ -132,4 +133,33 @@ func (s *FakeThoughtStore) list(ctx context.Context, userID string, subjectID *i
 		return rows[i].ObservedAt.After(rows[j].ObservedAt)
 	})
 	return rows, nil
+}
+
+func (s *FakeThoughtStore) UpdateThought(ctx context.Context, userID string, id int64, body string, version int64, updatedAt time.Time) (*data.Thought, error) {
+	item, err := s.GetThought(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if item.Version != version {
+		return nil, data.ErrVersionConflict
+	}
+	item.Thought = body
+	item.Version++
+	if updatedAt.After(item.UpdatedAt) {
+		item.UpdatedAt = updatedAt
+	}
+	s.thoughts[id] = *item
+	return item, nil
+}
+
+func (s *FakeThoughtStore) DeleteThought(ctx context.Context, userID string, id, version int64) error {
+	item, err := s.GetThought(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if item.Version != version {
+		return data.ErrVersionConflict
+	}
+	delete(s.thoughts, id)
+	return nil
 }

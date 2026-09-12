@@ -15,6 +15,8 @@ const maxThoughtCharacters = 1_000_000
 
 type Store interface {
 	BrowseThoughtsView(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error)
+	UpdateThought(context.Context, string, int64, string, int64, time.Time) (*data.Thought, error)
+	DeleteThought(context.Context, string, int64, int64) error
 	ListUnassignedThoughts(context.Context, string) ([]data.Thought, error)
 	CreateThought(context.Context, *data.Thought) (*data.Thought, error)
 	GetThought(context.Context, string, int64) (*data.Thought, error)
@@ -69,11 +71,37 @@ func (s *Service) Create(ctx context.Context, userID, body string, subjectID *in
 	}
 	item := &data.Thought{UserID: userID, SubjectID: subjectID, Thought: body, Version: 1, ObservedAt: observedAt.UTC(), CreatedAt: now, UpdatedAt: now}
 	v := validator.NewValidator()
-	v.Check(item.UserID != "", "user_id", "must be provided")
-	v.Check(utf8.RuneCountInString(strings.Trim(item.Thought, " ")) > 0, "thought", "must be provided")
-	v.Check(utf8.RuneCountInString(item.Thought) <= maxThoughtCharacters, "thought", "must not be more than 1000000 characters long")
+	validateThought(v, item)
 	if !v.Valid() {
 		return nil, &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
 	}
 	return s.store.CreateThought(ctx, item)
+}
+
+// Update changes only the text and rejects edits based on a stale version.
+func (s *Service) Update(ctx context.Context, userID string, thoughtID int64, body string, expectedVersion int64) (*data.Thought, error) {
+	v := validator.NewValidator()
+	validateThought(v, &data.Thought{UserID: userID, Thought: body})
+	v.Check(expectedVersion > 0, "version", "must be greater than zero")
+	if !v.Valid() {
+		return nil, &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
+	}
+	return s.store.UpdateThought(ctx, userID, thoughtID, body, expectedVersion, time.Now().UTC())
+}
+
+// Delete hides a thought while retaining its content and history.
+func (s *Service) Delete(ctx context.Context, userID string, thoughtID, expectedVersion int64) error {
+	v := validator.NewValidator()
+	v.Check(userID != "", "user_id", "must be provided")
+	v.Check(expectedVersion > 0, "version", "must be greater than zero")
+	if !v.Valid() {
+		return &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
+	}
+	return s.store.DeleteThought(ctx, userID, thoughtID, expectedVersion)
+}
+
+func validateThought(v *validator.Validator, item *data.Thought) {
+	v.Check(item.UserID != "", "user_id", "must be provided")
+	v.Check(utf8.RuneCountInString(strings.Trim(item.Thought, " ")) > 0, "thought", "must be provided")
+	v.Check(utf8.RuneCountInString(item.Thought) <= maxThoughtCharacters, "thought", "must not be more than 1000000 characters long")
 }
