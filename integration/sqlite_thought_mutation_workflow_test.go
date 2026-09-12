@@ -51,6 +51,13 @@ func TestThoughtMutationsWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		assertThoughtEqual(t, got, updated)
+		view, err := thought.NewService(data.NewSQLiteThoughtStore(reopened)).BrowseView(ctx, "owner", data.ThoughtViewRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(view.Items) != 1 || view.Items[0].ThoughtID != updated.ThoughtID || view.Items[0].Preview != updated.Thought {
+			t.Fatalf("got browse view %+v, want the persisted updated thought preview", view)
+		}
 	})
 	t.Run("returns the active-link projection without erasing retained event provenance", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
@@ -192,7 +199,29 @@ func TestThoughtMutationsWorkflow_SQLite(t *testing.T) {
 			if len(assigned) != 0 || len(unassigned) != 0 {
 				t.Fatalf("got list lengths %d/%d, want 0/0", len(assigned), len(unassigned))
 			}
+			// Exercise the new read paths using this scenario's existing small fixture.
+			view, err := service.BrowseView(ctx, "owner", data.ThoughtViewRequest{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(view.Items) != 0 || view.More {
+				t.Fatalf("got browse view %+v, want no active thoughts or further results", view)
+			}
+			ranged, err := data.NewSQLiteThoughtStore(db).ListThoughtsInRange(ctx, "owner", time.Unix(0, 0), time.Unix(100, 0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(ranged) != 0 {
+				t.Fatalf("got range result count %d, want 0", len(ranged))
+			}
 			metrics := data.NewSQLiteMetricsStore(db)
+			total, err := metrics.CountThoughts(ctx, "owner")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if total != 0 {
+				t.Fatalf("got total active thoughts %d, want 0", total)
+			}
 			count, err := metrics.CountUnassignedThoughts(ctx, "owner")
 			if err != nil {
 				t.Fatal(err)
