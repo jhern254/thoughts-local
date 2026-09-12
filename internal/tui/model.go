@@ -27,11 +27,15 @@ const (
 	screenSubjectEdit
 	screenSubjectDelete
 	screenMiscThoughts
+	screenBrowseThoughts
 )
 
 type entityKind uint8
 
-const entitySubjects entityKind = iota
+const (
+	entitySubjects entityKind = iota
+	entityThoughts
+)
 
 type entityRow struct {
 	kind        entityKind
@@ -62,6 +66,7 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 			title:       "Subjects",
 			description: "Browse and organize subjects",
 		},
+		entityRow{kind: entityThoughts, title: "Thoughts", description: "Browse all thoughts, newest observations first"},
 	}, list.NewDefaultDelegate(), defaultWidth, defaultHeight)
 	entities.Title = "Entities"
 	entities.SetFilteringEnabled(false)
@@ -100,7 +105,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
 		return m, nil
-	case thoughts.Result:
+	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtCountResult:
 		var cmd tea.Cmd
 		m.thoughts, cmd = m.thoughts.Update(message)
 		return m, cmd
@@ -141,6 +146,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSubjectDetail(message)
 	case screenMiscThoughts:
 		return m.updateMiscThoughts(message)
+	case screenBrowseThoughts:
+		if key, ok := message.(tea.KeyPressMsg); ok && m.thoughts.Browsing() {
+			switch key.String() {
+			case "q":
+				return m, tea.Quit
+			case "esc":
+				m.thoughts.Reset()
+				m.screen = screenEntities
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		return m, cmd
 	default:
 		return m, nil
 	}
@@ -156,6 +175,11 @@ func (m Model) updateEntities(message tea.Msg) (tea.Model, tea.Cmd) {
 			if ok && row.kind == entitySubjects {
 				return m.openSubjects()
 			}
+			if ok && row.kind == entityThoughts {
+				m.screen = screenBrowseThoughts
+				cmd := m.thoughts.OpenBrowseThoughtsView(m.metrics)
+				return m, cmd
+			}
 		}
 	}
 
@@ -165,6 +189,17 @@ func (m Model) updateEntities(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
+	switch m.screen {
+	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts:
+		if m.thoughts.ShowingDetail() {
+			name := m.thoughts.SelectedSubjectName()
+			if m.screen == screenSubjectDetail && m.subjects.selected != nil {
+				name = m.subjects.selected.SubjectName
+			}
+			heading := m.subjects.list.Styles.Title.Render(name)
+			return tea.NewView(heading + "\n\n" + m.thoughts.View())
+		}
+	}
 	var content string
 	switch m.screen {
 	case screenEntities:
@@ -183,6 +218,12 @@ func (m Model) View() tea.View {
 		content = "Misc thoughts\n\n" + m.thoughts.View()
 		if m.thoughts.Browsing() {
 			content += "\nEsc: subjects • q: quit"
+		}
+	case screenBrowseThoughts:
+		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
+		content = heading + "\n" + m.thoughts.View()
+		if m.thoughts.Browsing() {
+			content += "\nEsc: entities • q: quit"
 		}
 	}
 	return tea.NewView(content)

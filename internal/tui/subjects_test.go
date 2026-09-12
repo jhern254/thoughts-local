@@ -525,7 +525,14 @@ func runModelCommand(t *testing.T, model Model, message tea.Msg) Model {
 
 func applyCommand(t *testing.T, model Model, command tea.Cmd) Model {
 	t.Helper()
-	updated, _ := model.Update(command())
+	message := command()
+	if batch, ok := message.(tea.BatchMsg); ok {
+		for _, cmd := range batch {
+			model = applyCommand(t, model, cmd)
+		}
+		return model
+	}
+	updated, _ := model.Update(message)
 	return updated.(Model)
 }
 

@@ -21,6 +21,7 @@ import (
 )
 
 type Service interface {
+	BrowseView(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error)
 	ListUnassigned(context.Context, string) ([]data.Thought, error)
 	List(context.Context, string, int64) ([]data.Thought, error)
 	Get(context.Context, string, int64) (*data.Thought, error)
@@ -55,8 +56,12 @@ type Model struct {
 	err        error
 	errMessage string
 
-	inputWarning string
-	filter       listfilter.Scope
+	inputWarning         string
+	filter               listfilter.Scope
+	browsingThoughtsView bool
+	browseThoughts       browseThoughtsState
+	countRequest         uint64
+	itemStyles           list.DefaultItemStyles
 }
 
 type rowKind uint8
@@ -111,7 +116,8 @@ type Result struct {
 }
 
 func New(ctx context.Context, userID string, service Service, logger logging.Logger) Model {
-	items := list.New([]list.Item{row{kind: rowCreate}}, list.NewDefaultDelegate(), 80, 14)
+	delegate := list.NewDefaultDelegate()
+	items := list.New([]list.Item{row{kind: rowCreate}}, delegate, 80, 14)
 	items.Title = "Thoughts"
 	items.SetShowStatusBar(false)
 	items.DisableQuitKeybindings()
@@ -122,12 +128,14 @@ func New(ctx context.Context, userID string, service Service, logger logging.Log
 	input.MaxWidth = 0
 	view := viewport.New()
 	view.SoftWrap = true
-	m := Model{ctx: ctx, userID: userID, service: service, logger: logger, list: items, input: input, viewport: view}
+	m := Model{ctx: ctx, userID: userID, service: service, logger: logger, list: items, input: input, viewport: view, itemStyles: delegate.Styles}
 	m.Resize(80, 14)
 	return m
 }
 
 func (m *Model) Resize(width, height int) {
+	m.browseThoughts.width, m.browseThoughts.height = max(1, width), max(1, height-5)
+	m.browseThoughts.keepVisible()
 	m.list.SetSize(max(1, width), max(1, height-4))
 	m.input.SetWidth(max(1, width-2))
 	m.input.SetHeight(max(1, height-5))
@@ -136,6 +144,9 @@ func (m *Model) Resize(width, height int) {
 }
 
 func (m *Model) Reset() {
+	m.countRequest++
+	m.browsingThoughtsView = false
+	m.browseThoughts = browseThoughtsState{width: m.browseThoughts.width, height: m.browseThoughts.height}
 	m.filter.Invalidate()
 	m.request++
 	m.subjectID = nil
@@ -169,6 +180,9 @@ func (m *Model) OpenUnassigned() tea.Cmd {
 func (m Model) Browsing() bool {
 	return m.screen == browse && !m.list.SettingFilter() && !m.list.IsFiltered()
 }
+
+// ShowingDetail lets the parent render the shared detail without list context.
+func (m Model) ShowingDetail() bool { return m.screen == detail }
 
 func (m *Model) listThoughts() tea.Cmd {
 	m.request++
@@ -210,6 +224,12 @@ func (m *Model) createThought(body string) tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	if result, ok := msg.(ThoughtCountResult); ok {
+		return m.receiveThoughtCount(result)
+	}
+	if result, ok := msg.(BrowseThoughtsResult); ok {
+		return m.receiveBrowseThoughts(result)
+	}
 	switch msg.(type) {
 	case listfilter.Reply, list.FilterMatchesMsg:
 		cmd := m.filter.Update(&m.list, msg)
@@ -256,6 +276,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok {
+		if m.browsingThoughtsView && m.screen == browse {
+			return m.updateBrowseThoughtsView(msg)
+		}
 		if m.screen == detail && key.String() == "q" {
 			return m, tea.Quit
 		}
@@ -284,6 +307,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.screen = browse
 				m.err = nil
 				if m.stale {
+					if m.browsingThoughtsView {
+						cmd := m.reloadBrowseThoughtsView()
+						return m, cmd
+					}
 					cmd := m.listThoughts()
 					return m, cmd
 				}
@@ -346,6 +373,9 @@ func (m Model) View() string {
 	case detail:
 		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:
+		if m.browsingThoughtsView {
+			return m.renderBrowseThoughtsView(status)
+		}
 		count := 0
 		for _, item := range m.list.VisibleItems() {
 			if row, ok := item.(row); ok && row.kind == rowRecord {

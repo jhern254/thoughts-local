@@ -11,11 +11,16 @@ import (
 )
 
 type thoughtServiceStoreStub struct {
+	browseView     func(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error)
 	listUnassigned func(context.Context, string) ([]data.Thought, error)
 	list           func(context.Context, string, int64) ([]data.Thought, error)
 	create         func(context.Context, *data.Thought) (*data.Thought, error)
 	get            func(context.Context, string, int64) (*data.Thought, error)
 	createCalled   bool
+}
+
+func (s *thoughtServiceStoreStub) BrowseThoughtsView(ctx context.Context, userID string, request data.ThoughtViewRequest) (data.ThoughtView, error) {
+	return s.browseView(ctx, userID, request)
 }
 
 func (s *thoughtServiceStoreStub) ListUnassignedThoughts(ctx context.Context, u string) ([]data.Thought, error) {

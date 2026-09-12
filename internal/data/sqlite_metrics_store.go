@@ -16,6 +16,17 @@ type SQLiteMetricsStore struct{ db *sql.DB }
 
 func NewSQLiteMetricsStore(db *sql.DB) *SQLiteMetricsStore { return &SQLiteMetricsStore{db: db} }
 
+func (s *SQLiteMetricsStore) CountThoughts(ctx context.Context, userID string) (int64, error) {
+	var count int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM thoughts t JOIN users u ON u.user_id = t.user_id
+		WHERE t.user_id = ? AND t.deleted_at IS NULL AND u.deleted_at IS NULL`, userID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count thoughts: %w", TranslateSQLiteError(err))
+	}
+	return count, nil
+}
+
 func (s *SQLiteMetricsStore) CountUnassignedThoughts(ctx context.Context, userID string) (int64, error) {
 	var count int64
 	err := s.db.QueryRowContext(ctx, `

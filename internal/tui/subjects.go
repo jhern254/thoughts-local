@@ -28,11 +28,6 @@ type SubjectService interface {
 	Get(ctx context.Context, userID string, subjectID int64) (*data.Subject, error)
 }
 
-type MetricsService interface {
-	CountUnassignedThoughts(context.Context, string) (int64, error)
-	ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCount, error)
-}
-
 type subjectState struct {
 	service SubjectService
 	filter  listfilter.Scope
