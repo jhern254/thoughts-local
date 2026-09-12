@@ -2,6 +2,7 @@
           │
           │
           │
+          │
 09:00 AM  │
           │
           │
@@ -12,8 +13,7 @@
           │
           │
 10:37 AM  ╭────────────────────────────────────────────────────────────────────╮
-          │Reading · 1h · ongoing                                              │
-          │Started 10:37 AM                                                    │
+          │ Reading  · 1h · Started at 10:37 AM · ongoing                      │
           │   Misc  preview 229                                                │
           │  Thought 230 • 10:40 AM                                            │
           │230 thoughts                                                        │
