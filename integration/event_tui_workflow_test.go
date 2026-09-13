@@ -45,7 +45,8 @@ func TestEventTUIWorkflow_SQLite(t *testing.T) {
 		}
 		defer conn.Close()
 		m, cmd := m.Update(m.Init()())
-		batch := cmd().(tea.BatchMsg)[0]().(tea.BatchMsg)
+		// The third command only delays UI feedback; these two use SQLite.
+		batch := cmd().(tea.BatchMsg)[0]().(tea.BatchMsg)[:2]
 		replies := make(chan tea.Msg, len(batch))
 		waits := db.Stats().WaitCount
 		for _, read := range batch {

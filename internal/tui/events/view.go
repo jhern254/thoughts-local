@@ -43,7 +43,7 @@ func singleLine(value string) string {
 	}, value)
 }
 func (m Model) count(id int64) string {
-	if m.countPending {
+	if m.countPending && !m.loading && m.pendingDay.Equal(m.day) {
 		return "Counting thoughts…"
 	}
 	if m.countErr != nil {
@@ -305,6 +305,19 @@ func (m *Model) anchor() {
 	m.clampOffset(len(lines))
 }
 
+func (m Model) timelineBody() string {
+	lines, _, _ := m.layout()
+	offset := min(max(0, m.offset), max(0, len(lines)-1))
+	visible := append([]string{}, lines[offset:min(len(lines), offset+m.bodyHeight())]...)
+	for len(visible) < m.bodyHeight() {
+		visible = append(visible, "")
+	}
+	for i := range visible {
+		visible[i] = ansi.Truncate(visible[i], m.width, "")
+	}
+	return strings.Join(visible, "\n")
+}
+
 func (m Model) View() string {
 	styles := list.DefaultStyles(true)
 	heading := styles.Title.Render("Events") + " " + displaytime.Format(m.day, "January 2, 2006")
@@ -317,23 +330,18 @@ func (m Model) View() string {
 	if m.picker.ShowingDetail() {
 		return styles.Title.Render(m.picker.SelectedSubjectName()) + "\n\n" + m.picker.View()
 	}
-	lines, _, _ := m.layout()
-	offset := min(max(0, m.offset), max(0, len(lines)-1))
-	visible := append([]string{}, lines[offset:min(len(lines), offset+m.bodyHeight())]...)
-	for len(visible) < m.bodyHeight() {
-		visible = append(visible, "")
+	body := m.loadingBody
+	if !m.loading || body == "" {
+		body = m.timelineBody()
 	}
 	status := m.message
-	if m.loading {
-		status = "Loading events…"
-	} else if len(m.items) == 0 && status == "" {
+	if m.loading && m.showLoading {
+		status = "Loading events for " + displaytime.Format(m.pendingDay, "January 2, 2006") + "…"
+	} else if !m.loading && len(m.items) == 0 && status == "" {
 		status = "No events on this day. n: start event"
 	}
 	if m.expanded != 0 {
 		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
-	}
-	for i := range visible {
-		visible[i] = ansi.Truncate(visible[i], m.width, "")
 	}
 	help := "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end • q: quit"
 	if m.day.Equal(displaytime.Day(m.clock)) {
@@ -342,5 +350,5 @@ func (m Model) View() string {
 	if m.expanded != 0 {
 		help = "r: refresh event • q: quit"
 	}
-	return heading + "\n\n" + strings.Join(visible, "\n") + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")
+	return heading + "\n\n" + body + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")
 }

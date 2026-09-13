@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -328,8 +329,17 @@ func TestModel_Layout(t *testing.T) {
 		m, _, _ := fixture(t)
 		oldDay := m.day
 		m, cmd := m.Update(Tick{m.owner, m.session, m.day.AddDate(0, 0, 1).Add(time.Minute)})
-		if m.day.Equal(oldDay) || cmd == nil || !m.loading {
-			t.Fatal("following did not roll to next day")
+		if !m.day.Equal(oldDay) || cmd == nil || !m.loading {
+			t.Fatal("midnight did not retain the displayed day while loading")
+		}
+		request := m.request
+		m, _ = m.Update(Tick{m.owner, m.session, m.clock.Add(time.Minute)})
+		if m.request != request {
+			t.Fatal("another tick restarted the pending day load")
+		}
+		m = execute(t, m, cmd().(tea.BatchMsg)[0])
+		if !m.day.Equal(oldDay.AddDate(0, 0, 1)) {
+			t.Fatal("following did not adopt the next day on arrival")
 		}
 		m.following = false
 		day := m.day

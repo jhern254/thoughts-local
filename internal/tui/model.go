@@ -95,7 +95,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.openHome()
-	case events.Tick, events.Listed, events.Counts, events.Latest, events.Opened, events.Saved:
+	case events.Tick, events.Listed, events.Counts, events.Latest, events.LoadDelayed, events.Opened, events.Saved:
 		var cmd tea.Cmd
 		m.events, cmd = m.events.Update(message)
 		return m, cmd
