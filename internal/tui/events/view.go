@@ -43,19 +43,27 @@ func singleLine(value string) string {
 	}, value)
 }
 func (m Model) count(id int64) string {
-	if m.countPending && !m.loading && m.pendingDay.Equal(m.day) {
-		return "Counting thoughts…"
-	}
+	pending := m.countPending && !m.loading && m.pendingDay.Equal(m.day)
 	if m.countErr != nil {
 		return "Thought count unavailable"
 	}
 	for _, item := range m.counts {
 		if item.EventID == id {
-			if item.Count == 1 {
-				return "1 thought"
+			label := "1 thought"
+			if item.Count != 1 {
+				label = fmt.Sprintf("%d thoughts", item.Count)
 			}
-			return fmt.Sprintf("%d thoughts", item.Count)
+			if pending && m.showLoading {
+				label += " · refreshing…"
+			}
+			return label
 		}
+	}
+	if pending {
+		if m.showLoading {
+			return "Counting thoughts…"
+		}
+		return "" // Reserve the count row without inventing a value or flashing text.
 	}
 	return "Thought count unavailable"
 }

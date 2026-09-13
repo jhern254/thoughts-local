@@ -175,6 +175,79 @@ func TestModel_DayTransition(t *testing.T) {
 	})
 }
 
+func TestModel_CollapsedCounts(t *testing.T) {
+	t.Run("retry does not present a failed count as a successful previous value", func(t *testing.T) {
+		m, _, v := fixture(t)
+		v.err = errors.New("PRIVATE_COUNT_FAILURE")
+		m = execute(t, m, m.loadDay(m.day))
+		if m.count(1) != "Thought count unavailable" || m.countErr != v.err {
+			t.Fatal("count failure lost its safe state or original error")
+		}
+		v.err = nil
+		v.items = nil
+		m, cmd := m.Update(eventKey("r"))
+		batch := cmd().(tea.BatchMsg)
+		m = execute(t, m, batch[0])
+		if m.count(1) != "" || strings.Contains(m.View(), "PRIVATE_COUNT_FAILURE") {
+			t.Fatal("retry retained failed count data or exposed private error text")
+		}
+		m = execute(t, m, batch[1])
+		if m.count(1) != "0 thoughts" {
+			t.Fatal("successful empty count was not displayed immediately")
+		}
+		m.Close()
+	})
+	t.Run("new day shows no invented count and only gives feedback for a slow read", func(t *testing.T) {
+		m, s, v := fixture(t)
+		start := m.day.AddDate(0, 0, -1).Add(9 * time.Hour)
+		end := start.Add(time.Hour)
+		s.items = []data.Event{{EventID: 1, StartedAt: start, EndedAt: &end}}
+		v.items = v.items[:1]
+		m, cmd := m.Update(eventKey("left"))
+		batch := cmd().(tea.BatchMsg)
+		m = execute(t, m, batch[0])
+		if got := m.count(1); got != "" {
+			t.Fatalf("got pending count %q, want an empty reserved row", got)
+		}
+		before := strings.Count(m.card(m.items[0], true), "\n")
+		m, _ = m.Update(LoadDelayed{m.owner, m.request})
+		if m.count(1) != "Counting thoughts…" || strings.Contains(m.View(), "Loading events") {
+			t.Fatal("slow count did not show its own feedback independently of events")
+		}
+		m = execute(t, m, batch[1])
+		if m.count(1) != "1 thought" || strings.Count(m.card(m.items[0], true), "\n") != before {
+			t.Fatal("ready count did not replace feedback without changing card height")
+		}
+		m.Close()
+	})
+	t.Run("refresh retains a known count but changed event intervals discard it", func(t *testing.T) {
+		m, s, v := fixture(t)
+		v.items = v.items[:2]
+		m, cmd := m.Update(eventKey("r"))
+		batch := cmd().(tea.BatchMsg)
+		m = execute(t, m, batch[0])
+		if m.count(1) != "230 thoughts" {
+			t.Fatal("refresh replaced the last successful count with loading feedback")
+		}
+		m, _ = m.Update(LoadDelayed{m.owner, m.request})
+		if m.count(1) != "230 thoughts · refreshing…" {
+			t.Fatal("slow refresh did not retain and qualify its previous count")
+		}
+		m = execute(t, m, batch[1])
+		if m.count(1) != "2 thoughts" {
+			t.Fatal("refresh did not apply its count immediately")
+		}
+		// Replace rather than mutate the fixture's shared event slice.
+		s.items = []data.Event{{EventID: 1, StartedAt: s.items[0].StartedAt.Add(time.Minute)}}
+		m, cmd = m.Update(eventKey("r"))
+		m = execute(t, m, cmd().(tea.BatchMsg)[0])
+		if m.count(1) != "" {
+			t.Fatal("changed interval retained a count for a different time range")
+		}
+		m.Close()
+	})
+}
+
 func (s blockedEventRead) List(ctx context.Context, _ string, _, _ time.Time) ([]data.Event, error) {
 	s.started <- ctx
 	<-ctx.Done()

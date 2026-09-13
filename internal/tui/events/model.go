@@ -3,6 +3,7 @@ package events
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -243,7 +244,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.anchor()
 		return m, tea.Batch(reload, m.tick())
 	case LoadDelayed:
-		if result.owner == m.owner && result.request == m.request && m.loading {
+		if result.owner == m.owner && result.request == m.request && (m.loading || m.countPending) {
 			m.showLoading = true
 		}
 		return m, nil
@@ -251,8 +252,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if result.owner != m.owner || result.request != m.request || !m.loading {
 			return m, nil
 		}
-		m.cancelLoading()
-		m.loading, m.showLoading = false, false
+		if !m.countPending {
+			m.cancelLoading()
+			m.showLoading = false
+		}
+		m.loading = false
 		m.loadingBody = ""
 		m.err = result.err
 		m.fail(logging.EventList, result.err)
@@ -266,7 +270,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.items = nil
 			m.picker.Reset()
 		}
-		m.counts, m.countErr = m.pendingCounts.items, m.pendingCounts.err
+		if m.countPending {
+			// Only retain successful counts for unchanged displayed intervals.
+			sameIntervals := slices.EqualFunc(m.items, result.items, func(a, b data.Event) bool {
+				sameEnd := a.EndedAt == nil && b.EndedAt == nil
+				if a.EndedAt != nil && b.EndedAt != nil {
+					sameEnd = a.EndedAt.Equal(*b.EndedAt)
+				}
+				return a.EventID == b.EventID && a.StartedAt.Equal(b.StartedAt) && sameEnd
+			})
+			if !sameIntervals || m.countErr != nil {
+				m.counts = nil
+			}
+			m.countErr = nil
+		} else {
+			m.counts, m.countErr = m.pendingCounts.items, m.pendingCounts.err
+		}
 		selected := int64(0)
 		if len(m.items) > 0 {
 			selected = m.items[m.index].EventID
@@ -316,6 +335,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.countPending = false
+		if !m.loading {
+			m.cancelLoading()
+			m.showLoading = false
+		}
 		m.pendingCounts = result
 		m.fail(logging.EventThoughtCount, result.err)
 		if m.loading || !m.pendingDay.Equal(m.day) {

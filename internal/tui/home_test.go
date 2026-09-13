@@ -186,6 +186,29 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatalf("obsolete batches affected current screen or reads: got %d new reads, want 1", service.lists-calls)
 		}
 	})
+	t.Run("count feedback survives list completion but cannot outlive its request", func(t *testing.T) {
+		m, _ := newHome(t)
+		m, cmd := rootUpdate(m, runeKey('r'))
+		batch := cmd().(tea.BatchMsg)
+		m = runHomeData(t, m, batch[0])
+		if !strings.Contains(m.View().Content, "1 thought") || strings.Contains(m.View().Content, "Counting thoughts") {
+			t.Fatal("refresh flashed count feedback or discarded its known count")
+		}
+		delayed := batch[2]() // Actual timer; the independent count is deliberately held.
+		m, _ = rootUpdate(m, delayed)
+		if !strings.Contains(m.View().Content, "1 thought · refreshing…") || strings.Contains(m.View().Content, "Loading events") {
+			t.Fatal("slow count did not get independent feedback through root dispatch")
+		}
+		lateCount := batch[1]()
+		m, cmd = rootUpdate(m, runeKey('r'))
+		m = runHomeData(t, m, cmd)
+		before := m.View().Content
+		m, _ = rootUpdate(m, delayed)
+		m, _ = rootUpdate(m, lateCount)
+		if m.View().Content != before || strings.Contains(before, "refreshing") {
+			t.Fatal("superseded count or timer changed the completed refresh")
+		}
+	})
 	t.Run("delayed feedback preserves the displayed day and cannot outlive its request or screen", func(t *testing.T) {
 		m, service := newHome(t)
 		before := m.View().Content
