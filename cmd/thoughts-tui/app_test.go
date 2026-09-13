@@ -9,20 +9,27 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/thought"
+	"github.com/jhern254/go-thoughts/internal/timeline"
 )
 
 type runtimeStub struct {
-	localUser *data.User
-	subjects  *subject.Service
-	close     func() error
+	events       *event.Service
+	timelineView *timeline.Service
+	localUser    *data.User
+	subjects     *subject.Service
+	close        func() error
 }
 
 func (stub *runtimeStub) Thoughts() *thought.Service { return nil }
 func (stub *runtimeStub) Metrics() *metrics.Service  { return nil }
+
+func (stub *runtimeStub) Events() *event.Service          { return stub.events }
+func (stub *runtimeStub) TimelineView() *timeline.Service { return stub.timelineView }
 
 func (stub *runtimeStub) LocalUser() *data.User {
 	return stub.localUser
@@ -75,7 +82,7 @@ func TestTUI_DatabaseDSNPrecedence(t *testing.T) {
 }
 
 func TestTUI_RuntimeLifecycle(t *testing.T) {
-	t.Run("passes bootstrapped local user to model and closes runtime", func(t *testing.T) {
+	t.Run("launches Events home after bootstrap and closes runtime", func(t *testing.T) {
 		closeCalls := 0
 		programCalls := 0
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
@@ -90,8 +97,8 @@ func TestTUI_RuntimeLifecycle(t *testing.T) {
 		}
 		app.runProgram = func(_ context.Context, model tea.Model, _ io.Reader, _ io.Writer) error {
 			programCalls++
-			if view := model.View().Content; !strings.Contains(view, "local-user-id") {
-				t.Fatalf("view %q does not contain local user ID", view)
+			if view := model.View().Content; !strings.Contains(view, "Events") || !strings.HasPrefix(view, "Local user: local-user-id\n") {
+				t.Fatalf("got view %q, want local user above Events home", view)
 			}
 			return nil
 		}

@@ -13,12 +13,12 @@ import (
 )
 
 type metricsStub struct {
-	rows  []data.SubjectThoughtCount
+	rows  []data.SubjectThoughtCountView
 	err   error
 	calls int
 }
 
-func (s *metricsStub) ThoughtCountsBySubject(_ context.Context, userID string) ([]data.SubjectThoughtCount, error) {
+func (s *metricsStub) ThoughtCountsBySubject(_ context.Context, userID string) ([]data.SubjectThoughtCountView, error) {
 	if userID != "u" {
 		panic("wrong metric scope")
 	}
@@ -29,7 +29,7 @@ func (s *metricsStub) ThoughtCountsBySubject(_ context.Context, userID string) (
 func TestMetricsCommand_ThoughtCounts(t *testing.T) {
 	t.Run("writes only tab separated counts to command output", func(t *testing.T) {
 		var out, logs bytes.Buffer
-		service := &metricsStub{rows: []data.SubjectThoughtCount{{SubjectID: 1, Count: 0}, {SubjectID: 2, Count: 3}}}
+		service := &metricsStub{rows: []data.SubjectThoughtCountView{{SubjectID: 1, Count: 0}, {SubjectID: 2, Count: 3}}}
 		app := &application{metrics: service, userID: "u", out: &out, logger: newTestLogger(t, &logs)}
 		if err := newMetricsCommand(app).Run(context.Background(), []string{"metrics", "thought-counts"}); err != nil {
 			t.Fatal(err)

@@ -6,8 +6,8 @@ import (
 	"fmt"
 )
 
-// SubjectThoughtCount is a read result, not persisted subject state.
-type SubjectThoughtCount struct {
+// SubjectThoughtCountView is a read result, not persisted subject state.
+type SubjectThoughtCountView struct {
 	SubjectID int64
 	Count     int64
 }
@@ -38,7 +38,7 @@ func (s *SQLiteMetricsStore) CountUnassignedThoughts(ctx context.Context, userID
 	return count, nil
 }
 
-func (s *SQLiteMetricsStore) ThoughtCountsBySubject(ctx context.Context, userID string) ([]SubjectThoughtCount, error) {
+func (s *SQLiteMetricsStore) ThoughtCountsBySubject(ctx context.Context, userID string) ([]SubjectThoughtCountView, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.subject_id, COUNT(t.thought_id)
 		FROM subjects s JOIN users u ON u.user_id = s.user_id
@@ -49,9 +49,9 @@ func (s *SQLiteMetricsStore) ThoughtCountsBySubject(ctx context.Context, userID 
 		return nil, fmt.Errorf("count thoughts by subject: %w", TranslateSQLiteError(err))
 	}
 	defer rows.Close()
-	counts := []SubjectThoughtCount{}
+	counts := []SubjectThoughtCountView{}
 	for rows.Next() {
-		var count SubjectThoughtCount
+		var count SubjectThoughtCountView
 		if err := rows.Scan(&count.SubjectID, &count.Count); err != nil {
 			return nil, fmt.Errorf("scan thought count: %w", TranslateSQLiteError(err))
 		}

@@ -50,14 +50,25 @@ func open(
 		return nil, data.TranslateSQLiteError(err)
 	}
 
+	subjectStore := data.NewSQLiteSubjectStore(db)
+	thoughtStore := data.NewSQLiteThoughtStore(db)
+	metricsStore := data.NewSQLiteMetricsStore(db)
+	eventStore := data.NewSQLiteEventStore(db)
+
+	subjects := subject.NewService(subjectStore)
+	thoughts := thought.NewService(thoughtStore)
+	metricsService := metrics.NewService(metricsStore)
+	events := event.NewService(eventStore)
+	timelineView := timeline.NewService(events, thoughtStore, metricsService)
+
 	return &Runtime{
 		db:           db,
 		localUser:    localUser,
-		subjects:     subject.NewService(data.NewSQLiteSubjectStore(db)),
-		thoughts:     thought.NewService(data.NewSQLiteThoughtStore(db)),
-		metrics:      metrics.NewService(data.NewSQLiteMetricsStore(db)),
-		events:       event.NewService(data.NewSQLiteEventStore(db)),
-		timelineView: timeline.NewService(event.NewService(data.NewSQLiteEventStore(db)), data.NewSQLiteThoughtStore(db)),
+		subjects:     subjects,
+		thoughts:     thoughts,
+		metrics:      metricsService,
+		events:       events,
+		timelineView: timelineView,
 	}, nil
 }
 

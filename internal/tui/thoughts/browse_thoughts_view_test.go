@@ -93,7 +93,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		}
 		id, position := m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID, m.browseThoughts.index*summaryLines-m.browseThoughts.offset
 		cursor := m.browseThoughts.rows[len(m.browseThoughts.rows)-1].item.Cursor()
-		cmd := m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor}, 0)
+		cmd := m.loadThoughtsView(data.ThoughtSummaryViewRequest{Cursor: &cursor}, 0)
 		m, _ = m.Update(cmd())
 		if m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID != id || m.browseThoughts.index*summaryLines-m.browseThoughts.offset != position || len(m.browseThoughts.rows) != 150 {
 			t.Fatal("older merge moved anchor or exceeded window")
@@ -102,7 +102,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		m.browseThoughts.keepVisible()
 		id, position = m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID, m.browseThoughts.index*summaryLines-m.browseThoughts.offset
 		cursor = m.browseThoughts.rows[0].item.Cursor()
-		cmd = m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, 0)
+		cmd = m.loadThoughtsView(data.ThoughtSummaryViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, 0)
 		m, _ = m.Update(cmd())
 		if m.browseThoughts.rows[m.browseThoughts.index].item.ThoughtID != id || m.browseThoughts.index*summaryLines-m.browseThoughts.offset != position || len(m.browseThoughts.rows) != 151 {
 			t.Fatal("newer merge moved anchor or exceeded window plus Create")

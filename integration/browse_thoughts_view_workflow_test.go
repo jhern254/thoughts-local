@@ -61,7 +61,7 @@ func TestBrowseThoughtsViewWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		store := data.NewSQLiteThoughtStore(db)
-		view, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{})
+		view, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtSummaryViewRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +78,7 @@ func TestBrowseThoughtsViewWorkflow_SQLite(t *testing.T) {
 		if _, err := db.Exec(`UPDATE users SET deleted_at=updated_at WHERE user_id='u'`); err != nil {
 			t.Fatal(err)
 		}
-		view, err = store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{})
+		view, err = store.BrowseThoughtsView(t.Context(), "u", data.ThoughtSummaryViewRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +95,7 @@ func TestBrowseThoughtsViewWorkflow_SQLite(t *testing.T) {
 			}
 		}
 		store := data.NewSQLiteThoughtStore(db)
-		first, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{})
+		first, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtSummaryViewRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -106,7 +106,7 @@ func TestBrowseThoughtsViewWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		cursor := first.Items[49].Cursor()
-		second, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{Cursor: &cursor})
+		second, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtSummaryViewRequest{Cursor: &cursor})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,7 +114,7 @@ func TestBrowseThoughtsViewWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got second page %+v, want IDs 70 through 21", second)
 		}
 		cursor = second.Items[0].Cursor()
-		back, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer})
+		back, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtSummaryViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestBrowseThoughtsViewWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got reverse page %+v, want remaining 50 newer rows", back)
 		}
 		cursor = second.Items[49].Cursor()
-		last, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{Cursor: &cursor})
+		last, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtSummaryViewRequest{Cursor: &cursor})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -139,7 +139,7 @@ func TestBrowseThoughtsViewWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		view, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtViewRequest{})
+		view, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtSummaryViewRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}

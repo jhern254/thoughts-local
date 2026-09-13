@@ -12,7 +12,7 @@ import (
 )
 
 type thoughtServiceStoreStub struct {
-	browseView     func(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error)
+	browseView     func(context.Context, string, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	listUnassigned func(context.Context, string) ([]data.Thought, error)
 	list           func(context.Context, string, int64) ([]data.Thought, error)
 	create         func(context.Context, *data.Thought) (*data.Thought, error)
@@ -22,7 +22,7 @@ type thoughtServiceStoreStub struct {
 	createCalled   bool
 }
 
-func (s *thoughtServiceStoreStub) BrowseThoughtsView(ctx context.Context, userID string, request data.ThoughtViewRequest) (data.ThoughtView, error) {
+func (s *thoughtServiceStoreStub) BrowseThoughtsView(ctx context.Context, userID string, request data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	return s.browseView(ctx, userID, request)
 }
 

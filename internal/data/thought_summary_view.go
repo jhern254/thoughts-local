@@ -2,7 +2,7 @@ package data
 
 import "time"
 
-const ThoughtViewBatchSize = 50
+const ThoughtSummaryViewBatchSize = 50
 
 type ThoughtDirection uint8
 
@@ -11,9 +11,9 @@ const (
 	ThoughtsNewer
 )
 
-// ThoughtSummary is a bounded read projection, not a partially loaded Thought.
+// ThoughtSummaryView is a bounded read projection, not a partially loaded Thought.
 // CreatedAt is a cursor tie-breaker, not the displayed observation time.
-type ThoughtSummary struct {
+type ThoughtSummaryView struct {
 	ThoughtID   int64
 	Preview     string
 	SubjectName *string
@@ -27,17 +27,18 @@ type ThoughtCursor struct {
 	ThoughtID  int64
 }
 
-func (s ThoughtSummary) Cursor() ThoughtCursor {
+func (s ThoughtSummaryView) Cursor() ThoughtCursor {
 	return ThoughtCursor{ObservedAt: s.ObservedAt, CreatedAt: s.CreatedAt, ThoughtID: s.ThoughtID}
 }
 
-type ThoughtViewRequest struct {
+type ThoughtSummaryViewRequest struct {
 	Cursor    *ThoughtCursor
 	Direction ThoughtDirection
 }
 
+// ThoughtSummaryViewResult is one bounded batch of summary-view rows.
 // Items are always newest first. More refers to the requested direction.
-type ThoughtView struct {
-	Items []ThoughtSummary
+type ThoughtSummaryViewResult struct {
+	Items []ThoughtSummaryView
 	More  bool
 }

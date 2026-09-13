@@ -52,7 +52,7 @@ func TestThoughtListWorkflow_SQLite(t *testing.T) {
 			}
 		}
 		counts, err := metrics.NewService(data.NewSQLiteMetricsStore(db)).ThoughtCountsBySubject(ctx, "u")
-		want := []data.SubjectThoughtCount{{SubjectID: 1, Count: 3}, {SubjectID: 2, Count: 0}}
+		want := []data.SubjectThoughtCountView{{SubjectID: 1, Count: 3}, {SubjectID: 2, Count: 0}}
 		if err != nil || !reflect.DeepEqual(counts, want) {
 			t.Fatalf("got counts %v, error %v; want %v, nil", counts, err, want)
 		}
