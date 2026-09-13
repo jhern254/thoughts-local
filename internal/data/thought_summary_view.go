@@ -2,7 +2,7 @@ package data
 
 import "time"
 
-const ThoughtViewBatchSize = 50
+const ThoughtSummaryViewBatchSize = 50
 
 type ThoughtDirection uint8
 
@@ -31,13 +31,14 @@ func (s ThoughtSummaryView) Cursor() ThoughtCursor {
 	return ThoughtCursor{ObservedAt: s.ObservedAt, CreatedAt: s.CreatedAt, ThoughtID: s.ThoughtID}
 }
 
-type ThoughtViewRequest struct {
+type ThoughtSummaryViewRequest struct {
 	Cursor    *ThoughtCursor
 	Direction ThoughtDirection
 }
 
+// ThoughtSummaryViewResult is one bounded batch of summary-view rows.
 // Items are always newest first. More refers to the requested direction.
-type ThoughtView struct {
+type ThoughtSummaryViewResult struct {
 	Items []ThoughtSummaryView
 	More  bool
 }

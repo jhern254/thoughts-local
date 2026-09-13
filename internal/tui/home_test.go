@@ -54,7 +54,7 @@ type homeTimelineStub struct{}
 func (*homeTimelineStub) OpenThoughtsView(context.Context, string, int64) (timeline.ThoughtScope, error) {
 	panic("unexpected event expansion")
 }
-func (*homeTimelineStub) BrowseThoughtsView(context.Context, string, timeline.ThoughtScope, data.ThoughtViewRequest) (data.ThoughtView, error) {
+func (*homeTimelineStub) BrowseThoughtsView(context.Context, string, timeline.ThoughtScope, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	panic("unexpected event thoughts")
 }
 func (*homeTimelineStub) CountThoughts(context.Context, string, timeline.ThoughtScope) (int64, error) {
@@ -72,8 +72,8 @@ type homeThoughtStore struct{ summary data.ThoughtSummaryView }
 func (s homeThoughtStore) ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error) {
 	panic("unexpected full body range")
 }
-func (s homeThoughtStore) BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtViewRequest) (data.ThoughtView, error) {
-	return data.ThoughtView{Items: []data.ThoughtSummaryView{s.summary}}, nil
+func (s homeThoughtStore) BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
+	return data.ThoughtSummaryViewResult{Items: []data.ThoughtSummaryView{s.summary}}, nil
 }
 func (s homeThoughtStore) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error) {
 	return &s.summary, nil

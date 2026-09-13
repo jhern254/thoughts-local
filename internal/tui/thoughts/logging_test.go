@@ -18,8 +18,8 @@ import (
 
 type failingService struct{ err error }
 
-func (s failingService) BrowseView(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error) {
-	return data.ThoughtView{}, s.err
+func (s failingService) BrowseView(context.Context, string, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
+	return data.ThoughtSummaryViewResult{}, s.err
 }
 
 func (s failingService) ListUnassigned(context.Context, string) ([]data.Thought, error) {
