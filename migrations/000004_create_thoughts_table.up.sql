@@ -61,3 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_thoughts_event
 
 CREATE INDEX IF NOT EXISTS idx_thoughts_subject
     ON thoughts (subject_id);
+
+-- Parent key for enforcing ownership of progress provenance.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_thoughts_id_user
+    ON thoughts (thought_id, user_id);

@@ -41,3 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_events_user_started_at
 -- transactional event operations; this index does not prevent those overlaps.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_events_ongoing_user
     ON events (user_id) WHERE ended_at IS NULL AND deleted_at IS NULL;
+
+-- Parent key for enforcing ownership of progress provenance.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_events_id_user
+    ON events (event_id, user_id);

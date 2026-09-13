@@ -36,7 +36,20 @@ CREATE TABLE IF NOT EXISTS goal_progress (
     CONSTRAINT fk_goal_progress_thought
         FOREIGN KEY (thought_id) REFERENCES thoughts(thought_id)
         ON DELETE SET NULL
-        ON UPDATE CASCADE
+        ON UPDATE CASCADE,
+
+    -- Enforce shared ownership while the single-column FKs above handle
+    -- cascades and clear only optional provenance IDs on hard deletion.
+    -- Default NO ACTION checks the final statement result without transferring
+    -- progress ownership when an individual referenced record changes owners.
+    CONSTRAINT fk_goal_progress_goal_owner
+        FOREIGN KEY (goal_id, user_id) REFERENCES goals(goal_id, user_id),
+
+    CONSTRAINT fk_goal_progress_event_owner
+        FOREIGN KEY (event_id, user_id) REFERENCES events(event_id, user_id),
+
+    CONSTRAINT fk_goal_progress_thought_owner
+        FOREIGN KEY (thought_id, user_id) REFERENCES thoughts(thought_id, user_id)
 );
 
 -- Indexes
