@@ -186,6 +186,51 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatalf("obsolete batches affected current screen or reads: got %d new reads, want 1", service.lists-calls)
 		}
 	})
+	t.Run("delayed feedback preserves the displayed day and cannot outlive its request or screen", func(t *testing.T) {
+		m, service := newHome(t)
+		before := m.View().Content
+		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+		if m.View().Content != before {
+			t.Fatal("root dispatch blanked the timeline before the list arrived")
+		}
+		// Obtain the actual one-shot timer result; do not sleep or run the
+		// recurring minute timer. Other ownership tests deliver data replies.
+		delayed := cmd().(tea.BatchMsg)[2]()
+		m, _ = rootUpdate(m, delayed)
+		view := m.View().Content
+		if !strings.Contains(view, "Loading events for") || !strings.Contains(view, "bounded preview") || !strings.Contains(view, displaytime.Format(time.Now(), "January 2, 2006")) {
+			t.Fatal("slow read lost the displayed date/cards or failed to show feedback")
+		}
+		start := displaytime.Day(time.Now()).AddDate(0, 0, -2).Add(9 * time.Hour)
+		end, label := start.Add(time.Hour), "Two days earlier"
+		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end, ActivityType: &label}}
+		m, cmd = rootUpdate(m, runeKey('h'))
+		m, _ = rootUpdate(m, delayed)
+		if strings.Contains(m.View().Content, "Loading events") {
+			t.Fatal("old timer enabled feedback on a newer request")
+		}
+		batch := cmd().(tea.BatchMsg)
+		m = runHomeData(t, m, batch[0])
+		view = m.View().Content
+		if !strings.Contains(view, label) || !strings.Contains(view, displaytime.Format(start, "January 2, 2006")) || strings.Contains(view, "Loading events") || m.entityFocused {
+			t.Fatal("ready list waited for counts/timer or lost its date or calendar focus")
+		}
+		m = runHomeData(t, m, batch[1])
+		m, _ = rootUpdate(m, delayed)
+		if strings.Contains(m.View().Content, "Loading events") {
+			t.Fatal("old timer restored feedback after completion")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+		m, cmd = rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		m, cmd = rootUpdate(m, escapeKey())
+		m = startHomeData(t, m, cmd)
+		before = m.View().Content
+		m, _ = rootUpdate(m, delayed)
+		if m.View().Content != before {
+			t.Fatal("old timer changed a reopened home session")
+		}
+	})
 	t.Run("previous day arrives at its first event in calendar navigation", func(t *testing.T) {
 		m, service := newHome(t)
 		start := displaytime.Day(time.Now()).AddDate(0, 0, -1).Add(21 * time.Hour)

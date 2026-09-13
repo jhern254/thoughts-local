@@ -26,11 +26,12 @@ type eventStub struct {
 	start                time.Time
 	label                string
 	err                  error
+	listErr              error
 }
 
 func (s *eventStub) List(context.Context, string, time.Time, time.Time) ([]data.Event, error) {
 	s.lists++
-	return s.items, nil
+	return s.items, s.listErr
 }
 func (s *eventStub) Get(_ context.Context, _ string, id int64) (*data.Event, error) {
 	for _, item := range s.items {
@@ -181,7 +182,7 @@ func fixture(t testing.TB) (Model, *eventStub, *viewStore) {
 	m.day = displaytime.Day(at)
 	m.active = true
 	m.Resize(80, 27)
-	m = execute(t, m, m.reload())
+	m = execute(t, m, m.loadDay(m.day))
 	return m, s, v
 }
 
@@ -323,7 +324,7 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 	})
 	t.Run("old day and expansion results cannot change a reopened session", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		cmd := m.reload()
+		cmd := m.loadDay(m.day)
 		batch := cmd().(tea.BatchMsg)
 		old := batch[0]()
 		oldCount := batch[1]()
@@ -355,7 +356,7 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 			t.Fatal(err)
 		}
 		m.logger = logger
-		m = execute(t, m, m.reload())
+		m = execute(t, m, m.loadDay(m.day))
 		view := m.View()
 		if !strings.Contains(view, "Thought count unavailable") || strings.Contains(view, "PRIVATE_MARKER") || strings.Contains(logs.String(), "PRIVATE_MARKER") || !strings.Contains(logs.String(), "database_busy") || !errors.Is(m.countErr, data.ErrDatabaseBusy) {
 			t.Fatal("unsafe or swallowed count failure")

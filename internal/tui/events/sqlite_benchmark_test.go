@@ -57,7 +57,8 @@ func BenchmarkTimelineBurst(b *testing.B) {
 	var obsolete int64
 	b.ReportAllocs()
 	for b.Loop() {
-		replies := make(chan tea.Msg, 80)
+		replies := make(chan tea.Msg, 120)
+		pending := 0
 		var finalKey time.Time
 		for i := 0; i < 40; i++ {
 			key := "left"
@@ -68,12 +69,17 @@ func BenchmarkTimelineBurst(b *testing.B) {
 			var cmd tea.Cmd
 			m, cmd = m.Update(eventKey(key))
 			for _, read := range cmd().(tea.BatchMsg) {
+				pending++
 				go func() { replies <- read() }()
 			}
+			_ = m.View()
 		}
-		for i := 0; i < 80; i++ {
+		for i := 0; i < pending; i++ {
 			var cmd tea.Cmd
 			reply := <-replies
+			if reply == nil {
+				continue // Bubble Tea also ignores nil command results.
+			}
 			if listed, ok := reply.(Listed); ok && listed.request != m.request && listed.err == nil {
 				obsolete++
 			}
