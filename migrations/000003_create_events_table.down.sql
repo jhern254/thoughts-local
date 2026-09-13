@@ -1,4 +1,5 @@
 -- Drop events table.
+DROP INDEX IF EXISTS uq_events_id_user;
 DROP INDEX IF EXISTS uq_events_ongoing_user;
 DROP INDEX IF EXISTS idx_events_user_started_at;
 DROP TABLE IF EXISTS events;
