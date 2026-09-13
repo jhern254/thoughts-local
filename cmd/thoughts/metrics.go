@@ -12,7 +12,7 @@ import (
 )
 
 type MetricsService interface {
-	ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCount, error)
+	ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCountView, error)
 }
 
 func newMetricsCommand(app *application) *cli.Command {

@@ -60,29 +60,29 @@ func (*homeTimelineStub) BrowseThoughtsView(context.Context, string, timeline.Th
 func (*homeTimelineStub) CountThoughts(context.Context, string, timeline.ThoughtScope) (int64, error) {
 	panic("unexpected event count")
 }
-func (*homeTimelineStub) LatestThought(context.Context, string, int64) (*data.ThoughtSummary, error) {
+func (*homeTimelineStub) LatestThought(context.Context, string, int64) (*data.ThoughtSummaryView, error) {
 	panic("unexpected event preview")
 }
-func (*homeTimelineStub) ThoughtCounts(context.Context, string, time.Time, time.Time) ([]data.EventThoughtCount, error) {
+func (*homeTimelineStub) ThoughtCounts(context.Context, string, time.Time, time.Time) ([]data.EventThoughtCountView, error) {
 	return nil, nil
 }
 
-type homeThoughtStore struct{ summary data.ThoughtSummary }
+type homeThoughtStore struct{ summary data.ThoughtSummaryView }
 
 func (s homeThoughtStore) ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error) {
 	panic("unexpected full body range")
 }
 func (s homeThoughtStore) BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtViewRequest) (data.ThoughtView, error) {
-	return data.ThoughtView{Items: []data.ThoughtSummary{s.summary}}, nil
+	return data.ThoughtView{Items: []data.ThoughtSummaryView{s.summary}}, nil
 }
-func (s homeThoughtStore) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummary, error) {
+func (s homeThoughtStore) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error) {
 	return &s.summary, nil
 }
 func (s homeThoughtStore) CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error) {
 	return 1, nil
 }
-func (s homeThoughtStore) ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCount, error) {
-	return []data.EventThoughtCount{{EventID: 1, Count: 1}}, nil
+func (s homeThoughtStore) ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error) {
+	return []data.EventThoughtCountView{{EventID: 1, Count: 1}}, nil
 }
 
 // Home startup contains one data batch and one minute timer. Only the data
@@ -130,7 +130,7 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal(err)
 		}
 		events := &homeEventStub{items: []data.Event{{EventID: 1, StartedAt: time.Now().Add(-time.Hour)}}}
-		store := homeThoughtStore{summary: data.ThoughtSummary{ThoughtID: item.ThoughtID, Preview: "bounded preview", ObservedAt: item.ObservedAt}}
+		store := homeThoughtStore{summary: data.ThoughtSummaryView{ThoughtID: item.ThoughtID, Preview: "bounded preview", ObservedAt: item.ObservedAt}}
 		m := NewModel(t.Context(), &data.User{UserID: "home-user"}, &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }}, service, &metricsStub{}, events, timeline.NewService(events, store, store), logging.Nop())
 		m, cmd := rootUpdate(m, m.Init()())
 		m = startHomeData(t, m, cmd)

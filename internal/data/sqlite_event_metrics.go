@@ -6,14 +6,14 @@ import (
 	"time"
 )
 
-type EventThoughtCount struct {
+type EventThoughtCountView struct {
 	EventID int64
 	Count   int64
 }
 
 // ThoughtCountsByEvent selects events intersecting the day, but counts their
 // whole intervals. ongoingUntil is an exclusive, captured cutoff, not SQL now.
-func (s *SQLiteMetricsStore) ThoughtCountsByEvent(ctx context.Context, userID string, from, until, ongoingUntil time.Time) ([]EventThoughtCount, error) {
+func (s *SQLiteMetricsStore) ThoughtCountsByEvent(ctx context.Context, userID string, from, until, ongoingUntil time.Time) ([]EventThoughtCountView, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT e.event_id, COUNT(t.thought_id)
 		FROM events e JOIN users u ON u.user_id = e.user_id
@@ -26,9 +26,9 @@ func (s *SQLiteMetricsStore) ThoughtCountsByEvent(ctx context.Context, userID st
 		return nil, fmt.Errorf("count event thoughts: %w", TranslateSQLiteError(err))
 	}
 	defer rows.Close()
-	counts := []EventThoughtCount{}
+	counts := []EventThoughtCountView{}
 	for rows.Next() {
-		var item EventThoughtCount
+		var item EventThoughtCountView
 		if err := rows.Scan(&item.EventID, &item.Count); err != nil {
 			return nil, fmt.Errorf("scan event count: %w", TranslateSQLiteError(err))
 		}

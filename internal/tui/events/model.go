@@ -24,8 +24,8 @@ type Service interface {
 type TimelineView interface {
 	thoughts.TimelineReader
 	OpenThoughtsView(context.Context, string, int64) (timeline.ThoughtScope, error)
-	LatestThought(context.Context, string, int64) (*data.ThoughtSummary, error)
-	ThoughtCounts(context.Context, string, time.Time, time.Time) ([]data.EventThoughtCount, error)
+	LatestThought(context.Context, string, int64) (*data.ThoughtSummaryView, error)
+	ThoughtCounts(context.Context, string, time.Time, time.Time) ([]data.EventThoughtCountView, error)
 }
 
 type Tick struct {
@@ -46,13 +46,13 @@ type LoadDelayed struct {
 type Counts struct {
 	owner   *int
 	request uint64
-	items   []data.EventThoughtCount
+	items   []data.EventThoughtCountView
 	err     error
 }
 type Latest struct {
 	owner   *int
 	request uint64
-	item    *data.ThoughtSummary
+	item    *data.ThoughtSummaryView
 	err     error
 }
 type Opened struct {
@@ -93,8 +93,8 @@ type Model struct {
 	loading, countPending, latestPending bool
 	err, countErr, latestErr             error
 	message                              string
-	counts                               []data.EventThoughtCount
-	latest                               *data.ThoughtSummary
+	counts                               []data.EventThoughtCountView
+	latest                               *data.ThoughtSummaryView
 	expanded                             int64
 	opening                              bool
 	picker                               thoughts.Model

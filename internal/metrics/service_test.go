@@ -15,9 +15,9 @@ type storeStub struct {
 	userID string
 }
 
-func (s *storeStub) ThoughtCountsByEvent(ctx context.Context, u string, _, _, _ time.Time) ([]data.EventThoughtCount, error) {
+func (s *storeStub) ThoughtCountsByEvent(ctx context.Context, u string, _, _, _ time.Time) ([]data.EventThoughtCountView, error) {
 	s.ctx, s.userID = ctx, u
-	return []data.EventThoughtCount{{EventID: 7, Count: 2}}, s.err
+	return []data.EventThoughtCountView{{EventID: 7, Count: 2}}, s.err
 }
 func (s *storeStub) CountThoughtsInRange(ctx context.Context, u string, _, _ time.Time) (int64, error) {
 	s.ctx, s.userID = ctx, u
@@ -42,9 +42,9 @@ func TestService_CountThoughts(t *testing.T) {
 	})
 }
 
-func (s *storeStub) ThoughtCountsBySubject(ctx context.Context, u string) ([]data.SubjectThoughtCount, error) {
+func (s *storeStub) ThoughtCountsBySubject(ctx context.Context, u string) ([]data.SubjectThoughtCountView, error) {
 	s.ctx, s.userID = ctx, u
-	return []data.SubjectThoughtCount{{SubjectID: 7, Count: 2}}, s.err
+	return []data.SubjectThoughtCountView{{SubjectID: 7, Count: 2}}, s.err
 }
 
 func (s *storeStub) CountUnassignedThoughts(ctx context.Context, u string) (int64, error) {

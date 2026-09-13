@@ -146,7 +146,7 @@ type metricsStub struct {
 	totalErr  error
 	miscCount int64
 	miscErr   error
-	counts    []data.SubjectThoughtCount
+	counts    []data.SubjectThoughtCountView
 	err       error
 }
 
@@ -158,7 +158,7 @@ func (s *metricsStub) CountUnassignedThoughts(context.Context, string) (int64, e
 	return s.miscCount, s.miscErr
 }
 
-func (s *metricsStub) ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCount, error) {
+func (s *metricsStub) ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCountView, error) {
 	return s.counts, s.err
 }
 

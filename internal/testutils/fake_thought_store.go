@@ -59,7 +59,7 @@ func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string
 	if err := ctx.Err(); err != nil {
 		return data.ThoughtView{}, err
 	}
-	items := []data.ThoughtSummary{}
+	items := []data.ThoughtSummaryView{}
 	for _, item := range s.thoughts {
 		if item.UserID != userID {
 			continue
@@ -68,9 +68,9 @@ func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string
 		if len(preview) > 80 {
 			preview = append(preview[:80], '…')
 		}
-		items = append(items, data.ThoughtSummary{ThoughtID: item.ThoughtID, Preview: string(preview), ObservedAt: item.ObservedAt, CreatedAt: item.CreatedAt})
+		items = append(items, data.ThoughtSummaryView{ThoughtID: item.ThoughtID, Preview: string(preview), ObservedAt: item.ObservedAt, CreatedAt: item.CreatedAt})
 	}
-	compare := func(a, b data.ThoughtSummary) int {
+	compare := func(a, b data.ThoughtSummaryView) int {
 		if c := b.ObservedAt.Compare(a.ObservedAt); c != 0 {
 			return c
 		}
@@ -87,8 +87,8 @@ func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string
 	}
 	slices.SortFunc(items, compare)
 	if cursor := request.Cursor; cursor != nil {
-		anchor := data.ThoughtSummary{ThoughtID: cursor.ThoughtID, ObservedAt: cursor.ObservedAt, CreatedAt: cursor.CreatedAt}
-		items = slices.DeleteFunc(items, func(item data.ThoughtSummary) bool {
+		anchor := data.ThoughtSummaryView{ThoughtID: cursor.ThoughtID, ObservedAt: cursor.ObservedAt, CreatedAt: cursor.CreatedAt}
+		items = slices.DeleteFunc(items, func(item data.ThoughtSummaryView) bool {
 			if request.Direction == data.ThoughtsNewer {
 				return compare(item, anchor) >= 0
 			}

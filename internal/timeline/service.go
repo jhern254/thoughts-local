@@ -16,11 +16,11 @@ type EventReader interface {
 type ThoughtReader interface {
 	ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error)
 	BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtViewRequest) (data.ThoughtView, error)
-	LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummary, error)
+	LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error)
 }
 
 type MetricsReader interface {
-	ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCount, error)
+	ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error)
 	CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error)
 }
 

@@ -11,9 +11,9 @@ const (
 	ThoughtsNewer
 )
 
-// ThoughtSummary is a bounded read projection, not a partially loaded Thought.
+// ThoughtSummaryView is a bounded read projection, not a partially loaded Thought.
 // CreatedAt is a cursor tie-breaker, not the displayed observation time.
-type ThoughtSummary struct {
+type ThoughtSummaryView struct {
 	ThoughtID   int64
 	Preview     string
 	SubjectName *string
@@ -27,7 +27,7 @@ type ThoughtCursor struct {
 	ThoughtID  int64
 }
 
-func (s ThoughtSummary) Cursor() ThoughtCursor {
+func (s ThoughtSummaryView) Cursor() ThoughtCursor {
 	return ThoughtCursor{ObservedAt: s.ObservedAt, CreatedAt: s.CreatedAt, ThoughtID: s.ThoughtID}
 }
 
@@ -38,6 +38,6 @@ type ThoughtViewRequest struct {
 
 // Items are always newest first. More refers to the requested direction.
 type ThoughtView struct {
-	Items []ThoughtSummary
+	Items []ThoughtSummaryView
 	More  bool
 }
