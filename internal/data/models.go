@@ -43,3 +43,21 @@ type Event struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
+// Goal stores explicit settings. Dates are nullable calendar strings, not instants.
+type Goal struct {
+	GoalID         int64
+	UserID         string
+	GoalName       string
+	TargetSeconds  int64
+	StartDate      *string
+	EndDate        *string
+	IsActive       bool
+	Cadence        string
+	TZ             string
+	WeekStart      string
+	DefaultCadence *string
+	Version        int64
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
