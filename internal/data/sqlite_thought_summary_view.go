@@ -15,23 +15,23 @@ const thoughtSummarySelect = `SELECT t.thought_id, substr(t.thought, 1, 81), s.s
 	WHERE t.user_id = ? AND t.deleted_at IS NULL
 	AND EXISTS (SELECT 1 FROM users u WHERE u.user_id = t.user_id AND u.deleted_at IS NULL)`
 
-func (s *SQLiteThoughtStore) BrowseThoughtsView(ctx context.Context, userID string, request ThoughtViewRequest) (ThoughtView, error) {
-	return s.browseThoughtSummaries(ctx, thoughtSummarySelect, []any{userID}, request, ThoughtViewBatchSize)
+func (s *SQLiteThoughtStore) BrowseThoughtsView(ctx context.Context, userID string, request ThoughtSummaryViewRequest) (ThoughtSummaryViewResult, error) {
+	return s.browseThoughtSummaries(ctx, thoughtSummarySelect, []any{userID}, request, ThoughtSummaryViewBatchSize)
 }
 
-func (s *SQLiteThoughtStore) BrowseThoughtsViewInRange(ctx context.Context, userID string, from, until time.Time, request ThoughtViewRequest) (ThoughtView, error) {
-	return s.browseThoughtSummaries(ctx, thoughtSummarySelect+" AND t.observed_at >= ? AND t.observed_at < ?", []any{userID, from.Unix(), until.Unix()}, request, ThoughtViewBatchSize)
+func (s *SQLiteThoughtStore) BrowseThoughtsViewInRange(ctx context.Context, userID string, from, until time.Time, request ThoughtSummaryViewRequest) (ThoughtSummaryViewResult, error) {
+	return s.browseThoughtSummaries(ctx, thoughtSummarySelect+" AND t.observed_at >= ? AND t.observed_at < ?", []any{userID, from.Unix(), until.Unix()}, request, ThoughtSummaryViewBatchSize)
 }
 
 func (s *SQLiteThoughtStore) LatestThoughtInRange(ctx context.Context, userID string, from, until time.Time) (*ThoughtSummaryView, error) {
-	view, err := s.browseThoughtSummaries(ctx, thoughtSummarySelect+" AND t.observed_at >= ? AND t.observed_at < ?", []any{userID, from.Unix(), until.Unix()}, ThoughtViewRequest{}, 1)
+	view, err := s.browseThoughtSummaries(ctx, thoughtSummarySelect+" AND t.observed_at >= ? AND t.observed_at < ?", []any{userID, from.Unix(), until.Unix()}, ThoughtSummaryViewRequest{}, 1)
 	if err != nil || len(view.Items) == 0 {
 		return nil, err
 	}
 	return &view.Items[0], nil
 }
 
-func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query string, args []any, request ThoughtViewRequest, limit int) (ThoughtView, error) {
+func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query string, args []any, request ThoughtSummaryViewRequest, limit int) (ThoughtSummaryViewResult, error) {
 	comparison, order := "<", " DESC"
 	if request.Direction == ThoughtsNewer {
 		comparison, order = ">", " ASC"
@@ -48,16 +48,16 @@ func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query s
 	args = append(args, fetchLimit)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return ThoughtView{}, fmt.Errorf("browse thoughts: %w", TranslateSQLiteError(err))
+		return ThoughtSummaryViewResult{}, fmt.Errorf("browse thoughts: %w", TranslateSQLiteError(err))
 	}
 	defer rows.Close()
-	view := ThoughtView{Items: make([]ThoughtSummaryView, 0, limit+1)}
+	view := ThoughtSummaryViewResult{Items: make([]ThoughtSummaryView, 0, limit+1)}
 	for rows.Next() {
 		var item ThoughtSummaryView
 		var subject sql.NullString
 		var observed, created int64
 		if err := rows.Scan(&item.ThoughtID, &item.Preview, &subject, &observed, &created); err != nil {
-			return ThoughtView{}, fmt.Errorf("scan thought summary: %w", TranslateSQLiteError(err))
+			return ThoughtSummaryViewResult{}, fmt.Errorf("scan thought summary: %w", TranslateSQLiteError(err))
 		}
 		if subject.Valid {
 			item.SubjectName = &subject.String
@@ -70,7 +70,7 @@ func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query s
 		view.Items = append(view.Items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return ThoughtView{}, fmt.Errorf("read thought summaries: %w", TranslateSQLiteError(err))
+		return ThoughtSummaryViewResult{}, fmt.Errorf("read thought summaries: %w", TranslateSQLiteError(err))
 	}
 	view.More = len(view.Items) > limit
 	if view.More {

@@ -61,7 +61,7 @@ type viewStore struct {
 func (s *viewStore) ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error) {
 	panic("full bodies requested for previews")
 }
-func (s *viewStore) BrowseThoughtsViewInRange(_ context.Context, _ string, from, until time.Time, request data.ThoughtViewRequest) (data.ThoughtView, error) {
+func (s *viewStore) BrowseThoughtsViewInRange(_ context.Context, _ string, from, until time.Time, request data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	s.reads++
 	items := []data.ThoughtSummaryView{}
 	for _, item := range s.items {
@@ -89,7 +89,7 @@ func (s *viewStore) BrowseThoughtsViewInRange(_ context.Context, _ string, from,
 	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
 		items[i], items[j] = items[j], items[i]
 	}
-	return data.ThoughtView{Items: items, More: more}, nil
+	return data.ThoughtSummaryViewResult{Items: items, More: more}, nil
 }
 func (s *viewStore) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error) {
 	if len(s.items) == 0 {

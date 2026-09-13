@@ -21,7 +21,7 @@ import (
 )
 
 type Service interface {
-	BrowseView(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error)
+	BrowseView(context.Context, string, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	ListUnassigned(context.Context, string) ([]data.Thought, error)
 	List(context.Context, string, int64) ([]data.Thought, error)
 	Get(context.Context, string, int64) (*data.Thought, error)

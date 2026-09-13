@@ -15,7 +15,7 @@ type EventReader interface {
 
 type ThoughtReader interface {
 	ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error)
-	BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtViewRequest) (data.ThoughtView, error)
+	BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error)
 }
 

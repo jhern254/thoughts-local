@@ -12,11 +12,11 @@ import (
 
 func TestThoughtService_BrowseView(t *testing.T) {
 	t.Run("passes scoped cursor and preserves results and original errors", func(t *testing.T) {
-		query := data.ThoughtViewRequest{Cursor: &data.ThoughtCursor{ObservedAt: time.Unix(300, 0), CreatedAt: time.Unix(100, 0), ThoughtID: 7}, Direction: data.ThoughtsNewer}
-		view := data.ThoughtView{Items: []data.ThoughtSummaryView{{ThoughtID: 8}}, More: true}
+		query := data.ThoughtSummaryViewRequest{Cursor: &data.ThoughtCursor{ObservedAt: time.Unix(300, 0), CreatedAt: time.Unix(100, 0), ThoughtID: 7}, Direction: data.ThoughtsNewer}
+		view := data.ThoughtSummaryViewResult{Items: []data.ThoughtSummaryView{{ThoughtID: 8}}, More: true}
 		for _, wantErr := range []error{nil, errors.New("underlying failure")} {
 			ctx := t.Context()
-			service := NewService(&thoughtServiceStoreStub{browseView: func(got context.Context, userID string, request data.ThoughtViewRequest) (data.ThoughtView, error) {
+			service := NewService(&thoughtServiceStoreStub{browseView: func(got context.Context, userID string, request data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 				if got != ctx || userID != "u" || !reflect.DeepEqual(request, query) {
 					t.Fatal("browse lost context, owner or cursor")
 				}
@@ -29,11 +29,11 @@ func TestThoughtService_BrowseView(t *testing.T) {
 		}
 	})
 	t.Run("rejects ambiguous direction before persistence", func(t *testing.T) {
-		service := NewService(&thoughtServiceStoreStub{browseView: func(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error) {
+		service := NewService(&thoughtServiceStoreStub{browseView: func(context.Context, string, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 			t.Fatal("invalid request reached store")
-			return data.ThoughtView{}, nil
+			return data.ThoughtSummaryViewResult{}, nil
 		}})
-		for _, query := range []data.ThoughtViewRequest{{Direction: data.ThoughtDirection(99)}, {Direction: data.ThoughtsNewer}} {
+		for _, query := range []data.ThoughtSummaryViewRequest{{Direction: data.ThoughtDirection(99)}, {Direction: data.ThoughtsNewer}} {
 			_, err := service.BrowseView(t.Context(), "u", query)
 			var validation *ValidationError
 			if !errors.As(err, &validation) {

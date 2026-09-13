@@ -51,7 +51,7 @@ func TestThoughtMutationsWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		assertThoughtEqual(t, got, updated)
-		view, err := thought.NewService(data.NewSQLiteThoughtStore(reopened)).BrowseView(ctx, "owner", data.ThoughtViewRequest{})
+		view, err := thought.NewService(data.NewSQLiteThoughtStore(reopened)).BrowseView(ctx, "owner", data.ThoughtSummaryViewRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -200,7 +200,7 @@ func TestThoughtMutationsWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("got list lengths %d/%d, want 0/0", len(assigned), len(unassigned))
 			}
 			// Exercise the new read paths using this scenario's existing small fixture.
-			view, err := service.BrowseView(ctx, "owner", data.ThoughtViewRequest{})
+			view, err := service.BrowseView(ctx, "owner", data.ThoughtSummaryViewRequest{})
 			if err != nil {
 				t.Fatal(err)
 			}

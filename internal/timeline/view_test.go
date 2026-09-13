@@ -9,7 +9,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 )
 
-func (f thoughtReaderStub) BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtViewRequest) (data.ThoughtView, error) {
+func (f thoughtReaderStub) BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	panic("unexpected summary read")
 }
 func (f thoughtReaderStub) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error) {
@@ -33,9 +33,9 @@ type viewReader struct {
 	until []time.Time
 }
 
-func (s *viewReader) BrowseThoughtsViewInRange(_ context.Context, _ string, _, until time.Time, _ data.ThoughtViewRequest) (data.ThoughtView, error) {
+func (s *viewReader) BrowseThoughtsViewInRange(_ context.Context, _ string, _, until time.Time, _ data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	s.until = append(s.until, until)
-	return data.ThoughtView{Items: []data.ThoughtSummaryView{{ThoughtID: 42}}}, nil
+	return data.ThoughtSummaryViewResult{Items: []data.ThoughtSummaryView{{ThoughtID: 42}}}, nil
 }
 
 func TestService_ThoughtView(t *testing.T) {
@@ -52,7 +52,7 @@ func TestService_ThoughtView(t *testing.T) {
 		}
 		s.now = func() time.Time { return time.Unix(200, 0) }
 		for range 2 {
-			got, err := s.BrowseThoughtsView(t.Context(), "u", scope, data.ThoughtViewRequest{})
+			got, err := s.BrowseThoughtsView(t.Context(), "u", scope, data.ThoughtSummaryViewRequest{})
 			if err != nil || got.Items[0].ThoughtID != 42 {
 				t.Fatalf("got %+v, %v", got, err)
 			}
@@ -66,7 +66,7 @@ func TestService_ThoughtView(t *testing.T) {
 		if count != 230 || err != cause {
 			t.Fatalf("got %d, %v; want 230 and original error", count, err)
 		}
-		if _, err := s.BrowseThoughtsView(t.Context(), "other", scope, data.ThoughtViewRequest{}); !errors.Is(err, data.ErrRecordNotFound) {
+		if _, err := s.BrowseThoughtsView(t.Context(), "other", scope, data.ThoughtSummaryViewRequest{}); !errors.Is(err, data.ErrRecordNotFound) {
 			t.Fatal("accepted foreign scope")
 		}
 	})

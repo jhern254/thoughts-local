@@ -14,7 +14,7 @@ const eventThoughtOrderLabel = "Newest first"
 // TimelineReader supplies a resolved event interval; the thought picker owns
 // the same summary window, selection and detail as the collection screen.
 type TimelineReader interface {
-	BrowseThoughtsView(context.Context, string, timeline.ThoughtScope, data.ThoughtViewRequest) (data.ThoughtView, error)
+	BrowseThoughtsView(context.Context, string, timeline.ThoughtScope, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	CountThoughts(context.Context, string, timeline.ThoughtScope) (int64, error)
 }
 

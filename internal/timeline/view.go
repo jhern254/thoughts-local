@@ -30,9 +30,9 @@ func (s *Service) OpenThoughtsView(ctx context.Context, userID string, eventID i
 	return ThoughtScope{userID: userID, event: *item, until: until}, nil
 }
 
-func (s *Service) BrowseThoughtsView(ctx context.Context, userID string, scope ThoughtScope, request data.ThoughtViewRequest) (data.ThoughtView, error) {
+func (s *Service) BrowseThoughtsView(ctx context.Context, userID string, scope ThoughtScope, request data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	if scope.userID == "" || scope.userID != userID {
-		return data.ThoughtView{}, data.ErrRecordNotFound
+		return data.ThoughtSummaryViewResult{}, data.ErrRecordNotFound
 	}
 	return s.thoughts.BrowseThoughtsViewInRange(ctx, userID, scope.event.StartedAt, scope.until, request)
 }

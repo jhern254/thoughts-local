@@ -55,9 +55,9 @@ type browseThoughtsState struct {
 type BrowseThoughtsResult struct {
 	owner   *int
 	request uint64
-	query   data.ThoughtViewRequest
+	query   data.ThoughtSummaryViewRequest
 	move    int
-	view    data.ThoughtView
+	view    data.ThoughtSummaryViewResult
 	err     error
 }
 
@@ -103,7 +103,7 @@ func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
 		}
 		return ThoughtCountResult{owner: owner, request: request, total: total, err: err}
 	}
-	return tea.Batch(m.loadThoughtsView(data.ThoughtViewRequest{}, 0), count)
+	return tea.Batch(m.loadThoughtsView(data.ThoughtSummaryViewRequest{}, 0), count)
 }
 
 func (m Model) receiveThoughtCount(result ThoughtCountResult) (Model, tea.Cmd) {
@@ -121,13 +121,13 @@ func (m Model) receiveThoughtCount(result ThoughtCountResult) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) loadThoughtsView(query data.ThoughtViewRequest, move int) tea.Cmd {
+func (m *Model) loadThoughtsView(query data.ThoughtSummaryViewRequest, move int) tea.Cmd {
 	m.request++
 	m.loading, m.err = true, nil
 	owner, scope, reader := m.owner, m.browseThoughts.eventScope, m.browseThoughts.timelineView
 	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
 	return func() tea.Msg {
-		var view data.ThoughtView
+		var view data.ThoughtSummaryViewResult
 		var err error
 		if scope != nil {
 			view, err = reader.BrowseThoughtsView(ctx, userID, *scope, query)
@@ -187,7 +187,7 @@ func (m Model) receiveBrowseThoughts(result BrowseThoughtsResult) (Model, tea.Cm
 	if len(m.browseThoughts.rows) > 0 && m.browseThoughts.rows[0].kind == rowCreate {
 		actions = 1
 	}
-	if excess := len(m.browseThoughts.rows) - actions - 3*data.ThoughtViewBatchSize; excess > 0 {
+	if excess := len(m.browseThoughts.rows) - actions - 3*data.ThoughtSummaryViewBatchSize; excess > 0 {
 		if result.query.Direction == data.ThoughtsNewer {
 			m.browseThoughts.rows = slices.Clone(m.browseThoughts.rows[:len(m.browseThoughts.rows)-excess])
 			m.browseThoughts.moreOlder = true
@@ -247,12 +247,12 @@ func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	if m.browseThoughts.index+move < 0 && m.browseThoughts.moreNewer {
 		cursor := m.browseThoughts.rows[0].item.Cursor()
-		cmd := m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, move)
+		cmd := m.loadThoughtsView(data.ThoughtSummaryViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, move)
 		return m, cmd
 	}
 	if m.browseThoughts.index+move >= len(m.browseThoughts.rows) && m.browseThoughts.moreOlder {
 		cursor := m.browseThoughts.rows[len(m.browseThoughts.rows)-1].item.Cursor()
-		cmd := m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor}, move)
+		cmd := m.loadThoughtsView(data.ThoughtSummaryViewRequest{Cursor: &cursor}, move)
 		return m, cmd
 	}
 	m.browseThoughts.index = min(max(0, m.browseThoughts.index+move), len(m.browseThoughts.rows)-1)

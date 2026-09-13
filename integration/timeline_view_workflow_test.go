@@ -57,17 +57,17 @@ func TestTimelineViewWorkflow_SQLite(t *testing.T) {
 		}
 		s := data.NewSQLiteThoughtStore(db)
 		from, until := time.Unix(101, 0), time.Unix(331, 0)
-		view, err := s.BrowseThoughtsViewInRange(t.Context(), "u", from, until, data.ThoughtViewRequest{})
+		view, err := s.BrowseThoughtsViewInRange(t.Context(), "u", from, until, data.ThoughtSummaryViewRequest{})
 		if err != nil || len(view.Items) != 50 || !view.More || view.Items[0].ObservedAt.Unix() != 330 || len([]rune(view.Items[0].Preview)) != 81 {
 			t.Fatalf("got initial view %+v, %v; want 50 bounded newest summaries", view, err)
 		}
 		cursor := view.Items[49].Cursor()
-		older, err := s.BrowseThoughtsViewInRange(t.Context(), "u", from, until, data.ThoughtViewRequest{Cursor: &cursor})
+		older, err := s.BrowseThoughtsViewInRange(t.Context(), "u", from, until, data.ThoughtSummaryViewRequest{Cursor: &cursor})
 		if err != nil || len(older.Items) != 50 || older.Items[0].ObservedAt.Unix() != 280 {
 			t.Fatalf("got older view %+v, %v; want next 50", older, err)
 		}
 		cursor = older.Items[0].Cursor()
-		newer, err := s.BrowseThoughtsViewInRange(t.Context(), "u", from, until, data.ThoughtViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer})
+		newer, err := s.BrowseThoughtsViewInRange(t.Context(), "u", from, until, data.ThoughtSummaryViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer})
 		if err != nil || len(newer.Items) != 50 || newer.More || newer.Items[0].ObservedAt.Unix() != 330 {
 			t.Fatalf("got newer view %+v, %v; want initial 50", newer, err)
 		}

@@ -22,7 +22,7 @@ type labeledThoughtService struct {
 	name *string
 }
 
-func (s labeledThoughtService) BrowseView(ctx context.Context, userID string, request data.ThoughtViewRequest) (data.ThoughtView, error) {
+func (s labeledThoughtService) BrowseView(ctx context.Context, userID string, request data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	view, err := s.Service.BrowseView(ctx, userID, request)
 	for i := range view.Items {
 		view.Items[i].SubjectName = s.name
