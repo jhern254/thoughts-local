@@ -13,7 +13,7 @@ import (
 func TestThoughtService_BrowseView(t *testing.T) {
 	t.Run("passes scoped cursor and preserves results and original errors", func(t *testing.T) {
 		query := data.ThoughtViewRequest{Cursor: &data.ThoughtCursor{ObservedAt: time.Unix(300, 0), CreatedAt: time.Unix(100, 0), ThoughtID: 7}, Direction: data.ThoughtsNewer}
-		view := data.ThoughtView{Items: []data.ThoughtSummary{{ThoughtID: 8}}, More: true}
+		view := data.ThoughtView{Items: []data.ThoughtSummaryView{{ThoughtID: 8}}, More: true}
 		for _, wantErr := range []error{nil, errors.New("underlying failure")} {
 			ctx := t.Context()
 			service := NewService(&thoughtServiceStoreStub{browseView: func(got context.Context, userID string, request data.ThoughtViewRequest) (data.ThoughtView, error) {

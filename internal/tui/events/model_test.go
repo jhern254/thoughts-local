@@ -53,7 +53,7 @@ func (s *eventStub) End(_ context.Context, _ string, id, version int64, end time
 }
 
 type viewStore struct {
-	items         []data.ThoughtSummary
+	items         []data.ThoughtSummaryView
 	counts, reads int
 	err           error
 }
@@ -63,7 +63,7 @@ func (s *viewStore) ListThoughtsInRange(context.Context, string, time.Time, time
 }
 func (s *viewStore) BrowseThoughtsViewInRange(_ context.Context, _ string, from, until time.Time, request data.ThoughtViewRequest) (data.ThoughtView, error) {
 	s.reads++
-	items := []data.ThoughtSummary{}
+	items := []data.ThoughtSummaryView{}
 	for _, item := range s.items {
 		if item.ObservedAt.Before(from) || !item.ObservedAt.Before(until) {
 			continue
@@ -91,15 +91,15 @@ func (s *viewStore) BrowseThoughtsViewInRange(_ context.Context, _ string, from,
 	}
 	return data.ThoughtView{Items: items, More: more}, nil
 }
-func (s *viewStore) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummary, error) {
+func (s *viewStore) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error) {
 	if len(s.items) == 0 {
 		return nil, nil
 	}
 	return &s.items[len(s.items)-1], nil
 }
-func (s *viewStore) ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCount, error) {
+func (s *viewStore) ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error) {
 	s.counts++
-	return []data.EventThoughtCount{{EventID: 1, Count: int64(len(s.items))}}, s.err
+	return []data.EventThoughtCountView{{EventID: 1, Count: int64(len(s.items))}}, s.err
 }
 func (s *viewStore) CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error) {
 	s.counts++
@@ -174,7 +174,7 @@ func fixture(t testing.TB) (Model, *eventStub, *viewStore) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		v.items = append(v.items, data.ThoughtSummary{ThoughtID: item.ThoughtID, Preview: fmt.Sprintf("preview %03d", i), ObservedAt: item.ObservedAt, CreatedAt: item.CreatedAt})
+		v.items = append(v.items, data.ThoughtSummaryView{ThoughtID: item.ThoughtID, Preview: fmt.Sprintf("preview %03d", i), ObservedAt: item.ObservedAt, CreatedAt: item.CreatedAt})
 	}
 	m := New(t.Context(), "u", s, timeline.NewService(s, v, v), service, logging.Nop())
 	m.now = func() time.Time { return at }

@@ -96,7 +96,7 @@ func TestModel_MiscThoughts(t *testing.T) {
 	})
 	t.Run("Misc count failure preserves real counts and emits only approved metadata", func(t *testing.T) {
 		m := filterRoot(t)
-		counts := &metricsStub{counts: []data.SubjectThoughtCount{{SubjectID: 1, Count: 2}}, miscErr: errors.New("PRIVATE-MISC-MARKER")}
+		counts := &metricsStub{counts: []data.SubjectThoughtCountView{{SubjectID: 1, Count: 2}}, miscErr: errors.New("PRIVATE-MISC-MARKER")}
 		m.metrics = counts
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")

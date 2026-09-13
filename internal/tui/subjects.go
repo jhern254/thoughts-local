@@ -88,7 +88,7 @@ type subjectsListedMsg struct {
 	miscCountErr error
 	subjects     []data.Subject
 	err          error
-	counts       []data.SubjectThoughtCount
+	counts       []data.SubjectThoughtCountView
 	countErr     error
 }
 

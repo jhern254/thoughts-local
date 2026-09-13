@@ -44,7 +44,7 @@ func (s *Service) CountThoughts(ctx context.Context, userID string, scope Though
 	return s.metrics.CountThoughtsInRange(ctx, userID, scope.event.StartedAt, scope.until)
 }
 
-func (s *Service) LatestThought(ctx context.Context, userID string, eventID int64) (*data.ThoughtSummary, error) {
+func (s *Service) LatestThought(ctx context.Context, userID string, eventID int64) (*data.ThoughtSummaryView, error) {
 	scope, err := s.OpenThoughtsView(ctx, userID, eventID)
 	if err != nil {
 		return nil, err
@@ -52,6 +52,6 @@ func (s *Service) LatestThought(ctx context.Context, userID string, eventID int6
 	return s.thoughts.LatestThoughtInRange(ctx, userID, scope.event.StartedAt, scope.until)
 }
 
-func (s *Service) ThoughtCounts(ctx context.Context, userID string, from, until time.Time) ([]data.EventThoughtCount, error) {
+func (s *Service) ThoughtCounts(ctx context.Context, userID string, from, until time.Time) ([]data.EventThoughtCountView, error) {
 	return s.metrics.ThoughtCountsByEvent(ctx, userID, from, until, s.now().UTC().Truncate(time.Second).Add(time.Second))
 }

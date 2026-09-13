@@ -33,7 +33,7 @@ type ThoughtCountResult struct {
 
 type summaryRow struct {
 	kind rowKind
-	item data.ThoughtSummary
+	item data.ThoughtSummaryView
 }
 
 // The thought browse view uses a bounded, bidirectional window. Subject lists retain
@@ -348,16 +348,16 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 }
 
 // SummaryPreview is shared by the collection picker and event cards.
-func (m Model) SummaryPreview(item data.ThoughtSummary, width int, selected bool) string {
+func (m Model) SummaryPreview(item data.ThoughtSummaryView, width int, selected bool) string {
 	return m.summaryPreview(item, width, selected, "Jan 2, 2006 3:04 PM MST")
 }
 
 // TimelinePreview keeps collapsed calendar cards free of timezone detail.
-func (m Model) TimelinePreview(item data.ThoughtSummary, width int) string {
+func (m Model) TimelinePreview(item data.ThoughtSummaryView, width int) string {
 	return m.summaryPreview(item, width, false, "3:04 PM")
 }
 
-func (m Model) summaryPreview(item data.ThoughtSummary, width int, selected bool, layout string) string {
+func (m Model) summaryPreview(item data.ThoughtSummaryView, width int, selected bool, layout string) string {
 	titleStyle, descStyle := m.itemStyles.NormalTitle, m.itemStyles.NormalDesc
 	if selected {
 		titleStyle, descStyle = m.itemStyles.SelectedTitle, m.itemStyles.SelectedDesc

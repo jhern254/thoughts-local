@@ -12,7 +12,7 @@ import (
 func (f thoughtReaderStub) BrowseThoughtsViewInRange(context.Context, string, time.Time, time.Time, data.ThoughtViewRequest) (data.ThoughtView, error) {
 	panic("unexpected summary read")
 }
-func (f thoughtReaderStub) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummary, error) {
+func (f thoughtReaderStub) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error) {
 	panic("unexpected latest read")
 }
 
@@ -21,7 +21,7 @@ type metricsStub struct {
 	err         error
 }
 
-func (s metricsStub) ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCount, error) {
+func (s metricsStub) ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error) {
 	return nil, s.err
 }
 func (s metricsStub) CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error) {
@@ -35,7 +35,7 @@ type viewReader struct {
 
 func (s *viewReader) BrowseThoughtsViewInRange(_ context.Context, _ string, _, until time.Time, _ data.ThoughtViewRequest) (data.ThoughtView, error) {
 	s.until = append(s.until, until)
-	return data.ThoughtView{Items: []data.ThoughtSummary{{ThoughtID: 42}}}, nil
+	return data.ThoughtView{Items: []data.ThoughtSummaryView{{ThoughtID: 42}}}, nil
 }
 
 func TestService_ThoughtView(t *testing.T) {
