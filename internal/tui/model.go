@@ -84,6 +84,7 @@ func (Model) Init() tea.Cmd { return func() tea.Msg { return homeOpened{} } }
 
 func (m Model) openHome() (tea.Model, tea.Cmd) {
 	m.screen = screenEvents
+	m.events.SetFocused(!m.entityFocused)
 	cmd := m.events.Open()
 	return m, cmd
 }
@@ -184,6 +185,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok && m.events.CanLeave() {
 		if key.String() == "tab" {
 			m.entityFocused = !m.entityFocused
+			m.events.SetFocused(!m.entityFocused)
 			m.events.Pause()
 			return m, nil
 		}
@@ -253,7 +255,6 @@ func (m Model) View() tea.View {
 	var content string
 	switch m.screen {
 	case screenEvents:
-		m.events.SetFocused(!m.entityFocused)
 		content = m.events.View()
 		if m.events.CanLeave() {
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content

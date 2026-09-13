@@ -23,6 +23,7 @@ import (
 func newScreenTestModel(ctx context.Context, user *data.User, subjects SubjectService, thoughtService thoughts.Service, metrics MetricsService, logger logging.Logger) Model {
 	m := NewModel(ctx, user, subjects, thoughtService, metrics, &homeEventStub{}, &homeTimelineStub{}, logger)
 	m.entityFocused = true
+	m.events.SetFocused(false)
 	return m
 }
 
@@ -302,11 +303,22 @@ func TestModel_EventsHome(t *testing.T) {
 				m = runHomeData(t, m, cmd)
 			}
 			separator := "\n" + strings.Repeat("─", 80) + "\n"
+			focused := m.events.View()
+			expected := m.events
+			expected.SetFocused(true)
+			if m.entityFocused || focused != expected.View() {
+				t.Fatal("timeline must own focus before rendering home")
+			}
 			before := strings.Split(m.View().Content, separator)
 			if len(before) != 2 {
 				t.Fatal("missing divider between timeline and entities")
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+			// Deliver another update without letting root View synchronize a copy.
+			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+			if !m.entityFocused || m.events.View() == focused {
+				t.Fatal("Tab must blur Events during Update, before root View")
+			}
 			blurred := strings.Split(m.View().Content, separator)[0]
 			beforeText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(before[0]), "│", " ")), " ")
 			blurredText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(blurred), "│", " ")), " ")
@@ -314,9 +326,45 @@ func TestModel_EventsHome(t *testing.T) {
 				t.Fatal("Tab should change calendar highlighting without changing its contents")
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+			if m.entityFocused || m.events.View() != focused {
+				t.Fatal("Tab back must restore Events focus before root View")
+			}
 			if strings.Split(m.View().Content, separator)[0] != before[0] {
 				t.Fatal("returning focus did not restore selected event and thought")
 			}
+		}
+	})
+	t.Run("returning from entities preserves strip focus until Tab resumes the timeline", func(t *testing.T) {
+		for _, entity := range []entityKind{entitySubjects, entityThoughts} {
+			t.Run(entity.title(), func(t *testing.T) {
+				m, _ := newHome(t)
+				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+				if entity == entityThoughts {
+					m, _ = rootUpdate(m, runeKey('l'))
+				}
+				m, cmd := rootUpdate(m, enterKey())
+				m = runHomeData(t, m, cmd)
+				if m.screen == screenEvents {
+					t.Fatal("Enter did not open the selected entity")
+				}
+				m, cmd = rootUpdate(m, escapeKey())
+				m = startHomeData(t, m, cmd)
+				expected := m.events
+				expected.SetFocused(false)
+				if m.screen != screenEvents || !m.entityFocused || m.events.View() != expected.View() {
+					t.Fatal("return must leave Events blurred with the entity strip focused")
+				}
+				m, cmd = rootUpdate(m, runeKey('l'))
+				if cmd != nil || m.selectedEntity == entity {
+					t.Fatal("entity strip did not retain horizontal keyboard navigation")
+				}
+				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+				m, cmd = rootUpdate(m, runeKey('l'))
+				m = runHomeData(t, m, cmd)
+				if m.entityFocused || !strings.Contains(m.events.View(), "←: collapse") {
+					t.Fatal("Tab back did not restore timeline keyboard navigation")
+				}
+			})
 		}
 	})
 	t.Run("restores event detail and rejects another thought component's reply", func(t *testing.T) {
