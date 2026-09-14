@@ -30,6 +30,9 @@ func (s *SQLiteGoalStore) CreateGoal(ctx context.Context, item *Goal) (*Goal, er
         RETURNING `+goalColumns, item.UserID, item.GoalName, item.TargetSeconds,
 		item.StartDate, item.EndDate, item.IsActive, item.Cadence, item.TZ, item.WeekStart,
 		item.DefaultCadence, item.CreatedAt.Unix(), item.UpdatedAt.Unix(), item.UserID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrRecordNotFound
+	}
 	if err != nil {
 		return nil, fmt.Errorf("create goal: %w", translateGoalError(err))
 	}
@@ -39,6 +42,9 @@ func (s *SQLiteGoalStore) CreateGoal(ctx context.Context, item *Goal) (*Goal, er
 func (s *SQLiteGoalStore) GetGoal(ctx context.Context, userID string, id int64) (*Goal, error) {
 	item, err := scanGoal(s.db.QueryRowContext(ctx, `SELECT `+goalColumns+
 		` FROM goals WHERE user_id = ? AND goal_id = ? AND `+visibleGoals, userID, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrRecordNotFound
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get goal: %w", TranslateSQLiteError(err))
 	}
@@ -115,6 +121,9 @@ func (s *SQLiteGoalStore) UpdateGoal(ctx context.Context, item *Goal) (_ *Goal, 
 	}
 	updated, err := scanGoal(tx.QueryRowContext(ctx, `SELECT `+goalColumns+
 		` FROM goals WHERE user_id = ? AND goal_id = ?`, item.UserID, item.GoalID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrRecordNotFound
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -177,9 +186,6 @@ func scanGoal(row interface{ Scan(...any) error }) (*Goal, error) {
 	err := row.Scan(&item.GoalID, &item.UserID, &item.GoalName, &item.TargetSeconds,
 		&item.StartDate, &item.EndDate, &item.IsActive, &item.Cadence, &item.TZ,
 		&item.WeekStart, &item.DefaultCadence, &item.Version, &created, &updated)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrRecordNotFound
-	}
 	if err != nil {
 		return nil, err
 	}
