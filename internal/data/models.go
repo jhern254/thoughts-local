@@ -61,3 +61,23 @@ type Goal struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
+
+// GoalProgress records an explicit contribution and optional provenance.
+type GoalProgress struct {
+	ProgressID   int64
+	GoalID       int64
+	UserID       string
+	OccurredAt   time.Time
+	TimeSpentSec int64
+	EventID      *int64
+	ThoughtID    *int64
+	ProgressNote *string
+	CreatedAt    time.Time
+}
+
+// GoalParent links a child GoalID to a broader ParentGoalID with the same owner.
+type GoalParent struct {
+	GoalID       int64
+	ParentGoalID int64
+	UserID       string
+}
