@@ -8,6 +8,7 @@ import (
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/event"
+	"github.com/jhern254/go-thoughts/internal/goal"
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/thought"
@@ -25,6 +26,7 @@ type Runtime struct {
 	thoughts     *thought.Service
 	metrics      *metrics.Service
 	events       *event.Service
+	goals        *goal.Service
 	timelineView *timeline.Service
 }
 
@@ -57,6 +59,7 @@ func open(
 		thoughts:     thought.NewService(data.NewSQLiteThoughtStore(db)),
 		metrics:      metrics.NewService(data.NewSQLiteMetricsStore(db)),
 		events:       event.NewService(data.NewSQLiteEventStore(db)),
+		goals:        goal.NewService(data.NewSQLiteGoalStore(db)),
 		timelineView: timeline.NewService(event.NewService(data.NewSQLiteEventStore(db)), data.NewSQLiteThoughtStore(db)),
 	}, nil
 }
@@ -72,6 +75,7 @@ func (runtime *Runtime) Subjects() *subject.Service {
 func (runtime *Runtime) Thoughts() *thought.Service      { return runtime.thoughts }
 func (runtime *Runtime) Metrics() *metrics.Service       { return runtime.metrics }
 func (runtime *Runtime) Events() *event.Service          { return runtime.events }
+func (runtime *Runtime) Goals() *goal.Service            { return runtime.goals }
 func (runtime *Runtime) TimelineView() *timeline.Service { return runtime.timelineView }
 
 func ensureLocalUser(ctx context.Context, db *sql.DB) (*data.User, error) {
@@ -90,6 +94,7 @@ func (runtime *Runtime) Close() error {
 	runtime.thoughts = nil
 	runtime.metrics = nil
 	runtime.events = nil
+	runtime.goals = nil
 	runtime.timelineView = nil
 	return data.TranslateSQLiteError(err)
 }
