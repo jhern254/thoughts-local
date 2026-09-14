@@ -14,6 +14,8 @@ import (
 )
 
 type storeStub struct {
+	update                 func(context.Context, *data.Goal) (*data.Goal, error)
+	delete                 func(context.Context, string, int64, int64) error
 	create                 func(context.Context, *data.Goal) (*data.Goal, error)
 	get                    func(context.Context, string, int64) (*data.Goal, error)
 	list, active, inactive func(context.Context, string) ([]data.Goal, error)
@@ -42,30 +44,35 @@ func TestService_Validation(t *testing.T) {
 		{"timestamp instead of date", "goal_start_date", func(i *CreateGoalInput) { i.StartDate = "2026-09-01T00:00:00Z" }},
 		{"reversed dates", "goal_end_date", func(i *CreateGoalInput) { i.StartDate, i.EndDate = "2026-09-02", "2026-09-01" }},
 	} {
-		t.Run("rejects "+tc.name+" before persistence with safe feedback", func(t *testing.T) {
-			input := CreateGoalInput{Name: "PRIVATE-INPUT", TargetSeconds: 60}
-			tc.change(&input)
-			s := NewService(storeStub{create: func(context.Context, *data.Goal) (*data.Goal, error) {
-				t.Fatal("unexpected persistence call")
-				return nil, nil
-			}})
-			_, err := s.Create(t.Context(), "owner", input)
-			var validation *ValidationError
-			if !errors.As(err, &validation) {
-				t.Fatalf("got %v, want ValidationError", err)
-			}
-			fields := validation.PublicFields()
-			if fields[tc.field] == "" {
-				t.Fatalf("got fields %v, want guidance for %s", fields, tc.field)
-			}
-			if strings.Contains(err.Error()+fmt.Sprint(fields), "PRIVATE-INPUT") {
-				t.Fatal("validation feedback exposes private input")
-			}
-			if !maps.Equal(fields, validation.Fields) {
-				t.Fatalf("got public fields %v, want %v", fields, validation.Fields)
-			}
-		})
+		for _, operation := range []string{"create", "update"} {
+			t.Run(operation+" rejects "+tc.name+" before persistence with safe feedback", func(t *testing.T) {
+				input := CreateGoalInput{Name: "PRIVATE-INPUT", TargetSeconds: 60, Cadence: "weekly", TZ: "UTC", WeekStart: "mon"}
+				tc.change(&input)
+				s := NewService(storeStub{})
+				var err error
+				if operation == "create" {
+					_, err = s.Create(t.Context(), "owner", input)
+				} else {
+					_, err = s.Update(t.Context(), "owner", 7, 1, UpdateGoalInput{Name: input.Name, TargetSeconds: input.TargetSeconds, StartDate: input.StartDate, EndDate: input.EndDate, Cadence: input.Cadence, TZ: input.TZ, WeekStart: input.WeekStart, DefaultCadence: input.DefaultCadence})
+				}
+				var validation *ValidationError
+				if !errors.As(err, &validation) {
+					t.Fatalf("got %v, want ValidationError", err)
+				}
+				fields := validation.PublicFields()
+				if fields[tc.field] == "" {
+					t.Fatalf("got fields %v, want guidance for %s", fields, tc.field)
+				}
+				if strings.Contains(err.Error()+fmt.Sprint(fields), "PRIVATE-INPUT") {
+					t.Fatal("validation feedback exposes private input")
+				}
+				if !maps.Equal(fields, validation.Fields) {
+					t.Fatalf("got public fields %v, want %v", fields, validation.Fields)
+				}
+			})
+		}
 	}
+
 	t.Run("requires an owner before persistence", func(t *testing.T) {
 		s := NewService(storeStub{})
 		_, err := s.Create(t.Context(), "", CreateGoalInput{Name: "Goal", TargetSeconds: 60})
@@ -246,4 +253,153 @@ func TestService_Create(t *testing.T) {
 			t.Fatalf("got %v, want original %v", got, want)
 		}
 	})
+}
+
+func (s storeStub) UpdateGoal(ctx context.Context, g *data.Goal) (*data.Goal, error) {
+	return s.update(ctx, g)
+}
+func (s storeStub) DeleteGoal(ctx context.Context, owner string, id, version int64) error {
+	return s.delete(ctx, owner, id, version)
+}
+
+func TestService_Update(t *testing.T) {
+	t.Run("replaces explicit settings without modifying input", func(t *testing.T) {
+		for _, active := range []bool{false, true} {
+			input := UpdateGoalInput{Name: " Reading ", TargetSeconds: 120, StartDate: " 2024-02-29 ", EndDate: " 2030-01-01 ", IsActive: &active, Cadence: " monthly ", TZ: " America/Los_Angeles ", WeekStart: " sun ", DefaultCadence: " daily "}
+			original := input
+			now := time.Unix(1000, 999).In(time.FixedZone("offset", -7*3600))
+			start, end, cadence := "2024-02-29", "2030-01-01", "daily"
+			want := &data.Goal{GoalID: 7, Version: 4}
+			calls := 0
+			s := NewService(storeStub{update: func(ctx context.Context, g *data.Goal) (*data.Goal, error) {
+				expected := data.Goal{GoalID: 7, UserID: "owner", GoalName: "Reading", TargetSeconds: 120, StartDate: &start, EndDate: &end, IsActive: active, Cadence: "monthly", TZ: "America/Los_Angeles", WeekStart: "sun", DefaultCadence: &cadence, Version: 3, UpdatedAt: time.Unix(1000, 0).UTC()}
+				if ctx != t.Context() || !reflect.DeepEqual(*g, expected) {
+					t.Fatalf("got %+v, want %+v with original context", g, expected)
+				}
+				return want, nil
+			}})
+			s.now = func() time.Time { calls++; return now }
+			got, err := s.Update(t.Context(), "owner", 7, 3, input)
+			if got != want || err != nil || calls != 1 || input != original || *input.IsActive != active {
+				t.Fatalf("got %v/%v, %d clock calls and input %+v, want original result/nil, one clock call and %+v", got, err, calls, input, original)
+			}
+		}
+	})
+	t.Run("omitted activation preserves the current state and caller version", func(t *testing.T) {
+		for _, active := range []bool{false, true} {
+			current := &data.Goal{GoalID: 7, Version: 3, IsActive: active}
+			snapshot := *current
+			s := NewService(storeStub{
+				get: func(ctx context.Context, owner string, id int64) (*data.Goal, error) {
+					if ctx != t.Context() || owner != "owner" || id != 7 {
+						t.Fatal("get did not receive original context and identity")
+					}
+					return current, nil
+				},
+				update: func(_ context.Context, item *data.Goal) (*data.Goal, error) {
+					if item.IsActive != active || item.Version != 2 {
+						t.Fatalf("got active=%t/version=%d, want %t/2", item.IsActive, item.Version, active)
+					}
+					return nil, data.ErrVersionConflict
+				},
+			})
+			input := UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"}
+			_, err := s.Update(t.Context(), "owner", 7, 2, input)
+			if !errors.Is(err, data.ErrVersionConflict) || input.IsActive != nil || *current != snapshot {
+				t.Fatalf("got %v and %+v, want conflict and unchanged input/current record", err, current)
+			}
+		}
+	})
+	t.Run("returns the original lookup failure without writing when activation is omitted", func(t *testing.T) {
+		want := fmt.Errorf("PRIVATE-LOOKUP: %w", data.ErrDatabaseBusy)
+		s := NewService(storeStub{get: func(context.Context, string, int64) (*data.Goal, error) { return nil, want }})
+		_, got := s.Update(t.Context(), "owner", 7, 2, UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"})
+		if got != want {
+			t.Fatalf("got %v, want original %v", got, want)
+		}
+	})
+
+	t.Run("clears empty optional settings", func(t *testing.T) {
+		active := false
+		s := NewService(storeStub{update: func(_ context.Context, g *data.Goal) (*data.Goal, error) {
+			if g.StartDate != nil || g.EndDate != nil || g.DefaultCadence != nil {
+				t.Fatalf("got %+v, want nil optional settings", g)
+			}
+			return g, nil
+		}})
+		_, err := s.Update(t.Context(), "owner", 7, 1, UpdateGoalInput{Name: "Goal", IsActive: &active, TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon", StartDate: " ", EndDate: " ", DefaultCadence: " "})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("requires explicit settings instead of applying creation defaults", func(t *testing.T) {
+		_, err := NewService(storeStub{}).Update(t.Context(), "owner", 7, 1, UpdateGoalInput{Name: "PRIVATE-INPUT", TargetSeconds: 1})
+		var validation *ValidationError
+		if !errors.As(err, &validation) {
+			t.Fatalf("got %v, want ValidationError", err)
+		}
+		for _, field := range []string{"cadence", "tz", "week_start"} {
+			if validation.PublicFields()[field] == "" {
+				t.Fatalf("got %v, want guidance for %s", validation.PublicFields(), field)
+			}
+		}
+	})
+}
+
+func TestService_Mutations(t *testing.T) {
+	for _, operation := range []string{"update", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			call := func(ctx context.Context, s *Service, owner string, version int64) error {
+				active := true
+				if operation == "delete" {
+					return s.Delete(ctx, owner, 7, version)
+				}
+				_, err := s.Update(ctx, owner, 7, version, UpdateGoalInput{Name: "PRIVATE-INPUT", IsActive: &active, TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"})
+				return err
+			}
+			t.Run("rejects missing owner and nonpositive versions before persistence", func(t *testing.T) {
+				for _, tc := range []struct {
+					owner, field string
+					version      int64
+				}{{"", "user_id", 1}, {"owner", "version", 0}, {"owner", "version", -1}} {
+					err := call(t.Context(), NewService(storeStub{}), tc.owner, tc.version)
+					var validation *ValidationError
+					if !errors.As(err, &validation) || validation.PublicFields()[tc.field] == "" {
+						t.Fatalf("got %v, want validation for %s", err, tc.field)
+					}
+					if strings.Contains(fmt.Sprint(validation.PublicFields())+err.Error(), "PRIVATE-INPUT") {
+						t.Fatal("private input exposed")
+					}
+				}
+			})
+			t.Run("preserves arguments and original store outcomes", func(t *testing.T) {
+				for _, cause := range []error{nil, data.ErrRecordNotFound, data.ErrVersionConflict, data.ErrDuplicateRecord, context.Canceled, data.ErrDatabaseBusy} {
+					var want error
+					if cause != nil {
+						want = fmt.Errorf("PRIVATE-STORE: %w", cause)
+					}
+					called := false
+					s := NewService(storeStub{
+						update: func(ctx context.Context, g *data.Goal) (*data.Goal, error) {
+							called = true
+							if ctx != t.Context() || g.UserID != "owner" || g.GoalID != 7 || g.Version != 2 {
+								t.Fatalf("got %+v, want supplied owner/id/version/context", g)
+							}
+							return nil, want
+						},
+						delete: func(ctx context.Context, owner string, id, version int64) error {
+							called = true
+							if ctx != t.Context() || owner != "owner" || id != 7 || version != 2 {
+								t.Fatalf("got %s/%d/%d, want owner/7/2 and original context", owner, id, version)
+							}
+							return want
+						},
+					})
+					if got := call(t.Context(), s, "owner", 2); got != want || !called {
+						t.Fatalf("got %v, called %t, want original %v and store call", got, called, want)
+					}
+				}
+			})
+		})
+	}
 }
