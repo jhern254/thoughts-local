@@ -36,8 +36,13 @@ type summaryRow struct {
 	item data.ThoughtSummaryView
 }
 
-// The thought browse view uses a bounded, bidirectional window. Subject lists retain
-// their existing Bubbles filtering and navigation.
+// browseThoughtsState owns one bounded, bidirectional summary browser with two
+// presentation contexts: the Browse Thoughts view and the list inside an expanded
+// event card. A nil eventScope means the Browse Thoughts view; a non-nil scope
+// limits the same browser to one resolved event interval. rows contains only the
+// resident window, while total describes the full scope. A collapsed ongoing card
+// renders only its latest row through TimelinePreview; it does not create another
+// browser or pagination state.
 type browseThoughtsState struct {
 	eventScope           *timeline.ThoughtScope
 	timelineView         TimelineReader
@@ -83,6 +88,7 @@ func (m *Model) OpenBrowseThoughtsView(metrics Metrics) tea.Cmd {
 }
 
 func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
+	// The Browse Thoughts view owns a Create action; an event card contains records only.
 	m.browseThoughts.rows = []summaryRow{{kind: rowCreate}}
 	if m.browseThoughts.eventScope != nil {
 		m.browseThoughts.rows = nil
@@ -93,6 +99,8 @@ func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
 	m.browseThoughts.countPending, m.browseThoughts.countErr = true, nil
 	owner, scope, reader := m.owner, m.browseThoughts.eventScope, m.browseThoughts.timelineView
 	request, ctx, userID, metrics := m.countRequest, m.ctx, m.userID, m.browseThoughts.metrics
+	// Count and the first summary batch are independent reads. Pagination loads
+	// later batches without repeating this full-scope count.
 	count := func() tea.Msg {
 		var total int64
 		var err error
@@ -129,6 +137,8 @@ func (m *Model) loadThoughtsView(query data.ThoughtSummaryViewRequest, move int)
 	return func() tea.Msg {
 		var view data.ThoughtSummaryViewResult
 		var err error
+		// Event browsing goes through TimelineReader so the resolved event range stays
+		// fixed for the session. The Browse Thoughts view uses the ordinary service.
 		if scope != nil {
 			view, err = reader.BrowseThoughtsView(ctx, userID, *scope, query)
 		} else {
@@ -164,6 +174,8 @@ func (m Model) receiveBrowseThoughts(result BrowseThoughtsResult) (Model, tea.Cm
 		rows = append(rows, summaryRow{kind: rowRecord, item: item})
 	}
 	switch {
+	// A cursorless reply replaces the window. Cursor replies extend the edge
+	// requested by scrolling; storage always returns each batch newest first.
 	case result.query.Cursor == nil:
 		m.browseThoughts.index = 0
 		m.browseThoughts.rows = rows
@@ -182,7 +194,8 @@ func (m Model) receiveBrowseThoughts(result BrowseThoughtsResult) (Model, tea.Cm
 		m.browseThoughts.rows = append(m.browseThoughts.rows, rows...)
 		m.browseThoughts.moreOlder = result.view.More
 	}
-	// Evict the opposite edge, copying so old previews are no longer retained.
+	// Keep at most three database batches. Evict the edge opposite the incoming
+	// batch, copying so old preview strings are no longer retained.
 	actions := 0
 	if len(m.browseThoughts.rows) > 0 && m.browseThoughts.rows[0].kind == rowCreate {
 		actions = 1
@@ -245,6 +258,8 @@ func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 	if move == 0 {
 		return m, nil
 	}
+	// Crossing a resident edge requests the adjacent cursor batch. The deferred
+	// move is applied after that reply is merged, preserving continuous scrolling.
 	if m.browseThoughts.index+move < 0 && m.browseThoughts.moreNewer {
 		cursor := m.browseThoughts.rows[0].item.Cursor()
 		cmd := m.loadThoughtsView(data.ThoughtSummaryViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, move)
@@ -261,6 +276,8 @@ func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (s *browseThoughtsState) keepVisible() {
+	// offset is measured in rendered lines, not records. Every summary reserves
+	// summaryLines so selection remains anchored while batches enter or leave.
 	top := s.index * summaryLines
 	if s.eventScope != nil {
 		s.offset = max(0, s.offset/summaryLines*summaryLines)
@@ -330,8 +347,8 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		if len(s.rows) == 0 && !m.loading && m.err == nil {
 			visible = []string{"No thoughts yet"}
 		}
-		// Only event cards shrink to their occupied preview slots. Keep the
-		// collection viewport and its scrolling geometry unchanged.
+		// Expanded event cards shrink to their occupied preview slots. The Browse
+		// Thoughts view keeps the full viewport so its scrolling geometry does not jump.
 		if len(visible) > 0 && visible[len(visible)-1] == "" {
 			visible = visible[:len(visible)-1]
 		}
@@ -347,12 +364,13 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 	return strings.Join(visible, "\n") + fmt.Sprintf("\n%s\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest", count, strings.TrimSpace(status))
 }
 
-// SummaryPreview is shared by the collection picker and event cards.
+// SummaryPreview renders a selectable row for the Browse Thoughts view and expanded events.
 func (m Model) SummaryPreview(item data.ThoughtSummaryView, width int, selected bool) string {
 	return m.summaryPreview(item, width, selected, "Jan 2, 2006 3:04 PM MST")
 }
 
-// TimelinePreview keeps collapsed calendar cards free of timezone detail.
+// TimelinePreview renders the non-selectable latest row in a collapsed ongoing
+// event card and keeps that compact calendar presentation free of timezone detail.
 func (m Model) TimelinePreview(item data.ThoughtSummaryView, width int) string {
 	return m.summaryPreview(item, width, false, "3:04 PM")
 }
