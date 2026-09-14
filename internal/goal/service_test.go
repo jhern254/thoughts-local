@@ -265,7 +265,7 @@ func (s storeStub) DeleteGoal(ctx context.Context, owner string, id, version int
 func TestService_Update(t *testing.T) {
 	t.Run("replaces explicit settings without modifying input", func(t *testing.T) {
 		for _, active := range []bool{false, true} {
-			input := UpdateGoalInput{Name: " Reading ", TargetSeconds: 120, StartDate: " 2024-02-29 ", EndDate: " 2030-01-01 ", IsActive: active, Cadence: " monthly ", TZ: " America/Los_Angeles ", WeekStart: " sun ", DefaultCadence: " daily "}
+			input := UpdateGoalInput{Name: " Reading ", TargetSeconds: 120, StartDate: " 2024-02-29 ", EndDate: " 2030-01-01 ", IsActive: &active, Cadence: " monthly ", TZ: " America/Los_Angeles ", WeekStart: " sun ", DefaultCadence: " daily "}
 			original := input
 			now := time.Unix(1000, 999).In(time.FixedZone("offset", -7*3600))
 			start, end, cadence := "2024-02-29", "2030-01-01", "daily"
@@ -280,19 +280,54 @@ func TestService_Update(t *testing.T) {
 			}})
 			s.now = func() time.Time { calls++; return now }
 			got, err := s.Update(t.Context(), "owner", 7, 3, input)
-			if got != want || err != nil || calls != 1 || input != original {
+			if got != want || err != nil || calls != 1 || input != original || *input.IsActive != active {
 				t.Fatalf("got %v/%v, %d clock calls and input %+v, want original result/nil, one clock call and %+v", got, err, calls, input, original)
 			}
 		}
 	})
+	t.Run("omitted activation preserves the current state and caller version", func(t *testing.T) {
+		for _, active := range []bool{false, true} {
+			current := &data.Goal{GoalID: 7, Version: 3, IsActive: active}
+			snapshot := *current
+			s := NewService(storeStub{
+				get: func(ctx context.Context, owner string, id int64) (*data.Goal, error) {
+					if ctx != t.Context() || owner != "owner" || id != 7 {
+						t.Fatal("get did not receive original context and identity")
+					}
+					return current, nil
+				},
+				update: func(_ context.Context, item *data.Goal) (*data.Goal, error) {
+					if item.IsActive != active || item.Version != 2 {
+						t.Fatalf("got active=%t/version=%d, want %t/2", item.IsActive, item.Version, active)
+					}
+					return nil, data.ErrVersionConflict
+				},
+			})
+			input := UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"}
+			_, err := s.Update(t.Context(), "owner", 7, 2, input)
+			if !errors.Is(err, data.ErrVersionConflict) || input.IsActive != nil || *current != snapshot {
+				t.Fatalf("got %v and %+v, want conflict and unchanged input/current record", err, current)
+			}
+		}
+	})
+	t.Run("returns the original lookup failure without writing when activation is omitted", func(t *testing.T) {
+		want := fmt.Errorf("PRIVATE-LOOKUP: %w", data.ErrDatabaseBusy)
+		s := NewService(storeStub{get: func(context.Context, string, int64) (*data.Goal, error) { return nil, want }})
+		_, got := s.Update(t.Context(), "owner", 7, 2, UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"})
+		if got != want {
+			t.Fatalf("got %v, want original %v", got, want)
+		}
+	})
+
 	t.Run("clears empty optional settings", func(t *testing.T) {
+		active := false
 		s := NewService(storeStub{update: func(_ context.Context, g *data.Goal) (*data.Goal, error) {
 			if g.StartDate != nil || g.EndDate != nil || g.DefaultCadence != nil {
 				t.Fatalf("got %+v, want nil optional settings", g)
 			}
 			return g, nil
 		}})
-		_, err := s.Update(t.Context(), "owner", 7, 1, UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon", StartDate: " ", EndDate: " ", DefaultCadence: " "})
+		_, err := s.Update(t.Context(), "owner", 7, 1, UpdateGoalInput{Name: "Goal", IsActive: &active, TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon", StartDate: " ", EndDate: " ", DefaultCadence: " "})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -315,10 +350,11 @@ func TestService_Mutations(t *testing.T) {
 	for _, operation := range []string{"update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
 			call := func(ctx context.Context, s *Service, owner string, version int64) error {
+				active := true
 				if operation == "delete" {
 					return s.Delete(ctx, owner, 7, version)
 				}
-				_, err := s.Update(ctx, owner, 7, version, UpdateGoalInput{Name: "PRIVATE-INPUT", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"})
+				_, err := s.Update(ctx, owner, 7, version, UpdateGoalInput{Name: "PRIVATE-INPUT", IsActive: &active, TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"})
 				return err
 			}
 			t.Run("rejects missing owner and nonpositive versions before persistence", func(t *testing.T) {

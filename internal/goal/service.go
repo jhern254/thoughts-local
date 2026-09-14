@@ -35,14 +35,15 @@ type CreateGoalInput struct {
 	DefaultCadence string
 }
 
-// UpdateGoalInput replaces all editable settings. Empty optional values clear them.
+// UpdateGoalInput replaces editable settings; nil IsActive preserves activation.
+// Empty optional dates and default cadence clear those settings.
 // Cadence, TZ, and WeekStart must be explicit; creation defaults do not apply.
 type UpdateGoalInput struct {
 	Name           string
 	TargetSeconds  int64
 	StartDate      string
 	EndDate        string
-	IsActive       bool
+	IsActive       *bool
 	Cadence        string
 	TZ             string
 	WeekStart      string
@@ -119,13 +120,23 @@ func (s *Service) Update(ctx context.Context, userID string, goalID, expectedVer
 	item := &data.Goal{
 		GoalID: goalID, UserID: userID, GoalName: strings.Trim(input.Name, " "), TargetSeconds: input.TargetSeconds,
 		StartDate: optionalSetting(input.StartDate), EndDate: optionalSetting(input.EndDate),
-		IsActive: input.IsActive, Cadence: strings.Trim(input.Cadence, " "), TZ: strings.Trim(input.TZ, " "),
+		Cadence: strings.Trim(input.Cadence, " "), TZ: strings.Trim(input.TZ, " "),
 		WeekStart: strings.Trim(input.WeekStart, " "), DefaultCadence: optionalSetting(input.DefaultCadence),
 		Version: expectedVersion, UpdatedAt: s.now().UTC().Truncate(time.Second),
 	}
 	if err := validateGoal(item); err != nil {
 		return nil, err
 	}
+	if input.IsActive != nil {
+		item.IsActive = *input.IsActive
+	} else {
+		current, err := s.store.GetGoal(ctx, userID, goalID)
+		if err != nil {
+			return nil, err
+		}
+		item.IsActive = current.IsActive
+	}
+	// Keep the caller's version so a concurrent change still rejects the write.
 	return s.store.UpdateGoal(ctx, item)
 }
 

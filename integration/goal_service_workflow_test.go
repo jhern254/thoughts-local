@@ -136,7 +136,8 @@ func TestGoalMutationWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		input := goal.UpdateGoalInput{Name: " Writing ", TargetSeconds: 120, StartDate: " 2024-02-29 ", EndDate: "2030-12-31", Cadence: " monthly ", TZ: "America/Los_Angeles", WeekStart: "sun", DefaultCadence: "daily"}
+		activeSetting := false
+		input := goal.UpdateGoalInput{IsActive: &activeSetting, Name: " Writing ", TargetSeconds: 120, StartDate: " 2024-02-29 ", EndDate: "2030-12-31", Cadence: " monthly ", TZ: "America/Los_Angeles", WeekStart: "sun", DefaultCadence: "daily"}
 		updated, err := s.Update(t.Context(), "owner", original.GoalID, original.Version, input)
 		if err != nil {
 			t.Fatal(err)
@@ -175,7 +176,17 @@ func TestGoalMutationWorkflow_SQLite(t *testing.T) {
 		if !reflect.DeepEqual(inactive, []data.Goal{*updated}) {
 			t.Fatalf("inactive goals: got %+v, want %+v", inactive, updated)
 		}
-		input.IsActive = true
+		input.IsActive = nil
+		updated, err = s.Update(t.Context(), "owner", updated.GoalID, updated.Version, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if updated.IsActive {
+			t.Fatal("omitted activation: got true, want preserved false")
+		}
+		input.IsActive = &activeSetting
+
+		activeSetting = true
 		input.StartDate, input.EndDate, input.DefaultCadence = " ", "", " "
 		cleared, err := s.Update(t.Context(), "owner", updated.GoalID, updated.Version, input)
 		if err != nil {
@@ -184,6 +195,15 @@ func TestGoalMutationWorkflow_SQLite(t *testing.T) {
 		if !cleared.IsActive || cleared.StartDate != nil || cleared.EndDate != nil || cleared.DefaultCadence != nil {
 			t.Fatalf("cleared goal: got %+v, want active with nil optional settings", cleared)
 		}
+		input.IsActive = nil
+		cleared, err = s.Update(t.Context(), "owner", cleared.GoalID, cleared.Version, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !cleared.IsActive {
+			t.Fatal("omitted activation: got false, want preserved true")
+		}
+
 		active, err = s.ListActive(t.Context(), "owner")
 		if err != nil {
 			t.Fatal(err)
@@ -203,7 +223,7 @@ func TestGoalMutationWorkflow_SQLite(t *testing.T) {
 		if _, err := s.Create(t.Context(), "owner", goal.CreateGoalInput{Name: "Taken", TargetSeconds: 1}); err != nil {
 			t.Fatal(err)
 		}
-		input := goal.UpdateGoalInput{Name: "Current", TargetSeconds: 120, IsActive: true, Cadence: "daily", TZ: "UTC", WeekStart: "mon"}
+		input := goal.UpdateGoalInput{Name: "Current", TargetSeconds: 120, Cadence: "daily", TZ: "UTC", WeekStart: "mon"}
 		current, err := s.Update(t.Context(), "owner", original.GoalID, original.Version, input)
 		if err != nil {
 			t.Fatal(err)
