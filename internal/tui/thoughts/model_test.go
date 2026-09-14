@@ -2,6 +2,7 @@ package thoughts
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -274,6 +275,190 @@ func TestModel_Timestamps(t *testing.T) {
 		}
 		if got := m.selected.ObservedAt; got != observedAt {
 			t.Errorf("got observed time %v, want original UTC value %v", got, observedAt)
+		}
+	})
+}
+
+func thoughtDetail(t *testing.T, body string) Model {
+	t.Helper()
+	service := thought.NewService(testutils.NewFakeThoughtStore())
+	item, err := service.Create(t.Context(), "u", body, nil, time.Unix(1700000000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(t.Context(), "u", service, logging.Nop())
+	cmd := m.OpenUnassigned()
+	m, _ = m.Update(cmd())
+	cmd = m.getThought(item.ThoughtID)
+	m, _ = m.Update(cmd())
+	return m
+}
+
+func TestModel_ThoughtMutations(t *testing.T) {
+	t.Run("edit preserves complete text and cancel restores the original detail", func(t *testing.T) {
+		m := thoughtDetail(t, "  PRIVATE-BODY\nsecond line  ")
+		original, view, index := m.selected, m.View(), m.list.Index()
+		m, _ = m.Update(key('e'))
+		if m.screen != edit || !m.input.Focused() || m.input.Value() != original.Thought || m.input.Line() != 1 || m.input.Column() != 13 {
+			t.Fatalf("got edit state %v and cursor %d/%d, want complete focused draft at end", m.screen, m.input.Line(), m.input.Column())
+		}
+		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
+		m, _ = m.Update(key(tea.KeyEnter))
+		if !strings.HasSuffix(m.input.Value(), "q\n") {
+			t.Fatal("edit intercepted text or newline")
+		}
+		m, _ = m.Update(key(tea.KeyEscape))
+		if m.selected != original || m.View() != view || m.input.Value() != "" || m.list.Index() != index {
+			t.Fatal("cancel changed original detail or retained discarded draft")
+		}
+	})
+	t.Run("save uses the returned version and refreshes from the top", func(t *testing.T) {
+		m := thoughtDetail(t, "original")
+		m, _ = m.Update(key('e'))
+		m.input.SetValue("PRIVATE-UPDATED\ncomplete")
+		m, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+		if cmd == nil || !m.loading || !strings.Contains(m.View(), "Updating thought") {
+			t.Fatal("update did not start")
+		}
+		for _, msg := range []tea.Msg{key(tea.KeyEscape), key('d'), tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}), tea.PasteMsg{Content: "ignored"}} {
+			var extra tea.Cmd
+			m, extra = m.Update(msg)
+			if extra != nil || m.screen != edit || m.input.Value() != "PRIVATE-UPDATED\ncomplete" {
+				t.Fatal("pending update accepted input or navigation")
+			}
+		}
+		m, changed := m.Update(cmd())
+		if m.screen != detail || m.selected.Version != 2 || m.selected.Thought != "PRIVATE-UPDATED\ncomplete" || !m.stale || changed == nil {
+			t.Fatal("save lost returned thought or invalidation")
+		}
+		if _, ok := changed().(ChangedMsg); !ok {
+			t.Fatal("missing parent invalidation")
+		}
+		m, cmd = m.Update(key(tea.KeyEscape))
+		m, _ = m.Update(cmd())
+		if m.screen != browse || m.list.Index() != 0 || m.list.Items()[1].(row).item.Thought != "PRIVATE-UPDATED\ncomplete" {
+			t.Fatal("list did not refresh from top")
+		}
+	})
+	t.Run("delete requires explicit confirmation and clears detail before refreshing", func(t *testing.T) {
+		m := thoughtDetail(t, "PRIVATE-DELETED")
+		for _, cancel := range []rune{'n', tea.KeyEscape} {
+			m, _ = m.Update(key('d'))
+			m, cmd := m.Update(key(tea.KeyEnter))
+			if cmd != nil || m.screen != confirmDelete {
+				t.Fatal("Enter confirmed deletion")
+			}
+			m, _ = m.Update(key(cancel))
+			if m.screen != detail {
+				t.Fatal("cancel did not restore detail")
+			}
+		}
+		m, _ = m.Update(key('d'))
+		m, cmd := m.Update(key('y'))
+		if cmd == nil || !m.loading || !strings.Contains(m.View(), "Deleting thought") {
+			t.Fatal("delete did not start")
+		}
+		m, extra := m.Update(key('y'))
+		if extra != nil {
+			t.Fatal("duplicate delete")
+		}
+		m, next := m.Update(cmd())
+		if m.selected != nil || m.screen != browse || strings.Contains(m.View(), "PRIVATE-DELETED") {
+			t.Fatal("deleted thought still displayed")
+		}
+		// The returned batch includes parent invalidation and the list refresh.
+		m = runBrowseThoughtsCommand(m, next)
+		if len(m.list.Items()) != 1 {
+			t.Fatal("deleted thought remained in list")
+		}
+	})
+	t.Run("unsupported stored text stays readable without entering a lossy editor", func(t *testing.T) {
+		for _, body := range []string{"PRIVATE\ttab", "PRIVATE\r\nline", "PRIVATE\uFFFD", strings.Repeat("x\n", 10000) + "end"} {
+			m := thoughtDetail(t, body)
+			original := m.selected
+			m, cmd := m.Update(key('e'))
+			if m.screen != detail || m.selected != original || m.input.Value() != "" || cmd != nil || !strings.Contains(m.View(), "Input rejected") {
+				t.Fatal("unsupported text was loaded or lacked safe explanation")
+			}
+		}
+	})
+	t.Run("cancelled edit ignores its clipboard replies", func(t *testing.T) {
+		m := thoughtDetail(t, "original")
+		m, _ = m.Update(key('e'))
+		old := m.request
+		m, _ = m.Update(key(tea.KeyEscape))
+		m, _ = m.Update(key('e'))
+		m, _ = m.Update(clipboardResult{request: old, content: "PRIVATE-STALE"})
+		if m.input.Value() != "original" {
+			t.Fatal("old clipboard replaced current draft")
+		}
+	})
+}
+
+func TestModel_MutationRecovery(t *testing.T) {
+	t.Run("opening another thought clears a rejected prefill warning", func(t *testing.T) {
+		m := thoughtDetail(t, "unsupported\ttext")
+		m, _ = m.Update(key('e'))
+		item, err := m.service.Create(t.Context(), "u", "editable", nil, time.Unix(1700000001, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, _ = m.Update(key(tea.KeyEscape))
+		cmd := m.getThought(item.ThoughtID)
+		m, _ = m.Update(cmd())
+		if m.inputWarning != "" {
+			t.Fatalf("got warning %q, want none on another detail", m.inputWarning)
+		}
+	})
+	t.Run("conflict keeps the draft until cancel and reload obtains the current version", func(t *testing.T) {
+		m := thoughtDetail(t, "original")
+		id := m.selected.ThoughtID
+		if _, err := m.service.Update(t.Context(), "u", id, "other edit", 1); err != nil {
+			t.Fatal(err)
+		}
+		m, _ = m.Update(key('e'))
+		m.input.SetValue("my draft")
+		m, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+		m, _ = m.Update(cmd())
+		if m.input.Value() != "my draft" || m.selected.Version != 1 || !m.stale {
+			t.Fatal("conflict discarded draft or advanced stale version")
+		}
+		m, _ = m.Update(key(tea.KeyEscape))
+		m, cmd = m.Update(key('r'))
+		m, _ = m.Update(cmd())
+		if m.selected.Version != 2 || m.selected.Thought != "other edit" {
+			t.Fatal("reload did not obtain current revision")
+		}
+		m, _ = m.Update(key('e'))
+		m.input.SetValue("resolved edit")
+		m, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+		m, _ = m.Update(cmd())
+		if m.err != nil || m.selected.Version != 3 {
+			t.Fatal("retry did not save reloaded version")
+		}
+	})
+	t.Run("stale mutation result cannot replace a later session", func(t *testing.T) {
+		m := thoughtDetail(t, "original")
+		m, _ = m.Update(key('e'))
+		m, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+		result := cmd()
+		m.Reset()
+		request := m.request
+		m, next := m.Update(result)
+		if m.request != request || m.selected != nil || next != nil || m.screen != browse {
+			t.Fatal("old result changed later session")
+		}
+	})
+	t.Run("failed refresh does not restore a deleted list entry", func(t *testing.T) {
+		m := thoughtDetail(t, "PRIVATE-DELETED")
+		m, _ = m.Update(key('d'))
+		m, cmd := m.Update(key('y'))
+		result := cmd()
+		m.service = failingService{err: fmt.Errorf("PRIVATE-REFRESH")}
+		m, next := m.Update(result)
+		m = runBrowseThoughtsCommand(m, next)
+		if m.err == nil || m.selected != nil || len(m.list.Items()) != 1 || strings.Contains(m.View(), "PRIVATE") {
+			t.Fatal("refresh failure exposed deleted content or raw error")
 		}
 	})
 }

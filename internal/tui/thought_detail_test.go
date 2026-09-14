@@ -94,3 +94,87 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 		})
 	}
 }
+
+func TestModel_ThoughtDetailMutations(t *testing.T) {
+	for _, route := range []string{"subject", "Misc", "All Thoughts"} {
+		t.Run(route+" keeps the shared heading and owns edit/delete keys", func(t *testing.T) {
+			subjects := subject.NewService(testutils.NewFakeSubjectStore())
+			parent, err := subjects.Create(t.Context(), "u", "Writing")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var subjectID *int64
+			var subjectName *string
+			heading := "Misc"
+			if route != "Misc" {
+				subjectID = &parent.SubjectID
+				subjectName = &parent.SubjectName
+				heading = "Writing"
+			}
+			service := thought.NewService(testutils.NewFakeThoughtStore())
+			item, err := service.Create(t.Context(), "u", "original", subjectID, time.Unix(1700000000, 0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := NewModel(t.Context(), &data.User{UserID: "u"}, subjects, labeledThoughtService{Service: service, name: subjectName}, &metricsStub{}, logging.Nop())
+			if route == "All Thoughts" {
+				m.entityList.Select(1)
+				m = runModelCommand(t, m, enterKey())
+			} else {
+				m = openSubjects(t, m)
+				if route == "subject" {
+					m = rootOpenThoughts(t, m)
+				} else {
+					m.subjects.list.Select(1)
+					m = runModelCommand(t, m, enterKey())
+				}
+			}
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+			m = runModelCommand(t, m, enterKey())
+			origin := m.screen
+			m, _ = rootUpdate(m, runeKey('e'))
+			prefix := m.subjects.list.Styles.Title.Render(heading) + "\n\n"
+			if !strings.HasPrefix(m.View().Content, prefix) || !strings.Contains(m.View().Content, "Edit thought") {
+				t.Fatalf("got editor %q, want shared heading %q", m.View().Content, prefix)
+			}
+			m, _ = rootUpdate(m, tea.PasteMsg{Content: " edited"})
+			m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+			_, quit := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+			if quit == nil {
+				t.Fatal("pending edit blocked Ctrl+C")
+			}
+			if _, ok := quit().(tea.QuitMsg); !ok {
+				t.Fatal("Ctrl+C did not quit")
+			}
+			m, changed := rootUpdate(m, cmd())
+			m = applyCommand(t, m, changed)
+			got, err := service.Get(t.Context(), "u", item.ThoughtID)
+			if err != nil || got.Thought != "original edited" || got.Version != 2 {
+				t.Fatalf("got edited thought %v/%v, want saved body and version 2", got, err)
+			}
+			if !m.subjects.listStale || m.screen != origin {
+				t.Fatal("update lost origin or count invalidation")
+			}
+			m = runModelCommand(t, m, escapeKey())
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+			m = runModelCommand(t, m, enterKey())
+			m, _ = rootUpdate(m, runeKey('d'))
+			if !strings.HasPrefix(m.View().Content, prefix) || !strings.Contains(m.View().Content, "Delete thought") {
+				t.Fatal("thought delete opened wrong presentation")
+			}
+			m, cmd = rootUpdate(m, runeKey('y'))
+			_, quit = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+			if quit == nil {
+				t.Fatal("pending delete blocked Ctrl+C")
+			}
+			m, next := rootUpdate(m, cmd())
+			m = applyCommand(t, m, next)
+			if !m.thoughts.Browsing() || m.screen != origin || strings.Contains(m.View().Content, "original edited") {
+				t.Fatal("deletion did not return to refreshed origin")
+			}
+			if _, err := subjects.Get(t.Context(), "u", parent.SubjectID); err != nil {
+				t.Fatalf("thought delete changed subject: %v", err)
+			}
+		})
+	}
+}

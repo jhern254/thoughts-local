@@ -13,6 +13,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
 func TestClassify(t *testing.T) {
@@ -23,6 +24,13 @@ func TestClassify(t *testing.T) {
 		category logging.FailureCategory
 		emit     bool
 	}{
+		{"ignores thought update validation", logging.ThoughtUpdate, &thought.ValidationError{}, logging.UnexpectedFailure, false},
+		{"ignores thought update conflict", logging.ThoughtUpdate, data.ErrVersionConflict, logging.UnexpectedFailure, false},
+		{"ignores thought delete conflict", logging.ThoughtDelete, data.ErrVersionConflict, logging.UnexpectedFailure, false},
+		{"ignores thought delete not found", logging.ThoughtDelete, data.ErrRecordNotFound, logging.UnexpectedFailure, false},
+		{"retains thought delete validation", logging.ThoughtDelete, &thought.ValidationError{}, logging.UnexpectedFailure, true},
+		{"retains busy thought update", logging.ThoughtUpdate, data.ErrDatabaseBusy, logging.DatabaseBusy, true},
+		{"retains combined thought conflict", logging.ThoughtDelete, errors.Join(data.ErrVersionConflict, errors.New("private")), logging.UnexpectedFailure, true},
 		{"ignores update validation", logging.SubjectUpdate, &subject.ValidationError{}, logging.UnexpectedFailure, false},
 		{"ignores duplicate update", logging.SubjectUpdate, data.ErrDuplicateRecord, logging.UnexpectedFailure, false},
 		{"ignores missing update", logging.SubjectUpdate, data.ErrRecordNotFound, logging.UnexpectedFailure, false},
