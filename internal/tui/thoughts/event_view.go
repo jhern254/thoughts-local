@@ -11,8 +11,8 @@ import (
 // Fixed presentation label until selectable event-thought ordering is implemented.
 const eventThoughtOrderLabel = "Newest first"
 
-// TimelineReader supplies a resolved event interval; the thought picker owns
-// the same summary window, selection and detail as the collection screen.
+// TimelineReader supplies a resolved event interval; the thought picker owns the
+// same summary window, selection, and detail behavior as the Browse Thoughts view.
 type TimelineReader interface {
 	BrowseThoughtsView(context.Context, string, timeline.ThoughtScope, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	CountThoughts(context.Context, string, timeline.ThoughtScope) (int64, error)
