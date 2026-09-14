@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -122,6 +123,159 @@ func TestGoalServiceWorkflow_SQLite(t *testing.T) {
 		}
 		if got, want := count, 0; got != want {
 			t.Fatalf("inserted goals: got %d, want %d", got, want)
+		}
+	})
+}
+
+func TestGoalMutationWorkflow_SQLite(t *testing.T) {
+	t.Run("updates settings and activation while preserving creation metadata", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "owner")
+		s := goal.NewService(data.NewSQLiteGoalStore(db))
+		original, err := s.Create(t.Context(), "owner", goal.CreateGoalInput{Name: "Reading", TargetSeconds: 60})
+		if err != nil {
+			t.Fatal(err)
+		}
+		input := goal.UpdateGoalInput{Name: " Writing ", TargetSeconds: 120, StartDate: " 2024-02-29 ", EndDate: "2030-12-31", Cadence: " monthly ", TZ: "America/Los_Angeles", WeekStart: "sun", DefaultCadence: "daily"}
+		updated, err := s.Update(t.Context(), "owner", original.GoalID, original.Version, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start, end, cadence := "2024-02-29", "2030-12-31", "daily"
+		want := *original
+		want.GoalName, want.TargetSeconds, want.IsActive = "Writing", 120, false
+		want.StartDate, want.EndDate, want.DefaultCadence = &start, &end, &cadence
+		want.Cadence, want.TZ, want.WeekStart = "monthly", "America/Los_Angeles", "sun"
+		want.Version++
+		want.UpdatedAt = updated.UpdatedAt
+		if !reflect.DeepEqual(*updated, want) {
+			t.Fatalf("updated goal: got %+v, want %+v", updated, want)
+		}
+		if updated.UpdatedAt.Before(original.UpdatedAt) || updated.UpdatedAt.Location() != time.UTC || updated.UpdatedAt.Nanosecond() != 0 {
+			t.Fatalf("updated time: got %v, want nondecreasing UTC seconds", updated.UpdatedAt)
+		}
+		got, err := s.Get(t.Context(), "owner", original.GoalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, updated) {
+			t.Fatalf("persisted goal: got %+v, want %+v", got, updated)
+		}
+		active, err := s.ListActive(t.Context(), "owner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(active) != 0 {
+			t.Fatalf("active goals: got %+v, want empty", active)
+		}
+		inactive, err := s.ListInactive(t.Context(), "owner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(inactive, []data.Goal{*updated}) {
+			t.Fatalf("inactive goals: got %+v, want %+v", inactive, updated)
+		}
+		input.IsActive = true
+		input.StartDate, input.EndDate, input.DefaultCadence = " ", "", " "
+		cleared, err := s.Update(t.Context(), "owner", updated.GoalID, updated.Version, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !cleared.IsActive || cleared.StartDate != nil || cleared.EndDate != nil || cleared.DefaultCadence != nil {
+			t.Fatalf("cleared goal: got %+v, want active with nil optional settings", cleared)
+		}
+		active, err = s.ListActive(t.Context(), "owner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(active, []data.Goal{*cleared}) {
+			t.Fatalf("reactivated list: got %+v, want %+v", active, cleared)
+		}
+	})
+	t.Run("rejects stale inaccessible and duplicate mutations without changing the goal", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "owner", "other")
+		s := goal.NewService(data.NewSQLiteGoalStore(db))
+		original, err := s.Create(t.Context(), "owner", goal.CreateGoalInput{Name: "Reading", TargetSeconds: 60})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Create(t.Context(), "owner", goal.CreateGoalInput{Name: "Taken", TargetSeconds: 1}); err != nil {
+			t.Fatal(err)
+		}
+		input := goal.UpdateGoalInput{Name: "Current", TargetSeconds: 120, IsActive: true, Cadence: "daily", TZ: "UTC", WeekStart: "mon"}
+		current, err := s.Update(t.Context(), "owner", original.GoalID, original.Version, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			owner   string
+			version int64
+			want    error
+		}{
+			{"owner", original.Version, data.ErrVersionConflict}, {"other", current.Version, data.ErrRecordNotFound},
+		} {
+			if _, err := s.Update(t.Context(), tc.owner, current.GoalID, tc.version, input); !errors.Is(err, tc.want) {
+				t.Fatalf("rejected update: got %v, want %v", err, tc.want)
+			}
+			if err := s.Delete(t.Context(), tc.owner, current.GoalID, tc.version); !errors.Is(err, tc.want) {
+				t.Fatalf("rejected delete: got %v, want %v", err, tc.want)
+			}
+		}
+		input.Name = "Taken"
+		if _, err := s.Update(t.Context(), "owner", current.GoalID, current.Version, input); !errors.Is(err, data.ErrDuplicateRecord) {
+			t.Fatalf("duplicate update: got %v, want ErrDuplicateRecord", err)
+		}
+		input.Name, input.StartDate = "PRIVATE-INPUT", "2026-19-39"
+		_, err = s.Update(t.Context(), "owner", current.GoalID, current.Version, input)
+		var validation *goal.ValidationError
+		if !errors.As(err, &validation) {
+			t.Fatalf("invalid date update: got %v, want ValidationError", err)
+		}
+		got, err := s.Get(t.Context(), "owner", current.GoalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, current) {
+			t.Fatalf("goal after rejected writes: got %+v, want %+v", got, current)
+		}
+	})
+	t.Run("soft deletes and hides a goal while retaining the record", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "owner")
+		s := goal.NewService(data.NewSQLiteGoalStore(db))
+		original, err := s.Create(t.Context(), "owner", goal.CreateGoalInput{Name: "Reading", TargetSeconds: 60})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Delete(t.Context(), "owner", original.GoalID, original.Version); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Get(t.Context(), "owner", original.GoalID); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatalf("get deleted goal: got %v, want ErrRecordNotFound", err)
+		}
+		for _, list := range []struct {
+			name string
+			call func(context.Context, string) ([]data.Goal, error)
+		}{{"all", s.List}, {"active", s.ListActive}, {"inactive", s.ListInactive}} {
+			items, err := list.call(t.Context(), "owner")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if items == nil || len(items) != 0 {
+				t.Fatalf("%s goals: got %+v, want non-nil empty slice", list.name, items)
+			}
+		}
+		if err := s.Delete(t.Context(), "owner", original.GoalID, original.Version); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatalf("repeated delete: got %v, want ErrRecordNotFound", err)
+		}
+		var retained int
+		err = db.QueryRowContext(t.Context(), `SELECT count(*) FROM goals WHERE goal_id=? AND goal_name=? AND goal_is_active=1 AND deleted_at IS NOT NULL AND version=?`, original.GoalID, original.GoalName, original.Version+1).Scan(&retained)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := retained, 1; got != want {
+			t.Fatalf("retained goal: got %d, want %d", got, want)
 		}
 	})
 }

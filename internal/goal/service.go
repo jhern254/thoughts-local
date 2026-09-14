@@ -13,6 +13,8 @@ import (
 )
 
 type Store interface {
+	UpdateGoal(context.Context, *data.Goal) (*data.Goal, error)
+	DeleteGoal(context.Context, string, int64, int64) error
 	CreateGoal(context.Context, *data.Goal) (*data.Goal, error)
 	GetGoal(context.Context, string, int64) (*data.Goal, error)
 	ListGoals(context.Context, string) ([]data.Goal, error)
@@ -27,6 +29,20 @@ type CreateGoalInput struct {
 	StartDate      string
 	EndDate        string
 	IsActive       *bool
+	Cadence        string
+	TZ             string
+	WeekStart      string
+	DefaultCadence string
+}
+
+// UpdateGoalInput replaces all editable settings. Empty optional values clear them.
+// Cadence, TZ, and WeekStart must be explicit; creation defaults do not apply.
+type UpdateGoalInput struct {
+	Name           string
+	TargetSeconds  int64
+	StartDate      string
+	EndDate        string
+	IsActive       bool
 	Cadence        string
 	TZ             string
 	WeekStart      string
@@ -98,6 +114,32 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateGoalInp
 	return s.store.CreateGoal(ctx, item)
 }
 
+// Update replaces settings using the caller's version for optimistic concurrency.
+func (s *Service) Update(ctx context.Context, userID string, goalID, expectedVersion int64, input UpdateGoalInput) (*data.Goal, error) {
+	item := &data.Goal{
+		GoalID: goalID, UserID: userID, GoalName: strings.Trim(input.Name, " "), TargetSeconds: input.TargetSeconds,
+		StartDate: optionalSetting(input.StartDate), EndDate: optionalSetting(input.EndDate),
+		IsActive: input.IsActive, Cadence: strings.Trim(input.Cadence, " "), TZ: strings.Trim(input.TZ, " "),
+		WeekStart: strings.Trim(input.WeekStart, " "), DefaultCadence: optionalSetting(input.DefaultCadence),
+		Version: expectedVersion, UpdatedAt: s.now().UTC().Truncate(time.Second),
+	}
+	if err := validateGoal(item); err != nil {
+		return nil, err
+	}
+	return s.store.UpdateGoal(ctx, item)
+}
+
+// Delete hides the goal while retaining its record, activation state, and history.
+func (s *Service) Delete(ctx context.Context, userID string, goalID, expectedVersion int64) error {
+	v := validator.NewValidator()
+	v.Check(userID != "", "user_id", "must be provided")
+	v.Check(expectedVersion > 0, "version", "must be greater than zero")
+	if !v.Valid() {
+		return &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
+	}
+	return s.store.DeleteGoal(ctx, userID, goalID, expectedVersion)
+}
+
 func optionalSetting(value string) *string {
 	value = strings.Trim(value, " ")
 	if value == "" {
@@ -109,6 +151,7 @@ func optionalSetting(value string) *string {
 func validateGoal(item *data.Goal) error {
 	v := validator.NewValidator()
 	v.Check(item.UserID != "", "user_id", "must be provided")
+	v.Check(item.Version > 0, "version", "must be greater than zero")
 	// SQLite length(TEXT) counts code points up to the first NUL.
 	name, _, _ := strings.Cut(item.GoalName, "\x00")
 	length := utf8.RuneCountInString(name)
@@ -121,7 +164,7 @@ func validateGoal(item *data.Goal) error {
 	v.Check(validator.In(item.WeekStart, "mon", "tue", "wed", "thu", "fri", "sat", "sun"), "week_start", "must be mon, tue, wed, thu, fri, sat, or sun")
 	v.Check(utf8.RuneCountInString(item.TZ) <= 64, "tz", "must not be more than 64 characters long")
 	_, zoneErr := time.LoadLocation(item.TZ)
-	v.Check(item.TZ != "Local" && zoneErr == nil, "tz", "must be UTC or a recognized named timezone")
+	v.Check(item.TZ != "" && item.TZ != "Local" && zoneErr == nil, "tz", "must be UTC or a recognized named timezone")
 	startValid, endValid := validDate(item.StartDate), validDate(item.EndDate)
 	v.Check(startValid, "goal_start_date", "must be a valid calendar date in YYYY-MM-DD format")
 	v.Check(endValid, "goal_end_date", "must be a valid calendar date in YYYY-MM-DD format")
