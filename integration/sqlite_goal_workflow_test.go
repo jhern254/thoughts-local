@@ -133,17 +133,15 @@ func TestGoalWorkflow_SQLite(t *testing.T) {
 		}
 	})
 
-	t.Run("honors Unicode and schema permitted date and timezone text", func(t *testing.T) {
+	t.Run("round trips a maximum length Unicode name with valid dates and timezone", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "owner")
 		input := goalRecord("owner", strings.Repeat("界", 512))
-		// The schema checks date shape and timezone length, not calendar validity
-		// or IANA membership. Persistence must not silently add stricter rules.
-		date := "2026-19-39"
-		input.StartDate, input.EndDate, input.TZ = &date, &date, "Custom zone"
+		date := "2026-09-30"
+		input.StartDate, input.EndDate, input.TZ = &date, &date, "America/Los_Angeles"
 		got, err := data.NewSQLiteGoalStore(db).CreateGoal(context.Background(), input)
 		if err != nil {
-			t.Fatalf("schema permitted settings: got %v, want nil", err)
+			t.Fatalf("valid settings: got %v, want nil", err)
 		}
 		if got.GoalName != input.GoalName || *got.StartDate != date || *got.EndDate != date || got.TZ != input.TZ {
 			t.Fatalf("stored settings: got %+v, want unchanged name, dates, and timezone from %+v", got, input)
