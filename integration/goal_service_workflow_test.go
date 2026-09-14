@@ -27,7 +27,7 @@ func TestGoalServiceWorkflow_SQLite(t *testing.T) {
 			}
 		})
 		s, owner := runtime.Goals(), runtime.LocalUser().UserID
-		active, err := s.Create(t.Context(), owner, goal.CreateInput{Name: "  Reading  ", TargetSeconds: 600})
+		active, err := s.Create(t.Context(), owner, goal.CreateGoalInput{Name: "  Reading  ", TargetSeconds: 600})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -38,7 +38,7 @@ func TestGoalServiceWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("timestamps: got %v/%v, want equal nonzero UTC seconds", active.CreatedAt, active.UpdatedAt)
 		}
 		isActive := false
-		inactive, err := s.Create(t.Context(), owner, goal.CreateInput{Name: "Writing", TargetSeconds: 60, IsActive: &isActive,
+		inactive, err := s.Create(t.Context(), owner, goal.CreateGoalInput{Name: "Writing", TargetSeconds: 60, IsActive: &isActive,
 			StartDate: "2024-02-29", EndDate: "2099-12-31", Cadence: "daily", TZ: "America/Los_Angeles", WeekStart: "sun", DefaultCadence: "monthly"})
 		if err != nil {
 			t.Fatal(err)
@@ -76,7 +76,7 @@ func TestGoalServiceWorkflow_SQLite(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "owner", "other")
 		s := goal.NewService(data.NewSQLiteGoalStore(db))
-		input := goal.CreateInput{Name: "Goal", TargetSeconds: 1}
+		input := goal.CreateGoalInput{Name: "Goal", TargetSeconds: 1}
 		item, err := s.Create(t.Context(), "owner", input)
 		if err != nil {
 			t.Fatal(err)
@@ -105,7 +105,7 @@ func TestGoalServiceWorkflow_SQLite(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "owner")
 		s := goal.NewService(data.NewSQLiteGoalStore(db))
-		_, err := s.Create(t.Context(), "owner", goal.CreateInput{Name: "PRIVATE-INPUT", TargetSeconds: 1, StartDate: "2026-19-39"})
+		_, err := s.Create(t.Context(), "owner", goal.CreateGoalInput{Name: "PRIVATE-INPUT", TargetSeconds: 1, StartDate: "2026-19-39"})
 		var validation *goal.ValidationError
 		if !errors.As(err, &validation) {
 			t.Fatalf("invalid date: got %v, want ValidationError", err)

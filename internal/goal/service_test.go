@@ -22,28 +22,28 @@ type storeStub struct {
 func TestService_Validation(t *testing.T) {
 	for _, tc := range []struct {
 		name, field string
-		change      func(*CreateInput)
+		change      func(*CreateGoalInput)
 	}{
-		{"blank name", "goal_name", func(i *CreateInput) { i.Name = "   " }},
-		{"long Unicode name", "goal_name", func(i *CreateInput) { i.Name = strings.Repeat("界", 513) }},
-		{"zero target", "target_seconds", func(i *CreateInput) { i.TargetSeconds = 0 }},
-		{"negative target", "target_seconds", func(i *CreateInput) { i.TargetSeconds = -1 }},
-		{"unknown cadence", "cadence", func(i *CreateInput) { i.Cadence = "PRIVATE-INPUT" }},
-		{"unknown default cadence", "default_cadence", func(i *CreateInput) { i.DefaultCadence = "PRIVATE-INPUT" }},
-		{"unknown week start", "week_start", func(i *CreateInput) { i.WeekStart = "PRIVATE-INPUT" }},
-		{"unknown timezone", "tz", func(i *CreateInput) { i.TZ = "PRIVATE-INPUT" }},
-		{"machine dependent timezone", "tz", func(i *CreateInput) { i.TZ = "Local" }},
-		{"overlong timezone", "tz", func(i *CreateInput) { i.TZ = strings.Repeat("x", 65) }},
-		{"impossible month and day", "goal_start_date", func(i *CreateInput) { i.StartDate = "2026-19-39" }},
-		{"non leap February", "goal_start_date", func(i *CreateInput) { i.StartDate = "2026-02-29" }},
-		{"impossible end day", "goal_end_date", func(i *CreateInput) { i.EndDate = "2026-04-31" }},
-		{"malformed start", "goal_start_date", func(i *CreateInput) { i.StartDate = "PRIVATE-INPUT" }},
-		{"malformed end", "goal_end_date", func(i *CreateInput) { i.EndDate = "PRIVATE-INPUT" }},
-		{"timestamp instead of date", "goal_start_date", func(i *CreateInput) { i.StartDate = "2026-09-01T00:00:00Z" }},
-		{"reversed dates", "goal_end_date", func(i *CreateInput) { i.StartDate, i.EndDate = "2026-09-02", "2026-09-01" }},
+		{"blank name", "goal_name", func(i *CreateGoalInput) { i.Name = "   " }},
+		{"long Unicode name", "goal_name", func(i *CreateGoalInput) { i.Name = strings.Repeat("界", 513) }},
+		{"zero target", "target_seconds", func(i *CreateGoalInput) { i.TargetSeconds = 0 }},
+		{"negative target", "target_seconds", func(i *CreateGoalInput) { i.TargetSeconds = -1 }},
+		{"unknown cadence", "cadence", func(i *CreateGoalInput) { i.Cadence = "PRIVATE-INPUT" }},
+		{"unknown default cadence", "default_cadence", func(i *CreateGoalInput) { i.DefaultCadence = "PRIVATE-INPUT" }},
+		{"unknown week start", "week_start", func(i *CreateGoalInput) { i.WeekStart = "PRIVATE-INPUT" }},
+		{"unknown timezone", "tz", func(i *CreateGoalInput) { i.TZ = "PRIVATE-INPUT" }},
+		{"machine dependent timezone", "tz", func(i *CreateGoalInput) { i.TZ = "Local" }},
+		{"overlong timezone", "tz", func(i *CreateGoalInput) { i.TZ = strings.Repeat("x", 65) }},
+		{"impossible month and day", "goal_start_date", func(i *CreateGoalInput) { i.StartDate = "2026-19-39" }},
+		{"non leap February", "goal_start_date", func(i *CreateGoalInput) { i.StartDate = "2026-02-29" }},
+		{"impossible end day", "goal_end_date", func(i *CreateGoalInput) { i.EndDate = "2026-04-31" }},
+		{"malformed start", "goal_start_date", func(i *CreateGoalInput) { i.StartDate = "PRIVATE-INPUT" }},
+		{"malformed end", "goal_end_date", func(i *CreateGoalInput) { i.EndDate = "PRIVATE-INPUT" }},
+		{"timestamp instead of date", "goal_start_date", func(i *CreateGoalInput) { i.StartDate = "2026-09-01T00:00:00Z" }},
+		{"reversed dates", "goal_end_date", func(i *CreateGoalInput) { i.StartDate, i.EndDate = "2026-09-02", "2026-09-01" }},
 	} {
 		t.Run("rejects "+tc.name+" before persistence with safe feedback", func(t *testing.T) {
-			input := CreateInput{Name: "PRIVATE-INPUT", TargetSeconds: 60}
+			input := CreateGoalInput{Name: "PRIVATE-INPUT", TargetSeconds: 60}
 			tc.change(&input)
 			s := NewService(storeStub{create: func(context.Context, *data.Goal) (*data.Goal, error) {
 				t.Fatal("unexpected persistence call")
@@ -68,14 +68,14 @@ func TestService_Validation(t *testing.T) {
 	}
 	t.Run("requires an owner before persistence", func(t *testing.T) {
 		s := NewService(storeStub{})
-		_, err := s.Create(t.Context(), "", CreateInput{Name: "Goal", TargetSeconds: 60})
+		_, err := s.Create(t.Context(), "", CreateGoalInput{Name: "Goal", TargetSeconds: 60})
 		var validation *ValidationError
 		if !errors.As(err, &validation) || validation.PublicFields()["user_id"] == "" {
 			t.Fatalf("got %v, want owner validation", err)
 		}
 	})
 	t.Run("protects public guidance from mutable validation fields", func(t *testing.T) {
-		_, err := NewService(storeStub{}).Create(t.Context(), "owner", CreateInput{})
+		_, err := NewService(storeStub{}).Create(t.Context(), "owner", CreateGoalInput{})
 		var validation *ValidationError
 		if !errors.As(fmt.Errorf("PRIVATE-WRAPPER: %w", err), &validation) {
 			t.Fatalf("got %v, want wrapped validation identity", err)
@@ -98,7 +98,7 @@ func TestService_Validation(t *testing.T) {
 	} {
 		t.Run("accepts "+tc.name, func(t *testing.T) {
 			s := NewService(storeStub{create: func(_ context.Context, g *data.Goal) (*data.Goal, error) { return g, nil }})
-			g, err := s.Create(t.Context(), "owner", CreateInput{Name: strings.Repeat("界", 512), TargetSeconds: 1, StartDate: tc.start, EndDate: tc.end})
+			g, err := s.Create(t.Context(), "owner", CreateGoalInput{Name: strings.Repeat("界", 512), TargetSeconds: 1, StartDate: tc.start, EndDate: tc.end})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -110,13 +110,13 @@ func TestService_Validation(t *testing.T) {
 	t.Run("accepts every schema cadence and week start", func(t *testing.T) {
 		s := NewService(storeStub{create: func(_ context.Context, g *data.Goal) (*data.Goal, error) { return g, nil }})
 		for _, cadence := range []string{"daily", "weekly", "monthly", "mtd", "quarterly", "yearly"} {
-			g, err := s.Create(t.Context(), "owner", CreateInput{Name: "Goal", TargetSeconds: 1, Cadence: cadence, DefaultCadence: cadence})
+			g, err := s.Create(t.Context(), "owner", CreateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: cadence, DefaultCadence: cadence})
 			if err != nil || g.Cadence != cadence || g.DefaultCadence == nil || *g.DefaultCadence != cadence {
 				t.Fatalf("got %v, %v, want cadence %q", g, err, cadence)
 			}
 		}
 		for _, day := range []string{"mon", "tue", "wed", "thu", "fri", "sat", "sun"} {
-			g, err := s.Create(t.Context(), "owner", CreateInput{Name: "Goal", TargetSeconds: 1, WeekStart: day})
+			g, err := s.Create(t.Context(), "owner", CreateGoalInput{Name: "Goal", TargetSeconds: 1, WeekStart: day})
 			if err != nil || g.WeekStart != day {
 				t.Fatalf("got %v, %v, want week start %q", g, err, day)
 			}
@@ -200,7 +200,7 @@ func (s storeStub) ListInactiveGoals(ctx context.Context, u string) ([]data.Goal
 
 func TestService_Create(t *testing.T) {
 	t.Run("defaults settings and timestamps without changing input", func(t *testing.T) {
-		input := CreateInput{Name: "  Reading  ", TargetSeconds: 600}
+		input := CreateGoalInput{Name: "  Reading  ", TargetSeconds: 600}
 		original := input
 		now := time.Unix(1000, 999).In(time.FixedZone("offset", -7*3600))
 		want := &data.Goal{GoalID: 7}
@@ -222,7 +222,7 @@ func TestService_Create(t *testing.T) {
 	})
 	t.Run("preserves explicit settings and inactive creation", func(t *testing.T) {
 		active := false
-		input := CreateInput{Name: " Goal ", TargetSeconds: 60, IsActive: &active,
+		input := CreateGoalInput{Name: " Goal ", TargetSeconds: 60, IsActive: &active,
 			StartDate: " 2024-02-29 ", EndDate: " 2030-12-31 ", Cadence: " daily ",
 			TZ: " America/Los_Angeles ", WeekStart: " sun ", DefaultCadence: " monthly "}
 		snapshot := input
@@ -242,7 +242,7 @@ func TestService_Create(t *testing.T) {
 	t.Run("returns the original store failure", func(t *testing.T) {
 		want := errors.Join(data.ErrDuplicateRecord, errors.New("PRIVATE-STORE"))
 		s := NewService(storeStub{create: func(context.Context, *data.Goal) (*data.Goal, error) { return nil, want }})
-		if _, got := s.Create(t.Context(), "owner", CreateInput{Name: "Goal", TargetSeconds: 1}); got != want {
+		if _, got := s.Create(t.Context(), "owner", CreateGoalInput{Name: "Goal", TargetSeconds: 1}); got != want {
 			t.Fatalf("got %v, want original %v", got, want)
 		}
 	})

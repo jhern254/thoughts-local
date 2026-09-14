@@ -20,8 +20,8 @@ type Store interface {
 	ListInactiveGoals(context.Context, string) ([]data.Goal, error)
 }
 
-// CreateInput accepts optional settings; a nil IsActive selects the active default.
-type CreateInput struct {
+// CreateGoalInput accepts optional settings; a nil IsActive selects the active default.
+type CreateGoalInput struct {
 	Name           string
 	TargetSeconds  int64
 	StartDate      string
@@ -71,7 +71,7 @@ func (s *Service) ListInactive(ctx context.Context, userID string) ([]data.Goal,
 	return s.store.ListInactiveGoals(ctx, userID)
 }
 
-func (s *Service) Create(ctx context.Context, userID string, input CreateInput) (*data.Goal, error) {
+func (s *Service) Create(ctx context.Context, userID string, input CreateGoalInput) (*data.Goal, error) {
 	now := s.now().UTC().Truncate(time.Second)
 	item := &data.Goal{
 		UserID: userID, GoalName: strings.Trim(input.Name, " "), TargetSeconds: input.TargetSeconds,
