@@ -329,12 +329,12 @@ func TestModel_Layout(t *testing.T) {
 		m, _, _ := fixture(t)
 		oldDay := m.day
 		m, cmd := m.Update(Tick{m.owner, m.session, m.day.AddDate(0, 0, 1).Add(time.Minute)})
-		if !m.day.Equal(oldDay) || cmd == nil || !m.loading {
+		if !m.day.Equal(oldDay) || cmd == nil || !m.load.eventsPending {
 			t.Fatal("midnight did not retain the displayed day while loading")
 		}
-		request := m.request
+		request := m.load.generation
 		m, _ = m.Update(Tick{m.owner, m.session, m.clock.Add(time.Minute)})
-		if m.request != request {
+		if m.load.generation != request {
 			t.Fatal("another tick restarted the pending day load")
 		}
 		m = execute(t, m, cmd().(tea.BatchMsg)[0])

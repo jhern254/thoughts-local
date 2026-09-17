@@ -268,18 +268,18 @@ func BenchmarkTimelineBurst(b *testing.B) {
 			if reply == nil {
 				continue // Bubble Tea also ignores nil command results.
 			}
-			if listed, ok := reply.(Listed); ok && listed.request != m.request && listed.err == nil {
+			if listed, ok := reply.(Listed); ok && listed.request != m.load.generation && listed.err == nil {
 				obsolete++
 			}
 			m, cmd = m.Update(reply)
 			m = execute(b, m, cmd)
 			_ = m.View()
-			if finalKey != (time.Time{}) && !m.loading && !m.countPending && !m.latestPending {
+			if finalKey != (time.Time{}) && !m.load.eventsPending && !m.load.countsPending && !m.load.latestPending {
 				latency += time.Since(finalKey)
 				finalKey = time.Time{}
 			}
 		}
-		if !m.day.Equal(day) || m.loading || m.err != nil || m.countErr != nil || m.latestErr != nil {
+		if !m.day.Equal(day) || m.load.eventsPending || m.err != nil || m.load.countErr != nil || m.load.latestErr != nil {
 			b.Fatal("burst did not settle on the correct day without errors")
 		}
 	}

@@ -333,7 +333,7 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 		opened := cmd()
 		m.Close()
 		m.active = true
-		m.request++
+		m.load.generation++
 		m.expansion++
 		before := m.View()
 		m, _ = m.Update(old)
@@ -358,7 +358,7 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 		m.logger = logger
 		m = execute(t, m, m.loadDay(m.day))
 		view := m.View()
-		if !strings.Contains(view, "Thought count unavailable") || strings.Contains(view, "PRIVATE_MARKER") || strings.Contains(logs.String(), "PRIVATE_MARKER") || !strings.Contains(logs.String(), "database_busy") || !errors.Is(m.countErr, data.ErrDatabaseBusy) {
+		if !strings.Contains(view, "Thought count unavailable") || strings.Contains(view, "PRIVATE_MARKER") || strings.Contains(logs.String(), "PRIVATE_MARKER") || !strings.Contains(logs.String(), "database_busy") || !errors.Is(m.load.countErr, data.ErrDatabaseBusy) {
 			t.Fatal("unsafe or swallowed count failure")
 		}
 		var entry map[string]any

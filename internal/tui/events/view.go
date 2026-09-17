@@ -43,8 +43,8 @@ func singleLine(value string) string {
 	}, value)
 }
 func (m Model) count(id int64) string {
-	pending := m.countPending && !m.loading && m.pendingDay.Equal(m.day)
-	if m.countErr != nil {
+	pending := m.load.countsPending && !m.load.eventsPending && m.load.pendingDay.Equal(m.day)
+	if m.load.countErr != nil {
 		return "Thought count unavailable"
 	}
 	for _, item := range m.counts {
@@ -53,14 +53,14 @@ func (m Model) count(id int64) string {
 			if item.Count != 1 {
 				label = fmt.Sprintf("%d thoughts", item.Count)
 			}
-			if pending && m.showLoading {
+			if pending && m.load.showStatus {
 				label += " · refreshing…"
 			}
 			return label
 		}
 	}
 	if pending {
-		if m.showLoading {
+		if m.load.showStatus {
 			return "Counting thoughts…"
 		}
 		return "" // Reserve the count row without inventing a value or flashing text.
@@ -124,9 +124,9 @@ func (m Model) card(item data.Event, selected bool) string {
 		if item.EndedAt == nil {
 			content += "\n"
 			switch {
-			case m.latestPending:
+			case m.load.latestPending:
 				content += "Loading latest thought…"
-			case m.latestErr != nil:
+			case m.load.latestErr != nil:
 				content += "Latest thought unavailable"
 			case m.latest != nil:
 				content += m.picker.TimelinePreview(*m.latest, width)
@@ -331,14 +331,14 @@ func (m Model) View() string {
 	if m.picker.ShowingDetail() {
 		return styles.Title.Render(m.picker.SelectedSubjectName()) + "\n\n" + m.picker.View()
 	}
-	body := m.loadingBody
-	if !m.loading || body == "" {
+	body := m.load.retainedBody
+	if !m.load.eventsPending || body == "" {
 		body = m.timelineBody()
 	}
 	status := m.message
-	if m.loading && m.showLoading {
-		status = "Loading events for " + displaytime.Format(m.pendingDay, "January 2, 2006") + "…"
-	} else if !m.loading && len(m.items) == 0 && status == "" {
+	if m.load.eventsPending && m.load.showStatus {
+		status = "Loading events for " + displaytime.Format(m.load.pendingDay, "January 2, 2006") + "…"
+	} else if !m.load.eventsPending && len(m.items) == 0 && status == "" {
 		status = "No events on this day. n: start event"
 	}
 	if m.expanded != 0 {
