@@ -41,7 +41,7 @@ func (m *Model) startForm(ending bool) tea.Cmd {
 	m.form.fields[0].Placeholder = "Activity (optional)"
 	m.form.fields[1].SetValue(displaytime.FormatInput(m.now()))
 	if ending {
-		m.form.event = m.items[m.index]
+		m.form.event = m.items[m.position.eventIndex]
 		m.form.index = 1
 	}
 	m.resizeForm()

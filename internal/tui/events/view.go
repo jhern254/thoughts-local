@@ -207,7 +207,7 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 		if i+1 < len(m.items) && m.items[i+1].StartedAt.Equal(end) {
 			hideEnd = true
 		}
-		entries = append(entries, railEntry{at: at, end: end, hideEnd: hideEnd, priority: 1, id: item.EventID, text: m.card(item, i == m.index)})
+		entries = append(entries, railEntry{at: at, end: end, hideEnd: hideEnd, priority: 1, id: item.EventID, text: m.card(item, i == m.position.eventIndex)})
 	}
 	if !m.clock.Before(m.day) && m.clock.Before(until) {
 		entries = append(entries, railEntry{at: m.clock, priority: 2, now: true, text: "── Now · " + displaytime.Format(m.clock, "03:04 PM") + " ──"})
@@ -282,40 +282,33 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 	}
 	return lines, positions, nowLine
 }
-func (m *Model) clampOffset(lineCount int) {
-	// Keep the chosen card at the top even near the end of the day; unused
-	// viewport rows belong below it, not before it as unrelated earlier hours.
-	m.offset = min(max(0, m.offset), max(0, lineCount-1))
-}
 func (m Model) bodyHeight() int { return max(1, m.height-4) }
 func (m *Model) revealSelected() {
 	lines, positions, _ := m.layout()
 	if len(m.items) > 0 {
-		top := positions[m.items[m.index].EventID]
-		if top < m.offset || top >= m.offset+m.bodyHeight()-3 || m.expanded != 0 {
-			m.offset = top
-		}
+		top := positions[m.items[m.position.eventIndex].EventID]
+		m.position.showSelected(top, m.bodyHeight(), m.expanded != 0)
 	}
-	m.clampOffset(len(lines))
+	m.position.clamp(len(lines))
 }
 func (m *Model) anchor() {
 	if m.day.IsZero() {
 		return
 	}
-	if !m.following && m.expanded != 0 {
+	if !m.position.followNow && m.expanded != 0 {
 		m.revealSelected()
 		return
 	}
 	lines, _, now := m.layout()
-	if m.following && now >= 0 {
-		m.offset = max(0, now-m.bodyHeight()+2)
-	}
-	m.clampOffset(len(lines))
+	m.position.showNow(now, m.bodyHeight())
+	m.position.clamp(len(lines))
 }
 
 func (m Model) timelineBody() string {
 	lines, _, _ := m.layout()
-	offset := min(max(0, m.offset), max(0, len(lines)-1))
+	position := m.position
+	position.clamp(len(lines))
+	offset := position.topLine
 	visible := append([]string{}, lines[offset:min(len(lines), offset+m.bodyHeight())]...)
 	for len(visible) < m.bodyHeight() {
 		visible = append(visible, "")

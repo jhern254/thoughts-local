@@ -23,7 +23,7 @@ func BenchmarkTimeline(b *testing.B) {
 					m.items = append(m.items, data.Event{EventID: int64(i + 2), StartedAt: start, EndedAt: &end})
 				}
 				m.items = append(m.items, current)
-				m.index = len(m.items) - 1
+				m.position.eventIndex = len(m.items) - 1
 				m.Resize(size[0], size[1])
 				keys := [2]string{"up", "down"}
 				if mode == "Expanded" {

@@ -114,7 +114,7 @@ func TestModel_DayArrival(t *testing.T) {
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
-		if m.expanded != 0 || m.index != 0 || !strings.HasPrefix(strings.Split(ansi.Strip(m.View()), "\n")[2], "09:00 PM  ╭") {
+		if m.expanded != 0 || m.position.eventIndex != 0 || !strings.HasPrefix(strings.Split(ansi.Strip(m.View()), "\n")[2], "09:00 PM  ╭") {
 			t.Fatalf("got day view %q, want first event visible with calendar focus", ansi.Strip(m.View()))
 		}
 	})
@@ -240,7 +240,7 @@ func TestModel_EventThoughtPicker(t *testing.T) {
 			t.Fatal("resize did not fit more rows or queried data")
 		}
 		before := m.View()
-		offset := m.offset
+		offset := m.position.topLine
 		m, cmd = m.Update(eventKey("enter"))
 		m = execute(t, m, cmd)
 		if !m.picker.ShowingDetail() || !strings.Contains(m.View(), "full content") {
@@ -248,7 +248,7 @@ func TestModel_EventThoughtPicker(t *testing.T) {
 		}
 		m, cmd = m.Update(eventKey("esc"))
 		m = execute(t, m, cmd)
-		if m.View() != before || m.offset != offset {
+		if m.View() != before || m.position.topLine != offset {
 			t.Fatal("detail return lost anchors")
 		}
 		m, _ = m.Update(eventKey("esc"))
@@ -312,13 +312,13 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 			t.Fatal("clock failed or queried data")
 		}
 		m, _ = m.Update(eventKey("home"))
-		offset := m.offset
+		offset := m.position.topLine
 		m, _ = m.Update(Tick{m.owner, m.session, m.clock.Add(time.Minute)})
-		if m.following || m.offset != offset {
+		if m.position.followNow || m.position.topLine != offset {
 			t.Fatal("tick moved manual navigation")
 		}
 		m, _ = m.Update(eventKey("end"))
-		if !m.following {
+		if !m.position.followNow {
 			t.Fatal("End did not resume")
 		}
 	})
@@ -396,8 +396,8 @@ func TestModel_EventForms(t *testing.T) {
 		m = execute(t, m, cmd)
 		view := ansi.Strip(m.View())
 		box, now := strings.Index(view, "new activity"), strings.Index(view, "Now ·")
-		if box < 0 || now < box || !m.following || m.items[m.index].EventID != saved.item.EventID || !m.clock.Equal(m.now()) {
-			t.Fatalf("got selection %d and view:\n%s\nwant new event selected and visible above Now", m.items[m.index].EventID, view)
+		if box < 0 || now < box || !m.position.followNow || m.items[m.position.eventIndex].EventID != saved.item.EventID || !m.clock.Equal(m.now()) {
+			t.Fatalf("got selection %d and view:\n%s\nwant new event selected and visible above Now", m.items[m.position.eventIndex].EventID, view)
 		}
 	})
 	t.Run("friendly input is converted before calling the existing service", func(t *testing.T) {

@@ -108,23 +108,22 @@ type Model struct {
 	counts     []data.EventThoughtCountView
 	latest     *data.ThoughtSummaryView
 
-	// index selects an event; offset selects the first rendered timeline line.
 	// expanded delegates keys and rendering to picker without replacing the day.
-	index, offset, width, height int
-	expanded                     int64
-	opening                      bool
-	picker                       thoughts.Model
-	form                         eventForm
+	position      timelinePosition
+	width, height int
+	expanded      int64
+	opening       bool
+	picker        thoughts.Model
+	form          eventForm
 
-	// following keeps today anchored to the moving clock. blurred preserves the
-	// selection while the root entity strip temporarily owns keyboard focus.
-	active, following bool
-	blurred           bool
+	// blurred preserves selection while the root entity strip owns keyboard focus.
+	active  bool
+	blurred bool
 }
 
 func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, logger logging.Logger) Model {
 	now := time.Now()
-	return Model{ctx: ctx, userID: userID, service: service, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), following: true, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
+	return Model{ctx: ctx, userID: userID, service: service, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), position: timelinePosition{followNow: true}, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
 }
 
 func (m *Model) Open() tea.Cmd {
@@ -132,7 +131,7 @@ func (m *Model) Open() tea.Cmd {
 	m.session++
 	m.clock = m.now()
 	day := m.day
-	if day.IsZero() || m.following {
+	if day.IsZero() || m.position.followNow {
 		day = displaytime.Day(m.clock)
 	}
 	return tea.Batch(m.loadDay(day), m.tick())
@@ -149,7 +148,7 @@ func (m *Model) Close() {
 	m.picker.Reset()
 	m.expanded = 0
 }
-func (m *Model) Pause() { m.following = false }
+func (m *Model) Pause() { m.position.followNow = false }
 func (m *Model) SetFocused(focused bool) {
 	blurred := !focused
 	if m.blurred != blurred {
@@ -233,7 +232,7 @@ func (m *Model) openEvent(id int64) tea.Cmd {
 	m.expansion++
 	m.expanded = id
 	m.opening = true
-	m.following = false
+	m.position.followNow = false
 	owner, request, ctx, user, view := m.owner, m.expansion, m.ctx, m.userID, m.timelineView
 	return func() tea.Msg {
 		scope, err := view.OpenThoughtsView(ctx, user, id)
@@ -261,7 +260,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.clock = result.at
 		m.loadingBody = ""
 		var reload tea.Cmd
-		if m.following && !m.day.Equal(displaytime.Day(m.clock)) && (!m.loading || !m.pendingDay.Equal(displaytime.Day(m.clock))) {
+		if m.position.followNow && !m.day.Equal(displaytime.Day(m.clock)) && (!m.loading || !m.pendingDay.Equal(displaytime.Day(m.clock))) {
 			reload = m.loadDay(displaytime.Day(m.clock))
 		}
 		m.anchor()
@@ -290,7 +289,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		if !m.day.Equal(m.pendingDay) {
 			m.day = m.pendingDay
-			m.index, m.offset, m.expanded = 0, 0, 0
+			m.position.eventIndex, m.position.topLine, m.expanded = 0, 0, 0
 			m.items = nil
 			m.picker.Reset()
 		}
@@ -312,25 +311,25 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		selected := int64(0)
 		if len(m.items) > 0 {
-			selected = m.items[m.index].EventID
+			selected = m.items[m.position.eventIndex].EventID
 		}
 		m.items = result.items
-		m.index = min(m.index, max(0, len(m.items)-1))
+		m.position.clampSelection(len(m.items))
 		var latest, open tea.Cmd
 		foundExpanded := false
 		m.latest = nil
 		m.latestErr = nil
 		for i, item := range m.items {
 			if item.EventID == selected {
-				m.index = i
+				m.position.eventIndex = i
 			}
 			if item.EventID == m.expanded {
 				foundExpanded = true
 				open = m.openEvent(item.EventID)
 			}
 			if item.EndedAt == nil {
-				if m.following {
-					m.index = i
+				if m.position.followNow {
+					m.position.eventIndex = i
 				}
 				m.latestPending = true
 				owner, request, ctx, user, view, id := m.owner, m.request, m.readCtx, m.userID, m.timelineView, item.EventID
@@ -348,10 +347,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.picker.Reset()
 		}
 		m.anchor()
-		if selected == 0 && !m.following && len(m.items) > 0 {
+		if selected == 0 && !m.position.followNow && len(m.items) > 0 {
 			lines, positions, _ := m.layout()
-			m.offset = positions[m.items[0].EventID]
-			m.clampOffset(len(lines))
+			m.position.topLine = positions[m.items[0].EventID]
+			m.position.clamp(len(lines))
 		}
 		return m, tea.Batch(latest, open)
 	case Counts:
@@ -431,7 +430,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if !result.ending {
 			m.clock = m.now()
 			day = displaytime.Day(m.clock)
-			m.following = true
+			m.position.followNow = true
 		}
 		cmd := m.loadDay(day)
 		return m, cmd
@@ -506,7 +505,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	switch navigation {
 	case "end":
-		m.following = true
+		m.position.followNow = true
 		m.clock = m.now()
 		day := displaytime.Day(m.clock)
 		if !day.Equal(m.day) || m.loading {
@@ -515,9 +514,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.anchor()
 	case "home":
-		m.following = false
-		m.index = 0
-		m.offset = 0
+		m.position.first()
 		m.revealSelected()
 	case "left", "right", "h", "l":
 		delta := 1
@@ -528,32 +525,29 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if day.After(displaytime.Day(m.now())) {
 			return m, nil
 		}
-		m.following = false
+		m.position.followNow = false
 		cmd := m.loadDay(day)
 		return m, cmd
 	case "r":
 		cmd := m.loadDay(day)
 		return m, cmd
 	case "up", "k", "down", "j":
-		m.following = false
 		delta := 1
 		if key.String() == "up" || key.String() == "k" {
 			delta = -1
 		}
-		m.index = min(max(0, m.index+delta), max(0, len(m.items)-1))
+		m.position.moveEvent(delta, len(m.items))
 		m.revealSelected()
 	case "pgup", "pgdown":
-		m.following = false
-		delta := m.height - 2
+		direction := 1
 		if key.String() == "pgup" {
-			delta = -delta
+			direction = -1
 		}
-		m.offset += delta
 		lines, _, _ := m.layout()
-		m.clampOffset(len(lines))
+		m.position.scrollPage(direction, m.height, len(lines))
 	case "enter":
 		if len(m.items) > 0 {
-			cmd := m.openEvent(m.items[m.index].EventID)
+			cmd := m.openEvent(m.items[m.position.eventIndex].EventID)
 			return m, cmd
 		}
 	case "esc":
@@ -562,12 +556,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.opening = false
 		m.picker.Reset()
 		lines, _, _ := m.layout()
-		m.clampOffset(len(lines))
+		m.position.clamp(len(lines))
 	case "n":
 		cmd := m.startForm(false)
 		return m, cmd
 	case "e":
-		if len(m.items) > 0 && m.items[m.index].EndedAt == nil {
+		if len(m.items) > 0 && m.items[m.position.eventIndex].EndedAt == nil {
 			cmd := m.startForm(true)
 			return m, cmd
 		}

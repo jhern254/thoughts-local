@@ -274,8 +274,8 @@ func TestModel_Layout(t *testing.T) {
 			}
 			if name == "empty" {
 				m.items = nil
-				m.following = false
-				m.offset = 0
+				m.position.followNow = false
+				m.position.topLine = 0
 			}
 			got := ansi.Strip(m.View()) + "\n"
 			want, err := os.ReadFile("testdata/" + name + ".txt")
@@ -341,7 +341,7 @@ func TestModel_Layout(t *testing.T) {
 		if !m.day.Equal(oldDay.AddDate(0, 0, 1)) {
 			t.Fatal("following did not adopt the next day on arrival")
 		}
-		m.following = false
+		m.position.followNow = false
 		day := m.day
 		m, _ = m.Update(Tick{m.owner, m.session, m.day.AddDate(0, 0, 1)})
 		if !m.day.Equal(day) {

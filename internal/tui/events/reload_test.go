@@ -80,7 +80,7 @@ func TestModel_DayTransition(t *testing.T) {
 	})
 	t.Run("failure retains the visible day and original error without exposing its text", func(t *testing.T) {
 		m, s, _ := fixture(t)
-		day, selected := m.day, m.items[m.index].EventID
+		day, selected := m.day, m.items[m.position.eventIndex].EventID
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")
 		if err != nil {
@@ -90,7 +90,7 @@ func TestModel_DayTransition(t *testing.T) {
 		s.listErr = errors.New("PRIVATE_DAY_READ_MARKER")
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
-		if m.err != s.listErr || !m.day.Equal(day) || m.items[m.index].EventID != selected || !strings.Contains(m.View(), "Could not load events for September 10, 2026") {
+		if m.err != s.listErr || !m.day.Equal(day) || m.items[m.position.eventIndex].EventID != selected || !strings.Contains(m.View(), "Could not load events for September 10, 2026") {
 			t.Fatal("failure lost the displayed day, selection, original error, or safe feedback")
 		}
 		if strings.Contains(m.View()+logs.String(), "PRIVATE_DAY_READ_MARKER") || strings.Contains(m.View(), "Loading events") {
@@ -129,7 +129,7 @@ func TestModel_DayTransition(t *testing.T) {
 		m = execute(t, m, cmd)
 		before := m.View()
 		m = execute(t, m, old)
-		if !m.day.Equal(today) || !m.following || m.View() != before {
+		if !m.day.Equal(today) || !m.position.followNow || m.View() != before {
 			t.Fatal("End failed to supersede pending navigation and follow today")
 		}
 		m.Close()
