@@ -55,11 +55,11 @@ func (s *FakeThoughtStore) GetThought(ctx context.Context, userID string, though
 
 var _ data.ThoughtStore = (*FakeThoughtStore)(nil)
 
-func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string, request data.ThoughtViewRequest) (data.ThoughtView, error) {
+func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string, request data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	if err := ctx.Err(); err != nil {
-		return data.ThoughtView{}, err
+		return data.ThoughtSummaryViewResult{}, err
 	}
-	items := []data.ThoughtSummary{}
+	items := []data.ThoughtSummaryView{}
 	for _, item := range s.thoughts {
 		if item.UserID != userID {
 			continue
@@ -68,9 +68,9 @@ func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string
 		if len(preview) > 80 {
 			preview = append(preview[:80], '…')
 		}
-		items = append(items, data.ThoughtSummary{ThoughtID: item.ThoughtID, Preview: string(preview), ObservedAt: item.ObservedAt, CreatedAt: item.CreatedAt})
+		items = append(items, data.ThoughtSummaryView{ThoughtID: item.ThoughtID, Preview: string(preview), ObservedAt: item.ObservedAt, CreatedAt: item.CreatedAt})
 	}
-	compare := func(a, b data.ThoughtSummary) int {
+	compare := func(a, b data.ThoughtSummaryView) int {
 		if c := b.ObservedAt.Compare(a.ObservedAt); c != 0 {
 			return c
 		}
@@ -87,8 +87,8 @@ func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string
 	}
 	slices.SortFunc(items, compare)
 	if cursor := request.Cursor; cursor != nil {
-		anchor := data.ThoughtSummary{ThoughtID: cursor.ThoughtID, ObservedAt: cursor.ObservedAt, CreatedAt: cursor.CreatedAt}
-		items = slices.DeleteFunc(items, func(item data.ThoughtSummary) bool {
+		anchor := data.ThoughtSummaryView{ThoughtID: cursor.ThoughtID, ObservedAt: cursor.ObservedAt, CreatedAt: cursor.CreatedAt}
+		items = slices.DeleteFunc(items, func(item data.ThoughtSummaryView) bool {
 			if request.Direction == data.ThoughtsNewer {
 				return compare(item, anchor) >= 0
 			}
@@ -98,14 +98,14 @@ func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string
 	if request.Direction == data.ThoughtsNewer {
 		slices.Reverse(items)
 	}
-	more := len(items) > data.ThoughtViewBatchSize
+	more := len(items) > data.ThoughtSummaryViewBatchSize
 	if more {
-		items = items[:data.ThoughtViewBatchSize]
+		items = items[:data.ThoughtSummaryViewBatchSize]
 	}
 	if request.Direction == data.ThoughtsNewer {
 		slices.Reverse(items)
 	}
-	return data.ThoughtView{Items: items, More: more}, nil
+	return data.ThoughtSummaryViewResult{Items: items, More: more}, nil
 }
 
 func (s *FakeThoughtStore) ListThoughts(ctx context.Context, userID string, subjectID int64) ([]data.Thought, error) {

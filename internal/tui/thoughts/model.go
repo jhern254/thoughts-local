@@ -21,7 +21,7 @@ import (
 )
 
 type Service interface {
-	BrowseView(context.Context, string, data.ThoughtViewRequest) (data.ThoughtView, error)
+	BrowseView(context.Context, string, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	ListUnassigned(context.Context, string) ([]data.Thought, error)
 	List(context.Context, string, int64) ([]data.Thought, error)
 	Get(context.Context, string, int64) (*data.Thought, error)
@@ -40,29 +40,43 @@ const (
 )
 
 type Model struct {
-	ctx        context.Context
-	userID     string
-	service    Service
-	logger     logging.Logger
-	subjectID  *int64
-	request    uint64
-	screen     screen
-	list       list.Model
-	input      textarea.Model
-	viewport   viewport.Model
-	selected   *data.Thought
+	ctx     context.Context
+	userID  string
+	service Service
+	logger  logging.Logger
+
+	// owner separates model instances. request owns list/get/create and cursor
+	// replies; countRequest lets a full-scope count refresh independently.
+	owner        *int
+	request      uint64
+	countRequest uint64
+
+	// screen selects list, editor, or detail behavior. selected survives detail
+	// rendering, while the list or bounded browse state owns row selection.
+	screen    screen
+	subjectID *int64
+	list      list.Model
+	input     textarea.Model
+	viewport  viewport.Model
+	selected  *data.Thought
+
 	loading    bool
 	stale      bool
 	err        error
 	errMessage string
 
-	inputWarning         string
-	filter               listfilter.Scope
+	inputWarning string
+	// filter owns asynchronous Bubbles matches for the current list revision.
+	filter listfilter.Scope
+	// browsingThoughtsView switches from subject rows to the bounded summary browser.
 	browsingThoughtsView bool
 	browseThoughts       browseThoughtsState
-	countRequest         uint64
 	itemStyles           list.DefaultItemStyles
+	blurred              bool
 }
+
+// SetFocused changes selection styling without changing the selected row.
+func (m *Model) SetFocused(focused bool) { m.blurred = !focused }
 
 type rowKind uint8
 
@@ -105,9 +119,10 @@ func (r row) Description() string {
 }
 func (r row) FilterValue() string { return r.Title() }
 
-// Result carries one asynchronous service result with its request context.
-// Only the component constructs and interprets these messages.
+// Result carries one asynchronous service result with its request ownership.
+// operation describes logging/classification; it never selects the service call.
 type Result struct {
+	owner     *int
 	request   uint64
 	operation logging.Operation
 	items     []data.Thought
@@ -128,7 +143,7 @@ func New(ctx context.Context, userID string, service Service, logger logging.Log
 	input.MaxWidth = 0
 	view := viewport.New()
 	view.SoftWrap = true
-	m := Model{ctx: ctx, userID: userID, service: service, logger: logger, list: items, input: input, viewport: view, itemStyles: delegate.Styles}
+	m := Model{owner: new(int), ctx: ctx, userID: userID, service: service, logger: logger, list: items, input: input, viewport: view, itemStyles: delegate.Styles}
 	m.Resize(80, 14)
 	return m
 }
@@ -144,6 +159,7 @@ func (m *Model) Resize(width, height int) {
 }
 
 func (m *Model) Reset() {
+	// Invalidate both result streams before replacing their visible state.
 	m.countRequest++
 	m.browsingThoughtsView = false
 	m.browseThoughts = browseThoughtsState{width: m.browseThoughts.width, height: m.browseThoughts.height}
@@ -188,6 +204,7 @@ func (m *Model) listThoughts() tea.Cmd {
 	m.request++
 	m.loading = true
 	m.err = nil
+	owner := m.owner
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
 	return func() tea.Msg {
 		var items []data.Thought
@@ -197,7 +214,7 @@ func (m *Model) listThoughts() tea.Cmd {
 		} else {
 			items, err = service.List(ctx, userID, *subjectID)
 		}
-		return Result{request: request, operation: logging.ThoughtList, items: items, err: err}
+		return Result{owner: owner, request: request, operation: logging.ThoughtList, items: items, err: err}
 	}
 }
 
@@ -205,10 +222,11 @@ func (m *Model) getThought(id int64) tea.Cmd {
 	m.request++
 	m.loading = true
 	m.err = nil
+	owner := m.owner
 	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
 	return func() tea.Msg {
 		item, err := service.Get(ctx, userID, id)
-		return Result{request: request, operation: logging.ThoughtGet, item: item, err: err}
+		return Result{owner: owner, request: request, operation: logging.ThoughtGet, item: item, err: err}
 	}
 }
 
@@ -216,10 +234,11 @@ func (m *Model) createThought(body string) tea.Cmd {
 	m.request++
 	m.loading = true
 	m.err = nil
+	owner := m.owner
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
 	return func() tea.Msg {
 		item, err := service.Create(ctx, userID, body, subjectID, time.Time{})
-		return Result{request: request, operation: logging.ThoughtCreate, item: item, err: err}
+		return Result{owner: owner, request: request, operation: logging.ThoughtCreate, item: item, err: err}
 	}
 }
 
@@ -236,7 +255,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 	}
 	if result, ok := msg.(Result); ok {
-		if result.request != m.request {
+		// Cancellation is optional here; ownership alone makes obsolete replies inert.
+		if result.owner != m.owner || result.request != m.request {
 			return m, nil
 		}
 		m.loading = false

@@ -30,8 +30,11 @@ type SubjectService interface {
 
 type subjectState struct {
 	service SubjectService
-	filter  listfilter.Scope
+	// filter scopes asynchronous Bubbles matches to this list and query revision.
+	filter listfilter.Scope
 
+	// The Bubbles list owns row selection. selected is the accepted Subject used
+	// by detail, edit, and delete screens after the selected row is fetched.
 	list        list.Model
 	input       textinput.Model
 	selected    *data.Subject
@@ -88,7 +91,7 @@ type subjectsListedMsg struct {
 	miscCountErr error
 	subjects     []data.Subject
 	err          error
-	counts       []data.SubjectThoughtCount
+	counts       []data.SubjectThoughtCountView
 	countErr     error
 }
 
@@ -343,9 +346,8 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			if !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered() {
 				m.subjects.filter.Invalidate()
-				m.screen = screenEntities
 				m.subjects.err = nil
-				return m, nil
+				return m.openHome()
 			}
 		case "q":
 			if !m.subjects.list.SettingFilter() {

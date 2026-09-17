@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 )
@@ -12,6 +13,15 @@ type storeStub struct {
 	err    error
 	ctx    context.Context
 	userID string
+}
+
+func (s *storeStub) ThoughtCountsByEvent(ctx context.Context, u string, _, _, _ time.Time) ([]data.EventThoughtCountView, error) {
+	s.ctx, s.userID = ctx, u
+	return []data.EventThoughtCountView{{EventID: 7, Count: 2}}, s.err
+}
+func (s *storeStub) CountThoughtsInRange(ctx context.Context, u string, _, _ time.Time) (int64, error) {
+	s.ctx, s.userID = ctx, u
+	return 2, s.err
 }
 
 func (s *storeStub) CountThoughts(ctx context.Context, u string) (int64, error) {
@@ -32,9 +42,9 @@ func TestService_CountThoughts(t *testing.T) {
 	})
 }
 
-func (s *storeStub) ThoughtCountsBySubject(ctx context.Context, u string) ([]data.SubjectThoughtCount, error) {
+func (s *storeStub) ThoughtCountsBySubject(ctx context.Context, u string) ([]data.SubjectThoughtCountView, error) {
 	s.ctx, s.userID = ctx, u
-	return []data.SubjectThoughtCount{{SubjectID: 7, Count: 2}}, s.err
+	return []data.SubjectThoughtCountView{{SubjectID: 7, Count: 2}}, s.err
 }
 
 func (s *storeStub) CountUnassignedThoughts(ctx context.Context, u string) (int64, error) {

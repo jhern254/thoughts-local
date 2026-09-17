@@ -13,6 +13,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
@@ -22,8 +23,9 @@ type Metrics interface {
 	CountThoughts(context.Context, string) (int64, error)
 }
 
-// ThoughtCountResult has refresh ownership independent of individual cursor requests.
+// ThoughtCountResult has refresh ownership independent of cursor-page requests.
 type ThoughtCountResult struct {
+	owner   *int
 	request uint64
 	total   int64
 	err     error
@@ -31,12 +33,19 @@ type ThoughtCountResult struct {
 
 type summaryRow struct {
 	kind rowKind
-	item data.ThoughtSummary
+	item data.ThoughtSummaryView
 }
 
-// The thought browse view uses a bounded, bidirectional window. Subject lists retain
-// their existing Bubbles filtering and navigation.
+// browseThoughtsState owns one bounded, bidirectional summary browser with two
+// presentation contexts: the Browse Thoughts view and the list inside an expanded
+// event card. A nil eventScope means the Browse Thoughts view; a non-nil scope
+// limits the same browser to one resolved event interval. rows contains only the
+// resident window, while total describes the full scope. A collapsed ongoing card
+// renders only its latest row through TimelinePreview; it does not create another
+// browser or pagination state.
 type browseThoughtsState struct {
+	eventScope           *timeline.ThoughtScope
+	timelineView         TimelineReader
 	rows                 []summaryRow
 	index, offset        int
 	width, height        int
@@ -47,12 +56,14 @@ type browseThoughtsState struct {
 	countErr             error
 }
 
-// BrowseThoughtsResult belongs to one request/session, like the existing detail results.
+// BrowseThoughtsResult captures the cursor query and deferred selection move for
+// one request generation. A later refresh or page request makes the reply inert.
 type BrowseThoughtsResult struct {
+	owner   *int
 	request uint64
-	query   data.ThoughtViewRequest
+	query   data.ThoughtSummaryViewRequest
 	move    int
-	view    data.ThoughtView
+	view    data.ThoughtSummaryViewResult
 	err     error
 }
 
@@ -78,78 +89,121 @@ func (m *Model) OpenBrowseThoughtsView(metrics Metrics) tea.Cmd {
 }
 
 func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
+	// The Browse Thoughts view owns a Create action; an event card contains records only.
 	m.browseThoughts.rows = []summaryRow{{kind: rowCreate}}
+	if m.browseThoughts.eventScope != nil {
+		m.browseThoughts.rows = nil
+	}
 	m.browseThoughts.index, m.browseThoughts.offset = 0, 0
 	m.browseThoughts.moreOlder, m.browseThoughts.moreNewer = false, false
 	m.countRequest++
 	m.browseThoughts.countPending, m.browseThoughts.countErr = true, nil
+	owner, scope, reader := m.owner, m.browseThoughts.eventScope, m.browseThoughts.timelineView
 	request, ctx, userID, metrics := m.countRequest, m.ctx, m.userID, m.browseThoughts.metrics
+	// Count and the first summary batch are independent reads. Pagination loads
+	// later batches without repeating this full-scope count.
 	count := func() tea.Msg {
-		total, err := metrics.CountThoughts(ctx, userID)
-		return ThoughtCountResult{request: request, total: total, err: err}
+		var total int64
+		var err error
+		if scope != nil {
+			total, err = reader.CountThoughts(ctx, userID, *scope)
+		} else {
+			total, err = metrics.CountThoughts(ctx, userID)
+		}
+		return ThoughtCountResult{owner: owner, request: request, total: total, err: err}
 	}
-	return tea.Batch(m.loadThoughtsView(data.ThoughtViewRequest{}, 0), count)
+	return tea.Batch(m.loadThoughtsView(data.ThoughtSummaryViewRequest{}, 0), count)
 }
 
 func (m Model) receiveThoughtCount(result ThoughtCountResult) (Model, tea.Cmd) {
-	if !m.browsingThoughtsView || result.request != m.countRequest {
+	// The mode check prevents a count from a closed browser from updating reused state.
+	if result.owner != m.owner || !m.browsingThoughtsView || result.request != m.countRequest {
 		return m, nil
 	}
 	m.browseThoughts.total, m.browseThoughts.countErr, m.browseThoughts.countPending = result.total, result.err, false
-	if category, emit := failure.Classify(logging.ThoughtCountAll, result.err); emit {
-		m.logger.Failure(logging.ThoughtCountAll, category)
+	operation := logging.ThoughtCountAll
+	if m.browseThoughts.eventScope != nil {
+		operation = logging.EventThoughtCount
+	}
+	if category, emit := failure.Classify(operation, result.err); emit {
+		m.logger.Failure(operation, category)
 	}
 	return m, nil
 }
 
-func (m *Model) loadThoughtsView(query data.ThoughtViewRequest, move int) tea.Cmd {
+func (m *Model) loadThoughtsView(query data.ThoughtSummaryViewRequest, move int) tea.Cmd {
 	m.request++
 	m.loading, m.err = true, nil
+	owner, scope, reader := m.owner, m.browseThoughts.eventScope, m.browseThoughts.timelineView
 	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
 	return func() tea.Msg {
-		view, err := service.BrowseView(ctx, userID, query)
-		return BrowseThoughtsResult{request: request, query: query, move: move, view: view, err: err}
+		var view data.ThoughtSummaryViewResult
+		var err error
+		// Event browsing goes through TimelineReader so the resolved event range stays
+		// fixed for the session. The Browse Thoughts view uses the ordinary service.
+		if scope != nil {
+			view, err = reader.BrowseThoughtsView(ctx, userID, *scope, query)
+		} else {
+			view, err = service.BrowseView(ctx, userID, query)
+		}
+		return BrowseThoughtsResult{owner: owner, request: request, query: query, move: move, view: view, err: err}
 	}
 }
 
 func (m Model) receiveBrowseThoughts(result BrowseThoughtsResult) (Model, tea.Cmd) {
-	if !m.browsingThoughtsView || result.request != m.request {
+	// Model identity, active mode, and newest request must all still match.
+	if result.owner != m.owner || !m.browsingThoughtsView || result.request != m.request {
 		return m, nil
 	}
 	m.loading, m.err = false, result.err
 	if result.err != nil {
-		if category, emit := failure.Classify(logging.ThoughtList, result.err); emit {
-			m.logger.Failure(logging.ThoughtList, category)
+		operation := logging.ThoughtList
+		if m.browseThoughts.eventScope != nil {
+			operation = logging.EventThoughtList
+		}
+		if category, emit := failure.Classify(operation, result.err); emit {
+			m.logger.Failure(operation, category)
 		}
 		m.errMessage = diagnostics.ThoughtMessage(result.err, "Could not load thoughts.")
 		return m, nil
 	}
-	selected, oldIndex := m.browseThoughts.rows[m.browseThoughts.index], m.browseThoughts.index
+	var selected summaryRow
+	oldIndex, oldLength := m.browseThoughts.index, len(m.browseThoughts.rows)
+	if oldLength > 0 {
+		selected = m.browseThoughts.rows[oldIndex]
+	}
 	rows := make([]summaryRow, 0, len(result.view.Items))
 	for _, item := range result.view.Items {
 		rows = append(rows, summaryRow{kind: rowRecord, item: item})
 	}
 	switch {
+	// A cursorless reply replaces the window. Cursor replies extend the edge
+	// requested by scrolling; storage always returns each batch newest first.
 	case result.query.Cursor == nil:
-		m.browseThoughts.rows = append([]summaryRow{{kind: rowCreate}}, rows...)
+		m.browseThoughts.index = 0
+		m.browseThoughts.rows = rows
+		if m.browseThoughts.eventScope == nil {
+			m.browseThoughts.rows = append([]summaryRow{{kind: rowCreate}}, rows...)
+		}
 		m.browseThoughts.moreOlder = result.view.More
 		m.stale = false
 	case result.query.Direction == data.ThoughtsNewer:
 		m.browseThoughts.rows = append(rows, m.browseThoughts.rows...)
 		m.browseThoughts.moreNewer = result.view.More
-		if !result.view.More {
+		if !result.view.More && m.browseThoughts.eventScope == nil {
 			m.browseThoughts.rows = append([]summaryRow{{kind: rowCreate}}, m.browseThoughts.rows...)
 		}
 	default:
 		m.browseThoughts.rows = append(m.browseThoughts.rows, rows...)
 		m.browseThoughts.moreOlder = result.view.More
 	}
-	// Evict the opposite edge, copying so old previews are no longer retained.
+	// Keep at most three database batches. Evict the edge opposite the incoming
+	// batch, copying so old preview strings are no longer retained.
 	actions := 0
-	if m.browseThoughts.rows[0].kind == rowCreate {
+	if len(m.browseThoughts.rows) > 0 && m.browseThoughts.rows[0].kind == rowCreate {
 		actions = 1
 	}
-	if excess := len(m.browseThoughts.rows) - actions - 3*data.ThoughtViewBatchSize; excess > 0 {
+	if excess := len(m.browseThoughts.rows) - actions - 3*data.ThoughtSummaryViewBatchSize; excess > 0 {
 		if result.query.Direction == data.ThoughtsNewer {
 			m.browseThoughts.rows = slices.Clone(m.browseThoughts.rows[:len(m.browseThoughts.rows)-excess])
 			m.browseThoughts.moreOlder = true
@@ -165,7 +219,7 @@ func (m Model) receiveBrowseThoughts(result BrowseThoughtsResult) (Model, tea.Cm
 		}
 	}
 	m.browseThoughts.offset += (m.browseThoughts.index - oldIndex) * summaryLines
-	m.browseThoughts.index = min(max(0, m.browseThoughts.index+result.move), len(m.browseThoughts.rows)-1)
+	m.browseThoughts.index = min(max(0, m.browseThoughts.index+result.move), max(0, len(m.browseThoughts.rows)-1))
 	m.browseThoughts.keepVisible()
 	return m, nil
 }
@@ -176,11 +230,11 @@ func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	// Refresh may supersede a pending batch. Other commands wait for that batch.
-	if key.String() == "home" || key.String() == "r" {
+	if m.browseThoughts.eventScope == nil && (key.String() == "home" || key.String() == "r") {
 		cmd := m.reloadBrowseThoughtsView()
 		return m, cmd
 	}
-	if m.loading {
+	if m.loading || len(m.browseThoughts.rows) == 0 {
 		return m, nil
 	}
 	move := 0
@@ -207,14 +261,16 @@ func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 	if move == 0 {
 		return m, nil
 	}
+	// Crossing a resident edge requests the adjacent cursor batch. The deferred
+	// move is applied after that reply is merged, preserving continuous scrolling.
 	if m.browseThoughts.index+move < 0 && m.browseThoughts.moreNewer {
 		cursor := m.browseThoughts.rows[0].item.Cursor()
-		cmd := m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, move)
+		cmd := m.loadThoughtsView(data.ThoughtSummaryViewRequest{Cursor: &cursor, Direction: data.ThoughtsNewer}, move)
 		return m, cmd
 	}
 	if m.browseThoughts.index+move >= len(m.browseThoughts.rows) && m.browseThoughts.moreOlder {
 		cursor := m.browseThoughts.rows[len(m.browseThoughts.rows)-1].item.Cursor()
-		cmd := m.loadThoughtsView(data.ThoughtViewRequest{Cursor: &cursor}, move)
+		cmd := m.loadThoughtsView(data.ThoughtSummaryViewRequest{Cursor: &cursor}, move)
 		return m, cmd
 	}
 	m.browseThoughts.index = min(max(0, m.browseThoughts.index+move), len(m.browseThoughts.rows)-1)
@@ -223,7 +279,20 @@ func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (s *browseThoughtsState) keepVisible() {
+	// offset is measured in rendered lines, not records. Every summary reserves
+	// summaryLines so selection remains anchored while batches enter or leave.
 	top := s.index * summaryLines
+	if s.eventScope != nil {
+		s.offset = max(0, s.offset/summaryLines*summaryLines)
+		if top < s.offset {
+			s.offset = top
+		}
+		if top+summaryLines > s.offset+s.height {
+			s.offset = max(0, top+summaryLines-s.height)
+		}
+		s.offset = min(s.offset, max(0, len(s.rows)*summaryLines-s.height))
+		return
+	}
 	if top < s.offset {
 		s.offset = top
 	}
@@ -253,12 +322,9 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		}
 		title, description := "Create thought…", "Write a new thought"
 		if row.kind == rowRecord {
-			subject := "Misc"
-			if row.item.SubjectName != nil {
-				subject = summaryText(*row.item.SubjectName)
-			}
-			title = m.list.Styles.Title.Render(subject) + " " + summaryText(row.item.Preview)
-			description = fmt.Sprintf("Thought %d • %s", row.item.ThoughtID, displaytime.Format(row.item.ObservedAt, "Jan 2, 2006 3:04 PM MST"))
+			lines = append(lines, strings.Split(m.SummaryPreview(row.item, s.width, index == s.index && !m.blurred), "\n")...)
+			lines = append(lines, "")
+			continue
 		}
 		title = titleStyle.Render(ansi.Truncate(title, max(0, s.width-titleStyle.GetHorizontalFrameSize()), "…"))
 		description = descStyle.Render(ansi.Truncate(description, max(0, s.width-descStyle.GetHorizontalFrameSize()), "…"))
@@ -266,7 +332,7 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		lines = append(lines, ansi.Truncate(title, s.width, ""), ansi.Truncate(description, s.width, ""), "")
 	}
 	visible := append([]string{}, lines[min(s.offset, len(lines)):min(s.offset+s.height, len(lines))]...)
-	for len(visible) < s.height {
+	for s.eventScope == nil && len(visible) < s.height {
 		visible = append(visible, "")
 	}
 	label := "thoughts"
@@ -279,5 +345,51 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 	} else if s.countErr != nil {
 		count = "Thought count unavailable"
 	}
+	if s.eventScope != nil {
+		count += " · " + eventThoughtOrderLabel
+		if len(s.rows) == 0 && !m.loading && m.err == nil {
+			visible = []string{"No thoughts yet"}
+		}
+		// Expanded event cards shrink to their occupied preview slots. The Browse
+		// Thoughts view keeps the full viewport so its scrolling geometry does not jump.
+		if len(visible) > 0 && visible[len(visible)-1] == "" {
+			visible = visible[:len(visible)-1]
+		}
+		content := count
+		if len(visible) > 0 {
+			content += "\n" + strings.Join(visible, "\n")
+		}
+		if status = strings.TrimSpace(status); status != "" {
+			content += "\n" + status
+		}
+		return content
+	}
 	return strings.Join(visible, "\n") + fmt.Sprintf("\n%s\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest", count, strings.TrimSpace(status))
+}
+
+// SummaryPreview renders a selectable row for the Browse Thoughts view and expanded events.
+func (m Model) SummaryPreview(item data.ThoughtSummaryView, width int, selected bool) string {
+	return m.summaryPreview(item, width, selected, "Jan 2, 2006 3:04 PM MST")
+}
+
+// TimelinePreview renders the non-selectable latest row in a collapsed ongoing
+// event card and keeps that compact calendar presentation free of timezone detail.
+func (m Model) TimelinePreview(item data.ThoughtSummaryView, width int) string {
+	return m.summaryPreview(item, width, false, "3:04 PM")
+}
+
+func (m Model) summaryPreview(item data.ThoughtSummaryView, width int, selected bool, layout string) string {
+	titleStyle, descStyle := m.itemStyles.NormalTitle, m.itemStyles.NormalDesc
+	if selected {
+		titleStyle, descStyle = m.itemStyles.SelectedTitle, m.itemStyles.SelectedDesc
+	}
+	subject := "Misc"
+	if item.SubjectName != nil {
+		subject = summaryText(*item.SubjectName)
+	}
+	title := m.list.Styles.Title.Render(subject) + " " + summaryText(item.Preview)
+	description := fmt.Sprintf("Thought %d • %s", item.ThoughtID, displaytime.Format(item.ObservedAt, layout))
+	title = titleStyle.Render(ansi.Truncate(title, max(0, width-titleStyle.GetHorizontalFrameSize()), "…"))
+	description = descStyle.Render(ansi.Truncate(description, max(0, width-descStyle.GetHorizontalFrameSize()), "…"))
+	return ansi.Truncate(title, width, "") + "\n" + ansi.Truncate(description, width, "")
 }
