@@ -307,13 +307,13 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 	t.Run("ticks update time without reads and navigation pauses following", func(t *testing.T) {
 		m, s, v := fixture(t)
 		lists, counts, reads := s.lists, v.counts, v.reads
-		m, _ = m.Update(Tick{m.owner, m.session, m.clock.Add(time.Minute)})
+		m, _ = m.Update(tickMsg{m.owner, m.session, m.clock.Add(time.Minute)})
 		if !strings.Contains(ansi.Strip(m.View()), "1h 1m") || s.lists != lists || v.counts != counts || v.reads != reads {
 			t.Fatal("clock failed or queried data")
 		}
 		m, _ = m.Update(eventKey("home"))
 		offset := m.position.topLine
-		m, _ = m.Update(Tick{m.owner, m.session, m.clock.Add(time.Minute)})
+		m, _ = m.Update(tickMsg{m.owner, m.session, m.clock.Add(time.Minute)})
 		if m.position.followNow || m.position.topLine != offset {
 			t.Fatal("tick moved manual navigation")
 		}
@@ -328,7 +328,7 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 		batch := cmd().(tea.BatchMsg)
 		old := batch[0]()
 		oldCount := batch[1]()
-		oldTick := Tick{m.owner, m.session, m.clock.Add(time.Minute)}
+		oldTick := tickMsg{m.owner, m.session, m.clock.Add(time.Minute)}
 		m, cmd = m.Update(eventKey("enter"))
 		opened := cmd()
 		m.Close()
@@ -387,7 +387,7 @@ func TestModel_EventForms(t *testing.T) {
 		m.form.fields[0].SetValue("new activity")
 		m.now = func() time.Time { return openedAt.Add(10 * time.Second) }
 		m, cmd := m.Update(eventKey("enter"))
-		saved := cmd().(Saved)
+		saved := cmd().(savedMsg)
 		saved.item.ActivityType = &s.label
 		// Supply the persisted list returned after the existing Create call.
 		s.items[0].EndedAt = &saved.item.StartedAt
@@ -426,7 +426,7 @@ func TestModel_EventForms(t *testing.T) {
 			t.Fatal("End form wrote before save")
 		}
 		m, cmd := m.Update(eventKey("enter"))
-		result := cmd().(Saved)
+		result := cmd().(savedMsg)
 		if s.ends != 1 || !result.ending || result.item.Version != 2 {
 			t.Fatal("End lost version or called wrong operation")
 		}
@@ -455,7 +455,7 @@ func TestModel_EventForms(t *testing.T) {
 		if duplicate != nil {
 			t.Fatal("duplicate submission")
 		}
-		result := cmd().(Saved)
+		result := cmd().(savedMsg)
 		if s.creates != 1 || !s.start.Equal(at) || s.label != "q" || result.err != nil {
 			t.Fatal("Save lost original timestamp")
 		}

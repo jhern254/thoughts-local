@@ -328,12 +328,12 @@ func TestModel_Layout(t *testing.T) {
 	t.Run("midnight loads the next day once only while following", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		oldDay := m.day
-		m, cmd := m.Update(Tick{m.owner, m.session, m.day.AddDate(0, 0, 1).Add(time.Minute)})
+		m, cmd := m.Update(tickMsg{m.owner, m.session, m.day.AddDate(0, 0, 1).Add(time.Minute)})
 		if !m.day.Equal(oldDay) || cmd == nil || !m.load.eventsPending {
 			t.Fatal("midnight did not retain the displayed day while loading")
 		}
 		request := m.load.generation
-		m, _ = m.Update(Tick{m.owner, m.session, m.clock.Add(time.Minute)})
+		m, _ = m.Update(tickMsg{m.owner, m.session, m.clock.Add(time.Minute)})
 		if m.load.generation != request {
 			t.Fatal("another tick restarted the pending day load")
 		}
@@ -343,7 +343,7 @@ func TestModel_Layout(t *testing.T) {
 		}
 		m.position.followNow = false
 		day := m.day
-		m, _ = m.Update(Tick{m.owner, m.session, m.day.AddDate(0, 0, 1)})
+		m, _ = m.Update(tickMsg{m.owner, m.session, m.day.AddDate(0, 0, 1)})
 		if !m.day.Equal(day) {
 			t.Fatal("paused timeline changed date")
 		}

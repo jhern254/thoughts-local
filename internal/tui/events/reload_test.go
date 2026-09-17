@@ -210,7 +210,7 @@ func TestModel_CollapsedCounts(t *testing.T) {
 			t.Fatalf("got pending count %q, want an empty reserved row", got)
 		}
 		before := strings.Count(m.card(m.items[0], true), "\n")
-		m, _ = m.Update(LoadDelayed{m.owner, m.load.generation})
+		m, _ = m.Update(loadDelayedMsg{m.owner, m.load.generation})
 		if m.count(1) != "Counting thoughts…" || strings.Contains(m.View(), "Loading events") {
 			t.Fatal("slow count did not show its own feedback independently of events")
 		}
@@ -229,7 +229,7 @@ func TestModel_CollapsedCounts(t *testing.T) {
 		if m.count(1) != "230 thoughts" {
 			t.Fatal("refresh replaced the last successful count with loading feedback")
 		}
-		m, _ = m.Update(LoadDelayed{m.owner, m.load.generation})
+		m, _ = m.Update(loadDelayedMsg{m.owner, m.load.generation})
 		if m.count(1) != "230 thoughts · refreshing…" {
 			t.Fatal("slow refresh did not retain and qualify its previous count")
 		}
@@ -302,7 +302,7 @@ func TestModel_ReloadCancellation(t *testing.T) {
 		batch := m.loadDay(m.day)().(tea.BatchMsg)
 		m, latest := m.Update(batch[0]())
 		_ = m.loadDay(m.day)
-		result := latest().(Latest)
+		result := latest().(latestMsg)
 		if !errors.Is(result.err, context.Canceled) {
 			t.Fatalf("got latest error %v, want canceled", result.err)
 		}

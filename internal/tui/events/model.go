@@ -30,46 +30,63 @@ type TimelineView interface {
 
 // Asynchronous replies carry the model identity and the generation of the state
 // that requested them. Update accepts a reply only while both still match.
-type Tick struct {
+type tickMsg struct {
 	owner   *int
 	session uint64
 	at      time.Time
 }
-type Listed struct {
+type listedMsg struct {
 	owner   *int
 	request uint64
 	items   []data.Event
 	err     error
 }
-type LoadDelayed struct {
+type loadDelayedMsg struct {
 	owner   *int
 	request uint64
 }
-type Counts struct {
+type countsMsg struct {
 	owner   *int
 	request uint64
 	items   []data.EventThoughtCountView
 	err     error
 }
-type Latest struct {
+type latestMsg struct {
 	owner   *int
 	request uint64
 	item    *data.ThoughtSummaryView
 	err     error
 }
-type Opened struct {
+type openedMsg struct {
 	owner   *int
 	request uint64
 	scope   timeline.ThoughtScope
 	err     error
 }
-type Saved struct {
+type savedMsg struct {
 	owner   *int
 	request uint64
 	item    *data.Event
 	ending  bool
 	err     error
 }
+
+// Owns identifies Events-only messages. Instance and generation checks still
+// happen in Update; shared Thought replies keep their existing root routing.
+func Owns(msg tea.Msg) bool {
+	_, ok := msg.(message)
+	return ok
+}
+
+type message interface{ eventMessage() }
+
+func (tickMsg) eventMessage()        {}
+func (listedMsg) eventMessage()      {}
+func (countsMsg) eventMessage()      {}
+func (latestMsg) eventMessage()      {}
+func (loadDelayedMsg) eventMessage() {}
+func (openedMsg) eventMessage()      {}
+func (savedMsg) eventMessage()       {}
 
 type Model struct {
 	ctx          context.Context
@@ -88,7 +105,7 @@ type Model struct {
 	message string
 
 	// day and items are the accepted timeline. load.pendingDay is not presented as the
-	// current day until its matching Listed reply succeeds.
+	// current day until its matching listedMsg reply succeeds.
 	clock, day time.Time
 	items      []data.Event
 	counts     []data.EventThoughtCountView
@@ -160,7 +177,7 @@ func (m *Model) Resize(width, height int) {
 func (m Model) tick() tea.Cmd {
 	owner, session := m.owner, m.session
 	delay := time.Minute - m.clock.Sub(m.clock.Truncate(time.Minute))
-	return tea.Tick(delay, func(at time.Time) tea.Msg { return Tick{owner, session, at} })
+	return tea.Tick(delay, func(at time.Time) tea.Msg { return tickMsg{owner, session, at} })
 }
 
 // loadDay keeps the displayed date with its cards until the requested list arrives.
@@ -178,16 +195,16 @@ func (m *Model) loadDay(day time.Time) tea.Cmd {
 	owner, request, ctx, user, service, view := m.owner, m.load.generation, m.load.ctx, m.userID, m.service, m.timelineView
 	return tea.Batch(func() tea.Msg {
 		if err := ctx.Err(); err != nil {
-			return Listed{owner: owner, request: request, err: err}
+			return listedMsg{owner: owner, request: request, err: err}
 		}
 		items, err := service.List(ctx, user, day, day.AddDate(0, 0, 1))
-		return Listed{owner, request, items, err}
+		return listedMsg{owner, request, items, err}
 	}, func() tea.Msg {
 		if err := ctx.Err(); err != nil {
-			return Counts{owner: owner, request: request, err: err}
+			return countsMsg{owner: owner, request: request, err: err}
 		}
 		items, err := view.ThoughtCounts(ctx, user, day, day.AddDate(0, 0, 1))
-		return Counts{owner, request, items, err}
+		return countsMsg{owner, request, items, err}
 	}, feedback)
 }
 func (m *Model) openEvent(id int64) tea.Cmd {
@@ -201,7 +218,7 @@ func (m *Model) openEvent(id int64) tea.Cmd {
 	owner, request, ctx, user, view := m.owner, m.expansion, m.ctx, m.userID, m.timelineView
 	return func() tea.Msg {
 		scope, err := view.OpenThoughtsView(ctx, user, id)
-		return Opened{owner, request, scope, err}
+		return openedMsg{owner, request, scope, err}
 	}
 }
 func (m *Model) fail(operation logging.Operation, err error) {
@@ -218,7 +235,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	switch result := msg.(type) {
-	case Tick:
+	case tickMsg:
 		if result.owner != m.owner || result.session != m.session {
 			return m, nil
 		}
@@ -230,12 +247,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.anchor()
 		return m, tea.Batch(reload, m.tick())
-	case LoadDelayed:
+	case loadDelayedMsg:
 		if result.owner == m.owner {
 			m.load.delayFeedback(result.request)
 		}
 		return m, nil
-	case Listed:
+	case listedMsg:
 		// The current model instance and newest day request exclusively own this reply.
 		if result.owner != m.owner || !m.load.owns(result.request) || !m.load.eventsPending {
 			return m, nil
@@ -295,10 +312,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				owner, request, ctx, user, view, id := m.owner, m.load.generation, m.load.ctx, m.userID, m.timelineView, item.EventID
 				latest = func() tea.Msg {
 					if err := ctx.Err(); err != nil {
-						return Latest{owner: owner, request: request, err: err}
+						return latestMsg{owner: owner, request: request, err: err}
 					}
 					item, err := view.LatestThought(ctx, user, id)
-					return Latest{owner, request, item, err}
+					return latestMsg{owner, request, item, err}
 				}
 			}
 		}
@@ -313,7 +330,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.position.clamp(len(lines))
 		}
 		return m, tea.Batch(latest, open)
-	case Counts:
+	case countsMsg:
 		// Counts share the day-request generation but may arrive before its event list.
 		if result.owner != m.owner || !m.load.owns(result.request) {
 			return m, nil
@@ -326,8 +343,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.counts, m.load.countErr = result.items, result.err
 		m.anchor()
 		return m, nil
-	case Latest:
-		// Latest is derived from the accepted list and inherits that list's generation.
+	case latestMsg:
+		// The latest preview inherits the accepted list's generation.
 		if result.owner != m.owner || !m.load.owns(result.request) {
 			return m, nil
 		}
@@ -336,7 +353,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.fail(logging.EventThoughtList, result.err)
 		m.anchor()
 		return m, nil
-	case Opened:
+	case openedMsg:
 		// Expansion has its own generation so changing/collapsing cards invalidates it.
 		if result.owner != m.owner || result.request != m.expansion {
 			return m, nil
@@ -358,7 +375,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		cmd := m.picker.OpenEventView(result.scope, m.timelineView)
 		m.anchor()
 		return m, cmd
-	case Saved:
+	case savedMsg:
 		// Save ownership prevents an abandoned or replaced form from handling a reply.
 		if result.owner != m.owner || result.request != m.save {
 			return m, nil

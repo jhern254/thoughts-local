@@ -15,7 +15,7 @@ type dayLoad struct {
 	cancelFeedback context.CancelFunc
 	generation     uint64
 	pendingDay     time.Time
-	pendingCounts  Counts
+	pendingCounts  countsMsg
 	eventsPending  bool
 	countsPending  bool
 	latestPending  bool
@@ -41,7 +41,7 @@ func (l *dayLoad) begin(parent context.Context, day time.Time, owner *int) tea.C
 	feedbackCtx, cancel := context.WithCancel(l.ctx)
 	l.cancelFeedback = cancel
 	l.eventsPending, l.countsPending, l.latestPending = true, true, false
-	l.pendingDay, l.pendingCounts, l.showStatus = day, Counts{}, false
+	l.pendingDay, l.pendingCounts, l.showStatus = day, countsMsg{}, false
 	generation := l.generation
 	return func() tea.Msg {
 		// Delay only feedback, never the reads or application of their results.
@@ -54,7 +54,7 @@ func (l *dayLoad) begin(parent context.Context, day time.Time, owner *int) tea.C
 		case <-feedbackCtx.Done():
 			return nil
 		case <-timer.C:
-			return LoadDelayed{owner, generation}
+			return loadDelayedMsg{owner, generation}
 		}
 	}
 }
@@ -71,7 +71,7 @@ func (l *dayLoad) finishEvents() {
 	l.finishFeedback()
 }
 
-func (l *dayLoad) finishCounts(result Counts) {
+func (l *dayLoad) finishCounts(result countsMsg) {
 	l.countsPending = false
 	l.pendingCounts = result
 	l.finishFeedback()

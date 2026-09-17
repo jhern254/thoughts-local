@@ -15,7 +15,7 @@ func TestModel_TimelinePosition(t *testing.T) {
 		m, _, _ := fixture(t)
 		selected, top := m.items[m.position.eventIndex].EventID, m.position.topLine
 		m.SetFocused(false)
-		m, _ = m.Update(Tick{m.owner, m.session, m.clock.AddDate(0, 0, 1)})
+		m, _ = m.Update(tickMsg{m.owner, m.session, m.clock.AddDate(0, 0, 1)})
 		if m.load.eventsPending || m.position.followNow || m.position.topLine != top {
 			t.Fatal("blurred timeline followed the clock into another day")
 		}
