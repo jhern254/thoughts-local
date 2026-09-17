@@ -148,9 +148,11 @@ func (m *Model) Close() {
 	m.picker.Reset()
 	m.expanded = 0
 }
-func (m *Model) Pause() { m.position.followNow = false }
 func (m *Model) SetFocused(focused bool) {
 	blurred := !focused
+	if blurred {
+		m.position.followNow = false
+	}
 	if m.blurred != blurred {
 		m.loadingBody = ""
 	}

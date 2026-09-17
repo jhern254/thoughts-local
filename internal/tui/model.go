@@ -189,7 +189,6 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 		if key.String() == "tab" {
 			m.entityFocused = !m.entityFocused
 			m.events.SetFocused(!m.entityFocused)
-			m.events.Pause()
 			return m, nil
 		}
 		if m.entityFocused {
