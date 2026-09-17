@@ -23,7 +23,7 @@ type Metrics interface {
 	CountThoughts(context.Context, string) (int64, error)
 }
 
-// ThoughtCountResult has refresh ownership independent of individual cursor requests.
+// ThoughtCountResult has refresh ownership independent of cursor-page requests.
 type ThoughtCountResult struct {
 	owner   *int
 	request uint64
@@ -56,7 +56,8 @@ type browseThoughtsState struct {
 	countErr             error
 }
 
-// BrowseThoughtsResult belongs to one request/session, like the existing detail results.
+// BrowseThoughtsResult captures the cursor query and deferred selection move for
+// one request generation. A later refresh or page request makes the reply inert.
 type BrowseThoughtsResult struct {
 	owner   *int
 	request uint64
@@ -115,6 +116,7 @@ func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
 }
 
 func (m Model) receiveThoughtCount(result ThoughtCountResult) (Model, tea.Cmd) {
+	// The mode check prevents a count from a closed browser from updating reused state.
 	if result.owner != m.owner || !m.browsingThoughtsView || result.request != m.countRequest {
 		return m, nil
 	}
@@ -149,6 +151,7 @@ func (m *Model) loadThoughtsView(query data.ThoughtSummaryViewRequest, move int)
 }
 
 func (m Model) receiveBrowseThoughts(result BrowseThoughtsResult) (Model, tea.Cmd) {
+	// Model identity, active mode, and newest request must all still match.
 	if result.owner != m.owner || !m.browsingThoughtsView || result.request != m.request {
 		return m, nil
 	}

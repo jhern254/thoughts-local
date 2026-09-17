@@ -16,13 +16,15 @@ import (
 type eventForm struct {
 	open, ending, saving bool
 	fields               [2]textinput.Model
-	index                int
-	revision             uint64
-	event                data.Event
-	err                  error
-	message              string
+	// index owns keyboard focus; revision owns asynchronous clipboard input.
+	index    int
+	revision uint64
+	event    data.Event
+	err      error
+	message  string
 }
 type formClipboard struct {
+	// save identifies the form session; revision identifies its unchanged draft.
 	owner          *int
 	save, revision uint64
 	text           string

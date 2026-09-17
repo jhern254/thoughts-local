@@ -30,8 +30,11 @@ type SubjectService interface {
 
 type subjectState struct {
 	service SubjectService
-	filter  listfilter.Scope
+	// filter scopes asynchronous Bubbles matches to this list and query revision.
+	filter listfilter.Scope
 
+	// The Bubbles list owns row selection. selected is the accepted Subject used
+	// by detail, edit, and delete screens after the selected row is fetched.
 	list        list.Model
 	input       textinput.Model
 	selected    *data.Subject

@@ -40,28 +40,37 @@ const (
 )
 
 type Model struct {
-	owner      *int
-	ctx        context.Context
-	userID     string
-	service    Service
-	logger     logging.Logger
-	subjectID  *int64
-	request    uint64
-	screen     screen
-	list       list.Model
-	input      textarea.Model
-	viewport   viewport.Model
-	selected   *data.Thought
+	ctx     context.Context
+	userID  string
+	service Service
+	logger  logging.Logger
+
+	// owner separates model instances. request owns list/get/create and cursor
+	// replies; countRequest lets a full-scope count refresh independently.
+	owner        *int
+	request      uint64
+	countRequest uint64
+
+	// screen selects list, editor, or detail behavior. selected survives detail
+	// rendering, while the list or bounded browse state owns row selection.
+	screen    screen
+	subjectID *int64
+	list      list.Model
+	input     textarea.Model
+	viewport  viewport.Model
+	selected  *data.Thought
+
 	loading    bool
 	stale      bool
 	err        error
 	errMessage string
 
-	inputWarning         string
-	filter               listfilter.Scope
+	inputWarning string
+	// filter owns asynchronous Bubbles matches for the current list revision.
+	filter listfilter.Scope
+	// browsingThoughtsView switches from subject rows to the bounded summary browser.
 	browsingThoughtsView bool
 	browseThoughts       browseThoughtsState
-	countRequest         uint64
 	itemStyles           list.DefaultItemStyles
 	blurred              bool
 }
@@ -110,8 +119,8 @@ func (r row) Description() string {
 }
 func (r row) FilterValue() string { return r.Title() }
 
-// Result carries one asynchronous service result with its request context.
-// Only the component constructs and interprets these messages.
+// Result carries one asynchronous service result with its request ownership.
+// operation describes logging/classification; it never selects the service call.
 type Result struct {
 	owner     *int
 	request   uint64
@@ -150,6 +159,7 @@ func (m *Model) Resize(width, height int) {
 }
 
 func (m *Model) Reset() {
+	// Invalidate both result streams before replacing their visible state.
 	m.countRequest++
 	m.browsingThoughtsView = false
 	m.browseThoughts = browseThoughtsState{width: m.browseThoughts.width, height: m.browseThoughts.height}
@@ -245,6 +255,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 	}
 	if result, ok := msg.(Result); ok {
+		// Cancellation is optional here; ownership alone makes obsolete replies inert.
 		if result.owner != m.owner || result.request != m.request {
 			return m, nil
 		}

@@ -28,6 +28,8 @@ type TimelineView interface {
 	ThoughtCounts(context.Context, string, time.Time, time.Time) ([]data.EventThoughtCountView, error)
 }
 
+// Asynchronous replies carry the model identity and the generation of the state
+// that requested them. Update accepts a reply only while both still match.
 type Tick struct {
 	owner   *int
 	session uint64
@@ -70,35 +72,54 @@ type Saved struct {
 }
 
 type Model struct {
-	ctx                                  context.Context
-	readCtx                              context.Context
-	cancelRead                           context.CancelFunc
-	cancelLoading                        context.CancelFunc
-	userID                               string
-	service                              Service
-	timelineView                         TimelineView
-	logger                               logging.Logger
-	owner                                *int
-	now                                  func() time.Time
-	clock, day                           time.Time
-	pendingDay                           time.Time
-	pendingCounts                        Counts
-	showLoading                          bool
-	loadingBody                          string
-	active, following                    bool
-	blurred                              bool
-	session, request, expansion, save    uint64
-	items                                []data.Event
-	index, offset, width, height         int
-	loading, countPending, latestPending bool
-	err, countErr, latestErr             error
-	message                              string
-	counts                               []data.EventThoughtCountView
-	latest                               *data.ThoughtSummaryView
-	expanded                             int64
-	opening                              bool
-	picker                               thoughts.Model
-	form                                 eventForm
+	ctx          context.Context
+	userID       string
+	service      Service
+	timelineView TimelineView
+	logger       logging.Logger
+	now          func() time.Time
+
+	// owner identifies this model instance. The generation counters independently
+	// own clock ticks, day reads, event expansion, and form saves.
+	owner                             *int
+	session, request, expansion, save uint64
+
+	// A new day request cancels avoidable database work. Generation checks remain
+	// the correctness boundary because a canceled command may still return a reply.
+	readCtx       context.Context
+	cancelRead    context.CancelFunc
+	cancelLoading context.CancelFunc
+	loadingBody   string
+	showLoading   bool
+	pendingDay    time.Time
+	pendingCounts Counts
+	loading       bool
+	countPending  bool
+	latestPending bool
+	err           error
+	countErr      error
+	latestErr     error
+	message       string
+
+	// day and items are the accepted timeline. pendingDay is not presented as the
+	// current day until its matching Listed reply succeeds.
+	clock, day time.Time
+	items      []data.Event
+	counts     []data.EventThoughtCountView
+	latest     *data.ThoughtSummaryView
+
+	// index selects an event; offset selects the first rendered timeline line.
+	// expanded delegates keys and rendering to picker without replacing the day.
+	index, offset, width, height int
+	expanded                     int64
+	opening                      bool
+	picker                       thoughts.Model
+	form                         eventForm
+
+	// following keeps today anchored to the moving clock. blurred preserves the
+	// selection while the root entity strip temporarily owns keyboard focus.
+	active, following bool
+	blurred           bool
 }
 
 func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, logger logging.Logger) Model {
@@ -121,6 +142,7 @@ func (m *Model) Close() {
 		m.cancelRead()
 	}
 	m.active = false
+	// Invalidate replies that can outlive this screen opening.
 	m.session++
 	m.request++
 	m.expansion++
@@ -165,6 +187,7 @@ func (m *Model) loadDay(day time.Time) tea.Cmd {
 	if m.cancelRead != nil {
 		m.cancelRead()
 	}
+	// Cancellation saves work; request is the authority that rejects late replies.
 	m.readCtx, m.cancelRead = context.WithCancel(m.ctx)
 	loadingCtx, cancelLoading := context.WithCancel(m.readCtx)
 	m.cancelLoading = cancelLoading
@@ -249,6 +272,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	case Listed:
+		// The current model instance and newest day request exclusively own this reply.
 		if result.owner != m.owner || result.request != m.request || !m.loading {
 			return m, nil
 		}
@@ -331,6 +355,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		return m, tea.Batch(latest, open)
 	case Counts:
+		// Counts share the day-request generation but may arrive before its event list.
 		if result.owner != m.owner || result.request != m.request {
 			return m, nil
 		}
@@ -348,6 +373,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.anchor()
 		return m, nil
 	case Latest:
+		// Latest is derived from the accepted list and inherits that list's generation.
 		if result.owner != m.owner || result.request != m.request {
 			return m, nil
 		}
@@ -357,6 +383,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.anchor()
 		return m, nil
 	case Opened:
+		// Expansion has its own generation so changing/collapsing cards invalidates it.
 		if result.owner != m.owner || result.request != m.expansion {
 			return m, nil
 		}
@@ -378,6 +405,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.anchor()
 		return m, cmd
 	case Saved:
+		// Save ownership prevents an abandoned or replaced form from handling a reply.
 		if result.owner != m.owner || result.request != m.save {
 			return m, nil
 		}

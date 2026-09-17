@@ -48,11 +48,14 @@ func (entity entityKind) title() string {
 }
 
 type Model struct {
-	ctx    context.Context
-	user   *data.User
+	ctx  context.Context
+	user *data.User
+	// screen selects the root child that owns ordinary messages and rendering.
 	screen screen
 	logger logging.Logger
 
+	// Entity selection and panel focus are separate: selectedEntity remembers the
+	// strip choice while entityFocused decides whether the strip or Events owns keys.
 	selectedEntity entityKind
 	entityFocused  bool
 	width          int
