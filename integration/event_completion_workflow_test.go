@@ -39,7 +39,12 @@ func TestEventCompletionWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got ended event %+v, want end 200 and version 2", ended)
 		}
 		end := eventTime(250)
-		updated, err := s.Update(t.Context(), user, item.EventID, ended.Version, " corrected ", eventTime(50), &end, nil)
+		updated, err := s.Update(t.Context(), user, item.EventID, ended.Version, event.UpdateInput{
+			Activity:  " corrected ",
+			StartedAt: eventTime(50),
+			EndedAt:   &end,
+			SubjectID: ended.SubjectID,
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,15 +74,30 @@ func TestEventCompletionWorkflow_SQLite(t *testing.T) {
 	}{
 		{"overlap correction", func(s *event.Service, e *data.Event) error {
 			end := eventTime(350)
-			_, err := s.Update(t.Context(), "u", e.EventID, e.Version, "changed", eventTime(100), &end, nil)
+			_, err := s.Update(t.Context(), "u", e.EventID, e.Version, event.UpdateInput{
+				Activity:  "changed",
+				StartedAt: eventTime(100),
+				EndedAt:   &end,
+				SubjectID: e.SubjectID,
+			})
 			return err
 		}, data.ErrEventOverlap},
 		{"stale correction", func(s *event.Service, e *data.Event) error {
-			_, err := s.Update(t.Context(), "u", e.EventID, e.Version+1, "changed", e.StartedAt, e.EndedAt, nil)
+			_, err := s.Update(t.Context(), "u", e.EventID, e.Version+1, event.UpdateInput{
+				Activity:  "changed",
+				StartedAt: e.StartedAt,
+				EndedAt:   e.EndedAt,
+				SubjectID: e.SubjectID,
+			})
 			return err
 		}, data.ErrEventVersionConflict},
 		{"reopening", func(s *event.Service, e *data.Event) error {
-			_, err := s.Update(t.Context(), "u", e.EventID, e.Version, "changed", e.StartedAt, nil, nil)
+			_, err := s.Update(t.Context(), "u", e.EventID, e.Version, event.UpdateInput{
+				Activity:  "changed",
+				StartedAt: e.StartedAt,
+				EndedAt:   nil,
+				SubjectID: e.SubjectID,
+			})
 			return err
 		}, data.ErrEventStateConflict},
 		{"ending a completed event", func(s *event.Service, e *data.Event) error {
@@ -85,7 +105,12 @@ func TestEventCompletionWorkflow_SQLite(t *testing.T) {
 			return err
 		}, data.ErrEventStateConflict},
 		{"another user's correction", func(s *event.Service, e *data.Event) error {
-			_, err := s.Update(t.Context(), "other", e.EventID, e.Version, "changed", e.StartedAt, e.EndedAt, nil)
+			_, err := s.Update(t.Context(), "other", e.EventID, e.Version, event.UpdateInput{
+				Activity:  "changed",
+				StartedAt: e.StartedAt,
+				EndedAt:   e.EndedAt,
+				SubjectID: e.SubjectID,
+			})
 			return err
 		}, data.ErrRecordNotFound},
 		{"another user's end", func(s *event.Service, e *data.Event) error {
@@ -97,7 +122,11 @@ func TestEventCompletionWorkflow_SQLite(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			insertUsers(t, db, "u", "other")
 			s := event.NewService(data.NewSQLiteEventStore(db))
-			item, err := s.CreatePast(t.Context(), "u", "original", eventTime(100), eventTime(200), nil)
+			if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','coding')`); err != nil {
+				t.Fatal(err)
+			}
+			subjectID := int64(1)
+			item, err := s.CreatePast(t.Context(), "u", "original", eventTime(100), eventTime(200), &subjectID)
 			if err != nil {
 				t.Fatal(err)
 			}

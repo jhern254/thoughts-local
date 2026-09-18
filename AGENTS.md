@@ -31,6 +31,8 @@ Operational logging accepts only approved typed metadata and uses fixed event me
 * Prefer small interfaces that describe behavior the app actually needs.
 * Avoid giant interfaces that mechanically mirror database tables.
 
+Event updates replace the complete editable event state. A nil `SubjectID` explicitly clears the subject assignment; callers making unrelated corrections must supply the current `SubjectID` to preserve it.
+
 ### Cross-entity coordination
 
 When a use case combines multiple entities, put that coordination in a small, dedicated application service with narrow, consumer-defined interfaces. Keep each entity service focused on its own operations rather than accumulating dependencies for combined views or workflows.
@@ -191,7 +193,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 
 ## SQLite Principles
 
-Soft-deleting a subject retains its record but atomically clears `subject_id` on all linked thoughts, including soft-deleted thoughts. This changes assignment, not history: retain thought-tag associations, mindset periods, and event/goal-progress provenance.
+Soft-deleting a subject retains its record and atomically clears `subject_id` on all linked thoughts and events, including already soft-deleted records. Unlinking advances affected records’ versions and keeps `updated_at` nondecreasing. This changes assignment, not historical existence: thoughts and events remain retained, along with event/thought provenance, goal progress, thought-tag associations, mindset periods, and other historical relationships.
 
 * Treat SQLite as a serious persistence layer, not a throwaway dev database.
 * Use migrations for schema changes.

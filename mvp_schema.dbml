@@ -79,6 +79,7 @@ Table tags {
 Table events {
   event_id      integer [pk]    // SQLite surr key
   user_id       text [not null]
+  subject_id    integer              // nullable FK to a subject owned by the same user
   activity_type text
   started_at    timestamptz [not null, default: `now()`]
   ended_at      timestamptz
@@ -86,6 +87,8 @@ Table events {
   updated_at    timestamptz [not null, default: `now()`]
 
   Note: '''
+    Assigned subjects must share the event's user_id. The SQL migration enforces
+    this with a composite foreign key; it remains authoritative.
     CHECK (activity_type IS NULL OR length(trim(activity_type)) BETWEEN 1 AND 4096)
     CHECK (ended_at IS NULL OR ended_at >= started_at)
     CHECK (created_at <= updated_at)
@@ -93,6 +96,7 @@ Table events {
 
   Indexes {
     (user_id, started_at) [name: 'idx_events_user_started_at']
+    subject_id [name: 'idx_events_subject']
   }
 }
 
@@ -274,6 +278,9 @@ Ref: users.user_id < events.user_id           [delete: cascade]
 Ref: users.user_id < thoughts.user_id         [delete: cascade]
 Ref: users.user_id < goals.user_id            [delete: cascade]
 Ref: users.user_id < goal_progress.user_id    [delete: cascade]
+
+/* Event classification; same-owner constraint is documented on events. */
+Ref: subjects.subject_id < events.subject_id [delete: set null, update: cascade]
 
 /* Thoughts classification and timing */
 Ref: subjects.subject_id < thoughts.subject_id   [delete: set null]

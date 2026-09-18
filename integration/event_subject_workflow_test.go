@@ -5,9 +5,11 @@ package integration_test
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"testing"
+
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/event"
-	"testing"
 )
 
 func TestEventSubjectWorkflow_SQLite(t *testing.T) {
@@ -70,7 +72,12 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 		if ended.SubjectID == nil || *ended.SubjectID != first {
 			t.Fatalf("got ended subject %v, want 1", ended.SubjectID)
 		}
-		updated, err := service.Update(t.Context(), "u", ended.EventID, ended.Version, "activity", ended.StartedAt, ended.EndedAt, &second)
+		updated, err := service.Update(t.Context(), "u", ended.EventID, ended.Version, event.UpdateInput{
+			Activity:  "activity",
+			StartedAt: ended.StartedAt,
+			EndedAt:   ended.EndedAt,
+			SubjectID: &second,
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +95,12 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 		if len(items) != 1 || items[0].SubjectID == nil || *items[0].SubjectID != second {
 			t.Fatalf("got listed events %+v, want one with subject 2", items)
 		}
-		cleared, err := service.Update(t.Context(), "u", got.EventID, got.Version, "activity", got.StartedAt, got.EndedAt, nil)
+		cleared, err := service.Update(t.Context(), "u", got.EventID, got.Version, event.UpdateInput{
+			Activity:  "activity",
+			StartedAt: got.StartedAt,
+			EndedAt:   got.EndedAt,
+			SubjectID: nil,
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,11 +119,12 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 		t.Run(fmt.Sprintf("unavailable subject %d leaves predecessor unchanged", id), func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			insertUsers(t, db, "u", "other")
-			if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name,deleted_at) VALUES (2,'other','private',NULL),(3,'u','deleted',unixepoch('now'))`); err != nil {
+			if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name,deleted_at) VALUES (1,'u','keep',NULL),(2,'other','private',NULL),(3,'u','deleted',unixepoch('now'))`); err != nil {
 				t.Fatal(err)
 			}
 			service := event.NewService(data.NewSQLiteEventStore(db))
-			before, err := service.Create(t.Context(), "u", "keep", eventTime(100), nil)
+			subjectID := int64(1)
+			before, err := service.Create(t.Context(), "u", "keep", eventTime(100), &subjectID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -121,15 +134,20 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 			if _, err := service.CreatePast(t.Context(), "u", "reject", eventTime(10), eventTime(20), &id); !errors.Is(err, data.ErrRecordNotFound) {
 				t.Fatalf("got past error %v, want not found", err)
 			}
-			if _, err := service.Update(t.Context(), "u", before.EventID, before.Version, "reject", before.StartedAt, nil, &id); !errors.Is(err, data.ErrRecordNotFound) {
+			if _, err := service.Update(t.Context(), "u", before.EventID, before.Version, event.UpdateInput{
+				Activity:  "reject",
+				StartedAt: before.StartedAt,
+				EndedAt:   nil,
+				SubjectID: &id,
+			}); !errors.Is(err, data.ErrRecordNotFound) {
 				t.Fatalf("got update error %v, want not found", err)
 			}
 			got, err := service.Get(t.Context(), "u", before.EventID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.EndedAt != nil || got.Version != before.Version || *got.ActivityType != "keep" {
-				t.Fatalf("got predecessor %+v, want unchanged ongoing event", got)
+			if !reflect.DeepEqual(got, before) {
+				t.Fatalf("got predecessor %+v, want unchanged ongoing event %+v", got, before)
 			}
 		})
 	}
@@ -175,4 +193,68 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got unchanged links %d, want 1", count)
 		}
 	})
+}
+
+func TestEventUpdateSubjectWorkflow_SQLite(t *testing.T) {
+	for _, scenario := range []string{
+		"correction preserves subject when current assignment is supplied",
+		"another subject reassigns event",
+		"nil subject explicitly clears assignment",
+	} {
+		t.Run(scenario, func(t *testing.T) {
+			db, _ := openMigratedSQLite(t)
+			insertUsers(t, db, "u")
+			if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','coding'),(2,'u','reading')`); err != nil {
+				t.Fatal(err)
+			}
+			service := event.NewService(data.NewSQLiteEventStore(db))
+			first, second := int64(1), int64(2)
+			current, err := service.CreatePast(t.Context(), "u", "original", eventTime(100), eventTime(200), &first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			end := eventTime(250)
+			input := event.UpdateInput{
+				Activity:  "corrected",
+				StartedAt: eventTime(50),
+				EndedAt:   &end,
+				SubjectID: current.SubjectID,
+			}
+			switch scenario {
+			case "another subject reassigns event":
+				input.SubjectID = &second
+			case "nil subject explicitly clears assignment":
+				input.SubjectID = nil
+			}
+			updated, err := service.Update(t.Context(), "u", current.EventID, current.Version, input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := service.Get(t.Context(), "u", current.EventID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, updated) {
+				t.Fatalf("got persisted event %+v, want returned event %+v", got, updated)
+			}
+			if input.SubjectID == nil {
+				if got.SubjectID != nil {
+					t.Fatalf("got subject ID %d, want nil", *got.SubjectID)
+				}
+			} else {
+				if got.SubjectID == nil {
+					t.Fatalf("got nil subject ID, want %d", *input.SubjectID)
+				}
+				if got, want := *got.SubjectID, *input.SubjectID; got != want {
+					t.Fatalf("got subject ID %d, want %d", got, want)
+				}
+			}
+			if got.ActivityType == nil || *got.ActivityType != input.Activity || !got.StartedAt.Equal(input.StartedAt) || got.EndedAt == nil || !got.EndedAt.Equal(end) {
+				t.Fatalf("got editable state %+v, want %+v", got, input)
+			}
+			if got.Version != current.Version+1 || !got.CreatedAt.Equal(current.CreatedAt) || got.UpdatedAt.Before(current.UpdatedAt) {
+				t.Fatalf("got metadata %+v, want advanced version and retained creation with nondecreasing update time", got)
+			}
+		})
+	}
 }

@@ -216,7 +216,12 @@ func TestService_SubjectAssignment(t *testing.T) {
 				case "past":
 					_, err = s.CreatePast(t.Context(), "u", "activity", start, end, subjectID)
 				case "update":
-					_, err = s.Update(t.Context(), "u", 1, 1, "activity", start, &end, subjectID)
+					_, err = s.Update(t.Context(), "u", 1, 1, UpdateInput{
+						Activity:  "activity",
+						StartedAt: start,
+						EndedAt:   &end,
+						SubjectID: subjectID,
+					})
 				}
 				if err != want {
 					t.Fatalf("got error %v, want original error %v", err, want)
