@@ -34,6 +34,7 @@ type Thought struct {
 
 // Event is an activity interval. A nil EndedAt means the event is ongoing.
 type Event struct {
+	SubjectID    *int64
 	EventID      int64
 	UserID       string
 	ActivityType *string

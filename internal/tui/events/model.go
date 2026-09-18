@@ -18,7 +18,7 @@ import (
 
 type Service interface {
 	List(context.Context, string, time.Time, time.Time) ([]data.Event, error)
-	Create(context.Context, string, string, time.Time) (*data.Event, error)
+	Create(context.Context, string, string, time.Time, *int64) (*data.Event, error)
 	End(context.Context, string, int64, int64, time.Time) (*data.Event, error)
 }
 type TimelineView interface {
@@ -89,12 +89,13 @@ func (openedMsg) eventMessage()      {}
 func (savedMsg) eventMessage()       {}
 
 type Model struct {
-	ctx          context.Context
-	userID       string
-	service      Service
-	timelineView TimelineView
-	logger       logging.Logger
-	now          func() time.Time
+	ctx           context.Context
+	userID        string
+	service       Service
+	subjectReader SubjectReader
+	timelineView  TimelineView
+	logger        logging.Logger
+	now           func() time.Time
 
 	// Clock, expansion, and form lifetimes are independent of a day load.
 	owner                    *int
@@ -126,9 +127,9 @@ type Model struct {
 	blurred bool
 }
 
-func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, logger logging.Logger) Model {
+func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, subjects SubjectReader, logger logging.Logger) Model {
 	now := time.Now()
-	return Model{ctx: ctx, userID: userID, service: service, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), position: timelinePosition{followNow: true}, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
+	return Model{ctx: ctx, userID: userID, service: service, subjectReader: subjects, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), position: timelinePosition{followNow: true}, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
 }
 
 func (m *Model) Open() tea.Cmd {
@@ -235,6 +236,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	switch result := msg.(type) {
+	case subjectsLoaded:
+		m.acceptSubjects(result)
+		return m, nil
 	case tickMsg:
 		if result.owner != m.owner || result.session != m.session {
 			return m, nil

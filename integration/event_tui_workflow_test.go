@@ -101,7 +101,7 @@ func TestEventTUIWorkflow_SQLite(t *testing.T) {
 				t.Error(err)
 			}
 		})
-		previous, err := runtime.Events().Create(t.Context(), runtime.LocalUser().UserID, "previous", time.Now().Add(-time.Hour))
+		previous, err := runtime.Events().Create(t.Context(), runtime.LocalUser().UserID, "previous", time.Now().Add(-time.Hour), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

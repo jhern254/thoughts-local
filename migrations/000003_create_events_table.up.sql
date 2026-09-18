@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS events (
     event_id        INTEGER PRIMARY KEY,
     user_id         TEXT    NOT NULL,
+    subject_id      INTEGER, -- optional subject, owned by the same user
     activity_type   TEXT,
     started_at      INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     ended_at        INTEGER, -- NULL means ongoing; UTC epoch seconds otherwise
@@ -27,6 +28,14 @@ CREATE TABLE IF NOT EXISTS events (
     CONSTRAINT ck_events_time_order
         CHECK (created_at <= updated_at),
 
+    CONSTRAINT fk_events_subject
+        FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
+        ON DELETE SET NULL ON UPDATE CASCADE,
+
+    CONSTRAINT fk_events_subject_owner
+        FOREIGN KEY (subject_id, user_id) REFERENCES subjects(subject_id, user_id)
+        ON UPDATE CASCADE,
+
     -- Foreign key
     CONSTRAINT fk_events_user
         FOREIGN KEY (user_id) REFERENCES users(user_id)
@@ -45,3 +54,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_events_ongoing_user
 -- Parent key for enforcing ownership of progress provenance.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_events_id_user
     ON events (event_id, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_events_subject ON events (subject_id);

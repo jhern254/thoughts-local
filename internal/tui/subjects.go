@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
@@ -29,7 +30,8 @@ type SubjectService interface {
 }
 
 type subjectState struct {
-	service SubjectService
+	service       SubjectService
+	createSession *int
 	// filter scopes asynchronous Bubbles matches to this list and query revision.
 	filter listfilter.Scope
 
@@ -96,6 +98,7 @@ type subjectsListedMsg struct {
 }
 
 type subjectCreatedMsg struct {
+	session *int
 	subject *data.Subject
 	err     error
 }
@@ -144,7 +147,8 @@ func newSubjectState(service SubjectService) subjectState {
 func (m *Model) resizeSubjects(width, height int) {
 	// Reserve feedback (two lines), the record count, and navigation help.
 	m.subjects.list.SetSize(width, max(0, height-4))
-	m.subjects.input.SetWidth(max(0, width-2))
+	m.subjects.input.SetWidth(max(1, width-ansi.StringWidth(m.subjects.input.Prompt)-1))
+	m.subjects.input.SetCursor(m.subjects.input.Position())
 }
 
 func (m Model) openSubjects() (tea.Model, tea.Cmd) {
@@ -175,9 +179,10 @@ func (m Model) createSubject(name string) tea.Cmd {
 	ctx := m.ctx
 	userID := m.user.UserID
 	service := m.subjects.service
+	session := m.subjects.createSession
 	return func() tea.Msg {
 		subject, err := service.Create(ctx, userID, name)
-		return subjectCreatedMsg{subject: subject, err: err}
+		return subjectCreatedMsg{session: session, subject: subject, err: err}
 	}
 }
 
@@ -256,6 +261,10 @@ func (m Model) handleSubjectsListed(message subjectsListedMsg) (tea.Model, tea.C
 }
 
 func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.Cmd) {
+	if message.session != m.subjects.createSession {
+		return m, nil
+	}
+	m.subjects.createSession = nil
 	m.subjects.loading = false
 	if message.err != nil {
 		logSubjectError(m.logger, logging.SubjectCreate, message.err)
@@ -271,6 +280,12 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.detailTitle = "Created subject"
 	m.subjects.listStale = true
 	m.logger.Mutation(logging.SubjectCreated, message.subject.SubjectID)
+	if m.subjectReturn != nil {
+		cmd := m.events.ReturnFromSubjectCreation(*m.subjectReturn, message.subject)
+		m.subjectReturn = nil
+		m.screen = screenEvents
+		return m, cmd
+	}
 	m.screen = screenSubjectDetail
 	cmd := m.thoughts.Open(message.subject.SubjectID)
 	return m, cmd
@@ -367,9 +382,8 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 					cmd := m.thoughts.OpenUnassigned()
 					return m, cmd
 				case subjectRowCreate:
-					m.screen = screenSubjectCreate
-					m.subjects.input.Reset()
-					return m, m.subjects.input.Focus()
+					m.subjectReturn = nil
+					return m.openSubjectCreate("")
 				case subjectRowRecord:
 					m.subjects.loading = true
 					return m, m.getSubject(row.subject.SubjectID)
@@ -382,6 +396,16 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, command
 }
 
+func (m Model) openSubjectCreate(query string) (tea.Model, tea.Cmd) {
+	m.screen = screenSubjectCreate
+	m.subjects.createSession = new(int)
+	m.subjects.loading = false
+	m.subjects.err = nil
+	m.subjects.input.SetValue(query)
+	m.subjects.input.CursorEnd()
+	return m, m.subjects.input.Focus()
+}
+
 func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.subjects.loading {
 		return m, nil
@@ -390,12 +414,22 @@ func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "esc":
+			m.subjects.createSession = nil
+			if m.subjectReturn != nil {
+				cmd := m.events.ReturnFromSubjectCreation(*m.subjectReturn, nil)
+				m.subjectReturn = nil
+				m.subjects.input.Blur()
+				m.subjects.err = nil
+				m.screen = screenEvents
+				return m, cmd
+			}
 			m.subjects.input.Blur()
 			m.subjects.input.Reset()
 			m.subjects.err = nil
 			m.screen = screenSubjectList
 			return m, nil
 		case "enter":
+			m.subjects.createSession = new(int)
 			m.subjects.loading = true
 			m.subjects.err = nil
 			m.subjects.input.Blur()
