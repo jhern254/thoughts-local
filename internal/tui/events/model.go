@@ -30,46 +30,63 @@ type TimelineView interface {
 
 // Asynchronous replies carry the model identity and the generation of the state
 // that requested them. Update accepts a reply only while both still match.
-type Tick struct {
+type tickMsg struct {
 	owner   *int
 	session uint64
 	at      time.Time
 }
-type Listed struct {
+type listedMsg struct {
 	owner   *int
 	request uint64
 	items   []data.Event
 	err     error
 }
-type LoadDelayed struct {
+type loadDelayedMsg struct {
 	owner   *int
 	request uint64
 }
-type Counts struct {
+type countsMsg struct {
 	owner   *int
 	request uint64
 	items   []data.EventThoughtCountView
 	err     error
 }
-type Latest struct {
+type latestMsg struct {
 	owner   *int
 	request uint64
 	item    *data.ThoughtSummaryView
 	err     error
 }
-type Opened struct {
+type openedMsg struct {
 	owner   *int
 	request uint64
 	scope   timeline.ThoughtScope
 	err     error
 }
-type Saved struct {
+type savedMsg struct {
 	owner   *int
 	request uint64
 	item    *data.Event
 	ending  bool
 	err     error
 }
+
+// Owns identifies Events-only messages. Instance and generation checks still
+// happen in Update; shared Thought replies keep their existing root routing.
+func Owns(msg tea.Msg) bool {
+	_, ok := msg.(message)
+	return ok
+}
+
+type message interface{ eventMessage() }
+
+func (tickMsg) eventMessage()        {}
+func (listedMsg) eventMessage()      {}
+func (countsMsg) eventMessage()      {}
+func (latestMsg) eventMessage()      {}
+func (loadDelayedMsg) eventMessage() {}
+func (openedMsg) eventMessage()      {}
+func (savedMsg) eventMessage()       {}
 
 type Model struct {
 	ctx          context.Context
@@ -79,52 +96,39 @@ type Model struct {
 	logger       logging.Logger
 	now          func() time.Time
 
-	// owner identifies this model instance. The generation counters independently
-	// own clock ticks, day reads, event expansion, and form saves.
-	owner                             *int
-	session, request, expansion, save uint64
+	// Clock, expansion, and form lifetimes are independent of a day load.
+	owner                    *int
+	session, expansion, save uint64
 
-	// A new day request cancels avoidable database work. Generation checks remain
-	// the correctness boundary because a canceled command may still return a reply.
-	readCtx       context.Context
-	cancelRead    context.CancelFunc
-	cancelLoading context.CancelFunc
-	loadingBody   string
-	showLoading   bool
-	pendingDay    time.Time
-	pendingCounts Counts
-	loading       bool
-	countPending  bool
-	latestPending bool
-	err           error
-	countErr      error
-	latestErr     error
-	message       string
+	// Day and expansion failures share the screen's safe status message.
+	err     error
+	message string
 
-	// day and items are the accepted timeline. pendingDay is not presented as the
-	// current day until its matching Listed reply succeeds.
+	// day and items are the accepted timeline. load.pendingDay is not presented as the
+	// current day until its matching listedMsg reply succeeds.
 	clock, day time.Time
 	items      []data.Event
 	counts     []data.EventThoughtCountView
 	latest     *data.ThoughtSummaryView
 
-	// index selects an event; offset selects the first rendered timeline line.
-	// expanded delegates keys and rendering to picker without replacing the day.
-	index, offset, width, height int
-	expanded                     int64
-	opening                      bool
-	picker                       thoughts.Model
-	form                         eventForm
+	position      timelinePosition
+	load          dayLoad
+	width, height int
 
-	// following keeps today anchored to the moving clock. blurred preserves the
-	// selection while the root entity strip temporarily owns keyboard focus.
-	active, following bool
-	blurred           bool
+	// expanded delegates keys and rendering to picker without replacing the day.
+	expanded int64
+	opening  bool
+	picker   thoughts.Model
+	form     eventForm
+
+	// blurred preserves selection while the root entity strip owns keyboard focus.
+	active  bool
+	blurred bool
 }
 
 func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, logger logging.Logger) Model {
 	now := time.Now()
-	return Model{ctx: ctx, userID: userID, service: service, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), following: true, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
+	return Model{ctx: ctx, userID: userID, service: service, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), position: timelinePosition{followNow: true}, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
 }
 
 func (m *Model) Open() tea.Cmd {
@@ -132,28 +136,27 @@ func (m *Model) Open() tea.Cmd {
 	m.session++
 	m.clock = m.now()
 	day := m.day
-	if day.IsZero() || m.following {
+	if day.IsZero() || m.position.followNow {
 		day = displaytime.Day(m.clock)
 	}
 	return tea.Batch(m.loadDay(day), m.tick())
 }
 func (m *Model) Close() {
-	if m.cancelRead != nil {
-		m.cancelRead()
-	}
+	m.load.invalidate()
 	m.active = false
 	// Invalidate replies that can outlive this screen opening.
 	m.session++
-	m.request++
 	m.expansion++
 	m.picker.Reset()
 	m.expanded = 0
 }
-func (m *Model) Pause() { m.following = false }
 func (m *Model) SetFocused(focused bool) {
 	blurred := !focused
+	if blurred {
+		m.position.followNow = false
+	}
 	if m.blurred != blurred {
-		m.loadingBody = ""
+		m.load.retainedBody = ""
 	}
 	m.blurred = blurred
 	m.picker.SetFocused(focused)
@@ -161,7 +164,7 @@ func (m *Model) SetFocused(focused bool) {
 func (m Model) CanLeave() bool { return !m.form.open && !m.picker.ShowingDetail() }
 func (m Model) FormOpen() bool { return m.form.open }
 func (m *Model) Resize(width, height int) {
-	m.loadingBody = ""
+	m.load.retainedBody = ""
 	m.width, m.height = max(1, width), max(1, height)
 	m.picker.Resize(max(1, width-12), max(1, height-2))
 	// Leave calendar context around the expanded box, not just room for the picker.
@@ -174,57 +177,35 @@ func (m *Model) Resize(width, height int) {
 func (m Model) tick() tea.Cmd {
 	owner, session := m.owner, m.session
 	delay := time.Minute - m.clock.Sub(m.clock.Truncate(time.Minute))
-	return tea.Tick(delay, func(at time.Time) tea.Msg { return Tick{owner, session, at} })
+	return tea.Tick(delay, func(at time.Time) tea.Msg { return tickMsg{owner, session, at} })
 }
 
 // loadDay keeps the displayed date with its cards until the requested list arrives.
 func (m *Model) loadDay(day time.Time) tea.Cmd {
 	// Hold only the visible body during this read, not data for other days.
 	// Rapid keys and obsolete replies must not repeatedly format unchanged cards.
-	if !m.loading || m.loadingBody == "" {
-		m.loadingBody = m.timelineBody()
+	if !m.load.eventsPending || m.load.retainedBody == "" {
+		m.load.retainedBody = m.timelineBody()
 	}
-	if m.cancelRead != nil {
-		m.cancelRead()
-	}
-	// Cancellation saves work; request is the authority that rejects late replies.
-	m.readCtx, m.cancelRead = context.WithCancel(m.ctx)
-	loadingCtx, cancelLoading := context.WithCancel(m.readCtx)
-	m.cancelLoading = cancelLoading
-	m.request++
+	feedback := m.load.begin(m.ctx, day, m.owner)
 	m.expansion++
 	m.opening = false
-	m.loading, m.countPending, m.latestPending = true, true, false
-	m.pendingDay, m.pendingCounts, m.showLoading = day, Counts{}, false
 	m.err = nil
 	m.message = ""
-	owner, request, ctx, user, service, view := m.owner, m.request, m.readCtx, m.userID, m.service, m.timelineView
+	owner, request, ctx, user, service, view := m.owner, m.load.generation, m.load.ctx, m.userID, m.service, m.timelineView
 	return tea.Batch(func() tea.Msg {
 		if err := ctx.Err(); err != nil {
-			return Listed{owner: owner, request: request, err: err}
+			return listedMsg{owner: owner, request: request, err: err}
 		}
 		items, err := service.List(ctx, user, day, day.AddDate(0, 0, 1))
-		return Listed{owner, request, items, err}
+		return listedMsg{owner, request, items, err}
 	}, func() tea.Msg {
 		if err := ctx.Err(); err != nil {
-			return Counts{owner: owner, request: request, err: err}
+			return countsMsg{owner: owner, request: request, err: err}
 		}
 		items, err := view.ThoughtCounts(ctx, user, day, day.AddDate(0, 0, 1))
-		return Counts{owner, request, items, err}
-	}, func() tea.Msg {
-		// Feedback is delayed, never the reads or application of their results.
-		if loadingCtx.Err() != nil {
-			return nil
-		}
-		timer := time.NewTimer(150 * time.Millisecond)
-		defer timer.Stop()
-		select {
-		case <-loadingCtx.Done():
-			return nil
-		case <-timer.C:
-			return LoadDelayed{owner, request}
-		}
-	})
+		return countsMsg{owner, request, items, err}
+	}, feedback)
 }
 func (m *Model) openEvent(id int64) tea.Cmd {
 	if m.expanded != id {
@@ -233,11 +214,11 @@ func (m *Model) openEvent(id int64) tea.Cmd {
 	m.expansion++
 	m.expanded = id
 	m.opening = true
-	m.following = false
+	m.position.followNow = false
 	owner, request, ctx, user, view := m.owner, m.expansion, m.ctx, m.userID, m.timelineView
 	return func() tea.Msg {
 		scope, err := view.OpenThoughtsView(ctx, user, id)
-		return Opened{owner, request, scope, err}
+		return openedMsg{owner, request, scope, err}
 	}
 }
 func (m *Model) fail(operation logging.Operation, err error) {
@@ -254,47 +235,42 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	switch result := msg.(type) {
-	case Tick:
+	case tickMsg:
 		if result.owner != m.owner || result.session != m.session {
 			return m, nil
 		}
 		m.clock = result.at
-		m.loadingBody = ""
+		m.load.retainedBody = ""
 		var reload tea.Cmd
-		if m.following && !m.day.Equal(displaytime.Day(m.clock)) && (!m.loading || !m.pendingDay.Equal(displaytime.Day(m.clock))) {
+		if m.position.followNow && !m.day.Equal(displaytime.Day(m.clock)) && (!m.load.eventsPending || !m.load.pendingDay.Equal(displaytime.Day(m.clock))) {
 			reload = m.loadDay(displaytime.Day(m.clock))
 		}
 		m.anchor()
 		return m, tea.Batch(reload, m.tick())
-	case LoadDelayed:
-		if result.owner == m.owner && result.request == m.request && (m.loading || m.countPending) {
-			m.showLoading = true
+	case loadDelayedMsg:
+		if result.owner == m.owner {
+			m.load.delayFeedback(result.request)
 		}
 		return m, nil
-	case Listed:
+	case listedMsg:
 		// The current model instance and newest day request exclusively own this reply.
-		if result.owner != m.owner || result.request != m.request || !m.loading {
+		if result.owner != m.owner || !m.load.owns(result.request) || !m.load.eventsPending {
 			return m, nil
 		}
-		if !m.countPending {
-			m.cancelLoading()
-			m.showLoading = false
-		}
-		m.loading = false
-		m.loadingBody = ""
+		m.load.finishEvents()
 		m.err = result.err
 		m.fail(logging.EventList, result.err)
 		if result.err != nil {
-			m.message = "Could not load events for " + displaytime.Format(m.pendingDay, "January 2, 2006") + "."
+			m.message = "Could not load events for " + displaytime.Format(m.load.pendingDay, "January 2, 2006") + "."
 			return m, nil
 		}
-		if !m.day.Equal(m.pendingDay) {
-			m.day = m.pendingDay
-			m.index, m.offset, m.expanded = 0, 0, 0
+		if !m.day.Equal(m.load.pendingDay) {
+			m.day = m.load.pendingDay
+			m.position.eventIndex, m.position.topLine, m.expanded = 0, 0, 0
 			m.items = nil
 			m.picker.Reset()
 		}
-		if m.countPending {
+		if m.load.countsPending {
 			// Only retain successful counts for unchanged displayed intervals.
 			sameIntervals := slices.EqualFunc(m.items, result.items, func(a, b data.Event) bool {
 				sameEnd := a.EndedAt == nil && b.EndedAt == nil
@@ -303,43 +279,43 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				}
 				return a.EventID == b.EventID && a.StartedAt.Equal(b.StartedAt) && sameEnd
 			})
-			if !sameIntervals || m.countErr != nil {
+			if !sameIntervals || m.load.countErr != nil {
 				m.counts = nil
 			}
-			m.countErr = nil
+			m.load.countErr = nil
 		} else {
-			m.counts, m.countErr = m.pendingCounts.items, m.pendingCounts.err
+			m.counts, m.load.countErr = m.load.pendingCounts.items, m.load.pendingCounts.err
 		}
 		selected := int64(0)
 		if len(m.items) > 0 {
-			selected = m.items[m.index].EventID
+			selected = m.items[m.position.eventIndex].EventID
 		}
 		m.items = result.items
-		m.index = min(m.index, max(0, len(m.items)-1))
+		m.position.clampSelection(len(m.items))
 		var latest, open tea.Cmd
 		foundExpanded := false
 		m.latest = nil
-		m.latestErr = nil
+		m.load.latestErr = nil
 		for i, item := range m.items {
 			if item.EventID == selected {
-				m.index = i
+				m.position.eventIndex = i
 			}
 			if item.EventID == m.expanded {
 				foundExpanded = true
 				open = m.openEvent(item.EventID)
 			}
 			if item.EndedAt == nil {
-				if m.following {
-					m.index = i
+				if m.position.followNow {
+					m.position.eventIndex = i
 				}
-				m.latestPending = true
-				owner, request, ctx, user, view, id := m.owner, m.request, m.readCtx, m.userID, m.timelineView, item.EventID
+				m.load.latestPending = true
+				owner, request, ctx, user, view, id := m.owner, m.load.generation, m.load.ctx, m.userID, m.timelineView, item.EventID
 				latest = func() tea.Msg {
 					if err := ctx.Err(); err != nil {
-						return Latest{owner: owner, request: request, err: err}
+						return latestMsg{owner: owner, request: request, err: err}
 					}
 					item, err := view.LatestThought(ctx, user, id)
-					return Latest{owner, request, item, err}
+					return latestMsg{owner, request, item, err}
 				}
 			}
 		}
@@ -348,47 +324,42 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.picker.Reset()
 		}
 		m.anchor()
-		if selected == 0 && !m.following && len(m.items) > 0 {
+		if selected == 0 && !m.position.followNow && len(m.items) > 0 {
 			lines, positions, _ := m.layout()
-			m.offset = positions[m.items[0].EventID]
-			m.clampOffset(len(lines))
+			m.position.topLine = positions[m.items[0].EventID]
+			m.position.clamp(len(lines))
 		}
 		return m, tea.Batch(latest, open)
-	case Counts:
+	case countsMsg:
 		// Counts share the day-request generation but may arrive before its event list.
-		if result.owner != m.owner || result.request != m.request {
+		if result.owner != m.owner || !m.load.owns(result.request) {
 			return m, nil
 		}
-		m.countPending = false
-		if !m.loading {
-			m.cancelLoading()
-			m.showLoading = false
-		}
-		m.pendingCounts = result
+		m.load.finishCounts(result)
 		m.fail(logging.EventThoughtCount, result.err)
-		if m.loading || !m.pendingDay.Equal(m.day) {
+		if m.load.eventsPending || !m.load.pendingDay.Equal(m.day) {
 			return m, nil
 		}
-		m.counts, m.countErr = result.items, result.err
+		m.counts, m.load.countErr = result.items, result.err
 		m.anchor()
 		return m, nil
-	case Latest:
-		// Latest is derived from the accepted list and inherits that list's generation.
-		if result.owner != m.owner || result.request != m.request {
+	case latestMsg:
+		// The latest preview inherits the accepted list's generation.
+		if result.owner != m.owner || !m.load.owns(result.request) {
 			return m, nil
 		}
-		m.latestPending = false
-		m.latest, m.latestErr = result.item, result.err
+		m.load.latestPending = false
+		m.latest, m.load.latestErr = result.item, result.err
 		m.fail(logging.EventThoughtList, result.err)
 		m.anchor()
 		return m, nil
-	case Opened:
+	case openedMsg:
 		// Expansion has its own generation so changing/collapsing cards invalidates it.
 		if result.owner != m.owner || result.request != m.expansion {
 			return m, nil
 		}
 		m.opening = false
-		m.loadingBody = ""
+		m.load.retainedBody = ""
 		m.err = result.err
 		m.fail(logging.EventGet, result.err)
 		if result.err != nil {
@@ -404,7 +375,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		cmd := m.picker.OpenEventView(result.scope, m.timelineView)
 		m.anchor()
 		return m, cmd
-	case Saved:
+	case savedMsg:
 		// Save ownership prevents an abandoned or replaced form from handling a reply.
 		if result.owner != m.owner || result.request != m.save {
 			return m, nil
@@ -431,12 +402,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if !result.ending {
 			m.clock = m.now()
 			day = displaytime.Day(m.clock)
-			m.following = true
+			m.position.followNow = true
 		}
 		cmd := m.loadDay(day)
 		return m, cmd
 	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtCountResult:
-		m.loadingBody = ""
+		m.load.retainedBody = ""
 		var cmd tea.Cmd
 		m.picker, cmd = m.picker.Update(msg)
 		if !m.picker.ShowingDetail() {
@@ -481,18 +452,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 	}
 	day := m.day
-	if m.loading {
-		day = m.pendingDay
+	if m.load.eventsPending {
+		day = m.load.pendingDay
 	}
 	navigation := key.String()
 	if (navigation == "right" || navigation == "l") && day.Equal(displaytime.Day(m.now())) {
-		if m.loading && !day.Equal(m.day) {
+		if m.load.eventsPending && !day.Equal(m.day) {
 			return m, nil
 		}
 		navigation = "enter"
 	}
 	// Do not act on the previous day's cards while navigation is pending.
-	if m.loading && !m.pendingDay.Equal(m.day) {
+	if m.load.eventsPending && !m.load.pendingDay.Equal(m.day) {
 		switch navigation {
 		case "left", "right", "h", "l", "end", "r", "n":
 		default:
@@ -502,22 +473,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch navigation {
 	case "left", "right", "h", "l", "r":
 	default:
-		m.loadingBody = ""
+		m.load.retainedBody = ""
 	}
 	switch navigation {
 	case "end":
-		m.following = true
+		m.position.followNow = true
 		m.clock = m.now()
 		day := displaytime.Day(m.clock)
-		if !day.Equal(m.day) || m.loading {
+		if !day.Equal(m.day) || m.load.eventsPending {
 			cmd := m.loadDay(day)
 			return m, cmd
 		}
 		m.anchor()
 	case "home":
-		m.following = false
-		m.index = 0
-		m.offset = 0
+		m.position.first()
 		m.revealSelected()
 	case "left", "right", "h", "l":
 		delta := 1
@@ -528,32 +497,29 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if day.After(displaytime.Day(m.now())) {
 			return m, nil
 		}
-		m.following = false
+		m.position.followNow = false
 		cmd := m.loadDay(day)
 		return m, cmd
 	case "r":
 		cmd := m.loadDay(day)
 		return m, cmd
 	case "up", "k", "down", "j":
-		m.following = false
 		delta := 1
 		if key.String() == "up" || key.String() == "k" {
 			delta = -1
 		}
-		m.index = min(max(0, m.index+delta), max(0, len(m.items)-1))
+		m.position.moveEvent(delta, len(m.items))
 		m.revealSelected()
 	case "pgup", "pgdown":
-		m.following = false
-		delta := m.height - 2
+		direction := 1
 		if key.String() == "pgup" {
-			delta = -delta
+			direction = -1
 		}
-		m.offset += delta
 		lines, _, _ := m.layout()
-		m.clampOffset(len(lines))
+		m.position.scrollPage(direction, m.height, len(lines))
 	case "enter":
 		if len(m.items) > 0 {
-			cmd := m.openEvent(m.items[m.index].EventID)
+			cmd := m.openEvent(m.items[m.position.eventIndex].EventID)
 			return m, cmd
 		}
 	case "esc":
@@ -562,12 +528,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.opening = false
 		m.picker.Reset()
 		lines, _, _ := m.layout()
-		m.clampOffset(len(lines))
+		m.position.clamp(len(lines))
 	case "n":
 		cmd := m.startForm(false)
 		return m, cmd
 	case "e":
-		if len(m.items) > 0 && m.items[m.index].EndedAt == nil {
+		if len(m.items) > 0 && m.items[m.position.eventIndex].EndedAt == nil {
 			cmd := m.startForm(true)
 			return m, cmd
 		}

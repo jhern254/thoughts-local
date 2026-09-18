@@ -34,7 +34,7 @@ func TestModel_DayTransition(t *testing.T) {
 		batch := cmd().(tea.BatchMsg)
 		m, latest := m.Update(batch[0]())
 		view := m.View()
-		if !m.day.Equal(displaytime.Day(start)) || !strings.Contains(view, label) || strings.Contains(view, "Loading events") || !m.countPending || !m.latestPending || latest == nil {
+		if !m.day.Equal(displaytime.Day(start)) || !strings.Contains(view, label) || strings.Contains(view, "Loading events") || !m.load.countsPending || !m.load.latestPending || latest == nil {
 			t.Fatalf("got %q, want new day immediately while counts and preview remain pending", view)
 		}
 		m = execute(t, m, batch[1])
@@ -80,7 +80,7 @@ func TestModel_DayTransition(t *testing.T) {
 	})
 	t.Run("failure retains the visible day and original error without exposing its text", func(t *testing.T) {
 		m, s, _ := fixture(t)
-		day, selected := m.day, m.items[m.index].EventID
+		day, selected := m.day, m.items[m.position.eventIndex].EventID
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")
 		if err != nil {
@@ -90,7 +90,7 @@ func TestModel_DayTransition(t *testing.T) {
 		s.listErr = errors.New("PRIVATE_DAY_READ_MARKER")
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
-		if m.err != s.listErr || !m.day.Equal(day) || m.items[m.index].EventID != selected || !strings.Contains(m.View(), "Could not load events for September 10, 2026") {
+		if m.err != s.listErr || !m.day.Equal(day) || m.items[m.position.eventIndex].EventID != selected || !strings.Contains(m.View(), "Could not load events for September 10, 2026") {
 			t.Fatal("failure lost the displayed day, selection, original error, or safe feedback")
 		}
 		if strings.Contains(m.View()+logs.String(), "PRIVATE_DAY_READ_MARKER") || strings.Contains(m.View(), "Loading events") {
@@ -129,7 +129,7 @@ func TestModel_DayTransition(t *testing.T) {
 		m = execute(t, m, cmd)
 		before := m.View()
 		m = execute(t, m, old)
-		if !m.day.Equal(today) || !m.following || m.View() != before {
+		if !m.day.Equal(today) || !m.position.followNow || m.View() != before {
 			t.Fatal("End failed to supersede pending navigation and follow today")
 		}
 		m.Close()
@@ -180,7 +180,7 @@ func TestModel_CollapsedCounts(t *testing.T) {
 		m, _, v := fixture(t)
 		v.err = errors.New("PRIVATE_COUNT_FAILURE")
 		m = execute(t, m, m.loadDay(m.day))
-		if m.count(1) != "Thought count unavailable" || m.countErr != v.err {
+		if m.count(1) != "Thought count unavailable" || m.load.countErr != v.err {
 			t.Fatal("count failure lost its safe state or original error")
 		}
 		v.err = nil
@@ -210,7 +210,7 @@ func TestModel_CollapsedCounts(t *testing.T) {
 			t.Fatalf("got pending count %q, want an empty reserved row", got)
 		}
 		before := strings.Count(m.card(m.items[0], true), "\n")
-		m, _ = m.Update(LoadDelayed{m.owner, m.request})
+		m, _ = m.Update(loadDelayedMsg{m.owner, m.load.generation})
 		if m.count(1) != "Counting thoughts…" || strings.Contains(m.View(), "Loading events") {
 			t.Fatal("slow count did not show its own feedback independently of events")
 		}
@@ -229,7 +229,7 @@ func TestModel_CollapsedCounts(t *testing.T) {
 		if m.count(1) != "230 thoughts" {
 			t.Fatal("refresh replaced the last successful count with loading feedback")
 		}
-		m, _ = m.Update(LoadDelayed{m.owner, m.request})
+		m, _ = m.Update(loadDelayedMsg{m.owner, m.load.generation})
 		if m.count(1) != "230 thoughts · refreshing…" {
 			t.Fatal("slow refresh did not retain and qualify its previous count")
 		}
@@ -261,11 +261,11 @@ func TestModel_ReloadCancellation(t *testing.T) {
 		old := m.loadDay(m.day)
 		current := m.loadDay(m.day)
 		m = execute(t, m, old)
-		if s.lists != lists || v.counts != counts || !m.loading {
+		if s.lists != lists || v.counts != counts || !m.load.eventsPending {
 			t.Fatal("obsolete commands invoked services or cleared current loading")
 		}
 		m = execute(t, m, current)
-		if m.loading || m.err != nil || s.lists != lists+1 || v.counts != counts+1 {
+		if m.load.eventsPending || m.err != nil || s.lists != lists+1 || v.counts != counts+1 {
 			t.Fatal("current reload did not complete normally")
 		}
 		m.Close()
@@ -302,7 +302,7 @@ func TestModel_ReloadCancellation(t *testing.T) {
 		batch := m.loadDay(m.day)().(tea.BatchMsg)
 		m, latest := m.Update(batch[0]())
 		_ = m.loadDay(m.day)
-		result := latest().(Latest)
+		result := latest().(latestMsg)
 		if !errors.Is(result.err, context.Canceled) {
 			t.Fatalf("got latest error %v, want canceled", result.err)
 		}

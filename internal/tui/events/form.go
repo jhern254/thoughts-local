@@ -31,6 +31,8 @@ type formClipboard struct {
 	err            error
 }
 
+func (formClipboard) eventMessage() {}
+
 func (m *Model) startForm(ending bool) tea.Cmd {
 	m.save++
 	m.form = eventForm{open: true, ending: ending}
@@ -41,7 +43,7 @@ func (m *Model) startForm(ending bool) tea.Cmd {
 	m.form.fields[0].Placeholder = "Activity (optional)"
 	m.form.fields[1].SetValue(displaytime.FormatInput(m.now()))
 	if ending {
-		m.form.event = m.items[m.index]
+		m.form.event = m.items[m.position.eventIndex]
 		m.form.index = 1
 	}
 	m.resizeForm()
@@ -104,12 +106,12 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 			if ending {
 				return func() tea.Msg {
 					saved, err := service.End(ctx, user, item.EventID, item.Version, at)
-					return Saved{owner, save, saved, true, err}
+					return savedMsg{owner, save, saved, true, err}
 				}
 			}
 			return func() tea.Msg {
 				saved, err := service.Create(ctx, user, label, at)
-				return Saved{owner, save, saved, false, err}
+				return savedMsg{owner, save, saved, false, err}
 			}
 		}
 		if key.Matches(input, m.form.fields[m.form.index].KeyMap.Paste) {

@@ -93,16 +93,17 @@ func (m Model) openHome() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if events.Owns(message) {
+		var cmd tea.Cmd
+		m.events, cmd = m.events.Update(message)
+		return m, cmd
+	}
 	switch message := message.(type) {
 	case homeOpened:
 		if m.screen != screenEvents {
 			return m, nil
 		}
 		return m.openHome()
-	case events.Tick, events.Listed, events.Counts, events.Latest, events.LoadDelayed, events.Opened, events.Saved:
-		var cmd tea.Cmd
-		m.events, cmd = m.events.Update(message)
-		return m, cmd
 	case list.FilterMatchesMsg:
 		return m, nil
 	case listfilter.Reply:
@@ -189,7 +190,6 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 		if key.String() == "tab" {
 			m.entityFocused = !m.entityFocused
 			m.events.SetFocused(!m.entityFocused)
-			m.events.Pause()
 			return m, nil
 		}
 		if m.entityFocused {

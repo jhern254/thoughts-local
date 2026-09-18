@@ -132,14 +132,14 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 					// Same launch order and independent commands as loadDay's batch.
 					launch(func() tea.Msg {
 						items, err := events.List(ctx, "demo", day, day.AddDate(0, 0, 1))
-						return Listed{items: items, err: err}
+						return listedMsg{items: items, err: err}
 					})
 					pending := 1
 					if concurrent {
 						pending++
 						launch(func() tea.Msg {
 							items, err := view.ThoughtCounts(ctx, "demo", day, day.AddDate(0, 0, 1))
-							return Counts{items: items, err: err}
+							return countsMsg{items: items, err: err}
 						})
 					}
 					var listAt, countAt, fullAt time.Duration
@@ -149,7 +149,7 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 						pending--
 						fullAt = max(fullAt, reply.ready)
 						switch result := reply.msg.(type) {
-						case Listed:
+						case listedMsg:
 							listAt = reply.ready
 							if result.err != nil {
 								readErr = result.err
@@ -160,17 +160,17 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 										pending++
 										launch(func() tea.Msg {
 											latest, err := view.LatestThought(ctx, "demo", item.EventID)
-											return Latest{item: latest, err: err}
+											return latestMsg{item: latest, err: err}
 										})
 									}
 								}
 							}
-						case Counts:
+						case countsMsg:
 							countAt = reply.ready
 							if result.err != nil {
 								readErr = result.err
 							}
-						case Latest:
+						case latestMsg:
 							latestReady += reply.ready
 							if result.err != nil {
 								readErr = result.err
@@ -268,18 +268,18 @@ func BenchmarkTimelineBurst(b *testing.B) {
 			if reply == nil {
 				continue // Bubble Tea also ignores nil command results.
 			}
-			if listed, ok := reply.(Listed); ok && listed.request != m.request && listed.err == nil {
+			if listed, ok := reply.(listedMsg); ok && listed.request != m.load.generation && listed.err == nil {
 				obsolete++
 			}
 			m, cmd = m.Update(reply)
 			m = execute(b, m, cmd)
 			_ = m.View()
-			if finalKey != (time.Time{}) && !m.loading && !m.countPending && !m.latestPending {
+			if finalKey != (time.Time{}) && !m.load.eventsPending && !m.load.countsPending && !m.load.latestPending {
 				latency += time.Since(finalKey)
 				finalKey = time.Time{}
 			}
 		}
-		if !m.day.Equal(day) || m.loading || m.err != nil || m.countErr != nil || m.latestErr != nil {
+		if !m.day.Equal(day) || m.load.eventsPending || m.err != nil || m.load.countErr != nil || m.load.latestErr != nil {
 			b.Fatal("burst did not settle on the correct day without errors")
 		}
 	}

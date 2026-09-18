@@ -274,8 +274,8 @@ func TestModel_Layout(t *testing.T) {
 			}
 			if name == "empty" {
 				m.items = nil
-				m.following = false
-				m.offset = 0
+				m.position.followNow = false
+				m.position.topLine = 0
 			}
 			got := ansi.Strip(m.View()) + "\n"
 			want, err := os.ReadFile("testdata/" + name + ".txt")
@@ -328,22 +328,22 @@ func TestModel_Layout(t *testing.T) {
 	t.Run("midnight loads the next day once only while following", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		oldDay := m.day
-		m, cmd := m.Update(Tick{m.owner, m.session, m.day.AddDate(0, 0, 1).Add(time.Minute)})
-		if !m.day.Equal(oldDay) || cmd == nil || !m.loading {
+		m, cmd := m.Update(tickMsg{m.owner, m.session, m.day.AddDate(0, 0, 1).Add(time.Minute)})
+		if !m.day.Equal(oldDay) || cmd == nil || !m.load.eventsPending {
 			t.Fatal("midnight did not retain the displayed day while loading")
 		}
-		request := m.request
-		m, _ = m.Update(Tick{m.owner, m.session, m.clock.Add(time.Minute)})
-		if m.request != request {
+		request := m.load.generation
+		m, _ = m.Update(tickMsg{m.owner, m.session, m.clock.Add(time.Minute)})
+		if m.load.generation != request {
 			t.Fatal("another tick restarted the pending day load")
 		}
 		m = execute(t, m, cmd().(tea.BatchMsg)[0])
 		if !m.day.Equal(oldDay.AddDate(0, 0, 1)) {
 			t.Fatal("following did not adopt the next day on arrival")
 		}
-		m.following = false
+		m.position.followNow = false
 		day := m.day
-		m, _ = m.Update(Tick{m.owner, m.session, m.day.AddDate(0, 0, 1)})
+		m, _ = m.Update(tickMsg{m.owner, m.session, m.day.AddDate(0, 0, 1)})
 		if !m.day.Equal(day) {
 			t.Fatal("paused timeline changed date")
 		}
