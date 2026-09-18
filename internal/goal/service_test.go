@@ -213,7 +213,7 @@ func TestService_Create(t *testing.T) {
 		want := &data.Goal{GoalID: 7}
 		calls := 0
 		s := NewService(storeStub{create: func(ctx context.Context, g *data.Goal) (*data.Goal, error) {
-			expected := data.Goal{UserID: "owner", GoalName: "Reading", TargetSeconds: 600,
+			expected := data.Goal{Priority: "normal", UserID: "owner", GoalName: "Reading", TargetSeconds: 600,
 				IsActive: true, Cadence: "weekly", TZ: "UTC", WeekStart: "mon", Version: 1,
 				CreatedAt: time.Unix(1000, 0).UTC(), UpdatedAt: time.Unix(1000, 0).UTC()}
 			if ctx != t.Context() || !reflect.DeepEqual(*g, expected) {
@@ -265,14 +265,15 @@ func (s storeStub) DeleteGoal(ctx context.Context, owner string, id, version int
 func TestService_Update(t *testing.T) {
 	t.Run("replaces explicit settings without modifying input", func(t *testing.T) {
 		for _, active := range []bool{false, true} {
-			input := UpdateGoalInput{Name: " Reading ", TargetSeconds: 120, StartDate: " 2024-02-29 ", EndDate: " 2030-01-01 ", IsActive: &active, Cadence: " monthly ", TZ: " America/Los_Angeles ", WeekStart: " sun ", DefaultCadence: " daily "}
+			priority := "normal"
+			input := UpdateGoalInput{Priority: &priority, Name: " Reading ", TargetSeconds: 120, StartDate: " 2024-02-29 ", EndDate: " 2030-01-01 ", IsActive: &active, Cadence: " monthly ", TZ: " America/Los_Angeles ", WeekStart: " sun ", DefaultCadence: " daily "}
 			original := input
 			now := time.Unix(1000, 999).In(time.FixedZone("offset", -7*3600))
 			start, end, cadence := "2024-02-29", "2030-01-01", "daily"
 			want := &data.Goal{GoalID: 7, Version: 4}
 			calls := 0
 			s := NewService(storeStub{update: func(ctx context.Context, g *data.Goal) (*data.Goal, error) {
-				expected := data.Goal{GoalID: 7, UserID: "owner", GoalName: "Reading", TargetSeconds: 120, StartDate: &start, EndDate: &end, IsActive: active, Cadence: "monthly", TZ: "America/Los_Angeles", WeekStart: "sun", DefaultCadence: &cadence, Version: 3, UpdatedAt: time.Unix(1000, 0).UTC()}
+				expected := data.Goal{Priority: "normal", GoalID: 7, UserID: "owner", GoalName: "Reading", TargetSeconds: 120, StartDate: &start, EndDate: &end, IsActive: active, Cadence: "monthly", TZ: "America/Los_Angeles", WeekStart: "sun", DefaultCadence: &cadence, Version: 3, UpdatedAt: time.Unix(1000, 0).UTC()}
 				if ctx != t.Context() || !reflect.DeepEqual(*g, expected) {
 					t.Fatalf("got %+v, want %+v with original context", g, expected)
 				}
@@ -287,7 +288,7 @@ func TestService_Update(t *testing.T) {
 	})
 	t.Run("omitted activation preserves the current state and caller version", func(t *testing.T) {
 		for _, active := range []bool{false, true} {
-			current := &data.Goal{GoalID: 7, Version: 3, IsActive: active}
+			current := &data.Goal{Priority: "normal", GoalID: 7, Version: 3, IsActive: active}
 			snapshot := *current
 			s := NewService(storeStub{
 				get: func(ctx context.Context, owner string, id int64) (*data.Goal, error) {
@@ -310,16 +311,19 @@ func TestService_Update(t *testing.T) {
 			}
 		}
 	})
-	t.Run("returns the original lookup failure without writing when activation is omitted", func(t *testing.T) {
+	t.Run("returns the original lookup failure without writing when optional settings are omitted", func(t *testing.T) {
 		want := fmt.Errorf("PRIVATE-LOOKUP: %w", data.ErrDatabaseBusy)
 		s := NewService(storeStub{get: func(context.Context, string, int64) (*data.Goal, error) { return nil, want }})
-		_, got := s.Update(t.Context(), "owner", 7, 2, UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"})
-		if got != want {
-			t.Fatalf("got %v, want original %v", got, want)
+		for _, active := range []*bool{nil, new(bool)} {
+			_, got := s.Update(t.Context(), "owner", 7, 2, UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon", IsActive: active})
+			if got != want {
+				t.Fatalf("got %v, want original %v", got, want)
+			}
 		}
 	})
 
 	t.Run("clears empty optional settings", func(t *testing.T) {
+		priority := "normal"
 		active := false
 		s := NewService(storeStub{update: func(_ context.Context, g *data.Goal) (*data.Goal, error) {
 			if g.StartDate != nil || g.EndDate != nil || g.DefaultCadence != nil {
@@ -327,7 +331,7 @@ func TestService_Update(t *testing.T) {
 			}
 			return g, nil
 		}})
-		_, err := s.Update(t.Context(), "owner", 7, 1, UpdateGoalInput{Name: "Goal", IsActive: &active, TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon", StartDate: " ", EndDate: " ", DefaultCadence: " "})
+		_, err := s.Update(t.Context(), "owner", 7, 1, UpdateGoalInput{Priority: &priority, Name: "Goal", IsActive: &active, TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon", StartDate: " ", EndDate: " ", DefaultCadence: " "})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -350,11 +354,12 @@ func TestService_Mutations(t *testing.T) {
 	for _, operation := range []string{"update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
 			call := func(ctx context.Context, s *Service, owner string, version int64) error {
+				priority := "normal"
 				active := true
 				if operation == "delete" {
 					return s.Delete(ctx, owner, 7, version)
 				}
-				_, err := s.Update(ctx, owner, 7, version, UpdateGoalInput{Name: "PRIVATE-INPUT", IsActive: &active, TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"})
+				_, err := s.Update(ctx, owner, 7, version, UpdateGoalInput{Priority: &priority, Name: "PRIVATE-INPUT", IsActive: &active, TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon"})
 				return err
 			}
 			t.Run("rejects missing owner and nonpositive versions before persistence", func(t *testing.T) {
@@ -402,4 +407,90 @@ func TestService_Mutations(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestService_Priority(t *testing.T) {
+	t.Run("creates with a default or normalized explicit priority", func(t *testing.T) {
+		for _, tc := range []struct{ input, want string }{{"", "normal"}, {"   ", "normal"}, {" low ", "low"}, {"normal", "normal"}, {" high ", "high"}} {
+			s := NewService(storeStub{create: func(_ context.Context, g *data.Goal) (*data.Goal, error) { return g, nil }})
+			got, err := s.Create(t.Context(), "owner", CreateGoalInput{Name: "Goal", TargetSeconds: 1, Priority: tc.input})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Priority != tc.want {
+				t.Fatalf("priority: got %q, want %q", got.Priority, tc.want)
+			}
+		}
+	})
+	t.Run("rejects invalid explicit priorities before reading or writing", func(t *testing.T) {
+		for _, priority := range []string{"", " ", "PRIVATE-PRIORITY", "HIGH"} {
+			s := NewService(storeStub{})
+			_, err := s.Update(t.Context(), "owner", 7, 1, UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon", Priority: &priority})
+			var validation *ValidationError
+			if !errors.As(err, &validation) || validation.PublicFields()["priority"] != "must be low, normal, or high" {
+				t.Fatalf("got %v, want safe priority guidance", err)
+			}
+			if strings.Contains(fmt.Sprint(validation.PublicFields())+err.Error(), "PRIVATE-PRIORITY") {
+				t.Fatal("private priority exposed")
+			}
+			if strings.Trim(priority, " ") != "" {
+				_, err = s.Create(t.Context(), "owner", CreateGoalInput{Name: "Goal", TargetSeconds: 1, Priority: priority})
+				if !errors.As(err, &validation) || validation.PublicFields()["priority"] == "" {
+					t.Fatalf("create: got %v, want priority validation", err)
+				}
+			}
+		}
+	})
+	t.Run("preserves omitted fields with one lookup and retains expected version", func(t *testing.T) {
+		priority := " low "
+		for _, tc := range []struct {
+			name         string
+			priority     *string
+			active       *bool
+			wantPriority string
+			wantActive   bool
+			reads        int
+		}{
+			{"both omitted", nil, nil, "high", true, 1},
+			{"priority omitted", nil, new(bool), "high", false, 1},
+			{"activation omitted", &priority, nil, "low", true, 1},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				reads := 0
+				current := &data.Goal{Priority: "high", IsActive: true, Version: 9}
+				snapshot := *current
+				s := NewService(storeStub{get: func(ctx context.Context, owner string, id int64) (*data.Goal, error) {
+					reads++
+					if ctx != t.Context() || owner != "owner" || id != 7 {
+						t.Fatal("lookup arguments changed")
+					}
+					return current, nil
+				}, update: func(_ context.Context, g *data.Goal) (*data.Goal, error) {
+					if g.Priority != tc.wantPriority || g.IsActive != tc.wantActive || g.Version != 2 {
+						t.Fatalf("got %+v, want priority %s/active %t/version 2", g, tc.wantPriority, tc.wantActive)
+					}
+					return nil, data.ErrVersionConflict
+				}})
+				input := UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon", Priority: tc.priority, IsActive: tc.active}
+				_, err := s.Update(t.Context(), "owner", 7, 2, input)
+				if !errors.Is(err, data.ErrVersionConflict) || reads != tc.reads || *current != snapshot {
+					t.Fatalf("got %v/%d reads, want conflict/%d reads and unchanged record", err, reads, tc.reads)
+				}
+			})
+		}
+	})
+	t.Run("updates explicit priorities without reading or mutating input", func(t *testing.T) {
+		for _, priority := range []string{" low ", " normal ", " high "} {
+			original := priority
+			active := false
+			s := NewService(storeStub{update: func(_ context.Context, g *data.Goal) (*data.Goal, error) { return g, nil }})
+			got, err := s.Update(t.Context(), "owner", 7, 2, UpdateGoalInput{Name: "Goal", TargetSeconds: 1, Cadence: "daily", TZ: "UTC", WeekStart: "mon", Priority: &priority, IsActive: &active})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Priority != strings.Trim(original, " ") || priority != original || active {
+				t.Fatalf("got %+v with input %q, want normalized priority and unchanged input", got, priority)
+			}
+		}
+	})
 }

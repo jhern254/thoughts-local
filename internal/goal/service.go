@@ -26,6 +26,7 @@ type Store interface {
 type CreateGoalInput struct {
 	Name           string
 	TargetSeconds  int64
+	Priority       string
 	StartDate      string
 	EndDate        string
 	IsActive       *bool
@@ -35,12 +36,13 @@ type CreateGoalInput struct {
 	DefaultCadence string
 }
 
-// UpdateGoalInput replaces editable settings; nil IsActive preserves activation.
+// UpdateGoalInput replaces editable settings; nil IsActive and Priority preserve their values.
 // Empty optional dates and default cadence clear those settings.
 // Cadence, TZ, and WeekStart must be explicit; creation defaults do not apply.
 type UpdateGoalInput struct {
 	Name           string
 	TargetSeconds  int64
+	Priority       *string
 	StartDate      string
 	EndDate        string
 	IsActive       *bool
@@ -95,10 +97,13 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateGoalInp
 		StartDate: optionalSetting(input.StartDate), EndDate: optionalSetting(input.EndDate),
 		IsActive: true, Cadence: strings.Trim(input.Cadence, " "), TZ: strings.Trim(input.TZ, " "),
 		WeekStart: strings.Trim(input.WeekStart, " "), DefaultCadence: optionalSetting(input.DefaultCadence),
-		Version: 1, CreatedAt: now, UpdatedAt: now,
+		Priority: strings.Trim(input.Priority, " "), Version: 1, CreatedAt: now, UpdatedAt: now,
 	}
 	if input.IsActive != nil {
 		item.IsActive = *input.IsActive
+	}
+	if item.Priority == "" {
+		item.Priority = "normal"
 	}
 	if item.Cadence == "" {
 		item.Cadence = "weekly"
@@ -109,7 +114,7 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateGoalInp
 	if item.WeekStart == "" {
 		item.WeekStart = "mon"
 	}
-	if err := validateGoal(item); err != nil {
+	if err := validateGoal(item, &item.Priority); err != nil {
 		return nil, err
 	}
 	return s.store.CreateGoal(ctx, item)
@@ -124,17 +129,28 @@ func (s *Service) Update(ctx context.Context, userID string, goalID, expectedVer
 		WeekStart: strings.Trim(input.WeekStart, " "), DefaultCadence: optionalSetting(input.DefaultCadence),
 		Version: expectedVersion, UpdatedAt: s.now().UTC().Truncate(time.Second),
 	}
-	if err := validateGoal(item); err != nil {
+	var priority *string
+	if input.Priority != nil {
+		item.Priority = strings.Trim(*input.Priority, " ")
+		priority = &item.Priority
+	}
+	if err := validateGoal(item, priority); err != nil {
 		return nil, err
 	}
 	if input.IsActive != nil {
 		item.IsActive = *input.IsActive
-	} else {
+	}
+	if input.IsActive == nil || input.Priority == nil {
 		current, err := s.store.GetGoal(ctx, userID, goalID)
 		if err != nil {
 			return nil, err
 		}
-		item.IsActive = current.IsActive
+		if input.IsActive == nil {
+			item.IsActive = current.IsActive
+		}
+		if input.Priority == nil {
+			item.Priority = current.Priority
+		}
 	}
 	// Keep the caller's version so a concurrent change still rejects the write.
 	return s.store.UpdateGoal(ctx, item)
@@ -159,8 +175,12 @@ func optionalSetting(value string) *string {
 	return &value
 }
 
-func validateGoal(item *data.Goal) error {
+// A nil priority skips validation of an omitted update field, which is loaded later.
+func validateGoal(item *data.Goal, priority *string) error {
 	v := validator.NewValidator()
+	if priority != nil {
+		v.Check(validator.In(*priority, "low", "normal", "high"), "priority", "must be low, normal, or high")
+	}
 	v.Check(item.UserID != "", "user_id", "must be provided")
 	v.Check(item.Version > 0, "version", "must be greater than zero")
 	// SQLite length(TEXT) counts code points up to the first NUL.

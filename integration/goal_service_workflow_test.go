@@ -299,3 +299,43 @@ func TestGoalMutationWorkflow_SQLite(t *testing.T) {
 		}
 	})
 }
+
+func TestGoalPriorityServiceWorkflow_SQLite(t *testing.T) {
+	t.Run("retains omitted priority and activation and persists explicit changes", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "owner")
+		service := goal.NewService(data.NewSQLiteGoalStore(db))
+		original, err := service.Create(t.Context(), "owner", goal.CreateGoalInput{Name: "Goal", TargetSeconds: 60})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if original.Priority != "normal" {
+			t.Fatalf("default priority: got %q, want normal", original.Priority)
+		}
+		priority, active := " high ", false
+		input := goal.UpdateGoalInput{Name: "Goal", TargetSeconds: 60, Cadence: "weekly", TZ: "UTC", WeekStart: "mon", Priority: &priority, IsActive: &active}
+		updated, err := service.Update(t.Context(), "owner", original.GoalID, original.Version, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		input.Priority, input.IsActive = nil, nil
+		input.Name = "Renamed"
+		kept, err := service.Update(t.Context(), "owner", updated.GoalID, updated.Version, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kept.Priority != "high" || kept.IsActive {
+			t.Fatalf("preserved settings: got priority %q/active %t, want high/false", kept.Priority, kept.IsActive)
+		}
+		if _, err := service.Update(t.Context(), "owner", kept.GoalID, updated.Version, input); !errors.Is(err, data.ErrVersionConflict) {
+			t.Fatalf("stale omitted update: got %v, want conflict", err)
+		}
+		got, err := service.Get(t.Context(), "owner", kept.GoalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, kept) {
+			t.Fatalf("persisted goal: got %+v, want %+v", got, kept)
+		}
+	})
+}

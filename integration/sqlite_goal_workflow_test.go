@@ -16,7 +16,7 @@ import (
 )
 
 func goalRecord(owner, name string) *data.Goal {
-	return &data.Goal{UserID: owner, GoalName: name, TargetSeconds: 600,
+	return &data.Goal{Priority: "normal", UserID: owner, GoalName: name, TargetSeconds: 600,
 		IsActive: true, Cadence: "weekly", TZ: "UTC", WeekStart: "mon",
 		CreatedAt: time.Unix(100, 0).UTC(), UpdatedAt: time.Unix(200, 0).UTC()}
 }
@@ -489,6 +489,114 @@ func TestGoalWorkflow_SQLite(t *testing.T) {
 			if !reflect.DeepEqual(ids, tc.want) {
 				t.Fatalf("%s list IDs: got %v, want %v", tc.name, ids, tc.want)
 			}
+		}
+	})
+}
+
+func TestGoalPriorityWorkflow_SQLite(t *testing.T) {
+	t.Run("defaults omitted SQL priority and rejects invalid persisted values", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "owner")
+		if _, err := db.Exec("INSERT INTO goals(user_id,goal_name,target_seconds) VALUES ('owner','Default',60)"); err != nil {
+			t.Fatal(err)
+		}
+		got, err := data.NewSQLiteGoalStore(db).GetGoal(t.Context(), "owner", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Priority != "normal" {
+			t.Fatalf("default priority: got %q, want normal", got.Priority)
+		}
+		for _, priority := range []any{nil, "", "PRIVATE-PRIORITY", "HIGH"} {
+			_, err := db.Exec("UPDATE goals SET priority=? WHERE goal_id=1", priority)
+			var cause *sqlite.Error
+			want := sqlite3.SQLITE_CONSTRAINT_CHECK
+			if priority == nil {
+				want = sqlite3.SQLITE_CONSTRAINT_NOTNULL
+			}
+			if !errors.As(err, &cause) || cause.Code() != want {
+				t.Fatalf("constraint: got %v, want SQLite code %d", err, want)
+			}
+		}
+	})
+	t.Run("persists priority updates and rejects stale changes", func(t *testing.T) {
+		db, dsn := openMigratedSQLite(t)
+		insertUsers(t, db, "owner")
+		store := data.NewSQLiteGoalStore(db)
+		input := goalRecord("owner", "Goal")
+		input.Priority = "low"
+		original, err := store.CreateGoal(t.Context(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if original.Priority != "low" {
+			t.Fatalf("created priority: got %q, want low", original.Priority)
+		}
+		edit := *original
+		edit.Priority = "high"
+		updated, err := store.UpdateGoal(t.Context(), &edit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := data.NewSQLiteGoalStore(openSQLite(t, dsn)).GetGoal(t.Context(), "owner", original.GoalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := *original
+		want.Priority = "high"
+		want.Version++
+		want.UpdatedAt = updated.UpdatedAt
+		if !reflect.DeepEqual(*got, want) {
+			t.Fatalf("updated goal: got %+v, want %+v", got, want)
+		}
+		edit.Priority = "normal"
+		if _, err := store.UpdateGoal(t.Context(), &edit); !errors.Is(err, data.ErrVersionConflict) {
+			t.Fatalf("stale priority update: got %v, want conflict", err)
+		}
+		got, err = store.GetGoal(t.Context(), "owner", original.GoalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Priority != "high" {
+			t.Fatalf("priority after conflict: got %q, want high", got.Priority)
+		}
+	})
+	t.Run("orders each goal list by priority then ID while retaining visibility filters", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "owner", "other")
+		_, err := db.Exec(`INSERT INTO goals(goal_id,user_id,goal_name,target_seconds,priority,goal_is_active) VALUES
+   (1,'owner','Low active',60,'low',1),(2,'owner','Normal active',60,'normal',1),
+   (3,'owner','High inactive',60,'high',0),(4,'owner','High active',60,'high',1),
+   (5,'owner','High active second',60,'high',1),(6,'owner','Low inactive',60,'low',0),
+   (7,'owner','Normal inactive',60,'normal',0),(8,'owner','Normal inactive second',60,'normal',0),
+   (9,'other','Other',60,'high',1),(10,'owner','Deleted',60,'high',1);
+   UPDATE goals SET deleted_at=updated_at WHERE goal_id=10;`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store := data.NewSQLiteGoalStore(db)
+		for _, tc := range []struct {
+			name string
+			call func(context.Context, string) ([]data.Goal, error)
+			want []int64
+		}{
+			{"all", store.ListGoals, []int64{3, 4, 5, 2, 7, 8, 1, 6}},
+			{"active", store.ListActiveGoals, []int64{4, 5, 2, 1}},
+			{"inactive", store.ListInactiveGoals, []int64{3, 7, 8, 6}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				items, err := tc.call(t.Context(), "owner")
+				if err != nil {
+					t.Fatal(err)
+				}
+				ids := make([]int64, 0, len(items))
+				for _, item := range items {
+					ids = append(ids, item.GoalID)
+				}
+				if !reflect.DeepEqual(ids, tc.want) {
+					t.Fatalf("ordered IDs: got %v, want %v", ids, tc.want)
+				}
+			})
 		}
 	})
 }

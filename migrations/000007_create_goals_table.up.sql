@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS goals (
     user_id          TEXT    NOT NULL,
     goal_name        TEXT    NOT NULL,
     target_seconds   INTEGER NOT NULL,
+    priority         TEXT NOT NULL DEFAULT 'normal',
 
     -- Store dates as ISO-8601 text: YYYY-MM-DD (nullable)
     goal_start_date  TEXT,
@@ -32,6 +33,9 @@ CREATE TABLE IF NOT EXISTS goals (
 
     CONSTRAINT ck_goals_is_active_bool
         CHECK (goal_is_active IN (0, 1)),
+
+    CONSTRAINT ck_goals_priority_enum
+        CHECK (priority IN ('low','normal','high')),
 
     CONSTRAINT ck_goals_cadence_enum
         CHECK (cadence IN ('daily','weekly','monthly','mtd','quarterly','yearly')),
