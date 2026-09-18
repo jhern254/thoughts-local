@@ -231,7 +231,7 @@ func BenchmarkTimelineBurst(b *testing.B) {
 	}
 	b.Cleanup(func() { _ = runtime.Close() })
 	service := &countedEventReads{Service: runtime.Events()}
-	m := New(b.Context(), "demo", service, runtime.TimelineView(), runtime.Thoughts(), logging.Nop())
+	m := New(b.Context(), "demo", service, runtime.TimelineView(), runtime.Thoughts(), runtime.Subjects(), logging.Nop())
 	current, err := runtime.Events().Get(b.Context(), "demo", 721)
 	if err != nil {
 		b.Fatal(err)

@@ -38,7 +38,7 @@ func TestService_Create(t *testing.T) {
 		service := NewService(storeStub{start: func(context.Context, *data.Event) (*data.Event, error) {
 			return nil, want
 		}})
-		if _, err := service.Create(t.Context(), "u", "", time.Time{}); err != want {
+		if _, err := service.Create(t.Context(), "u", "", time.Time{}, nil); err != want {
 			t.Fatalf("got %v, want original store failure", err)
 		}
 	})
@@ -59,7 +59,7 @@ func TestService_Create(t *testing.T) {
 		}})
 		calls := 0
 		service.now = func() time.Time { calls++; return now }
-		got, err := service.Create(ctx, "u", " activity ", time.Time{})
+		got, err := service.Create(ctx, "u", " activity ", time.Time{}, nil)
 		if err != nil || got != want || calls != 1 {
 			t.Fatalf("got %v, %v, %d clock calls, want original result, nil, 1", got, err, calls)
 		}
@@ -81,7 +81,7 @@ func TestService_Create(t *testing.T) {
 				return item, nil
 			}})
 			service.now = func() time.Time { return time.Unix(1000, 0) }
-			if _, err := service.Create(t.Context(), "u", label, time.Unix(100, 999).In(time.FixedZone("offset", 3600))); err != nil {
+			if _, err := service.Create(t.Context(), "u", label, time.Unix(100, 999).In(time.FixedZone("offset", 3600)), nil); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -98,7 +98,7 @@ func TestService_Create(t *testing.T) {
 		} {
 			service := NewService(storeStub{})
 			service.now = func() time.Time { return time.Unix(1000, 0) }
-			_, err := service.Create(t.Context(), tc.user, tc.label, tc.start)
+			_, err := service.Create(t.Context(), tc.user, tc.label, tc.start, nil)
 			var validation *ValidationError
 			if !errors.As(err, &validation) || validation.PublicFields()[tc.field] == "" {
 				t.Fatalf("got error %v, want validation for %s", err, tc.field)
@@ -126,7 +126,7 @@ func TestService_CreatePast(t *testing.T) {
 		for _, bounds := range [][2]time.Time{{{}, time.Unix(100, 0)}, {time.Unix(100, 0), {}}, {time.Unix(200, 0), time.Unix(100, 0)}, {time.Unix(100, 0), time.Unix(1001, 0)}} {
 			service := NewService(storeStub{})
 			service.now = func() time.Time { return time.Unix(1000, 0) }
-			_, err := service.CreatePast(t.Context(), "u", "", bounds[0], bounds[1])
+			_, err := service.CreatePast(t.Context(), "u", "", bounds[0], bounds[1], nil)
 			var validation *ValidationError
 			if !errors.As(err, &validation) {
 				t.Fatalf("got error %v, want validation", err)
@@ -144,7 +144,7 @@ func TestService_CreatePast(t *testing.T) {
 			return result, want
 		}})
 		service.now = func() time.Time { return time.Unix(1000, 0) }
-		got, err := service.CreatePast(ctx, "u", "", time.Unix(1000, 900), time.Unix(1000, 100))
+		got, err := service.CreatePast(ctx, "u", "", time.Unix(1000, 900), time.Unix(1000, 100), nil)
 		if got != result || err != want {
 			t.Fatalf("got %v, %v, want original result/error", got, err)
 		}
@@ -193,4 +193,35 @@ func TestService_List(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestService_SubjectAssignment(t *testing.T) {
+	for _, operation := range []string{"create", "past", "update"} {
+		t.Run(operation+" forwards optional subject and preserves store error", func(t *testing.T) {
+			id := int64(17)
+			for _, subjectID := range []*int64{nil, &id} {
+				want := errors.Join(data.ErrRecordNotFound, errors.New("PRIVATE_SUBJECT"))
+				write := func(_ context.Context, item *data.Event) (*data.Event, error) {
+					if item.SubjectID != subjectID {
+						t.Fatalf("got subject %v, want %v", item.SubjectID, subjectID)
+					}
+					return nil, want
+				}
+				s := NewService(storeStub{start: write, past: write, update: write})
+				start, end := time.Unix(100, 0), time.Unix(200, 0)
+				var err error
+				switch operation {
+				case "create":
+					_, err = s.Create(t.Context(), "u", "activity", start, subjectID)
+				case "past":
+					_, err = s.CreatePast(t.Context(), "u", "activity", start, end, subjectID)
+				case "update":
+					_, err = s.Update(t.Context(), "u", 1, 1, "activity", start, &end, subjectID)
+				}
+				if err != want {
+					t.Fatalf("got error %v, want original error %v", err, want)
+				}
+			}
+		})
+	}
 }

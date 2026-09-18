@@ -25,6 +25,7 @@ type eventStub struct {
 	lists, creates, ends int
 	start                time.Time
 	label                string
+	subjectID            *int64
 	err                  error
 	listErr              error
 }
@@ -41,10 +42,11 @@ func (s *eventStub) Get(_ context.Context, _ string, id int64) (*data.Event, err
 	}
 	return nil, data.ErrRecordNotFound
 }
-func (s *eventStub) Create(_ context.Context, _ string, label string, start time.Time) (*data.Event, error) {
+func (s *eventStub) Create(_ context.Context, _ string, label string, start time.Time, subjectID *int64) (*data.Event, error) {
 	s.creates++
 	s.start = start
 	s.label = label
+	s.subjectID = subjectID
 	return &data.Event{EventID: 9, StartedAt: start}, s.err
 }
 func (s *eventStub) End(_ context.Context, _ string, id, version int64, end time.Time) (*data.Event, error) {
@@ -176,7 +178,7 @@ func fixture(t testing.TB) (Model, *eventStub, *viewStore) {
 		}
 		v.items = append(v.items, data.ThoughtSummaryView{ThoughtID: item.ThoughtID, Preview: fmt.Sprintf("preview %03d", i), ObservedAt: item.ObservedAt, CreatedAt: item.CreatedAt})
 	}
-	m := New(t.Context(), "u", s, timeline.NewService(s, v, v), service, logging.Nop())
+	m := New(t.Context(), "u", s, timeline.NewService(s, v, v), service, &subjectReaderStub{}, logging.Nop())
 	m.now = func() time.Time { return at }
 	m.clock = at
 	m.day = displaytime.Day(at)
@@ -403,15 +405,15 @@ func TestModel_EventForms(t *testing.T) {
 	t.Run("friendly input is converted before calling the existing service", func(t *testing.T) {
 		m, s, _ := fixture(t)
 		m, _ = m.Update(eventKey("n"))
-		if got := m.form.fields[1].Value(); got != "2026-09-11 11:37:00 AM" {
+		if got := m.form.fields[2].Value(); got != "2026-09-11 11:37:00 AM" {
 			t.Fatalf("got default time %q, want full date and AM/PM", got)
 		}
-		m.form.fields[1].SetValue("2026-11-01 01:30:00 AM")
+		m.form.fields[2].SetValue("2026-11-01 01:30:00 AM")
 		m, cmd := m.Update(eventKey("enter"))
-		if cmd != nil || s.creates != 0 || m.form.fields[1].Value() != "2026-11-01 01:30:00 AM" || !strings.Contains(m.form.message, "PDT or PST") {
+		if cmd != nil || s.creates != 0 || m.form.fields[2].Value() != "2026-11-01 01:30:00 AM" || !strings.Contains(m.form.message, "PDT or PST") {
 			t.Fatal("ambiguous input should preserve draft and request a zone without saving")
 		}
-		m.form.fields[1].SetValue("2026-09-11 10:47:00 AM")
+		m.form.fields[2].SetValue("2026-09-11 10:47:00 AM")
 		m, cmd = m.Update(eventKey("enter"))
 		cmd()
 		want := time.Date(2026, 9, 11, 17, 47, 0, 0, time.UTC)

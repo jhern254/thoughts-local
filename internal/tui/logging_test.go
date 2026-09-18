@@ -45,6 +45,7 @@ func TestSubjectModel_Logging(t *testing.T) {
 				case "create":
 					message = subjectCreatedMsg{err: failure}
 				case "list":
+					model.screen = screenSubjectList
 					message = subjectsListedMsg{err: failure}
 				case "get":
 					message = subjectFoundMsg{err: failure}
