@@ -50,6 +50,7 @@ type Goal struct {
 	UserID         string
 	GoalName       string
 	TargetSeconds  int64
+	Priority       string
 	StartDate      *string
 	EndDate        *string
 	IsActive       bool

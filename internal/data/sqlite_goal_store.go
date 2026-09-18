@@ -14,7 +14,7 @@ type SQLiteGoalStore struct{ db *sql.DB }
 
 func NewSQLiteGoalStore(db *sql.DB) *SQLiteGoalStore { return &SQLiteGoalStore{db: db} }
 
-const goalColumns = `goal_id, user_id, goal_name, target_seconds, goal_start_date,
+const goalColumns = `goal_id, user_id, goal_name, target_seconds, priority, goal_start_date,
     goal_end_date, goal_is_active, cadence, tz, week_start, default_cadence,
     version, created_at, updated_at`
 
@@ -23,11 +23,11 @@ const visibleGoals = `deleted_at IS NULL AND EXISTS
 
 func (s *SQLiteGoalStore) CreateGoal(ctx context.Context, item *Goal) (*Goal, error) {
 	created, err := scanGoal(s.db.QueryRowContext(ctx, `INSERT INTO goals
-        (user_id, goal_name, target_seconds, goal_start_date, goal_end_date,
+        (user_id, goal_name, target_seconds, priority, goal_start_date, goal_end_date,
          goal_is_active, cadence, tz, week_start, default_cadence, created_at, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS
         (SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL)
-        RETURNING `+goalColumns, item.UserID, item.GoalName, item.TargetSeconds,
+        RETURNING `+goalColumns, item.UserID, item.GoalName, item.TargetSeconds, item.Priority,
 		item.StartDate, item.EndDate, item.IsActive, item.Cadence, item.TZ, item.WeekStart,
 		item.DefaultCadence, item.CreatedAt.Unix(), item.UpdatedAt.Unix(), item.UserID))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -51,7 +51,7 @@ func (s *SQLiteGoalStore) GetGoal(ctx context.Context, userID string, id int64) 
 	return item, nil
 }
 
-// ListGoals includes both active and inactive undeleted goals in ID order.
+// ListGoals includes both active and inactive undeleted goals in priority order, then ID order.
 func (s *SQLiteGoalStore) ListGoals(ctx context.Context, userID string) ([]Goal, error) {
 	return s.listGoals(ctx, userID, nil)
 }
@@ -74,7 +74,7 @@ func (s *SQLiteGoalStore) listGoals(ctx context.Context, userID string, active *
 	}()
 	rows, err := s.db.QueryContext(ctx, `SELECT `+goalColumns+` FROM goals
         WHERE user_id = ? AND `+visibleGoals+`
-        AND (? IS NULL OR goal_is_active = ?) ORDER BY goal_id`, userID, active, active)
+        AND (? IS NULL OR goal_is_active = ?) ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, goal_id`, userID, active, active)
 	if err != nil {
 		return nil, err
 	}
@@ -106,11 +106,11 @@ func (s *SQLiteGoalStore) UpdateGoal(ctx context.Context, item *Goal) (_ *Goal, 
 		return nil, err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE goals SET goal_name = ?, target_seconds = ?,
+	result, err := tx.ExecContext(ctx, `UPDATE goals SET goal_name = ?, target_seconds = ?, priority = ?,
         goal_start_date = ?, goal_end_date = ?, goal_is_active = ?, cadence = ?, tz = ?,
         week_start = ?, default_cadence = ?, version = version + 1, updated_at = max(updated_at, ?)
         WHERE user_id = ? AND goal_id = ? AND version = ? AND `+visibleGoals,
-		item.GoalName, item.TargetSeconds, item.StartDate, item.EndDate, item.IsActive,
+		item.GoalName, item.TargetSeconds, item.Priority, item.StartDate, item.EndDate, item.IsActive,
 		item.Cadence, item.TZ, item.WeekStart, item.DefaultCadence, item.UpdatedAt.Unix(),
 		item.UserID, item.GoalID, item.Version)
 	if err != nil {
@@ -183,7 +183,7 @@ func checkGoalMutation(ctx context.Context, tx *sql.Tx, result sql.Result, userI
 func scanGoal(row interface{ Scan(...any) error }) (*Goal, error) {
 	var item Goal
 	var created, updated int64
-	err := row.Scan(&item.GoalID, &item.UserID, &item.GoalName, &item.TargetSeconds,
+	err := row.Scan(&item.GoalID, &item.UserID, &item.GoalName, &item.TargetSeconds, &item.Priority,
 		&item.StartDate, &item.EndDate, &item.IsActive, &item.Cadence, &item.TZ,
 		&item.WeekStart, &item.DefaultCadence, &item.Version, &created, &updated)
 	if err != nil {
