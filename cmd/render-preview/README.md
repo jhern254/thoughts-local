@@ -1,9 +1,13 @@
 # Distribution preview
 
+The default is the app-style `main` scene, with cards, full event times, and the
+Now marker. Use `distributions` as an additional comparison of curve overlap.
+Review both scenarios when changing the renderer.
+
 Run from the repository root:
 
 ```sh
-go run ./cmd/render-preview
+go run ./cmd/render-preview # same as -scenario main
 go run ./cmd/render-preview -scenario distributions -selected 2
 go run ./cmd/render-preview -mode outline
 go run ./cmd/render-preview -width 60 -height 28
@@ -87,8 +91,10 @@ not forced to have one peak per input. Color follows the strongest contributing
 kernel, independently of the summed geometry. A zero-thought mound is decorative,
 not evidence of measured activity.
 
-Filling shades from that same boundary to the baseline. Neither mode allocates
-card space or shifts timestamps.
+Filling shades from that same boundary to the baseline. Outline uses one dot per
+vertical dot row, adding only the horizontal dots needed to connect steep slopes
+diagonally. This keeps turns and tails thin without moving the outer boundary.
+Neither mode allocates card space or shifts timestamps.
 Colors and layout remain caller responsibilities. The preview leaves two-column
 gutters around the ten-column curve lane and excludes the ending marker from the
 drawing bounds. Future live integration must preserve those responsibilities.

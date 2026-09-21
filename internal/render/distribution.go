@@ -162,6 +162,11 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 		}
 	}
 
+	if options.Mode == Outline {
+		drawOutline(curves, gain, baseline, height*4, first, last, plot)
+		return rows
+	}
+
 	// Sample on a fixed dot grid, including points that round into edge pixels.
 	// This makes clipping identical to cropping a larger render at a cell boundary.
 	start := int(math.Ceil(max(first, -0.5) * samplesPerDot))
@@ -183,22 +188,14 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 			fraction := float64(step) / float64(steps)
 			px := previousX + int(math.Round(float64(x-previousX)*fraction))
 			row := previousY + int(math.Round(float64(py-previousY)*fraction))
-			until := px
-			if options.Mode != Outline {
-				until = baseline
-			}
-			for column := px; column <= until; column++ {
+			for column := px; column <= baseline; column++ {
 				plot(column, row, owner, strength)
 			}
 		}
 		// A sample exactly between dot rows belongs to both pixels. Always
 		// rounding half upward would make the lower half of a bell heavier.
 		if y-math.Floor(y) == 0.5 {
-			until := x
-			if options.Mode != Outline {
-				until = baseline
-			}
-			for column := x; column <= until; column++ {
+			for column := x; column <= baseline; column++ {
 				plot(column, int(math.Floor(y)), owner, strength)
 				plot(column, int(math.Ceil(y)), owner, strength)
 			}
@@ -206,4 +203,60 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 		previousX, previousY = x, py
 	}
 	return rows
+}
+
+// drawOutline keeps the same left boundary as the filled profile, but draws only
+// one dot per row plus the dots needed to connect steep slopes diagonally. The
+// supersampled stroke would otherwise leave a thicker band at turns and tails.
+func drawOutline(curves []gaussian, gain float64, baseline, height int, first, last float64, plot func(int, int, int, float64)) {
+	type edge struct {
+		x, owner int
+		strength float64
+	}
+	// Include a neighbor beyond either viewport edge so clipping cannot change
+	// the connectors in the first or last visible row.
+	edges := make([]edge, height+2)
+	for i := range edges {
+		edges[i].x = baseline + 1
+	}
+	record := func(x, y, owner int, strength float64) {
+		if y < -1 || y > height {
+			return
+		}
+		e := &edges[y+1]
+		if x < e.x || (x == e.x && strength > e.strength) {
+			*e = edge{x, owner, strength}
+		}
+	}
+	start := int(math.Ceil(max(first, -1.5) * samplesPerDot))
+	end := int(math.Floor(min(last, float64(height)+0.5) * samplesPerDot))
+	for sample := start; sample <= end; sample++ {
+		y := float64(sample) / samplesPerDot
+		total, strength, owner := mixtureAt(curves, y)
+		x := int(math.Round(float64(baseline) - gain*total))
+		record(x, int(math.Round(y)), owner, gain*strength)
+		if y-math.Floor(y) == 0.5 {
+			record(x, int(math.Floor(y)), owner, gain*strength)
+			record(x, int(math.Ceil(y)), owner, gain*strength)
+		}
+	}
+	for y := range height {
+		e := edges[y+1]
+		if e.x > baseline {
+			continue
+		}
+		endX := e.x
+		for _, neighbor := range []edge{edges[y], edges[y+2]} {
+			if neighbor.x <= baseline {
+				endX = max(endX, neighbor.x-1)
+			}
+		}
+		for x := e.x; x <= endX; x++ {
+			if x == baseline {
+				plot(x, y, -1, 0)
+			} else {
+				plot(x, y, e.owner, e.strength)
+			}
+		}
+	}
 }

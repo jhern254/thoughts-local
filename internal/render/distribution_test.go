@@ -118,6 +118,34 @@ func TestRenderDistributions(t *testing.T) {
 		}
 	})
 
+	t.Run("outline uses a thin connected stroke without changing the profile", func(t *testing.T) {
+		for _, count := range []int64{0, 1, 5, 10, 20} {
+			curves := []Distribution{{CenterY: 31.5, Count: count}}
+			filled := pixels(RenderDistributions(10, 16, curves, Options{}))
+			outline := pixels(RenderDistributions(10, 16, curves, Options{Mode: Outline}))
+			for y := range 64 {
+				left := leftEdge(outline, y)
+				if left != leftEdge(filled, y) {
+					t.Fatalf("count %d row %d: outline moved the boundary", count, y)
+				}
+				for x := left; x < 20; x++ {
+					p := [2]int{x, y}
+					if !outline[p] {
+						continue
+					}
+					if !outline[[2]int{x, 63 - y}] {
+						t.Fatalf("count %d: asymmetric outline dot at %v", count, p)
+					}
+					// Extra horizontal dots are justified only by a steep edge:
+					// they bridge to the next dot row with diagonal connectivity.
+					if x > left && leftEdge(outline, y-1) <= x && leftEdge(outline, y+1) <= x {
+						t.Fatalf("count %d: unnecessary stroke thickness at %v", count, p)
+					}
+				}
+			}
+		}
+	})
+
 	t.Run("separate mounds connect through an unowned baseline", func(t *testing.T) {
 		cells := RenderDistributions(10, 24, []Distribution{{CenterY: 15.5}, {CenterY: 79.5, Count: 10}}, Options{Mode: Outline})
 		points := pixels(cells)

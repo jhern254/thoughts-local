@@ -49,6 +49,9 @@ func TestPreview(t *testing.T) {
 	})
 	t.Run("filled is default and all modes preserve card and timestamp positions", func(t *testing.T) {
 		filled := preview(t, "-plain")
+		if explicit := preview(t, "-plain", "-scenario", "main"); filled != explicit {
+			t.Fatal("default preview must show the main app layout")
+		}
 		if explicit := preview(t, "-plain", "-mode", "filled"); filled != explicit {
 			t.Fatal("default is not filled")
 		}
