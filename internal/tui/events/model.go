@@ -112,6 +112,7 @@ type Model struct {
 	counts     []data.EventThoughtCountView
 	latest     *data.ThoughtSummaryView
 
+	distributions distributionSettings
 	position      timelinePosition
 	load          dayLoad
 	width, height int
@@ -129,7 +130,7 @@ type Model struct {
 
 func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, subjects SubjectReader, logger logging.Logger) Model {
 	now := time.Now()
-	return Model{ctx: ctx, userID: userID, service: service, subjectReader: subjects, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), position: timelinePosition{followNow: true}, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
+	return Model{distributions: defaultDistributionSettings(), ctx: ctx, userID: userID, service: service, subjectReader: subjects, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), position: timelinePosition{followNow: true}, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
 }
 
 func (m *Model) Open() tea.Cmd {
@@ -143,6 +144,7 @@ func (m *Model) Open() tea.Cmd {
 	return tea.Batch(m.loadDay(day), m.tick())
 }
 func (m *Model) Close() {
+	m.distributions.open = false
 	m.load.invalidate()
 	m.active = false
 	// Invalidate replies that can outlive this screen opening.
@@ -154,6 +156,7 @@ func (m *Model) Close() {
 func (m *Model) SetFocused(focused bool) {
 	blurred := !focused
 	if blurred {
+		m.distributions.open = false
 		m.position.followNow = false
 	}
 	if m.blurred != blurred {
@@ -434,6 +437,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.picker, cmd = m.picker.Update(msg)
 		return m, cmd
+	}
+	if m.distributions.open {
+		m.tuneDistributions(key.String())
+		return m, nil
+	}
+	if key.String() == "d" {
+		m.distributions.open = true
+		m.load.retainedBody = ""
+		return m, nil
 	}
 	if m.expanded != 0 {
 		if key.String() == "esc" || key.String() == "left" || key.String() == "h" {

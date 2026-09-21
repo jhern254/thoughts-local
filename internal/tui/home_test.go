@@ -136,6 +136,71 @@ func TestModel_EventsHome(t *testing.T) {
 		m = startHomeData(t, m, cmd)
 		return m, events
 	}
+	t.Run("curve controls route keys without changing panel or day", func(t *testing.T) {
+		m, _ := newHome(t)
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+		before := m.events.View()
+		press := func(code rune) {
+			t.Helper()
+			var cmd tea.Cmd
+			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: code}))
+			if cmd != nil {
+				t.Fatalf("settings key %q issued a command", code)
+			}
+		}
+		press('d')
+		for _, code := range []rune{tea.KeyRight, tea.KeyDown, 'f'} {
+			press(code)
+		}
+		view := ansi.Strip(m.events.View())
+		if !strings.Contains(view, "medium boost · 95% size · outline") || !strings.Contains(view, "[0 Reset to default]") || m.entityFocused {
+			t.Fatal("root did not route tuning controls")
+		}
+		press(tea.KeyTab)
+		if !m.entityFocused || strings.Contains(m.events.View(), "Curves:") {
+			t.Fatal("panel switch did not close controls")
+		}
+		press('d')
+		if strings.Contains(m.events.View(), "Curves:") {
+			t.Fatal("entity panel key opened Events controls")
+		}
+		press(tea.KeyTab)
+		press('d')
+		if !strings.Contains(ansi.Strip(m.events.View()), "medium boost · 95% size · outline") {
+			t.Fatal("panel switch lost settings")
+		}
+		for _, width := range []int{60, 59, 80} {
+			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
+		}
+		press('0')
+		press(tea.KeyEnter)
+		if m.events.View() != before || m.entityFocused {
+			t.Fatal("reset and close did not restore the original Events view")
+		}
+		press('d')
+		press('f')
+		press(tea.KeyEsc)
+		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+		m = runHomeData(t, m, cmd)
+		press('d')
+		if !strings.Contains(m.events.View(), "outline") {
+			t.Fatal("day navigation lost settings")
+		}
+		press(tea.KeyEsc)
+		press(tea.KeyTab)
+		m, cmd = rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		m, cmd = rootUpdate(m, escapeKey())
+		m = startHomeData(t, m, cmd)
+		if m.entityFocused {
+			press(tea.KeyTab)
+		}
+		press('d')
+		if !strings.Contains(m.events.View(), "outline") {
+			t.Fatal("leaving and returning to Events lost session settings")
+		}
+	})
+
 	t.Run("distribution survives focus resize and Thought detail return", func(t *testing.T) {
 		m, _ := newHome(t)
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})

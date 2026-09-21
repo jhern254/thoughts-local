@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strings"
 
@@ -34,9 +35,11 @@ func run(args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	width := flags.Int("width", 100, "terminal columns (at least 32)")
 	height := flags.Int("height", 36, "terminal rows (at least 12)")
-	scenario := flags.String("scenario", "main", "distributions, main, adjacent, gapped, crowded, or empty")
+	scenario := flags.String("scenario", "main", "distributions, main, adjacent, gapped, crowded, scale, or empty")
 	mode := flags.String("mode", "filled", "filled or outline")
 	selected := flags.Int("selected", 3, "selected event, numbered from 1; 0 means none")
+	exponent := flags.Float64("count-exponent", 0.8, "positive count exponent; 0.25 strongly boosts smaller counts")
+	size := flags.Float64("size", 1, "distribution size from 0.5 to 1.25")
 	plain := flags.Bool("plain", false, "omit ANSI colors")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -49,7 +52,10 @@ func run(args []string, output io.Writer) error {
 	if flags.NArg() != 0 || *width < 32 || *height < 12 || *selected < 0 {
 		return fmt.Errorf("use flags only, width >= 32, height >= 12, and selected >= 0")
 	}
-	options := render.Options{}
+	if *exponent <= 0 || math.IsNaN(*exponent) || math.IsInf(*exponent, 0) || *size < 0.5 || *size > 1.25 || math.IsNaN(*size) {
+		return fmt.Errorf("use a finite positive count-exponent and size between 0.5 and 1.25")
+	}
+	options := render.Options{CountExponent: *exponent, Size: *size}
 	switch *mode {
 	case "filled":
 	case "outline":

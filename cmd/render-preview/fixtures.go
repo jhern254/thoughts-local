@@ -46,25 +46,29 @@ func fixture(name string) (scene, error) {
 		s.cards[2] = eventCard{top: 24, heading: " Planning · 1h · 01:00 - 02:00 PM", count: 10, start: "01:00 PM", end: "02:00 PM"}
 		s.separators = nil
 		s.date, s.endRow, s.ending = "September 20, 2026", 28, "..."
-	case "crowded":
+	case "crowded", "scale":
 		s.date, s.cards, s.separators = "September 20, 2026", nil, nil
-		for i, count := range []int64{0, 1, 5, 10, 20, 35, 3, 8} {
+		counts := []int64{0, 1, 5, 10, 20, 35, 3, 8}
+		if name == "scale" {
+			counts = []int64{0, 20, 100, 200}
+		}
+		for i, count := range counts {
 			start := fmt.Sprintf("%02d:%02d AM", 8+i/3, (i%3)*20)
 			end := fmt.Sprintf("%02d:%02d AM", 8+(i+1)/3, ((i+1)%3)*20)
 			s.cards = append(s.cards, eventCard{top: i * 5, heading: fmt.Sprintf(" Session %d · 20m · %s - %s", i+1, start, end), count: count, start: start})
-			if i < 7 {
+			if i < len(counts)-1 {
 				s.separators = append(s.separators, i*5+4)
 			} else {
 				s.cards[i].end = end
 			}
 		}
-		s.endRow, s.ending = 39, "..."
+		s.endRow, s.ending = len(counts)*5-1, "..."
 	case "empty":
 		s.cards, s.separators = nil, nil
 		s.hours = map[int]string{0: "08:00 AM", 6: "09:00 AM", 12: "10:00 AM", 18: "11:00 AM", 24: "12:00 PM"}
 		s.endRow = 27
 	default:
-		return scene{}, fmt.Errorf("scenario must be distributions, main, adjacent, gapped, crowded, or empty")
+		return scene{}, fmt.Errorf("scenario must be distributions, main, adjacent, gapped, crowded, scale, or empty")
 	}
 	return s, nil
 }

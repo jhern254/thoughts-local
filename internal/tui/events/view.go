@@ -335,10 +335,13 @@ func (m Model) View() string {
 		body = m.timelineBody()
 	}
 	status := m.message
+	if status == "" {
+		status = "d: curve settings"
+	}
 	if m.load.eventsPending && m.load.showStatus {
 		status = "Loading events for " + displaytime.Format(m.load.pendingDay, "January 2, 2006") + "…"
-	} else if !m.load.eventsPending && len(m.items) == 0 && status == "" {
-		status = "No events on this day. n: start event"
+	} else if !m.load.eventsPending && len(m.items) == 0 && m.message == "" {
+		status = "No events on this day. n: start event • d: curves"
 	}
 	if m.expanded != 0 {
 		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
@@ -348,7 +351,20 @@ func (m Model) View() string {
 		help = "← day / → open • Home/End: first/now • r: refresh • n: start • e: end • q: quit"
 	}
 	if m.expanded != 0 {
-		help = "r: refresh event • q: quit"
+		help = "r: refresh event • d: curves • q: quit"
+	}
+	if m.distributions.open {
+		status = m.distributions.label()
+		if m.width < 60 {
+			status = "Curves hidden below 60 columns"
+		}
+		if m.load.eventsPending && m.load.showStatus {
+			status = "Loading… " + status
+		}
+		help = "←/→ boost  ↑/↓ size  f mode  [0 Reset to default]  Esc done"
+		if m.width < 60 {
+			help = "f mode · [0 Reset to default] · Esc done"
+		}
 	}
 	return heading + "\n\n" + body + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")
 }

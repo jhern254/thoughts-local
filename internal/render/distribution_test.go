@@ -53,7 +53,7 @@ func leftEdge(points map[[2]int]bool, y int) int {
 }
 
 func TestRenderDistributions(t *testing.T) {
-	t.Run("counts increase both dimensions and saturate at twenty", func(t *testing.T) {
+	t.Run("counts increase both dimensions within the reference range", func(t *testing.T) {
 		previousWidth, previousHeight := 0, 0
 		for _, count := range []int64{0, 1, 5, 10, 20} {
 			points := pixels(RenderDistributions(10, 16, []Distribution{{CenterY: 31.5, Count: count}}, Options{}))
@@ -81,7 +81,94 @@ func TestRenderDistributions(t *testing.T) {
 		}
 		maximum := RenderDistributions(10, 16, []Distribution{{CenterY: 31.5, Count: 20}}, Options{})
 		if got := RenderDistributions(10, 16, []Distribution{{CenterY: 31.5, Count: 100}}, Options{}); !reflect.DeepEqual(got, maximum) {
-			t.Fatal("counts above twenty must have identical geometry")
+			t.Fatal("the largest count should fill the same bounded display size")
+		}
+	})
+
+	t.Run("whole timeline distinguishes counts above twenty", func(t *testing.T) {
+		curves := []Distribution{{CenterY: 31.5, Count: 20}, {CenterY: 95.5, Count: 100}, {CenterY: 159.5, Count: 200}}
+		for _, mode := range []Mode{Filled, Outline} {
+			points := pixels(RenderDistributions(10, 48, curves, Options{Mode: mode}))
+			if !(leftEdge(points, 31) > leftEdge(points, 95) && leftEdge(points, 95) > leftEdge(points, 159)) {
+				t.Fatal("20, 100 and 200 thoughts should have increasingly large peaks")
+			}
+			for _, offset := range []int{0, 16, 32} {
+				shifted := append([]Distribution(nil), curves...)
+				for i := range shifted {
+					shifted[i].CenterY -= float64(offset * 4)
+				}
+				whole := RenderDistributions(10, 48, curves, Options{Mode: mode})
+				if got := RenderDistributions(10, 16, shifted, Options{Mode: mode}); !reflect.DeepEqual(got, whole[offset:offset+16]) {
+					t.Fatal("offscreen maximum changed the count scale while scrolling")
+				}
+			}
+		}
+	})
+
+	t.Run("exponent boosts smaller counts without changing zero or maximum", func(t *testing.T) {
+		for _, mode := range []Mode{Filled, Outline} {
+			for _, count := range []int64{0, 20, 200} {
+				curves := []Distribution{{CenterY: 31.5, Count: count}}
+				usual := RenderDistributions(10, 16, curves, Options{Mode: mode, CountReference: 200})
+				boosted := RenderDistributions(10, 16, curves, Options{Mode: mode, CountReference: 200, CountExponent: 0.25})
+				if count == 20 {
+					if leftEdge(pixels(boosted), 31) >= leftEdge(pixels(usual), 31) || len(pixels(boosted)) <= len(pixels(usual)) {
+						t.Fatal("lower exponent did not enlarge the smaller curve")
+					}
+				} else if !reflect.DeepEqual(usual, boosted) {
+					t.Fatalf("exponent changed the endpoint mound for count %d", count)
+				}
+			}
+		}
+	})
+
+	t.Run("invalid tuning falls back and extreme counts remain bounded", func(t *testing.T) {
+		curves := []Distribution{{CenterY: 31.5, Count: 10}}
+		usual := RenderDistributions(10, 16, curves, Options{})
+		for _, exponent := range []float64{-1, math.NaN(), math.Inf(1)} {
+			if got := RenderDistributions(10, 16, curves, Options{CountExponent: exponent, CountReference: -1}); !reflect.DeepEqual(got, usual) {
+				t.Fatalf("invalid exponent %v did not use the default", exponent)
+			}
+		}
+		for _, size := range []float64{-1, math.NaN(), math.Inf(1)} {
+			if got := RenderDistributions(10, 16, curves, Options{Size: size}); !reflect.DeepEqual(got, usual) {
+				t.Fatalf("invalid size %v did not use default", size)
+			}
+		}
+		for _, pair := range [][2]float64{{0.01, 0.5}, {100, 1.25}} {
+			got := RenderDistributions(10, 16, curves, Options{Size: pair[0]})
+			want := RenderDistributions(10, 16, curves, Options{Size: pair[1]})
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("size %v not bounded to %v", pair[0], pair[1])
+			}
+		}
+
+		maximum := RenderDistributions(10, 16, []Distribution{{CenterY: 31.5, Count: 20}}, Options{})
+		if got := RenderDistributions(10, 16, []Distribution{{CenterY: 31.5, Count: math.MaxInt64}}, Options{}); !reflect.DeepEqual(got, maximum) {
+			t.Fatal("extreme count exceeded the bounded maximum")
+		}
+	})
+
+	t.Run("size adjusts dimensions while preserving the zero mound and lane bounds", func(t *testing.T) {
+		for _, mode := range []Mode{Filled, Outline} {
+			zero := RenderDistributions(10, 20, []Distribution{{CenterY: 39.5}}, Options{Mode: mode})
+			previous := 0
+			for _, size := range []float64{0.5, 1, 1.25} {
+				got := RenderDistributions(10, 20, []Distribution{{CenterY: 39.5, Count: 200}}, Options{Mode: mode, Size: size})
+				points := pixels(got)
+				if len(points) <= previous {
+					t.Fatal("larger size did not enlarge the curve")
+				}
+				for p := range points {
+					if p[0] < 0 || p[0] >= 20 {
+						t.Fatal("size exceeded the fixed lane")
+					}
+				}
+				previous = len(points)
+				if got := RenderDistributions(10, 20, []Distribution{{CenterY: 39.5}}, Options{Mode: mode, Size: size}); !reflect.DeepEqual(got, zero) {
+					t.Fatal("size changed zero mound")
+				}
+			}
 		}
 	})
 

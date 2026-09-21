@@ -24,4 +24,4 @@
 
 
 ←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll
-r: refresh event • q: quit
+r: refresh event • d: curves • q: quit

@@ -34,6 +34,97 @@ func distributionLane(lines []string) string {
 }
 
 func TestModel_Distributions(t *testing.T) {
+	t.Run("live controls change only curves and restore defaults without reads", func(t *testing.T) {
+		m, service, store := fixture(t)
+		m.counts[0].Count = 10
+		before, positions, _ := m.layout()
+		position, day := m.position, m.day
+		lists, counts, reads := service.lists, store.counts, store.reads
+		press := func(key string) {
+			t.Helper()
+			var cmd tea.Cmd
+			m, cmd = m.Update(eventKey(key))
+			if cmd != nil {
+				t.Fatalf("tuning key %q issued a command", key)
+			}
+		}
+		press("d")
+		if !strings.Contains(m.View(), "Curves:") {
+			t.Fatal("distribution controls did not open")
+		}
+		press("right")
+		boosted, got, _ := m.layout()
+		if distributionLane(before) == distributionLane(boosted) {
+			t.Fatal("boost did not update the curve immediately")
+		}
+		press("down")
+		shrunk, _, _ := m.layout()
+		if distributionLane(shrunk) == distributionLane(boosted) {
+			t.Fatal("size did not update the curve immediately")
+		}
+		press("f")
+		outline, _, _ := m.layout()
+		if distributionLane(outline) == distributionLane(shrunk) || !strings.Contains(m.View(), "outline") {
+			t.Fatal("fill toggle did not show an outline")
+		}
+		for i := range before {
+			if timelineCardText(before[i]) != timelineCardText(outline[i]) {
+				t.Fatalf("controls moved card/time row %d", i)
+			}
+		}
+		if !reflect.DeepEqual(positions, got) || m.position != position || m.day != day {
+			t.Fatal("tuning changed timeline navigation")
+		}
+		press("esc")
+		if strings.Contains(m.View(), "Curves:") {
+			t.Fatal("Escape did not close controls")
+		}
+		press("d")
+		if !strings.Contains(m.View(), "outline") {
+			t.Fatal("reopening controls lost settings")
+		}
+		press("0")
+		reset, _, _ := m.layout()
+		if distributionLane(reset) != distributionLane(before) {
+			t.Fatal("reset did not restore defaults")
+		}
+		press("enter")
+		if m.expanded != 0 {
+			t.Fatal("closing controls expanded a card")
+		}
+		if lists != service.lists || counts != store.counts || reads != store.reads {
+			t.Fatal("tuning triggered database reads")
+		}
+	})
+
+	t.Run("controls stay bounded and reset every setting", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m, _ = m.Update(eventKey("d"))
+		for range 40 {
+			m, _ = m.Update(eventKey("right"))
+			m, _ = m.Update(eventKey("up"))
+		}
+		if !strings.Contains(m.View(), "extra boost · 125% size") {
+			t.Fatal("upper tuning bounds are wrong")
+		}
+		for range 40 {
+			m, _ = m.Update(eventKey("left"))
+			m, _ = m.Update(eventKey("down"))
+		}
+		if !strings.Contains(m.View(), "linear boost · 50% size") {
+			t.Fatal("lower tuning bounds are wrong")
+		}
+		m, _ = m.Update(eventKey("f"))
+		m, _ = m.Update(eventKey("0"))
+		if !strings.Contains(m.View(), "normal boost · 100% size · filled") {
+			t.Fatal("default control did not restore all intended defaults")
+		}
+		m.Resize(60, 27)
+		if !strings.Contains(m.View(), "[0 Reset to default]") || !strings.Contains(m.View(), "Esc done") {
+			t.Fatalf("minimum-width tuning panel hides essential controls: %s", m.View())
+		}
+	})
+
 	t.Run("separate lane appears at sixty columns without changing chronological rows", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		var positions map[int64]int
@@ -130,7 +221,7 @@ func TestModel_Distributions(t *testing.T) {
 				maximum = lane
 			}
 			if count > 20 && lane != maximum {
-				t.Fatal("counts above twenty exceeded the display scale")
+				t.Fatal("the sole event exceeded the bounded maximum size")
 			}
 			label := fmt.Sprintf("%d thoughts", count)
 			if count == 1 {
@@ -142,6 +233,42 @@ func TestModel_Distributions(t *testing.T) {
 			previous = lane
 		}
 	})
+	t.Run("expanded and offscreen maximum still sets the day scale", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m.day = m.day.AddDate(0, 0, -1)
+		m.items = nil
+		m.counts = nil
+		for i, count := range []int64{20, 100, 200} {
+			start := m.day.Add(time.Duration(3+i*6) * time.Hour)
+			end := start.Add(time.Hour)
+			id := int64(i + 1)
+			m.items = append(m.items, data.Event{EventID: id, StartedAt: start, EndedAt: &end})
+			m.counts = append(m.counts, data.EventThoughtCountView{EventID: id, Count: count})
+		}
+		before, positions, _ := m.layout()
+		widths := []int{}
+		for _, id := range []int64{1, 2, 3} {
+			lane := ansi.Cut(ansi.Strip(before[positions[id]+1]), 12, 22)
+			widths = append(widths, ansi.StringWidth(strings.TrimLeft(lane, " ")))
+		}
+		if !(widths[0] < widths[1] && widths[1] < widths[2]) {
+			t.Fatalf("counts 20, 100, 200 have peak widths %v, want increasing widths", widths)
+		}
+		m.expanded = 3
+		expanded, got, _ := m.layout()
+		for _, id := range []int64{1, 2} {
+			if distributionLane(before[positions[id]:positions[id]+4]) != distributionLane(expanded[got[id]:got[id]+4]) {
+				t.Fatalf("expanding the maximum rescaled distant event %d", id)
+			}
+		}
+		m.position.followNow = false
+		m.position.topLine = positions[1] - 2
+		visible := strings.Split(m.timelineBody(), "\n")
+		if distributionLane(visible) != distributionLane(expanded[m.position.topLine:m.position.topLine+len(visible)]) {
+			t.Fatal("cropping away the maximum changed the visible scale")
+		}
+	})
+
 	t.Run("highlight follows event identity when an earlier event has no count", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		end := m.items[0].StartedAt
