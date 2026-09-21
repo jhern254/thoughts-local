@@ -12,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/render"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
@@ -104,7 +105,7 @@ func (m Model) card(item data.Event, selected bool) string {
 	if end.After(m.day.AddDate(0, 0, 1)) {
 		interval += " →"
 	}
-	width := max(1, m.width-12)
+	width := m.cardWidth()
 	heading += " · " + interval
 	if item.EndedAt == nil {
 		heading += " · ongoing"
@@ -207,6 +208,8 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 	})
 	lines := []string{}
 	positions := make(map[int64]int)
+	var curves []render.Distribution
+	selectedCurve := -1
 	nowLine := -1
 	hourHeight := m.hourHeight()
 	previousTop := 0
@@ -243,6 +246,20 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 			lines = append(lines, fmt.Sprintf("%-10s│", entry.text))
 		} else {
 			card := strings.Split(entry.text, "\n")
+			if m.cardColumn() != 10 && entry.id != m.expanded && m.load.countErr == nil {
+				for _, count := range m.counts {
+					if count.EventID != entry.id {
+						continue
+					}
+					if entry.id == m.items[m.position.eventIndex].EventID {
+						selectedCurve = len(curves)
+					}
+					// Counts affect the renderer's shape, never the card height.
+					center := float64(len(lines)*4) + float64(len(card)*4-1)/2
+					curves = append(curves, render.Distribution{CenterY: center, Count: count.Count})
+					break
+				}
+			}
 			labels := make([]string, len(card))
 			labels[0] = displaytime.Format(entry.at, "03:04 PM")
 			if !entry.hideEnd {
@@ -254,10 +271,15 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 			previousTop, previousTime = len(lines)-1, entry.end
 		}
 	}
+	end := len(lines)
+	if nowLine >= 0 {
+		end = nowLine
+	}
 	if m.day.Before(displaytime.Day(m.clock)) {
+		end = len(lines)
 		lines = append(lines, "          ...")
 	}
-	return lines, positions, nowLine
+	return m.addDistributions(lines, curves, selectedCurve, end), positions, nowLine
 }
 func (m Model) bodyHeight() int { return max(1, m.height-4) }
 func (m *Model) revealSelected() {

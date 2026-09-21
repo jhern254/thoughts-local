@@ -17,7 +17,7 @@ go run ./cmd/render-preview -plain > /tmp/distribution-preview.txt
 
 This is a **static synthetic preview**, not the live Events screen. The footer
 shows the application's UI composition; its keybindings do not operate here.
-No database is opened. No Events code, loading behavior, or navigation is changed.
+No database is opened by this command; it does not exercise Events loading or navigation.
 The actual new renderer supplies the distributions; the surrounding cards use
 fixed fixture rows matching the accepted design. Narrow/short previews truncate
 text and crop earlier rows to retain the ending marker, rather than recalculate
@@ -43,7 +43,26 @@ selection behavior. Color choices are in this preview, not the renderer.
 The `distributions` scenario compares three renderer-only profiles with the same
 counts (20, 20, and 0) at different distances. It shows separated peaks, shared
 valleys where tails overlap, and close peaks merging into a broad mound. It has
-no event cards or timestamps: event placement remains a separate integration task.
+no event cards or timestamps: it isolates curve behavior from Events placement.
+
+## Live Events integration
+
+The Events screen uses the same renderer for collapsed cards with known counts.
+It reserves this separate lane at panel widths of 60 columns and above; below
+60, it hides the lane and restores the original card width. Expanding an event
+removes its contribution while retaining other collapsed curves. Unknown or failed
+counts do not draw a mound; a known zero count does. Existing successful counts
+remain visible during refresh when their event intervals are unchanged.
+
+The internal `distributionMode` setting in
+[`internal/tui/events/distribution.go`](../../internal/tui/events/distribution.go)
+selects filled (default) or outline rendering. Focus controls purple highlighting.
+This static preview keeps its fixed fixture layout; use the actual seeded TUI to
+review responsive widths and interactions:
+
+```sh
+make tui/demo/seeded
+```
 
 ## Renderer API and tuning
 
@@ -99,7 +118,7 @@ filled edge by one Braille dot while preserving the Gaussian shape and position.
 Neither mode allocates card space or shifts timestamps.
 Colors and layout remain caller responsibilities. The preview leaves two-column
 gutters around the ten-column curve lane and excludes the ending marker from the
-drawing bounds. Future live integration must preserve those responsibilities.
+drawing bounds. Live Events keeps those same responsibilities.
 
 ## Verification
 

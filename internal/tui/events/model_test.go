@@ -116,7 +116,7 @@ func TestModel_DayArrival(t *testing.T) {
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
-		if m.expanded != 0 || m.position.eventIndex != 0 || !strings.HasPrefix(strings.Split(ansi.Strip(m.View()), "\n")[2], "09:00 PM  ╭") {
+		if m.expanded != 0 || m.position.eventIndex != 0 || !strings.HasPrefix(timelineCardText(strings.Split(m.View(), "\n")[2]), "09:00 PM  ╭") {
 			t.Fatalf("got day view %q, want first event visible with calendar focus", ansi.Strip(m.View()))
 		}
 	})

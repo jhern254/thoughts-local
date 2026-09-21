@@ -169,7 +169,7 @@ func (m *Model) Resize(width, height int) {
 	m.width, m.height = max(1, width), max(1, height)
 	m.picker.Resize(max(1, width-12), max(1, height-2))
 	// Leave calendar context around the expanded box, not just room for the picker.
-	m.picker.ResizeEventView(max(1, width-12), max(1, (height-14)/3))
+	m.picker.ResizeEventView(m.cardWidth(), max(1, (height-14)/3))
 	if m.form.open {
 		m.resizeForm()
 	}

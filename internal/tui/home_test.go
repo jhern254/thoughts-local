@@ -136,6 +136,51 @@ func TestModel_EventsHome(t *testing.T) {
 		m = startHomeData(t, m, cmd)
 		return m, events
 	}
+	t.Run("distribution survives focus resize and Thought detail return", func(t *testing.T) {
+		m, _ := newHome(t)
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+		hasCurve := func(view string) bool {
+			return strings.ContainsFunc(view, func(r rune) bool { return r >= 0x2800 && r <= 0x28ff })
+		}
+		before := m.events.View()
+		if !hasCurve(before) {
+			t.Fatal("live Events did not draw accepted counts")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+		if !m.entityFocused || ansi.Strip(m.events.View()) != ansi.Strip(before) {
+			t.Fatal("focus switch moved the timeline")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+		if m.events.View() != before {
+			t.Fatal("returning focus did not restore curve styling")
+		}
+		for _, width := range []int{59, 60, 40, 80} {
+			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
+			if hasCurve(m.events.View()) != (width >= 60) {
+				t.Fatalf("width %d: wrong lane visibility through root dispatch", width)
+			}
+		}
+		m, cmd := rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		expanded := m.events.View()
+		if hasCurve(expanded) || !strings.Contains(expanded, "Newest first") {
+			t.Fatal("expansion failed to remove its contribution")
+		}
+		m, cmd = rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		if !strings.Contains(m.events.View(), "complete thought detail") {
+			t.Fatal("Thought detail did not open")
+		}
+		m, cmd = rootUpdate(m, escapeKey())
+		m = runHomeData(t, m, cmd)
+		if m.events.View() != expanded {
+			t.Fatal("Thought detail return changed expanded layout or anchor")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+		if !hasCurve(m.events.View()) || m.entityFocused || m.screen != screenEvents {
+			t.Fatal("collapse lost curve or Events focus")
+		}
+	})
 	t.Run("boots into owned Events data and wraps horizontal navigation both ways", func(t *testing.T) {
 		m, events := newHome(t)
 		if events.user != "home-user" || !strings.Contains(m.View().Content, "Events") || !strings.HasPrefix(m.View().Content, "Local user: home-user\n\n") {
@@ -263,7 +308,7 @@ func TestModel_EventsHome(t *testing.T) {
 		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
 		m = runHomeData(t, m, cmd)
 		view := ansi.Strip(m.View().Content)
-		if m.entityFocused || !strings.Contains(view, "09:00 PM  ╭") || strings.Contains(view, "←: collapse") {
+		if m.entityFocused || !strings.Contains(view, "09:00 PM                ╭") || strings.Contains(view, "←: collapse") {
 			t.Fatalf("got %q, want first event visible in timeline navigation", view)
 		}
 	})
