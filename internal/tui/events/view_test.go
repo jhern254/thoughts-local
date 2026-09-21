@@ -39,8 +39,8 @@ func TestModel_Layout(t *testing.T) {
 			t.Fatalf("got adjacent rows %q, want four-row card, blank separator, and next start labeled once", lines[first:second+1])
 		}
 		hour := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(line, "10:00 PM") })
-		if hour <= first || hour >= second-1 || !strings.Contains(ansi.Strip(lines[hour]), "│") {
-			t.Fatalf("got hour row %d, want inside event rows %d..%d", hour, first, second-1)
+		if hour != -1 {
+			t.Fatalf("got covered hour at row %d, want no intermediate label", hour)
 		}
 		m.items[1].StartedAt = end.Add(30 * time.Minute)
 		lines, positions, _ = m.layout()
@@ -49,7 +49,7 @@ func TestModel_Layout(t *testing.T) {
 			t.Fatal("a real half-hour gap did not leave space between boxes")
 		}
 	})
-	t.Run("long compact cards retain every hour including repeated local hours", func(t *testing.T) {
+	t.Run("long cards omit covered hours across daylight saving transitions", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		for _, date := range []string{"2026-03-08 12:00:00 PM", "2026-11-01 12:00:00 PM"} {
 			end, err := displaytime.ParseInput(date)
@@ -68,12 +68,9 @@ func TestModel_Layout(t *testing.T) {
 					labels = append(labels, label)
 				}
 			}
-			var want []string
-			for hour := m.day; !hour.After(end); hour = hour.Add(time.Hour) {
-				want = append(want, displaytime.Format(hour, "03:04 PM"))
-			}
-			if !slices.Equal(labels, want) || bottom-top+1 != len(want) {
-				t.Fatalf("got %d rows with markers %v, want one row per marker %v", bottom-top+1, labels, want)
+			want := []string{"12:00 AM", "12:00 PM"}
+			if !slices.Equal(labels, want) || bottom-top+1 != 4 {
+				t.Fatalf("got %d rows with markers %v, want four rows with boundaries %v", bottom-top+1, labels, want)
 			}
 		}
 	})
@@ -98,6 +95,7 @@ func TestModel_Layout(t *testing.T) {
 			m.Resize(80, height)
 			item := m.items[0]
 			end := m.clock
+			item.StartedAt = m.day
 			item.EndedAt = &end
 			if got := len(strings.Split(m.card(item, true), "\n")); got != 4 {
 				t.Fatalf("got completed card height %d, want 4 at terminal height %d", got, height)
@@ -189,6 +187,8 @@ func TestModel_Layout(t *testing.T) {
 	t.Run("event expands beside its time and pushes later hours down", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.items[0].StartedAt = m.day.Add(10 * time.Hour)
+		end := m.day.Add(10*time.Hour + 30*time.Minute)
+		m.items[0].EndedAt = &end
 		lines, positions, _ := m.layout()
 		top := positions[1]
 		if !strings.HasPrefix(ansi.Strip(lines[top]), "10:00 AM  ╭") {
@@ -226,7 +226,7 @@ func TestModel_Layout(t *testing.T) {
 		m, _, _ := fixture(t)
 		lines, _, _ := m.layout()
 		view := ansi.Strip(strings.Join(lines, "\n"))
-		for _, want := range []string{"12:00 AM", "11:00 AM", "Now · 11:37 AM ──", "1h · Started at 10:37 AM · ongoing"} {
+		for _, want := range []string{"12:00 AM", "10:00 AM", "Now · 11:37 AM ──", "1h · Started at 10:37 AM · ongoing"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("got timeline %q, want %q", view, want)
 			}

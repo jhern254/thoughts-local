@@ -142,10 +142,7 @@ func (m Model) card(item data.Event, selected bool) string {
 		lines[i] = ansi.Truncate(lines[i], width, "…")
 	}
 	content = strings.Join(lines, "\n")
-	start, finish := m.interval(item)
-	// Keep every whole-hour marker readable, without duration-based padding.
-	height := len(m.hoursBetween(start, finish)) + 2
-	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(width + 2).Height(height)
+	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(width + 2)
 	if selected && !m.blurred {
 		style = style.BorderForeground(lipgloss.Color("62"))
 	}
@@ -172,16 +169,6 @@ func (m Model) interval(item data.Event) (time.Time, time.Time) {
 }
 
 func (m Model) hourHeight() int { return max(4, (m.bodyHeight()+4)/5) }
-
-func (m Model) hoursBetween(start, end time.Time) []time.Time {
-	var hours []time.Time
-	for hour := m.day; hour.Before(end); hour = hour.Add(time.Hour) {
-		if hour.After(start) {
-			hours = append(hours, hour)
-		}
-	}
-	return hours
-}
 
 type railEntry struct {
 	at       time.Time
@@ -225,7 +212,7 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 	previousTop := 0
 	var previousTime time.Time
 	for i, entry := range entries {
-		// Hours within an event are drawn alongside its box below.
+		// Covered hours are omitted; cards show only their boundaries.
 		if entry.id == 0 && !entry.now && !previousTime.IsZero() && !entry.at.After(previousTime) {
 			continue
 		}
@@ -260,16 +247,6 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 			labels[0] = displaytime.Format(entry.at, "03:04 PM")
 			if !entry.hideEnd {
 				labels[len(card)-1] = displaytime.Format(entry.end, "03:04 PM")
-			}
-			hours := m.hoursBetween(entry.at, entry.end)
-			previousRow := 0
-			for i, hour := range hours {
-				fraction := float64(hour.Sub(entry.at)) / float64(entry.end.Sub(entry.at))
-				// Reserve a distinct row for each remaining marker, including
-				// repeated local hours across a daylight-saving transition.
-				row := min(len(card)-1-(len(hours)-i), max(previousRow+1, int(math.Round(fraction*float64(len(card)-1)))))
-				labels[row] = displaytime.Format(hour, "03:04 PM")
-				previousRow = row
 			}
 			for row, text := range card {
 				lines = append(lines, fmt.Sprintf("%-10s%s", labels[row], text))
