@@ -27,7 +27,7 @@ Options:
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-mode` | `filled` | `filled` or `outline`; the outer boundary is identical |
+| `-mode` | `filled` | `filled` or `outline`; both follow the same Gaussian profile |
 | `-scenario` | `main` | `distributions`, `main`, `adjacent`, `gapped`, `crowded`, or `empty` |
 | `-selected` | `3` | One-based event number; `0` or an absent event means no highlight |
 | `-width` | `100` | Terminal columns, at least 32 |
@@ -91,9 +91,11 @@ not forced to have one peak per input. Color follows the strongest contributing
 kernel, independently of the summed geometry. A zero-thought mound is decorative,
 not evidence of measured activity.
 
-Filling shades from that same boundary to the baseline. Outline uses one dot per
-vertical dot row, adding only the horizontal dots needed to connect steep slopes
-diagonally. This keeps turns and tails thin without moving the outer boundary.
+Filling shades from the sampled boundary to the baseline. Outline traces the
+curve at dot-row centers and joins consecutive rows where the curve crosses
+their shared half-row. Each join shares a dot column: diagonal-only gaps and
+backward-facing stubs interrupt the stroke. This centerline can differ from the
+filled edge by one Braille dot while preserving the Gaussian shape and position.
 Neither mode allocates card space or shifts timestamps.
 Colors and layout remain caller responsibilities. The preview leaves two-column
 gutters around the ten-column curve lane and excludes the ending marker from the

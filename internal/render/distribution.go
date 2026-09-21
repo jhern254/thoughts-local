@@ -3,7 +3,7 @@ package render
 
 import "math"
 
-// Mode changes the interior, never the distribution's boundary or position.
+// Mode selects a fill or continuous outline of the same Gaussian profile.
 type Mode uint8
 
 const (
@@ -205,58 +205,40 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 	return rows
 }
 
-// drawOutline keeps the same left boundary as the filled profile, but draws only
-// one dot per row plus the dots needed to connect steep slopes diagonally. The
-// supersampled stroke would otherwise leave a thicker band at turns and tails.
+// drawOutline traces the Gaussian at dot-row centers. Connect each pair through
+// the curve at their shared half-row so incoming and outgoing strokes meet.
+// This avoids growing horizontal stubs from the leftmost sample in each row.
+// Adjacent rows share a dot column, avoiding diagonal-only gaps between glyphs.
 func drawOutline(curves []gaussian, gain float64, baseline, height int, first, last float64, plot func(int, int, int, float64)) {
-	type edge struct {
+	type point struct {
 		x, owner int
 		strength float64
 	}
-	// Include a neighbor beyond either viewport edge so clipping cannot change
-	// the connectors in the first or last visible row.
-	edges := make([]edge, height+2)
-	for i := range edges {
-		edges[i].x = baseline + 1
-	}
-	record := func(x, y, owner int, strength float64) {
-		if y < -1 || y > height {
-			return
-		}
-		e := &edges[y+1]
-		if x < e.x || (x == e.x && strength > e.strength) {
-			*e = edge{x, owner, strength}
-		}
-	}
-	start := int(math.Ceil(max(first, -1.5) * samplesPerDot))
-	end := int(math.Floor(min(last, float64(height)+0.5) * samplesPerDot))
-	for sample := start; sample <= end; sample++ {
-		y := float64(sample) / samplesPerDot
+	at := func(y float64) point {
 		total, strength, owner := mixtureAt(curves, y)
-		x := int(math.Round(float64(baseline) - gain*total))
-		record(x, int(math.Round(y)), owner, gain*strength)
-		if y-math.Floor(y) == 0.5 {
-			record(x, int(math.Floor(y)), owner, gain*strength)
-			record(x, int(math.Ceil(y)), owner, gain*strength)
-		}
+		return point{int(math.Round(float64(baseline) - gain*total)), owner, gain * strength}
 	}
-	for y := range height {
-		e := edges[y+1]
-		if e.x > baseline {
-			continue
-		}
-		endX := e.x
-		for _, neighbor := range []edge{edges[y], edges[y+2]} {
-			if neighbor.x <= baseline {
-				endX = max(endX, neighbor.x-1)
-			}
-		}
-		for x := e.x; x <= endX; x++ {
+	stroke := func(p point, y, from, to int) {
+		for x := min(from, to); x <= max(from, to); x++ {
 			if x == baseline {
 				plot(x, y, -1, 0)
 			} else {
-				plot(x, y, e.owner, e.strength)
+				plot(x, y, p.owner, p.strength)
 			}
 		}
+	}
+	// Keep one neighboring row beyond each viewport edge so cropped strokes
+	// match the same rows of a larger render, including their color ownership.
+	start := int(math.Ceil(max(first-0.5, -1)))
+	end := int(math.Floor(min(last+0.5, float64(height))))
+	previous := at(float64(start))
+	stroke(previous, start, previous.x, previous.x)
+	for y := start + 1; y <= end; y++ {
+		current := at(float64(y))
+		join := at(float64(y) - 0.5).x
+		join = min(max(join, min(previous.x, current.x)), max(previous.x, current.x))
+		stroke(previous, y-1, previous.x, join)
+		stroke(current, y, join, current.x)
+		previous = current
 	}
 }

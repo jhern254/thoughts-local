@@ -85,7 +85,7 @@ func TestRenderDistributions(t *testing.T) {
 		}
 	})
 
-	t.Run("filled is the default and shares its outer boundary with outline", func(t *testing.T) {
+	t.Run("filled is the default and outline follows the same profile", func(t *testing.T) {
 		curves := []Distribution{{CenterY: 31.5, Count: 20}}
 		filled := pixels(RenderDistributions(10, 16, curves, Options{}))
 		outline := pixels(RenderDistributions(10, 16, curves, Options{Mode: Outline}))
@@ -107,8 +107,10 @@ func TestRenderDistributions(t *testing.T) {
 					leftOutline = min(leftOutline, x)
 				}
 			}
-			if leftFilled != leftOutline {
-				t.Fatalf("row %d: different outer boundaries", y)
+			// Fill covers each dot row's full sampled area; the outline follows
+			// its centerline, with at most one dot of rasterization difference.
+			if math.Abs(float64(leftFilled-leftOutline)) > 1 {
+				t.Fatalf("row %d: outline differs from filled profile by more than one dot", y)
 			}
 			for x := leftFilled; x < 20; x++ {
 				if !filled[[2]int{x, y}] {
@@ -125,8 +127,8 @@ func TestRenderDistributions(t *testing.T) {
 			outline := pixels(RenderDistributions(10, 16, curves, Options{Mode: Outline}))
 			for y := range 64 {
 				left := leftEdge(outline, y)
-				if left != leftEdge(filled, y) {
-					t.Fatalf("count %d row %d: outline moved the boundary", count, y)
+				if math.Abs(float64(left-leftEdge(filled, y))) > 1 {
+					t.Fatalf("count %d row %d: outline moved beyond the profile", count, y)
 				}
 				for x := left; x < 20; x++ {
 					p := [2]int{x, y}
@@ -136,11 +138,50 @@ func TestRenderDistributions(t *testing.T) {
 					if !outline[[2]int{x, 63 - y}] {
 						t.Fatalf("count %d: asymmetric outline dot at %v", count, p)
 					}
-					// Extra horizontal dots are justified only by a steep edge:
-					// they bridge to the next dot row with diagonal connectivity.
-					if x > left && leftEdge(outline, y-1) <= x && leftEdge(outline, y+1) <= x {
+					// Extra horizontal dots only join the neighboring rows;
+					// do not extend the stroke beyond either neighboring edge.
+					if x > left && leftEdge(outline, y-1) < x && leftEdge(outline, y+1) < x {
 						t.Fatalf("count %d: unnecessary stroke thickness at %v", count, p)
 					}
+				}
+			}
+		}
+	})
+
+	t.Run("outline joins successive rows without diagonal gaps", func(t *testing.T) {
+		for _, curves := range [][]Distribution{
+			{{CenterY: 19.5, Count: 20}, {CenterY: 55.5, Count: 20}, {CenterY: 83.5}},
+			{{CenterY: 23.5, Count: 20}, {CenterY: 43.5, Count: 20}, {CenterY: 71.5}},
+			{{CenterY: 27.5, Count: 20}, {CenterY: 35.5, Count: 20}, {CenterY: 71.5}},
+		} {
+			points := pixels(RenderDistributions(10, 24, curves, Options{Mode: Outline}))
+			ends := 0
+			for p := range points {
+				neighbors := 0
+				for _, step := range [][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}} {
+					if points[[2]int{p[0] + step[0], p[1] + step[1]}] {
+						neighbors++
+					}
+				}
+				if neighbors == 1 {
+					ends++
+				} else if neighbors != 2 {
+					t.Fatalf("dot %v has %d neighbors, want an unbranched stroke", p, neighbors)
+				}
+			}
+			if ends != 2 {
+				t.Fatalf("outline has %d ends, want only the top and bottom tails", ends)
+			}
+			for y := 1; y < 96; y++ {
+				if leftEdge(points, y-1) == 20 || leftEdge(points, y) == 20 {
+					continue
+				}
+				joined := false
+				for x := range 20 {
+					joined = joined || (points[[2]int{x, y - 1}] && points[[2]int{x, y}])
+				}
+				if !joined {
+					t.Fatalf("dot rows %d and %d have no shared column: outline breaks diagonally", y-1, y)
 				}
 			}
 		}
