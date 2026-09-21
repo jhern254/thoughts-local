@@ -1,0 +1,36 @@
+Connected Gaussian distributions                                                                    
+Same counts: 20 + 20 + 0; different distances between centers.                                      
+Separated                         Shared valleys                    Merged peak                     
+                                                                                                    
+                                                                                                    
+                    ⡼                                                                               
+                  ⣠⠼⠁                                 ⡼                                             
+              ⢀⣠⠴⠚⠁                                 ⣠⠼⠁                                 ⣸           
+            ⢠⠞⠉                                 ⢀⣠⠴⠚⠁                                  ⣰⠃           
+            ⠘⢦⣀                               ⢠⠞⠉                                   ⣀⡴⠚⠁            
+              ⠈⠙⠲⢤⡀                           ⠘⢦⣀                                ⢀⡴⠚⠁               
+                  ⠙⢲⡀                           ⠈⠙⠦⣄                            ⢰⠋                  
+                    ⢳                              ⢈⡇                           ⠸⣄                  
+                    ⢸                           ⢀⣠⠖⠋                             ⠈⠳⢤⡀               
+                    ⡼                         ⢠⠞⠉                                   ⠉⠳⢤⡀            
+                  ⣠⠼⠁                         ⠘⢦⣀                                      ⠹⡄           
+              ⢀⣠⠴⠚⠁                             ⠈⠙⠲⢤⡀                                   ⢹           
+            ⢠⠞⠉                                     ⠙⢲⡀                                 ⢸           
+            ⠘⢦⣀                                       ⢳                                 ⢸           
+              ⠈⠙⠲⢤⡀                                   ⢸                                 ⢸           
+                  ⠙⢲⡀                                 ⢸                                 ⢸           
+                    ⢳                                ⡴⠋                                ⢠⠏           
+                    ⢸                                ⠳⣄                                ⠘⣆           
+                    ⢸                                 ⠘                                 ⠘           
+                   ⡴⠋                                                                               
+                   ⠳⣄                                                                               
+                    ⠘                                                                               
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+Purple: selected contribution. Gray: others. Shapes share one continuous profile.                   

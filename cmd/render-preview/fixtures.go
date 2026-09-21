@@ -64,7 +64,7 @@ func fixture(name string) (scene, error) {
 		s.hours = map[int]string{0: "08:00 AM", 6: "09:00 AM", 12: "10:00 AM", 18: "11:00 AM", 24: "12:00 PM"}
 		s.endRow = 27
 	default:
-		return scene{}, fmt.Errorf("scenario must be main, adjacent, gapped, crowded, or empty")
+		return scene{}, fmt.Errorf("scenario must be distributions, main, adjacent, gapped, crowded, or empty")
 	}
 	return s, nil
 }

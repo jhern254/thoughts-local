@@ -48,6 +48,49 @@ type gaussian struct {
 	index                    int
 }
 
+// mixtureAt adds activity contributions; the dominant kernel supplies color
+// ownership only. Geometry must not switch kernels at their intersection.
+func mixtureAt(curves []gaussian, y float64) (total, strongest float64, owner int) {
+	owner = -1
+	for _, curve := range curves {
+		z := (y - curve.center) / curve.sigma
+		if math.Abs(z) > tailSigma {
+			continue
+		}
+		value := curve.amplitude * math.Exp(-0.5*z*z)
+		total += value
+		if value > strongest {
+			strongest, owner = value, curve.index
+		}
+	}
+	return total, strongest, owner
+}
+
+// mixtureGain fits the entire supplied profile, not just its visible portion.
+// A single gain preserves valleys and peak ratios without flat clipping or
+// changes when scrolling. Scan kernel supports rather than potentially huge
+// idle gaps, on the same fixed sub-dot grid used for drawing below.
+func mixtureGain(curves []gaussian, maximum float64) float64 {
+	peak := 0.0
+	for _, curve := range curves {
+		radius := tailSigma * curve.sigma
+		start := math.Ceil((curve.center-radius)*samplesPerDot) / samplesPerDot
+		steps := int(math.Ceil(2*radius*samplesPerDot)) + 1
+		for step := 0; step <= steps; step++ {
+			y := start + float64(step)/samplesPerDot
+			if y > curve.center+radius {
+				break
+			}
+			total, _, _ := mixtureAt(curves, y)
+			peak = max(peak, total)
+		}
+	}
+	if peak > maximum {
+		return maximum / peak
+	}
+	return 1
+}
+
 // RenderDistributions returns exactly height rows of width cells, or nil for a
 // nonpositive dimension. Empty input yields blank cells. Invalid modes use Filled.
 // Colors belong to the caller; selection therefore cannot change geometry.
@@ -59,13 +102,18 @@ type gaussian struct {
 //	A = minAmplitude + amplitudeGain*s
 //	H = round(minHeight + heightGain*s)
 //	sigma = (H-1)/(2*tailSigma)
-//	x(y) = baseline - A*exp(-0.5*((y-mu)/sigma)^2)
+//	g_i(y) = A_i*exp(-0.5*((y-mu_i)/sigma_i)^2)
+//	S(y) = sum(g_i(y))
+//	gain = min(1, maximumDisplayAmplitude / max_y(S(y)))
+//	x(y) = baseline - gain*S(y)
 //
 // H includes the two endpoints, hence H-1. The baseline is the rightmost dot in
-// the lane. A is clamped to the available width; y is clipped, never rescaled.
-// The outermost curve wins overlaps (not a sum); input order breaks exact ties.
-// A baseline connects the first tail to the last, including idle gaps. A terminal
-// cell has only one color, so its strongest visible contribution owns the cell.
+// the lane. maximumDisplayAmplitude is min(minAmplitude+amplitudeGain, lane width
+// in dots minus 1). The global gain only shrinks profiles that exceed that limit;
+// isolated curves retain their original scale. y is clipped, never rescaled.
+// Adding kernels allows multiple peaks and shared valleys; close peaks can merge.
+// A baseline connects the first tail to the last, including idle gaps. Color is
+// assigned to the strongest visible contribution, with input order breaking ties.
 func RenderDistributions(width, height int, distributions []Distribution, options Options) [][]Cell {
 	if width <= 0 || height <= 0 {
 		return nil
@@ -86,7 +134,7 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 		}
 		s := math.Pow(min(max(float64(distribution.Count), 0), countCap)/countCap, countExponent)
 		h := math.Round(minHeight + heightGain*s)
-		g := gaussian{distribution.CenterY, (h - 1) / (2 * tailSigma), min(minAmplitude+amplitudeGain*s, float64(baseline)), i}
+		g := gaussian{distribution.CenterY, (h - 1) / (2 * tailSigma), minAmplitude + amplitudeGain*s, i}
 		curves = append(curves, g)
 		first = min(first, g.center-tailSigma*g.sigma)
 		last = max(last, g.center+tailSigma*g.sigma)
@@ -94,6 +142,7 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 	if len(curves) == 0 || first > float64(height*4)-0.5 || last < -0.5 {
 		return rows
 	}
+	gain := mixtureGain(curves, min(minAmplitude+amplitudeGain, float64(baseline)))
 
 	strengths := make([]float64, width*height)
 	bits := [2][4]rune{{1, 2, 4, 64}, {8, 16, 32, 128}}
@@ -120,18 +169,9 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 	previousX, previousY := 0, 0
 	for sample := start; sample <= end; sample++ {
 		y := float64(sample) / samplesPerDot
-		strength, owner := 0.0, -1
-		for _, curve := range curves {
-			z := (y - curve.center) / curve.sigma
-			if math.Abs(z) > tailSigma {
-				continue
-			}
-			value := curve.amplitude * math.Exp(-0.5*z*z)
-			if value > strength {
-				strength, owner = value, curve.index
-			}
-		}
-		x, py := int(math.Round(float64(baseline)-strength)), int(math.Round(y))
+		total, strength, owner := mixtureAt(curves, y)
+		strength *= gain
+		x, py := int(math.Round(float64(baseline)-gain*total)), int(math.Round(y))
 		if x == baseline {
 			owner, strength = -1, 0 // No visible departure from the connecting baseline.
 		}

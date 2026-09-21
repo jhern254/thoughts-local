@@ -21,6 +21,32 @@ func preview(t *testing.T, args ...string) string {
 }
 
 func TestPreview(t *testing.T) {
+	t.Run("distribution comparison shows separated overlapping and merged profiles", func(t *testing.T) {
+		for _, mode := range []string{"filled", "outline"} {
+			view := preview(t, "-plain", "-scenario", "distributions", "-mode", mode)
+			for _, label := range []string{"Separated", "Shared valleys", "Merged peak"} {
+				if !strings.Contains(view, label) {
+					t.Fatalf("missing comparison %q", label)
+				}
+			}
+			if strings.Contains(view, "Events") || strings.Contains(view, "Now") {
+				t.Fatal("renderer comparison should not pretend to be Events")
+			}
+			rows := strings.Split(strings.TrimSuffix(view, "\n"), "\n")
+			if len(rows) != 36 {
+				t.Fatalf("got %d rows, want 36", len(rows))
+			}
+			for _, row := range rows {
+				if ansi.StringWidth(row) != 100 {
+					t.Fatal("comparison exceeds its width")
+				}
+			}
+			colored := preview(t, "-scenario", "distributions", "-mode", mode)
+			if ansi.Strip(colored) != view {
+				t.Fatal("comparison colors changed geometry")
+			}
+		}
+	})
 	t.Run("filled is default and all modes preserve card and timestamp positions", func(t *testing.T) {
 		filled := preview(t, "-plain")
 		if explicit := preview(t, "-plain", "-mode", "filled"); filled != explicit {
@@ -129,6 +155,8 @@ func TestPreview(t *testing.T) {
 			{"filled-100x36", []string{"-plain"}},
 			{"outline-100x36", []string{"-plain", "-mode", "outline"}},
 			{"filled-60x28", []string{"-plain", "-width", "60", "-height", "28"}},
+			{"distributions-filled-100x36", []string{"-plain", "-scenario", "distributions", "-selected", "2"}},
+			{"distributions-outline-100x36", []string{"-plain", "-scenario", "distributions", "-selected", "2", "-mode", "outline"}},
 		} {
 			want, err := os.ReadFile(filepath.Join("testdata", sample.name+".txt"))
 			if err != nil {

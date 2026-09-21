@@ -4,6 +4,7 @@ Run from the repository root:
 
 ```sh
 go run ./cmd/render-preview
+go run ./cmd/render-preview -scenario distributions -selected 2
 go run ./cmd/render-preview -mode outline
 go run ./cmd/render-preview -width 60 -height 28
 go run ./cmd/render-preview -scenario crowded -selected 6
@@ -23,7 +24,7 @@ Options:
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `-mode` | `filled` | `filled` or `outline`; the outer boundary is identical |
-| `-scenario` | `main` | `main`, `adjacent`, `gapped`, `crowded`, or `empty` |
+| `-scenario` | `main` | `distributions`, `main`, `adjacent`, `gapped`, `crowded`, or `empty` |
 | `-selected` | `3` | One-based event number; `0` or an absent event means no highlight |
 | `-width` | `100` | Terminal columns, at least 32 |
 | `-height` | `36` | Terminal rows, at least 12 |
@@ -34,6 +35,11 @@ The main scene has 20, 0, and 10 thoughts. The crowded scene includes counts abo
 end at Now. The selected curve and border use ANSI color 62, unselected curves
 use gray 245, and the connecting baseline uses gray 240. Both modes share the same
 selection behavior. Color choices are in this preview, not the renderer.
+
+The `distributions` scenario compares three renderer-only profiles with the same
+counts (20, 20, and 0) at different distances. It shows separated peaks, shared
+valleys where tails overlap, and close peaks merging into a broad mound. It has
+no event cards or timestamps: event placement remains a separate integration task.
 
 ## Renderer API and tuning
 
@@ -63,9 +69,26 @@ to the timing of individual thoughts.
 - `countCap` is 20; larger counts look the same while labels retain their totals.
 - `tailSigma` controls the retained tail extent; `samplesPerDot` controls sampling.
 
-The renderer connects Gaussian boundaries with a baseline and uses the outermost
-curve in overlaps; it does not add curves together. Filling shades from that same
-boundary to the baseline. Neither mode allocates card space or shifts timestamps.
+The renderer adds the Gaussian contributions into one continuous profile:
+
+```text
+S(y) = sum(A_i * exp(-0.5 * ((y-center_i)/sigma_i)^2))
+gain = min(1, maximumDisplayAmplitude / max_y(S(y)))
+x(y) = baseline - gain*S(y)
+```
+
+The maximum display amplitude is 16 dots, reduced for narrower lanes. If the sum
+exceeds it, one gain scales the entire profile horizontally, preserving valleys
+and relative peak heights instead of clipping a flat top. This gain uses all
+supplied distributions, including offscreen ones, so scrolling cannot change the
+shape. Isolated distributions retain their previous scale. Overlapping peaks can
+remain distinct or merge, depending on their distance and spread; the profile is
+not forced to have one peak per input. Color follows the strongest contributing
+kernel, independently of the summed geometry. A zero-thought mound is decorative,
+not evidence of measured activity.
+
+Filling shades from that same boundary to the baseline. Neither mode allocates
+card space or shifts timestamps.
 Colors and layout remain caller responsibilities. The preview leaves two-column
 gutters around the ten-column curve lane and excludes the ending marker from the
 drawing bounds. Future live integration must preserve those responsibilities.

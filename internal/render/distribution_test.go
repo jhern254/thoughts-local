@@ -3,6 +3,7 @@ package render
 import (
 	"math"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -24,6 +25,31 @@ func pixels(cells [][]Cell) map[[2]int]bool {
 		}
 	}
 	return result
+}
+
+func BenchmarkRenderDistributions(b *testing.B) {
+	for _, count := range []int{3, 24} {
+		b.Run(strconv.Itoa(count), func(b *testing.B) {
+			curves := make([]Distribution, count)
+			for i := range curves {
+				curves[i] = Distribution{CenterY: float64(i*20) + 15.5, Count: 20}
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				RenderDistributions(10, count*5+4, curves, Options{})
+			}
+		})
+	}
+}
+
+func leftEdge(points map[[2]int]bool, y int) int {
+	left := 20
+	for p := range points {
+		if p[1] == y {
+			left = min(left, p[0])
+		}
+	}
+	return left
 }
 
 func TestRenderDistributions(t *testing.T) {
@@ -124,7 +150,7 @@ func TestRenderDistributions(t *testing.T) {
 		}
 	})
 
-	t.Run("outermost curve owns overlaps and input order resolves ties", func(t *testing.T) {
+	t.Run("strongest contributor owns overlaps and input order resolves ties", func(t *testing.T) {
 		for _, mode := range []Mode{Filled, Outline} {
 			cells := RenderDistributions(10, 16, []Distribution{{CenterY: 31.5}, {CenterY: 31.5, Count: 20}}, Options{Mode: mode})
 			if cells[7][1].CurveIndex != 1 {
@@ -133,6 +159,60 @@ func TestRenderDistributions(t *testing.T) {
 			tied := RenderDistributions(10, 16, []Distribution{{CenterY: 31.5, Count: 20}, {CenterY: 31.5, Count: 20}}, Options{Mode: mode})
 			if tied[7][1].CurveIndex != 0 {
 				t.Fatal("first curve must win exact ties")
+			}
+		}
+	})
+
+	t.Run("overlapping tails form a shared valley between distinct peaks", func(t *testing.T) {
+		curves := []Distribution{{CenterY: 23.5, Count: 20}, {CenterY: 43.5, Count: 20}}
+		for _, mode := range []Mode{Filled, Outline} {
+			combined := pixels(RenderDistributions(10, 20, curves, Options{Mode: mode}))
+			first := pixels(RenderDistributions(10, 20, curves[:1], Options{Mode: mode}))
+			second := pixels(RenderDistributions(10, 20, curves[1:], Options{Mode: mode}))
+			valley := leftEdge(combined, 33)
+			separate := min(leftEdge(first, 33), leftEdge(second, 33))
+			if valley >= separate {
+				t.Fatalf("combined valley starts at dot %d, want left of the separate outlines at %d", valley, separate)
+			}
+			if valley <= leftEdge(combined, 23) || valley <= leftEdge(combined, 43) {
+				t.Fatal("separated contributions should retain two peaks with a shallower valley")
+			}
+		}
+	})
+
+	t.Run("nearby peaks merge smoothly without flat clipping", func(t *testing.T) {
+		curves := []Distribution{{CenterY: 27.5, Count: 20}, {CenterY: 35.5, Count: 20}}
+		for _, mode := range []Mode{Filled, Outline} {
+			points := pixels(RenderDistributions(10, 16, curves, Options{Mode: mode}))
+			if leftEdge(points, 31) >= leftEdge(points, 27) || leftEdge(points, 31) >= leftEdge(points, 35) {
+				t.Fatal("close contributions should form a rounded peak between their centers")
+			}
+			for p := range points {
+				if p[0] < 3 {
+					t.Fatalf("mixture exceeds the maximum display amplitude at %v", p)
+				}
+			}
+			coincident := RenderDistributions(10, 16, []Distribution{{CenterY: 31.5, Count: 20}, {CenterY: 31.5, Count: 20}}, Options{Mode: mode})
+			single := RenderDistributions(10, 16, []Distribution{{CenterY: 31.5, Count: 20}}, Options{Mode: mode})
+			if !reflect.DeepEqual(pixels(coincident), pixels(single)) {
+				t.Fatal("coincident peaks should scale uniformly to the same bell, not clip flat")
+			}
+		}
+	})
+
+	t.Run("mixture scaling does not change when its peak moves outside the viewport", func(t *testing.T) {
+		curves := []Distribution{{CenterY: 27.5, Count: 20}, {CenterY: 35.5, Count: 20}, {CenterY: 59.5, Count: 10}}
+		for _, mode := range []Mode{Filled, Outline} {
+			whole := RenderDistributions(10, 20, curves, Options{Mode: mode})
+			for offset := 0; offset <= 16; offset++ {
+				shifted := append([]Distribution(nil), curves...)
+				for i := range shifted {
+					shifted[i].CenterY -= float64(offset * 4)
+				}
+				cropped := RenderDistributions(10, 4, shifted, Options{Mode: mode})
+				if !reflect.DeepEqual(whole[offset:offset+4], cropped) {
+					t.Fatalf("mixture changed while scrolling to row %d", offset)
+				}
 			}
 		}
 	})

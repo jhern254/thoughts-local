@@ -34,7 +34,7 @@ func run(args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	width := flags.Int("width", 100, "terminal columns (at least 32)")
 	height := flags.Int("height", 36, "terminal rows (at least 12)")
-	scenario := flags.String("scenario", "main", "main, adjacent, gapped, crowded, or empty")
+	scenario := flags.String("scenario", "main", "distributions, main, adjacent, gapped, crowded, or empty")
 	mode := flags.String("mode", "filled", "filled or outline")
 	selected := flags.Int("selected", 3, "selected event, numbered from 1; 0 means none")
 	plain := flags.Bool("plain", false, "omit ANSI colors")
@@ -57,6 +57,10 @@ func run(args []string, output io.Writer) error {
 	default:
 		return fmt.Errorf("mode must be filled or outline")
 	}
+	if *scenario == "distributions" {
+		_, err := io.WriteString(output, drawDistributions(*width, *height, *selected-1, options, *plain))
+		return err
+	}
 	scene, err := fixture(*scenario)
 	if err != nil {
 		return err
@@ -75,6 +79,24 @@ func color(text string, code int, plain bool) string {
 func fit(text string, width int) string {
 	text = ansi.Truncate(text, width, "…")
 	return text + strings.Repeat(" ", max(0, width-ansi.StringWidth(text)))
+}
+
+func distributionRow(cells []render.Cell, selected int, plain bool) string {
+	var line strings.Builder
+	for _, cell := range cells {
+		code := unselectedColor
+		if cell.CurveIndex < 0 {
+			code = baselineColor
+		} else if cell.CurveIndex == selected {
+			code = selectedColor
+		}
+		glyph := string(cell.Glyph)
+		if cell.Glyph != ' ' {
+			glyph = color(glyph, code, plain)
+		}
+		line.WriteString(glyph)
+	}
+	return line.String()
 }
 
 func draw(scene scene, width, height, selected int, options render.Options, plain bool) string {
@@ -120,25 +142,11 @@ func draw(scene scene, width, height, selected int, options render.Options, plai
 	cells := render.RenderDistributions(curveWidth, scene.endRow, curves, options)
 	body := make([]string, len(labels))
 	for y := range body {
-		var lane strings.Builder
+		lane := strings.Repeat(" ", curveWidth)
 		if y < len(cells) {
-			for _, cell := range cells[y] {
-				code := unselectedColor
-				if cell.CurveIndex < 0 {
-					code = baselineColor
-				} else if cell.CurveIndex == selected {
-					code = selectedColor
-				}
-				glyph := string(cell.Glyph)
-				if cell.Glyph != ' ' {
-					glyph = color(glyph, code, plain)
-				}
-				lane.WriteString(glyph)
-			}
-		} else {
-			lane.WriteString(strings.Repeat(" ", curveWidth))
+			lane = distributionRow(cells[y], selected, plain)
 		}
-		body[y] = fit(labels[y], 10) + "  " + lane.String() + "  " + right[y]
+		body[y] = fit(labels[y], 10) + "  " + lane + "  " + right[y]
 	}
 	lines := []string{"Local user: local (demo)", "", " Events  " + scene.date, ""}
 	bodyHeight := height - 9 // Header plus status/help/entity footer remain visible.
