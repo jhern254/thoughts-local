@@ -11,53 +11,6 @@ import (
 )
 
 func TestModel_TimelinePosition(t *testing.T) {
-	t.Run("fitting collapsed overview stays at the top through selection resize and collapse", func(t *testing.T) {
-		m, service, store := fixture(t)
-		m.day = m.day.AddDate(0, 0, -1)
-		firstEnd, secondEnd := m.day.Add(12*time.Hour), m.day.Add(18*time.Hour)
-		service.items = []data.Event{
-			{EventID: 1, StartedAt: m.day.Add(6 * time.Hour), EndedAt: &firstEnd},
-			{EventID: 2, StartedAt: firstEnd, EndedAt: &secondEnd},
-		}
-		m.position.followNow = false
-		m.items = nil
-		m.Resize(80, 26) // Exactly 22 body rows for the collapsed day.
-		m = execute(t, m, m.loadDay(m.day))
-		assertOverview := func() {
-			t.Helper()
-			if m.position.topLine != 0 || !strings.HasPrefix(ansi.Strip(m.timelineBody()), "12:00 AM") || !strings.Contains(m.timelineBody(), "...") {
-				t.Fatalf("got offset %d and body %q, want complete overview at top", m.position.topLine, m.timelineBody())
-			}
-		}
-		assertOverview()
-		lists, reads, counts := service.lists, store.reads, store.counts
-		for _, key := range []string{"down", "up", "home", "down"} {
-			m, _ = m.Update(eventKey(key))
-			assertOverview()
-		}
-		m.Resize(40, 27)
-		assertOverview()
-		if service.lists != lists || store.reads != reads || store.counts != counts {
-			t.Fatal("selection or resize read data")
-		}
-		m, cmd := m.Update(eventKey("enter"))
-		m = execute(t, m, cmd)
-		if m.position.topLine == 0 || !strings.HasPrefix(ansi.Strip(m.timelineBody()), "12:00 PM  ╭") {
-			t.Fatal("expansion did not anchor the selected card at its start")
-		}
-		m, _ = m.Update(eventKey("left"))
-		assertOverview()
-		if m.position.eventIndex != 1 {
-			t.Fatal("collapse changed the selected event")
-		}
-		m.Resize(40, 14)
-		m, _ = m.Update(eventKey("down"))
-		if m.position.topLine == 0 {
-			t.Fatal("overflowing layout did not reveal selection")
-		}
-		m.Resize(80, 26)
-		assertOverview()
-	})
 	t.Run("losing focus pauses follow-now and returning focus preserves selection", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		selected, top := m.items[m.position.eventIndex].EventID, m.position.topLine
@@ -75,9 +28,9 @@ func TestModel_TimelinePosition(t *testing.T) {
 			t.Fatal("focused Events did not accept keyboard input")
 		}
 	})
-	t.Run("overflowing day keeps the last event at the top with unused rows below", func(t *testing.T) {
+	t.Run("last event can stay at the top with unused rows below", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		for _, height := range []int{14, 16} {
+		for _, height := range []int{27, 35} {
 			m.Resize(80, height)
 			m, _ = m.Update(eventKey("home"))
 			lines := strings.Split(ansi.Strip(m.timelineBody()), "\n")
@@ -88,7 +41,6 @@ func TestModel_TimelinePosition(t *testing.T) {
 	})
 	t.Run("paging moves rendered lines independently of selection and Home restores it", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		m.Resize(80, 14)
 		m, _ = m.Update(eventKey("home"))
 		before := m.View()
 		selected := m.items[m.position.eventIndex].EventID

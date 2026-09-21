@@ -270,8 +270,6 @@ func TestModel_EventsHome(t *testing.T) {
 	t.Run("horizontal keys open thoughts and collapse events without changing days", func(t *testing.T) {
 		for _, keys := range [][2]rune{{tea.KeyRight, tea.KeyLeft}, {'l', 'h'}} {
 			m, _ := newHome(t)
-			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 120, Height: 50})
-			before := m.View().Content
 			m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: keys[0]}))
 			m = runHomeData(t, m, cmd)
 			if !strings.Contains(m.View().Content, "←: collapse") {
@@ -279,9 +277,6 @@ func TestModel_EventsHome(t *testing.T) {
 			}
 			expanded := m.View().Content
 			collapsed, _ := rootUpdate(m, escapeKey())
-			if collapsed.View().Content != before {
-				t.Fatal("collapse did not restore the fitting day overview")
-			}
 			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: keys[0]}))
 			m = runHomeData(t, m, cmd)
 			if !strings.Contains(m.View().Content, "complete thought detail") {
