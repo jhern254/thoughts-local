@@ -1,6 +1,7 @@
 package events
 
 import (
+	"errors"
 	"os"
 	"slices"
 	"strings"
@@ -205,21 +206,84 @@ func TestModel_Layout(t *testing.T) {
 			t.Fatal("expanded viewport hides event time")
 		}
 	})
-	t.Run("default viewport spaces hours and shows only recent hours", func(t *testing.T) {
+	t.Run("idle spacing fits as a whole or stays compact", func(t *testing.T) {
+		for _, tc := range []struct{ height, rows, step int }{
+			{28, 25, 1}, // Minimum historical day overflows a 24-row body.
+			{51, 25, 1}, // All 23 extra rows must fit, not just some.
+			{52, 48, 2},
+			{80, 48, 2}, // Spare height never stretches the rail further.
+		} {
+			m, _, _ := fixture(t)
+			m.day = m.day.AddDate(0, 0, -1)
+			m.items = nil
+			m.Resize(80, tc.height)
+			lines, _, now := m.layout()
+			if len(lines) != tc.rows || now != -1 {
+				t.Fatalf("height %d: got %d rows and Now at %d, want %d rows without Now", tc.height, len(lines), now, tc.rows)
+			}
+			for hour := range 24 {
+				want := displaytime.Format(m.day.Add(time.Duration(hour)*time.Hour), "03:04 PM")
+				if !strings.HasPrefix(lines[hour*tc.step], want) {
+					t.Fatalf("height %d row %d: got %q, want %s", tc.height, hour*tc.step, lines[hour*tc.step], want)
+				}
+			}
+		}
+	})
+	t.Run("idle hours stay chronological around a content sized long card", func(t *testing.T) {
+		for _, tc := range []struct{ height, rows, top int }{{33, 19, 9}, {34, 30, 16}} {
+			m, _, _ := fixture(t)
+			m.day = m.day.AddDate(0, 0, -1)
+			end := m.day.Add(18 * time.Hour)
+			m.items = []data.Event{{EventID: 1, StartedAt: m.day.Add(8 * time.Hour), EndedAt: &end}}
+			m.Resize(80, tc.height)
+			lines, positions, _ := m.layout()
+			if len(lines) != tc.rows || positions[1] != tc.top {
+				t.Fatalf("height %d: got %d rows with card at %d, want %d rows with card at %d", tc.height, len(lines), positions[1], tc.rows, tc.top)
+			}
+			var labels []string
+			for _, line := range lines {
+				if ansi.StringWidth(line) >= 10 {
+					if label := strings.TrimSpace(ansi.Truncate(ansi.Strip(line), 10, "")); label != "" {
+						labels = append(labels, label)
+					}
+				}
+			}
+			want := []string{"12:00 AM", "01:00 AM", "02:00 AM", "03:00 AM", "04:00 AM", "05:00 AM", "06:00 AM", "07:00 AM", "08:00 AM", "06:00 PM", "07:00 PM", "08:00 PM", "09:00 PM", "10:00 PM", "11:00 PM"}
+			if !slices.Equal(labels, want) {
+				t.Fatalf("got rail labels %v, want %v", labels, want)
+			}
+			if !strings.HasPrefix(ansi.Strip(lines[tc.top+3]), "06:00 PM  ╰") {
+				t.Fatal("long card did not retain its four-row geometry")
+			}
+		}
+	})
+	t.Run("today uses the same spacing budget including Now", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.items = nil
-		m.anchor()
-		view := ansi.Strip(m.View())
-		if strings.Contains(view, "12:00 AM") || strings.Contains(view, "06:00 AM") || !strings.Contains(view, "11:00 AM") {
-			t.Fatalf("got default view %q, want recent hours rather than full day", view)
+		for _, tc := range []struct{ height, rows int }{{28, 13}, {29, 25}, {50, 25}} {
+			m.Resize(80, tc.height)
+			lines, _, now := m.layout()
+			if len(lines) != tc.rows || now != tc.rows-1 || m.position.topLine != 0 {
+				t.Fatalf("height %d: got %d rows, Now %d, offset %d; want %d rows ending at Now with overview at top", tc.height, len(lines), now, m.position.topLine, tc.rows)
+			}
 		}
-		lines, _, _ := m.layout()
-		if !strings.HasPrefix(lines[0], "12:00 AM") || !strings.Contains(lines[1], "│") || strings.Contains(lines[1], "AM") {
-			t.Fatal("earlier hours unavailable or hour spacing missing")
-		}
-		m, _ = m.Update(eventKey("home"))
-		if !strings.Contains(m.View(), "12:00 AM") {
-			t.Fatal("Home cannot reach beginning of empty day")
+	})
+	t.Run("count loading completion and failure preserve collapsed geometry", func(t *testing.T) {
+		m, service, store := fixture(t)
+		end := m.clock
+		service.items[0].StartedAt = m.day
+		service.items[0].EndedAt = &end
+		for _, failure := range []error{nil, errors.New("controlled count failure")} {
+			store.err = failure
+			batch := m.loadDay(m.day)().(tea.BatchMsg)
+			m = execute(t, m, batch[0])
+			before, positions, _ := m.layout()
+			m, _ = m.Update(loadDelayedMsg{m.owner, m.load.generation})
+			m = execute(t, m, batch[1])
+			after, nextPositions, _ := m.layout()
+			if len(before) != len(after) || positions[1] != nextPositions[1] || len(strings.Split(m.card(m.items[0], true), "\n")) != 4 {
+				t.Fatal("count reply changed the collapsed card or rail geometry")
+			}
 		}
 	})
 	t.Run("collapsed calendar has no timezone even on selected event", func(t *testing.T) {

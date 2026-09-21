@@ -2,7 +2,6 @@ package events
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -168,8 +167,6 @@ func (m Model) interval(item data.Event) (time.Time, time.Time) {
 	return start, end
 }
 
-func (m Model) hourHeight() int { return max(4, (m.bodyHeight()+4)/5) }
-
 type railEntry struct {
 	at       time.Time
 	priority int
@@ -205,32 +202,52 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 		}
 		return entries[i].at.Before(entries[j].at)
 	})
+	// Keep only idle hours and explicit boundaries. An event owns its start
+	// label even when it falls exactly on the hour.
+	visible := make([]railEntry, 0, len(entries))
+	var previousTime time.Time
+	for i, entry := range entries {
+		if entry.id == 0 && !entry.now {
+			if !previousTime.IsZero() && !entry.at.After(previousTime) {
+				continue
+			}
+			if i+1 < len(entries) && entries[i+1].id != 0 && entry.at.Equal(entries[i+1].at) {
+				continue
+			}
+		}
+		visible = append(visible, entry)
+		previousTime = entry.at
+		if entry.id != 0 {
+			previousTime = entry.end
+		}
+	}
+	minimum, idleGaps := 0, 0
+	historical := m.day.Before(displaytime.Day(m.clock))
+	if historical {
+		minimum++ // The final continuation marker occupies a row too.
+	}
+	for i, entry := range visible {
+		minimum += strings.Count(entry.text, "\n") + 1
+		if i > 0 {
+			if entry.id != 0 {
+				minimum++ // Preserve the small separator before each card.
+			} else if visible[i-1].id == 0 && entry.at.After(visible[i-1].at) {
+				idleGaps++
+			}
+		}
+	}
+	roomy := minimum+idleGaps <= m.bodyHeight()
 	lines := []string{}
 	positions := make(map[int64]int)
 	nowLine := -1
-	hourHeight := m.hourHeight()
-	previousTop := 0
-	var previousTime time.Time
-	for i, entry := range entries {
-		// Covered hours are omitted; cards show only their boundaries.
-		if entry.id == 0 && !entry.now && !previousTime.IsZero() && !entry.at.After(previousTime) {
-			continue
-		}
-		// An event starting on the hour owns that label's row, not a row below it.
-		if entry.id == 0 && !entry.now && i+1 < len(entries) && entries[i+1].id != 0 && entry.at.Equal(entries[i+1].at) {
-			continue
-		}
-		if !previousTime.IsZero() {
-			gap := int(math.Ceil(entry.at.Sub(previousTime).Hours() * float64(hourHeight)))
-			for len(lines) < previousTop+gap {
+	for i, entry := range visible {
+		if i > 0 {
+			if entry.id != 0 {
+				lines = append(lines, "")
+			} else if roomy && visible[i-1].id == 0 && entry.at.After(visible[i-1].at) {
 				lines = append(lines, "          │")
 			}
 		}
-		if entry.id != 0 && len(lines) == previousTop+1 && !previousTime.IsZero() {
-			// A small visual separator is not an elapsed-time gap.
-			lines = append(lines, "")
-		}
-		previousTop, previousTime = len(lines), entry.at
 		if entry.id != 0 {
 			positions[entry.id] = len(lines)
 		}
@@ -251,10 +268,9 @@ func (m Model) layout() ([]string, map[int64]int, int) {
 			for row, text := range card {
 				lines = append(lines, fmt.Sprintf("%-10s%s", labels[row], text))
 			}
-			previousTop, previousTime = len(lines)-1, entry.end
 		}
 	}
-	if m.day.Before(displaytime.Day(m.clock)) {
+	if historical {
 		lines = append(lines, "          ...")
 	}
 	return lines, positions, nowLine
@@ -266,7 +282,7 @@ func (m *Model) revealSelected() {
 		top := positions[m.items[m.position.eventIndex].EventID]
 		m.position.showSelected(top, m.bodyHeight(), m.expanded != 0)
 	}
-	m.position.clamp(len(lines))
+	m.position.clamp(len(lines), m.bodyHeight(), m.expanded != 0)
 }
 func (m *Model) anchor() {
 	if m.day.IsZero() {
@@ -278,13 +294,13 @@ func (m *Model) anchor() {
 	}
 	lines, _, now := m.layout()
 	m.position.showNow(now, m.bodyHeight())
-	m.position.clamp(len(lines))
+	m.position.clamp(len(lines), m.bodyHeight(), m.expanded != 0)
 }
 
 func (m Model) timelineBody() string {
 	lines, _, _ := m.layout()
 	position := m.position
-	position.clamp(len(lines))
+	position.clamp(len(lines), m.bodyHeight(), m.expanded != 0)
 	offset := position.topLine
 	visible := append([]string{}, lines[offset:min(len(lines), offset+m.bodyHeight())]...)
 	for len(visible) < m.bodyHeight() {

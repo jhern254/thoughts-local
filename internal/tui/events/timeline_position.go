@@ -8,7 +8,11 @@ type timelinePosition struct {
 	followNow  bool
 }
 
-func (p *timelinePosition) clamp(lineCount int) {
+func (p *timelinePosition) clamp(lineCount, bodyHeight int, expanded bool) {
+	if !expanded && lineCount <= bodyHeight {
+		p.topLine = 0
+		return
+	}
 	// A selected final card may stay at the top with unused rows below it.
 	p.topLine = min(max(0, p.topLine), max(0, lineCount-1))
 }
@@ -28,10 +32,9 @@ func (p *timelinePosition) first() {
 	p.eventIndex, p.topLine = 0, 0
 }
 
-func (p *timelinePosition) scrollPage(direction, height, lineCount int) {
+func (p *timelinePosition) scrollPage(direction, height int) {
 	p.followNow = false
 	p.topLine += direction * (height - 2)
-	p.clamp(lineCount)
 }
 
 func (p *timelinePosition) showSelected(row, bodyHeight int, expanded bool) {
