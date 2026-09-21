@@ -51,8 +51,9 @@ type Model struct {
 	ctx  context.Context
 	user *data.User
 	// screen selects the root child that owns ordinary messages and rendering.
-	screen screen
-	logger logging.Logger
+	screen        screen
+	subjectReturn *events.CreateSubjectRequest
+	logger        logging.Logger
 
 	// Entity selection and panel focus are separate: selectedEntity remembers the
 	// strip choice while entityFocused decides whether the strip or Events owns keys.
@@ -72,7 +73,7 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 		screen:   screenEvents,
 		logger:   logger,
 		width:    defaultWidth,
-		events:   events.New(ctx, user.UserID, eventService, timelineView, thoughtService, logger),
+		events:   events.New(ctx, user.UserID, eventService, timelineView, thoughtService, subjects, logger),
 		subjects: newSubjectState(subjects),
 		thoughts: thoughts.New(ctx, user.UserID, thoughtService, logger),
 		metrics:  metrics,
@@ -99,6 +100,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch message := message.(type) {
+	case events.CreateSubjectRequest:
+		if m.screen != screenEvents || !m.events.AwaitingSubject(message) {
+			return m, nil
+		}
+		m.subjectReturn = &message
+		return m.openSubjectCreate(message.Query)
 	case homeOpened:
 		if m.screen != screenEvents {
 			return m, nil
@@ -132,6 +139,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case subjectsListedMsg:
+		if m.screen != screenSubjectList {
+			return m, nil
+		}
 		return m.handleSubjectsListed(message)
 	case subjectCreatedMsg:
 		return m.handleSubjectCreated(message)

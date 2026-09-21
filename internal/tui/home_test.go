@@ -42,7 +42,7 @@ func (s *homeEventStub) List(_ context.Context, user string, _, _ time.Time) ([]
 func (s *homeEventStub) Get(context.Context, string, int64) (*data.Event, error) {
 	return &s.items[0], nil
 }
-func (*homeEventStub) Create(context.Context, string, string, time.Time) (*data.Event, error) {
+func (*homeEventStub) Create(context.Context, string, string, time.Time, *int64) (*data.Event, error) {
 	panic("unexpected event create")
 }
 func (*homeEventStub) End(context.Context, string, int64, int64, time.Time) (*data.Event, error) {

@@ -66,14 +66,25 @@ func (s *Service) End(ctx context.Context, userID string, eventID, version int64
 	return s.store.EndEvent(ctx, userID, eventID, version, endedAt, now)
 }
 
-// Update corrects label and explicit timestamps without changing lifecycle state.
-// A nil end keeps an ongoing event ongoing; completed events require an end.
-func (s *Service) Update(ctx context.Context, userID string, eventID, version int64, activity string, startedAt time.Time, endedAt *time.Time) (*data.Event, error) {
+// UpdateInput is the complete replacement for an event's editable state.
+// A nil SubjectID explicitly clears the assignment. Callers correcting activity
+// or timestamps must supply the current SubjectID to preserve it.
+type UpdateInput struct {
+	Activity  string
+	StartedAt time.Time
+	EndedAt   *time.Time
+	SubjectID *int64
+}
+
+// Update replaces editable state without changing lifecycle state.
+// A nil EndedAt keeps an ongoing event ongoing; completed events require an end.
+func (s *Service) Update(ctx context.Context, userID string, eventID, version int64, input UpdateInput) (*data.Event, error) {
 	now := s.now().UTC().Truncate(time.Second)
-	item := newEvent(userID, activity, startedAt, now)
+	item := newEvent(userID, input.Activity, input.StartedAt, now)
+	item.SubjectID = input.SubjectID
 	item.EventID, item.Version = eventID, version
-	if endedAt != nil {
-		end := endedAt.UTC().Truncate(time.Second)
+	if input.EndedAt != nil {
+		end := input.EndedAt.UTC().Truncate(time.Second)
 		item.EndedAt = &end
 	}
 	if err := validateEvent(item, now); err != nil {
@@ -84,12 +95,13 @@ func (s *Service) Update(ctx context.Context, userID string, eventID, version in
 
 // Create starts an ongoing event, atomically closing its predecessor in the store.
 // A zero start requests the current time; supplied starts may be backdated.
-func (s *Service) Create(ctx context.Context, userID, activity string, startedAt time.Time) (*data.Event, error) {
+func (s *Service) Create(ctx context.Context, userID, activity string, startedAt time.Time, subjectID *int64) (*data.Event, error) {
 	now := s.now().UTC().Truncate(time.Second)
 	if startedAt.IsZero() {
 		startedAt = now
 	}
 	item := newEvent(userID, activity, startedAt, now)
+	item.SubjectID = subjectID
 	if err := validateEvent(item, now); err != nil {
 		return nil, err
 	}
@@ -97,9 +109,10 @@ func (s *Service) Create(ctx context.Context, userID, activity string, startedAt
 }
 
 // CreatePast requires explicit timestamps and never changes the ongoing event.
-func (s *Service) CreatePast(ctx context.Context, userID, activity string, startedAt, endedAt time.Time) (*data.Event, error) {
+func (s *Service) CreatePast(ctx context.Context, userID, activity string, startedAt, endedAt time.Time, subjectID *int64) (*data.Event, error) {
 	now := s.now().UTC().Truncate(time.Second)
 	item := newEvent(userID, activity, startedAt, now)
+	item.SubjectID = subjectID
 	end := endedAt.UTC().Truncate(time.Second)
 	item.EndedAt = &end
 	if err := validateEvent(item, now); err != nil {

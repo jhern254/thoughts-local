@@ -26,11 +26,11 @@ func TestEventServiceWorkflow_SQLite(t *testing.T) {
 			}
 		})
 		service, user := runtime.Events(), runtime.LocalUser().UserID
-		first, err := service.Create(t.Context(), user, " first ", eventTime(100))
+		first, err := service.Create(t.Context(), user, " first ", eventTime(100), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		second, err := service.Create(t.Context(), user, "", eventTime(200))
+		second, err := service.Create(t.Context(), user, "", eventTime(200), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,15 +53,15 @@ func TestEventServiceWorkflow_SQLite(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u", "other")
 		service := event.NewService(data.NewSQLiteEventStore(db))
-		ongoing, err := service.Create(t.Context(), "u", "", eventTime(300))
+		ongoing, err := service.Create(t.Context(), "u", "", eventTime(300), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		past, err := service.CreatePast(t.Context(), "u", "past", eventTime(100), eventTime(200))
+		past, err := service.CreatePast(t.Context(), "u", "past", eventTime(100), eventTime(200), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := service.CreatePast(t.Context(), "u", "overlap", eventTime(150), eventTime(250)); !errors.Is(err, data.ErrEventOverlap) {
+		if _, err := service.CreatePast(t.Context(), "u", "overlap", eventTime(150), eventTime(250), nil); !errors.Is(err, data.ErrEventOverlap) {
 			t.Fatalf("got error %v, want ErrEventOverlap", err)
 		}
 		if _, err := service.Get(t.Context(), "other", past.EventID); !errors.Is(err, data.ErrRecordNotFound) {
@@ -80,7 +80,7 @@ func TestEventServiceWorkflow_SQLite(t *testing.T) {
 		insertUsers(t, db, "u")
 		service := event.NewService(data.NewSQLiteEventStore(db))
 		for _, label := range []string{"", "   ", "\t", "  " + strings.Repeat("界", 4096) + "  ", "a\x00" + strings.Repeat("b", 4096)} {
-			got, err := service.CreatePast(t.Context(), "u", label, eventTime(100), eventTime(100))
+			got, err := service.CreatePast(t.Context(), "u", label, eventTime(100), eventTime(100), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -94,7 +94,7 @@ func TestEventServiceWorkflow_SQLite(t *testing.T) {
 			}
 		}
 		var validation *event.ValidationError
-		if _, err := service.Create(t.Context(), "u", strings.Repeat("界", 4097), time.Time{}); !errors.As(err, &validation) {
+		if _, err := service.Create(t.Context(), "u", strings.Repeat("界", 4097), time.Time{}, nil); !errors.As(err, &validation) {
 			t.Fatalf("got error %v, want label validation", err)
 		}
 	})
