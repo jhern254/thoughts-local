@@ -83,3 +83,10 @@ type GoalParent struct {
 	ParentGoalID int64
 	UserID       string
 }
+
+// SubjectGoal links a subject and goal with the same owner.
+type SubjectGoal struct {
+	SubjectID int64
+	GoalID    int64
+	UserID    string
+}
