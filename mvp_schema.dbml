@@ -199,6 +199,23 @@ Table goals {
   }
 }
 
+Table subject_goals {
+  subject_id integer [not null]
+  goal_id    integer [not null]
+  user_id    text [not null]
+
+  Indexes {
+    (subject_id, goal_id) [pk, name: 'pk_subject_goals']
+    (goal_id, subject_id) [name: 'idx_subject_goals_goal_subject']
+  }
+
+  Note: '''
+    Both endpoints share user_id, enforced by composite foreign keys in SQL.
+    Soft deletion retains links; hard deletion removes them.
+    Linking does not enable automatic credit or create goal progress.
+  '''
+}
+
 /* ===== Period Rollups (optional, persisted) =====
    Grain: (goal_id, cadence, period_start) — one row per goal per period.
    period_start is computed in goal.tz with goal.week_start.
@@ -292,6 +309,8 @@ Ref: tags.tag_id         < thought_tags.tag_id     [delete: cascade]
 
 /* Goals & progress */
 Ref: goals.goal_id < goal_progress.goal_id [delete: cascade]
+Ref: subjects.subject_id < subject_goals.subject_id [delete: cascade, update: cascade]
+Ref: goals.goal_id < subject_goals.goal_id [delete: cascade, update: cascade]
 
 /* Optional provenance for progress rows */
 Ref: events.event_id    < goal_progress.event_id    [delete: set null]
@@ -309,4 +328,3 @@ Ref: subjects.subject_id < subject_time_rollups.subject_id [delete: cascade]
 
 Ref: users.user_id   < subject_time_totals.user_id    [delete: cascade]
 Ref: subjects.subject_id < subject_time_totals.subject_id  [delete: cascade]
-
