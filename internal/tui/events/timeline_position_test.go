@@ -34,7 +34,7 @@ func TestModel_TimelinePosition(t *testing.T) {
 			m.Resize(80, height)
 			m, _ = m.Update(eventKey("home"))
 			lines := strings.Split(ansi.Strip(m.timelineBody()), "\n")
-			if !strings.HasPrefix(lines[0], "10:37 AM  ╭") || lines[len(lines)-1] != "" {
+			if !strings.HasPrefix(timelineCardText(lines[0]), "10:37 AM  ╭") || lines[len(lines)-1] != "" {
 				t.Fatalf("got body %q, want selected final event at top with blank rows below", lines)
 			}
 		}
