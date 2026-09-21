@@ -13,6 +13,21 @@ const (
 
 type Options struct {
 	Mode Mode // The zero value selects Filled.
+	// CountReference can include counts whose curves are hidden (e.g. an expanded
+	// card). The actual reference is max(20, CountReference, all valid input counts),
+	// including offscreen inputs. Zero selects automatic whole-profile scaling.
+	CountReference int64
+	// CountExponent tunes contrast between counts, not the maximum dimensions.
+	// Zero, negative and nonfinite values use 0.8. Lower positive values enlarge
+	// smaller counts: try 0.5 for a moderate boost or 0.25 for a strong boost.
+	// With reference 200, exponent 0.25 makes count 20 about as large as count 100
+	// at exponent 0.8. Zero's mound and the maximum stay fixed; 1 is linear.
+	CountExponent float64
+	// Size scales the amplitude/height gains, preserving the zero-count mound.
+	// 1 is the default; 0.5 shrinks the gains and 1.25 enlarges them. Values are
+	// bounded to [0.5, 1.25]; zero, negative or nonfinite values use 1.
+	// Width still fits the caller's lane; this never allocates additional rows.
+	Size float64
 }
 
 type Distribution struct {
@@ -30,17 +45,18 @@ type Cell struct {
 
 // Tuning values are in Braille dots unless otherwise noted. These defaults match
 // the reviewed preview; changing them must not change the caller's card layout.
-// For gentler boosting of low counts, raise countExponent toward 1. For a broader,
+// Set Options.CountExponent to boost small counts relative to the day maximum.
+// For gentler boosting of low counts, raise it toward 1. For a broader,
 // shallower zero mound, raise minHeight and lower minAmplitude independently.
 const (
-	countCap      = 20.0 // Counts above this have the same maximum dimensions.
-	countExponent = 0.8  // 1 is linear; lowering this makes small counts larger sooner.
-	minAmplitude  = 3.0  // Zero's shallow leftward peak; increase for a stronger mound.
-	amplitudeGain = 13.0 // Maximum amplitude is minAmplitude + amplitudeGain (16 dots).
-	minHeight     = 12.0 // Zero's broad base: three rows including both tails.
-	heightGain    = 20.0 // Maximum height is minHeight + heightGain (eight rows).
-	tailSigma     = 3.0  // Keep both tails through +/-3 standard deviations.
-	samplesPerDot = 8    // Sub-dot sampling plus connected raster points avoids holes.
+	countReference = 20.0 // Minimum reference keeps quiet days from magnifying tiny counts.
+	countExponent  = 0.8  // 1 is linear; lowering this makes small counts larger sooner.
+	minAmplitude   = 3.0  // Zero's shallow leftward peak; increase for a stronger mound.
+	amplitudeGain  = 13.0 // Default maximum amplitude is 16 dots; Size scales this gain.
+	minHeight      = 12.0 // Zero's broad base: three rows including both tails.
+	heightGain     = 20.0 // Default maximum height is eight rows; Size scales this gain.
+	tailSigma      = 3.0  // Keep both tails through +/-3 standard deviations.
+	samplesPerDot  = 8    // Sub-dot sampling plus connected raster points avoids holes.
 )
 
 type gaussian struct {
@@ -98,17 +114,22 @@ func mixtureGain(curves []gaussian, maximum float64) float64 {
 // This is an unnormalized, sideways Gaussian activity summary, not a probability
 // density or a fit to thought timestamps. For count n and caller-supplied center mu:
 //
-//	s = (clamp(n, 0, countCap) / countCap)^countExponent
-//	A = minAmplitude + amplitudeGain*s
-//	H = round(minHeight + heightGain*s)
+//	R = max(countReference, options.CountReference, all valid input counts)
+//	s = (max(n, 0) / R)^exponent
+//	A = minAmplitude + amplitudeGain*size*s
+//	H = round(minHeight + heightGain*size*s)
 //	sigma = (H-1)/(2*tailSigma)
 //	g_i(y) = A_i*exp(-0.5*((y-mu_i)/sigma_i)^2)
 //	S(y) = sum(g_i(y))
 //	gain = min(1, maximumDisplayAmplitude / max_y(S(y)))
 //	x(y) = baseline - gain*S(y)
 //
+// exponent is options.CountExponent or the default countExponent. R uses the
+// whole supplied timeline, never just the viewport. size is options.Size or 1,
+// bounded to [0.5, 1.25]. Counts above 20 participate in relative scaling;
+// maximum dimensions remain bounded. Braille rounding can hide small differences.
 // H includes the two endpoints, hence H-1. The baseline is the rightmost dot in
-// the lane. maximumDisplayAmplitude is min(minAmplitude+amplitudeGain, lane width
+// the lane. maximumDisplayAmplitude is min(minAmplitude+amplitudeGain*size, lane width
 // in dots minus 1). The global gain only shrinks profiles that exceed that limit;
 // isolated curves retain their original scale. y is clipped, never rescaled.
 // Adding kernels allows multiple peaks and shared valleys; close peaks can merge.
@@ -125,6 +146,21 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 			rows[y][x] = Cell{Glyph: ' ', CurveIndex: -1}
 		}
 	}
+	reference := max(countReference, float64(options.CountReference))
+	for _, distribution := range distributions {
+		if !math.IsNaN(distribution.CenterY) && !math.IsInf(distribution.CenterY, 0) {
+			reference = max(reference, float64(distribution.Count))
+		}
+	}
+	exponent := options.CountExponent
+	if exponent <= 0 || math.IsNaN(exponent) || math.IsInf(exponent, 0) {
+		exponent = countExponent
+	}
+	size := options.Size
+	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
+		size = 1
+	}
+	size = min(1.25, max(0.5, size))
 	baseline := 2*width - 1
 	curves := make([]gaussian, 0, len(distributions))
 	first, last := math.Inf(1), math.Inf(-1)
@@ -132,9 +168,9 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 		if math.IsNaN(distribution.CenterY) || math.IsInf(distribution.CenterY, 0) {
 			continue
 		}
-		s := math.Pow(min(max(float64(distribution.Count), 0), countCap)/countCap, countExponent)
-		h := math.Round(minHeight + heightGain*s)
-		g := gaussian{distribution.CenterY, (h - 1) / (2 * tailSigma), minAmplitude + amplitudeGain*s, i}
+		s := math.Pow(max(float64(distribution.Count), 0)/reference, exponent)
+		h := math.Round(minHeight + heightGain*size*s)
+		g := gaussian{distribution.CenterY, (h - 1) / (2 * tailSigma), minAmplitude + amplitudeGain*size*s, i}
 		curves = append(curves, g)
 		first = min(first, g.center-tailSigma*g.sigma)
 		last = max(last, g.center+tailSigma*g.sigma)
@@ -142,7 +178,7 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 	if len(curves) == 0 || first > float64(height*4)-0.5 || last < -0.5 {
 		return rows
 	}
-	gain := mixtureGain(curves, min(minAmplitude+amplitudeGain, float64(baseline)))
+	gain := mixtureGain(curves, min(minAmplitude+amplitudeGain*size, float64(baseline)))
 
 	strengths := make([]float64, width*height)
 	bits := [2][4]rune{{1, 2, 4, 64}, {8, 16, 32, 128}}

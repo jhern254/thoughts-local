@@ -84,6 +84,25 @@ func TestPreview(t *testing.T) {
 		}
 	})
 
+	t.Run("count exponent changes only the distribution lane", func(t *testing.T) {
+		usual := preview(t, "-plain", "-scenario", "scale")
+		boosted := preview(t, "-plain", "-scenario", "scale", "-count-exponent", "0.25")
+		if usual == boosted {
+			t.Fatal("exponent did not change the preview")
+		}
+		a, b := strings.Split(usual, "\n"), strings.Split(boosted, "\n")
+		for i := range a {
+			if ansi.Cut(a[i], 0, 12) != ansi.Cut(b[i], 0, 12) || ansi.Cut(a[i], 22, 100) != ansi.Cut(b[i], 22, 100) {
+				t.Fatalf("tuning changed card or timestamp on row %d", i)
+			}
+		}
+		for _, count := range []string{"0 thoughts", "20 thoughts", "100 thoughts", "200 thoughts"} {
+			if !strings.Contains(usual, count) {
+				t.Fatalf("missing %s", count)
+			}
+		}
+	})
+
 	t.Run("selection only changes color and leaves the baseline subdued", func(t *testing.T) {
 		for _, mode := range []string{"filled", "outline"} {
 			selected := preview(t, "-mode", mode, "-selected", "3")
@@ -108,7 +127,7 @@ func TestPreview(t *testing.T) {
 	})
 
 	t.Run("scenarios remain bounded at normal and narrow sizes", func(t *testing.T) {
-		for _, scenario := range []string{"main", "adjacent", "gapped", "crowded", "empty"} {
+		for _, scenario := range []string{"main", "adjacent", "gapped", "crowded", "scale", "empty"} {
 			for _, size := range [][2]string{{"100", "36"}, {"60", "28"}} {
 				view := preview(t, "-plain", "-scenario", scenario, "-width", size[0], "-height", size[1])
 				width, _ := strconv.Atoi(size[0])
@@ -142,7 +161,7 @@ func TestPreview(t *testing.T) {
 	})
 
 	t.Run("invalid options report errors without producing a partial preview", func(t *testing.T) {
-		for _, args := range [][]string{{"-mode", "bad"}, {"-scenario", "bad"}, {"-width", "0"}, {"-height", "0"}, {"-selected", "-1"}, {"unexpected"}} {
+		for _, args := range [][]string{{"-size", "0"}, {"-size", "2"}, {"-size", "NaN"}, {"-count-exponent", "0"}, {"-count-exponent", "-1"}, {"-count-exponent", "NaN"}, {"-count-exponent", "+Inf"}, {"-mode", "bad"}, {"-scenario", "bad"}, {"-width", "0"}, {"-height", "0"}, {"-selected", "-1"}, {"unexpected"}} {
 			var output bytes.Buffer
 			if err := run(args, &output); err == nil || output.Len() != 0 {
 				t.Fatalf("args %v: want error and no output", args)

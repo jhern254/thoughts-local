@@ -17,4 +17,4 @@
 
 
 ←: collapse • →: open • ↑/↓: thoughts •…
-r: refresh event • q: quit
+r: refresh event • d: curves • q: quit

@@ -23,5 +23,5 @@
                    ⠙⢻⣿  ╰──────────────────────────────────────────────────────╯
                         ── Now · 11:37 AM ──
 
-
+d: curve settings
 ← day / → open • Home/End: first/now • r: refresh • n: start • e: end • q: quit
