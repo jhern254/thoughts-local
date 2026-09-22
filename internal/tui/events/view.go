@@ -326,7 +326,7 @@ func (m *Model) measureTimeline() timelineLayout {
 // visible card is painted with its normal border, then cropped at the viewport.
 func (m *Model) paintTimeline(layout timelineLayout, offset, height int) []string {
 	end := min(len(layout.lines), offset+height)
-	lines := append([]string{}, layout.lines...)
+	lines := append([]string{}, layout.lines[offset:end]...)
 	for _, card := range layout.cards {
 		bottom := card.top + len(card.content) + 2
 		if bottom <= offset || card.top >= end {
@@ -334,11 +334,10 @@ func (m *Model) paintTimeline(layout timelineLayout, offset, height int) []strin
 		}
 		painted := m.paintCard(card.content, card.selected)
 		for row := max(offset, card.top); row < min(end, bottom); row++ {
-			lines[row] += painted[row-card.top]
+			lines[row-offset] += painted[row-card.top]
 		}
 	}
-	lines = m.addDistributions(lines, layout.curves, layout.selectedCurve, layout.curveEnd)
-	return lines[offset:end]
+	return m.addDistributions(lines, layout.curves, layout.selectedCurve, layout.curveEnd, offset)
 }
 
 func (m *Model) bodyHeight() int { return max(1, m.height-4) }

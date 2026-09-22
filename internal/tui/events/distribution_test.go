@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/render"
 )
 
 // Calendar assertions inspect the unchanged time field and the card at column
@@ -46,15 +47,22 @@ func TestModel_Distributions(t *testing.T) {
 				if expanded {
 					m = execute(t, m, m.openEvent(1))
 				}
-				for _, key := range []string{"0", "f", "right", "up", "f"} {
-					m.tuneDistributions(key)
+				for _, settings := range []distributionSettings{
+					defaultDistributionSettings(),
+					{boost: 0, size: 50, mode: render.Outline},
+					{boost: 1, size: 125, mode: render.Filled},
+					{boost: 2, size: 100, mode: render.Outline},
+					{boost: 3, size: 125, mode: render.Outline},
+					{boost: 4, size: 50, mode: render.Filled},
+				} {
+					m.distributions = settings
 					whole, _, _ := m.layout()
 					layout := m.measureTimeline()
 					for offset := 0; offset < len(whole); offset++ {
 						got := m.paintTimeline(layout, offset, 7)
 						want := whole[offset:min(len(whole), offset+7)]
 						if !reflect.DeepEqual(got, want) {
-							t.Fatalf("width %d expanded %v key %s offset %d: cropped paint differs", width, expanded, key, offset)
+							t.Fatalf("width %d expanded %v settings %+v offset %d: cropped paint differs", width, expanded, settings, offset)
 						}
 					}
 				}

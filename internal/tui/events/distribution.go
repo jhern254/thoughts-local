@@ -80,45 +80,73 @@ func (m *Model) cardColumn() int {
 
 func (m *Model) cardWidth() int { return max(1, m.width-m.cardColumn()-2) }
 
-// addDistributions composes the entire day before the viewport crops it. All
-// eligible cards, including offscreen cards, participate in the same mixture.
-// Rows and card borders are already final; the lane never allocates extra rows.
-func (m *Model) addDistributions(lines []string, curves []render.Distribution, selected, end int) []string {
+// addDistributions draws the visible rows using the whole day's contributions.
+// Translating every center by a whole number of cells preserves the fixed dot
+// grid and global mixture gain. Neither selection nor scrolling changes scale.
+func (m *Model) addDistributions(lines []string, curves []render.Distribution, selected, end, offset int) []string {
 	if m.cardColumn() == 10 {
 		return lines
 	}
-	// Keep the count reference for the full day, even when expansion hides the
-	// largest curve. Selection, scrolling and expansion must not reset this scale.
-	var reference int64
-	for _, count := range m.counts {
-		reference = max(reference, count.Count)
+	var cells [][]render.Cell
+	height := min(len(lines), max(0, end-offset)) // Never draw over the ending marker.
+	if height > 0 && len(curves) > 0 {
+		// Include expanded cards in the count reference even though their curves
+		// are hidden, and retain offscreen inputs for normalization and overlap.
+		var reference int64
+		for _, count := range m.counts {
+			reference = max(reference, count.Count)
+		}
+		shifted := make([]render.Distribution, len(curves))
+		for i, curve := range curves {
+			shifted[i] = curve
+			shifted[i].CenterY -= float64(offset) * 4
+		}
+		_, exponent := m.distributions.boostValue()
+		cells = render.RenderDistributions(distributionWidth, height, shifted, render.Options{
+			Mode:           m.distributions.mode,
+			CountReference: reference,
+			CountExponent:  exponent,
+			Size:           float64(m.distributions.size) / 100,
+		})
 	}
-	_, exponent := m.distributions.boostValue()
-	cells := render.RenderDistributions(distributionWidth, end, curves, render.Options{
-		Mode:           m.distributions.mode,
-		CountReference: reference,
-		CountExponent:  exponent,
-		Size:           float64(m.distributions.size) / 100,
-	})
-	normal := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color("62"))
-	baseline := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	styles := [...]lipgloss.Style{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("62")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("240")),
+	}
 	for y, line := range lines {
 		var lane strings.Builder
+		lane.Grow(distributionWidth * 3)
 		if y < len(cells) {
-			for _, cell := range cells[y] {
-				if cell.Glyph == ' ' {
-					lane.WriteByte(' ')
-					continue
+			var run strings.Builder
+			activeStyle := -1
+			flush := func() {
+				if run.Len() > 0 {
+					lane.WriteString(styles[activeStyle].Render(run.String()))
+					run.Reset()
 				}
-				style := normal
-				if cell.CurveIndex < 0 {
-					style = baseline
-				} else if cell.CurveIndex == selected && !m.blurred {
-					style = highlight
-				}
-				lane.WriteString(style.Render(string(cell.Glyph)))
 			}
+			for _, cell := range cells[y] {
+				style := 0
+				switch {
+				case cell.Glyph == ' ':
+					style = -1
+				case cell.CurveIndex < 0:
+					style = 2
+				case cell.CurveIndex == selected && !m.blurred:
+					style = 1
+				}
+				if style != activeStyle {
+					flush()
+					activeStyle = style
+				}
+				if style < 0 {
+					lane.WriteByte(' ')
+				} else {
+					run.WriteRune(cell.Glyph)
+				}
+			}
+			flush()
 		} else {
 			lane.WriteString(strings.Repeat(" ", distributionWidth))
 		}
