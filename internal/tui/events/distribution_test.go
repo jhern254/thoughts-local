@@ -35,6 +35,91 @@ func distributionLane(lines []string) string {
 }
 
 func TestModel_Distributions(t *testing.T) {
+	t.Run("new day curves wait for counts and preview without delaying cards", func(t *testing.T) {
+		for _, countsFirst := range []bool{false, true} {
+			t.Run(fmt.Sprintf("counts first %v", countsFirst), func(t *testing.T) {
+				m, service, _ := fixture(t)
+				defer m.Close()
+				day := m.day.AddDate(0, 0, -1)
+				label := "Incoming event"
+				service.items = []data.Event{{EventID: 1, StartedAt: day.Add(9 * time.Hour), ActivityType: &label}}
+				m, cmd := m.Update(eventKey("left"))
+				batch := cmd().(tea.BatchMsg)
+				m, latest := m.Update(batch[0]())
+				if !m.day.Equal(day) || !strings.Contains(m.View(), label) || latest == nil {
+					t.Fatal("distribution readiness delayed the new day's cards or preview read")
+				}
+				assertRail := func() {
+					t.Helper()
+					lines, _, _ := m.layout()
+					lane := distributionLane(lines)
+					if !strings.Contains(lane, "⢸") || strings.Trim(lane, " ⢸\n") != "" {
+						t.Fatalf("got pending lane %q, want only a neutral rail", lane)
+					}
+					for _, line := range lines[:len(lines)-1] {
+						laneStyle := ansi.Cut(line, 12, 22)
+						if !strings.Contains(laneStyle, "38;5;240m⢸") {
+							t.Fatalf("pending rail was not neutral gray: %q", laneStyle)
+						}
+					}
+					if strings.TrimSpace(ansi.Cut(ansi.Strip(lines[len(lines)-1]), 12, 22)) != "" {
+						t.Fatal("pending rail crossed the ending marker")
+					}
+				}
+				assertRail()
+				first, last := batch[1], latest
+				if !countsFirst {
+					first, last = latest, batch[1]
+				}
+				m = execute(t, m, first)
+				assertRail()
+				m = execute(t, m, last)
+				lines, _, _ := m.layout()
+				if strings.Trim(distributionLane(lines), " ⢸\n") == "" {
+					t.Fatal("ready curves waited for another message or timer")
+				}
+				before := m.View()
+				m, _ = m.Update(loadDelayedMsg{m.owner, m.load.generation})
+				if m.View() != before {
+					t.Fatal("late feedback changed the completed distribution")
+				}
+			})
+		}
+	})
+	t.Run("preview and count failures settle the lane without retaining stale curves", func(t *testing.T) {
+		for _, failedCount := range []bool{false, true} {
+			m, _, store := fixture(t)
+			m, cmd := m.Update(eventKey("left"))
+			batch := cmd().(tea.BatchMsg)
+			m, latest := m.Update(batch[0]())
+			if failedCount {
+				store.err = errors.New("count unavailable")
+			}
+			m = execute(t, m, batch[1])
+			reply := latest().(latestMsg)
+			reply.item, reply.err = nil, errors.New("preview unavailable")
+			m, _ = m.Update(reply)
+			lines, _, _ := m.layout()
+			lane := distributionLane(lines)
+			if failedCount && strings.TrimSpace(lane) != "" {
+				t.Fatal("failed count retained a pending rail or invented a curve")
+			}
+			if !failedCount && strings.Trim(lane, " ⢸\n") == "" {
+				t.Fatal("preview failure left known-count curves pending")
+			}
+			m.Close()
+		}
+	})
+	t.Run("pending distribution rail stays hidden on narrow terminals", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		defer m.Close()
+		m.Resize(59, 27)
+		m, cmd := m.Update(eventKey("left"))
+		m = execute(t, m, cmd().(tea.BatchMsg)[0])
+		if hasDistribution(m.View()) {
+			t.Fatal("pending rail stole columns from a narrow card")
+		}
+	})
 	t.Run("viewport paint matches complete output through partial cards and curve tails", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		start := m.day.Add(8 * time.Hour)
