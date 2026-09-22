@@ -87,14 +87,9 @@ func (m *Model) addDistributions(lines []string, curves []render.Distribution, s
 	if m.cardColumn() == 10 {
 		return lines
 	}
-	// Publish the incoming profile only when both its scale and row positions
-	// are ready. A latest-preview reply can change an ongoing card's height.
-	// Keep accepted counts during refresh; never borrow another day's curves.
-	pending := !m.load.eventsPending && m.load.pendingDay.Equal(m.day) &&
-		(m.load.latestPending || (m.load.countsPending && len(m.counts) == 0))
 	var cells [][]render.Cell
 	height := min(len(lines), max(0, end-offset)) // Never draw over the ending marker.
-	if !pending && height > 0 && len(curves) > 0 {
+	if height > 0 && len(curves) > 0 {
 		// Include expanded cards in the count reference even though their curves
 		// are hidden, and retain offscreen inputs for normalization and overlap.
 		var reference int64
@@ -152,10 +147,6 @@ func (m *Model) addDistributions(lines []string, curves []render.Distribution, s
 				}
 			}
 			flush()
-		} else if pending && len(m.items) > 0 && y < height {
-			// Match the renderer's rightmost baseline, with no count or owner.
-			lane.WriteString(strings.Repeat(" ", distributionWidth-1))
-			lane.WriteString(styles[2].Render("⢸"))
 		} else {
 			lane.WriteString(strings.Repeat(" ", distributionWidth))
 		}
