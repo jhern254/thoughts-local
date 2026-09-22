@@ -161,7 +161,21 @@ func TestPreview(t *testing.T) {
 	})
 
 	t.Run("invalid options report errors without producing a partial preview", func(t *testing.T) {
-		for _, args := range [][]string{{"-size", "0"}, {"-size", "2"}, {"-size", "NaN"}, {"-count-exponent", "0"}, {"-count-exponent", "-1"}, {"-count-exponent", "NaN"}, {"-count-exponent", "+Inf"}, {"-mode", "bad"}, {"-scenario", "bad"}, {"-width", "0"}, {"-height", "0"}, {"-selected", "-1"}, {"unexpected"}} {
+		for _, args := range [][]string{
+			{"-size", "0"},
+			{"-size", "2"},
+			{"-size", "NaN"},
+			{"-count-exponent", "0"},
+			{"-count-exponent", "-1"},
+			{"-count-exponent", "NaN"},
+			{"-count-exponent", "+Inf"},
+			{"-mode", "bad"},
+			{"-scenario", "bad"},
+			{"-width", "0"},
+			{"-height", "0"},
+			{"-selected", "-1"},
+			{"unexpected"},
+		} {
 			var output bytes.Buffer
 			if err := run(args, &output); err == nil || output.Len() != 0 {
 				t.Fatalf("args %v: want error and no output", args)

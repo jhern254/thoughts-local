@@ -86,7 +86,11 @@ func TestRenderDistributions(t *testing.T) {
 	})
 
 	t.Run("whole timeline distinguishes counts above twenty", func(t *testing.T) {
-		curves := []Distribution{{CenterY: 31.5, Count: 20}, {CenterY: 95.5, Count: 100}, {CenterY: 159.5, Count: 200}}
+		curves := []Distribution{
+			{CenterY: 31.5, Count: 20},
+			{CenterY: 95.5, Count: 100},
+			{CenterY: 159.5, Count: 200},
+		}
 		for _, mode := range []Mode{Filled, Outline} {
 			points := pixels(RenderDistributions(10, 48, curves, Options{Mode: mode}))
 			if !(leftEdge(points, 31) > leftEdge(points, 95) && leftEdge(points, 95) > leftEdge(points, 159)) {
