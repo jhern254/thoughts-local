@@ -15,7 +15,7 @@ The core philosophy is:
 * Avoid clever abstractions, premature generalization, and framework-style magic.
 * Use the standard library unless a dependency clearly earns its place.
 * Keep functions narrow and easy to test.
-* Pass `context.Context` through database and request-driven operations.
+* Pass `context.Context` as the first function parameter, including database and request-driven operations. Format large keyed struct literals across multiple lines, following declaration order or clear logical groups: dependencies first, then state. Prefer explicit initialization over builders or wrappers added only to shorten code.
 * Return errors clearly; do not hide failures.
 * Do not introduce global state unless there is a strong reason. Justify that reason before adding.
 

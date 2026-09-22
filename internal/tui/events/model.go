@@ -112,6 +112,7 @@ type Model struct {
 	counts     []data.EventThoughtCountView
 	latest     *data.ThoughtSummaryView
 
+	distributions distributionSettings
 	position      timelinePosition
 	load          dayLoad
 	width, height int
@@ -129,7 +130,25 @@ type Model struct {
 
 func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, subjects SubjectReader, logger logging.Logger) Model {
 	now := time.Now()
-	return Model{ctx: ctx, userID: userID, service: service, subjectReader: subjects, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), position: timelinePosition{followNow: true}, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
+	return Model{
+		ctx:           ctx,
+		userID:        userID,
+		service:       service,
+		subjectReader: subjects,
+		timelineView:  view,
+		logger:        logger,
+		now:           time.Now,
+
+		owner:         new(int),
+		clock:         now,
+		day:           displaytime.Day(now),
+		distributions: defaultDistributionSettings(),
+		position:      timelinePosition{followNow: true},
+		width:         80,
+		height:        20,
+
+		picker: thoughts.New(ctx, userID, thoughtService, logger),
+	}
 }
 
 func (m *Model) Open() tea.Cmd {
@@ -143,6 +162,7 @@ func (m *Model) Open() tea.Cmd {
 	return tea.Batch(m.loadDay(day), m.tick())
 }
 func (m *Model) Close() {
+	m.distributions.open = false
 	m.load.invalidate()
 	m.active = false
 	// Invalidate replies that can outlive this screen opening.
@@ -154,6 +174,7 @@ func (m *Model) Close() {
 func (m *Model) SetFocused(focused bool) {
 	blurred := !focused
 	if blurred {
+		m.distributions.open = false
 		m.position.followNow = false
 	}
 	if m.blurred != blurred {
@@ -169,7 +190,7 @@ func (m *Model) Resize(width, height int) {
 	m.width, m.height = max(1, width), max(1, height)
 	m.picker.Resize(max(1, width-12), max(1, height-2))
 	// Leave calendar context around the expanded box, not just room for the picker.
-	m.picker.ResizeEventView(max(1, width-12), max(1, (height-14)/3))
+	m.picker.ResizeEventView(m.cardWidth(), max(1, (height-14)/3))
 	if m.form.open {
 		m.resizeForm()
 	}
@@ -329,9 +350,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.anchor()
 		if selected == 0 && !m.position.followNow && len(m.items) > 0 {
-			lines, positions, _ := m.layout()
-			m.position.topLine = positions[m.items[0].EventID]
-			m.position.clamp(len(lines))
+			layout := m.measureTimeline()
+			m.position.topLine = layout.positions[m.items[0].EventID]
+			m.position.clamp(len(layout.lines))
 		}
 		return m, tea.Batch(latest, open)
 	case countsMsg:
@@ -435,6 +456,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.picker, cmd = m.picker.Update(msg)
 		return m, cmd
 	}
+	if m.distributions.open {
+		m.tuneDistributions(key.String())
+		return m, nil
+	}
+	if key.String() == "d" {
+		m.distributions.open = true
+		m.load.retainedBody = ""
+		return m, nil
+	}
 	if m.expanded != 0 {
 		if key.String() == "esc" || key.String() == "left" || key.String() == "h" {
 			m.expansion++
@@ -519,8 +549,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if key.String() == "pgup" {
 			direction = -1
 		}
-		lines, _, _ := m.layout()
-		m.position.scrollPage(direction, m.height, len(lines))
+		layout := m.measureTimeline()
+		m.position.scrollPage(direction, m.height, len(layout.lines))
 	case "enter":
 		if len(m.items) > 0 {
 			cmd := m.openEvent(m.items[m.position.eventIndex].EventID)
@@ -531,8 +561,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.expanded = 0
 		m.opening = false
 		m.picker.Reset()
-		lines, _, _ := m.layout()
-		m.position.clamp(len(lines))
+		layout := m.measureTimeline()
+		m.position.clamp(len(layout.lines))
 	case "n":
 		cmd := m.startForm(false)
 		return m, cmd

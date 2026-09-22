@@ -21,6 +21,7 @@ func BenchmarkTimeline(b *testing.B) {
 					start := m.day.Add(time.Duration(i) * 20 * time.Minute)
 					end := start.Add(20 * time.Minute)
 					m.items = append(m.items, data.Event{EventID: int64(i + 2), StartedAt: start, EndedAt: &end})
+					m.counts = append(m.counts, data.EventThoughtCountView{EventID: int64(i + 2), Count: int64(i)})
 				}
 				m.items = append(m.items, current)
 				m.position.eventIndex = len(m.items) - 1
