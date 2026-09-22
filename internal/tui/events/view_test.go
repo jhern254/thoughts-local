@@ -15,6 +15,17 @@ import (
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
+func (m *Model) card(item data.Event, selected bool) string {
+	return strings.Join(m.paintCard(m.cardContent(item), selected), "\n")
+}
+
+// Presentation tests can inspect a whole day without changing the production
+// viewport or asking navigation to paint it.
+func (m *Model) layout() ([]string, map[int64]int, int) {
+	layout := m.measureTimeline()
+	return m.paintTimeline(layout, 0, len(layout.lines)), layout.positions, layout.nowLine
+}
+
 func TestModel_Layout(t *testing.T) {
 	t.Run("heading gap fits within the existing height budget", func(t *testing.T) {
 		m, _, _ := fixture(t)

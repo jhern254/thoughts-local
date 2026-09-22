@@ -71,19 +71,19 @@ func (s distributionSettings) label() string {
 	return fmt.Sprintf("Curves: %s boost · %d%% size · %s", boost, s.size, mode)
 }
 
-func (m Model) cardColumn() int {
+func (m *Model) cardColumn() int {
 	if m.width < 60 {
 		return 10 // Original time field and card width on narrow terminals.
 	}
 	return 24 // Time field (10), gutter (2), curve (10), gutter (2).
 }
 
-func (m Model) cardWidth() int { return max(1, m.width-m.cardColumn()-2) }
+func (m *Model) cardWidth() int { return max(1, m.width-m.cardColumn()-2) }
 
 // addDistributions composes the entire day before the viewport crops it. All
 // eligible cards, including offscreen cards, participate in the same mixture.
 // Rows and card borders are already final; the lane never allocates extra rows.
-func (m Model) addDistributions(lines []string, curves []render.Distribution, selected, end int) []string {
+func (m *Model) addDistributions(lines []string, curves []render.Distribution, selected, end int) []string {
 	if m.cardColumn() == 10 {
 		return lines
 	}
