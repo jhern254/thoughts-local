@@ -95,7 +95,10 @@ func (m Model) addDistributions(lines []string, curves []render.Distribution, se
 	}
 	_, exponent := m.distributions.boostValue()
 	cells := render.RenderDistributions(distributionWidth, end, curves, render.Options{
-		Mode: m.distributions.mode, CountReference: reference, CountExponent: exponent, Size: float64(m.distributions.size) / 100,
+		Mode:           m.distributions.mode,
+		CountReference: reference,
+		CountExponent:  exponent,
+		Size:           float64(m.distributions.size) / 100,
 	})
 	normal := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color("62"))

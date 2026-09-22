@@ -130,7 +130,25 @@ type Model struct {
 
 func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, subjects SubjectReader, logger logging.Logger) Model {
 	now := time.Now()
-	return Model{distributions: defaultDistributionSettings(), ctx: ctx, userID: userID, service: service, subjectReader: subjects, timelineView: view, logger: logger, owner: new(int), now: time.Now, clock: now, day: displaytime.Day(now), position: timelinePosition{followNow: true}, width: 80, height: 20, picker: thoughts.New(ctx, userID, thoughtService, logger)}
+	return Model{
+		ctx:           ctx,
+		userID:        userID,
+		service:       service,
+		subjectReader: subjects,
+		timelineView:  view,
+		logger:        logger,
+		now:           time.Now,
+
+		owner:         new(int),
+		clock:         now,
+		day:           displaytime.Day(now),
+		distributions: defaultDistributionSettings(),
+		position:      timelinePosition{followNow: true},
+		width:         80,
+		height:        20,
+
+		picker: thoughts.New(ctx, userID, thoughtService, logger),
+	}
 }
 
 func (m *Model) Open() tea.Cmd {
