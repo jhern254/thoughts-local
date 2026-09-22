@@ -350,9 +350,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.anchor()
 		if selected == 0 && !m.position.followNow && len(m.items) > 0 {
-			lines, positions, _ := m.layout()
-			m.position.topLine = positions[m.items[0].EventID]
-			m.position.clamp(len(lines))
+			layout := m.measureTimeline()
+			m.position.topLine = layout.positions[m.items[0].EventID]
+			m.position.clamp(len(layout.lines))
 		}
 		return m, tea.Batch(latest, open)
 	case countsMsg:
@@ -549,8 +549,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if key.String() == "pgup" {
 			direction = -1
 		}
-		lines, _, _ := m.layout()
-		m.position.scrollPage(direction, m.height, len(lines))
+		layout := m.measureTimeline()
+		m.position.scrollPage(direction, m.height, len(layout.lines))
 	case "enter":
 		if len(m.items) > 0 {
 			cmd := m.openEvent(m.items[m.position.eventIndex].EventID)
@@ -561,8 +561,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.expanded = 0
 		m.opening = false
 		m.picker.Reset()
-		lines, _, _ := m.layout()
-		m.position.clamp(len(lines))
+		layout := m.measureTimeline()
+		m.position.clamp(len(layout.lines))
 	case "n":
 		cmd := m.startForm(false)
 		return m, cmd

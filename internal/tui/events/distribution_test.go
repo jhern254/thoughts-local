@@ -34,6 +34,38 @@ func distributionLane(lines []string) string {
 }
 
 func TestModel_Distributions(t *testing.T) {
+	t.Run("viewport paint matches complete output through partial cards and curve tails", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		start := m.day.Add(8 * time.Hour)
+		end := start.Add(time.Hour)
+		m.items = append([]data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}, m.items...)
+		m.counts = append(m.counts, data.EventThoughtCountView{EventID: 2, Count: 20})
+		for _, width := range []int{80, 60, 59, 40} {
+			m.Resize(width, 27)
+			for _, expanded := range []bool{false, true} {
+				if expanded {
+					m = execute(t, m, m.openEvent(1))
+				}
+				for _, key := range []string{"0", "f", "right", "up", "f"} {
+					m.tuneDistributions(key)
+					whole, _, _ := m.layout()
+					layout := m.measureTimeline()
+					for offset := 0; offset < len(whole); offset++ {
+						got := m.paintTimeline(layout, offset, 7)
+						want := whole[offset:min(len(whole), offset+7)]
+						if !reflect.DeepEqual(got, want) {
+							t.Fatalf("width %d expanded %v key %s offset %d: cropped paint differs", width, expanded, key, offset)
+						}
+					}
+				}
+				if expanded {
+					m.distributions.open = false
+					m, _ = m.Update(eventKey("left"))
+				}
+			}
+		}
+	})
+
 	t.Run("live controls change only curves and restore defaults without reads", func(t *testing.T) {
 		m, service, store := fixture(t)
 		m.counts[0].Count = 10
