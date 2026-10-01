@@ -202,7 +202,7 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			messages, err := inputMessages(frame)
 			if err != nil || kind != websocket.MessageBinary {
-				sendStatus(ctx, conn, "input")
+				rejectInput(s.ctx, conn, cancel)
 				return
 			}
 			for _, msg := range messages {
@@ -242,6 +242,18 @@ func sendStatus(ctx context.Context, conn *websocket.Conn, status string) {
 	}
 }
 
+func rejectInput(ctx context.Context, conn *websocket.Conn, cancelSession context.CancelFunc) {
+	ctx, stop := context.WithTimeout(ctx, writeTimeout)
+	err := conn.Write(ctx, websocket.MessageBinary, []byte("7input"))
+	stop()
+	// Queue the fixed rejection before cancellation can interrupt terminal I/O,
+	// then cancel application work before waiting for the peer's acknowledgement.
+	cancelSession()
+	if err == nil {
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	}
+}
+
 type terminalWriter struct {
 	ctx    context.Context
 	conn   *websocket.Conn
@@ -251,6 +263,9 @@ type terminalWriter struct {
 func (w *terminalWriter) Write(data []byte) (int, error) {
 	total := len(data)
 	for len(data) > 0 {
+		if w.ctx.Err() != nil {
+			return total - len(data), io.ErrClosedPipe
+		}
 		n := min(len(data), 64<<10)
 		frame := make([]byte, n+1)
 		frame[0] = '1'

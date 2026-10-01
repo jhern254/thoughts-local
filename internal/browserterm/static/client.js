@@ -9,6 +9,8 @@
   let socket;
   let connected = false;
   let ended = false;
+  let pendingResize;
+  let resizeRetry;
 
   // Use xterm's supported logger seam. Never forward terminal data or errors.
   const quiet = () => {};
@@ -52,7 +54,29 @@
     const rows = Math.max(1, Math.min(128, size.rows));
     if (term.cols !== cols || term.rows !== rows) term.resize(cols, rows);
   }
-  term.onResize(({cols, rows}) => send('2', encoder.encode(JSON.stringify({cols, rows}))));
+  function clearResize() {
+    pendingResize = undefined;
+    clearTimeout(resizeRetry);
+    resizeRetry = undefined;
+  }
+  function flushResize(connection) {
+    if (socket !== connection || !pendingResize || !connected || connection.readyState !== WebSocket.OPEN) return;
+    if (send('2', encoder.encode(JSON.stringify(pendingResize)))) {
+      clearResize();
+    } else if (resizeRetry === undefined) {
+      // WebSocket has no writable/drain event. Poll only while this session has
+      // an unsent resize; newer dimensions replace it. Never retain UI input.
+      resizeRetry = setTimeout(() => {
+        resizeRetry = undefined;
+        flushResize(connection);
+      }, 50);
+    }
+  }
+  function sendResize(size) {
+    pendingResize = size;
+    flushResize(socket);
+  }
+  term.onResize(({cols, rows}) => sendResize({cols, rows}));
   term.onData(data => send('0', encoder.encode(data)));
   new ResizeObserver(resize).observe(container);
 
@@ -89,6 +113,7 @@
   });
 
   function connect(attempt = 0) {
+    clearResize();
     if (socket) socket.close();
     ended = false;
     connected = false;
@@ -104,7 +129,7 @@
     connection.onopen = () => {
       if (socket !== connection) return;
       connected = true;
-      send('2', encoder.encode(JSON.stringify({cols: term.cols, rows: term.rows})));
+      sendResize({cols: term.cols, rows: term.rows});
       term.options.disableStdin = false;
       status.textContent = 'Connected';
       term.focus();
@@ -133,6 +158,7 @@
     connection.onclose = () => {
       if (socket !== connection) return;
       connected = false;
+      clearResize();
       term.options.disableStdin = true;
       if (retryBusy) {
         setTimeout(() => {

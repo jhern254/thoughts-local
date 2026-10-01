@@ -1,13 +1,18 @@
 package browserterm
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,9 +39,14 @@ func testServer(t *testing.T, factory func(context.Context) tea.Model) (string, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	return testServerListener(t, ln, factory, logging.Nop())
+}
+
+func testServerListener(t *testing.T, ln net.Listener, factory func(context.Context) tea.Model, logger logging.Logger) (string, func()) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Serve(ctx, ln, factory, logging.Nop()) }()
+	go func() { done <- Serve(ctx, ln, factory, logger) }()
 	stop := func() {
 		cancel()
 		select {
@@ -160,6 +170,16 @@ func TestServer(t *testing.T) {
 				t.Fatalf("got status %d, want 403", response.StatusCode)
 			}
 		}
+		req, _ := http.NewRequest("GET", address+"/ws", nil)
+		req.Header["Origin"] = []string{address, address}
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusForbidden {
+			t.Fatalf("duplicate Origin got status %d, want 403", response.StatusCode)
+		}
 	})
 	t.Run("delivers input paste and resize and quits only the session", func(t *testing.T) {
 		messages := make(chan tea.Msg, 100)
@@ -241,6 +261,253 @@ func TestServer(t *testing.T) {
 		stop()
 		if ctx.Err() == nil {
 			t.Fatal("server stopped before session cancellation")
+		}
+	})
+}
+
+func TestServerInvalidInput(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		frame  string
+		tooBig bool
+	}{
+		{"malformed resize", `2{"cols":0,"rows":24,"text":"PRIVATE-FRAME-MARKER"}`, false},
+		{"oversized paste", "p" + strings.Repeat("x", maxPasteBytes) + "PRIVATE-FRAME-MARKER", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			logger, err := logging.New(&logs, "browser-test", "debug")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ln, err := net.Listen("tcp4", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			created := make(chan *workModel, 2)
+			address, stop := testServerListener(t, ln, func(ctx context.Context) tea.Model {
+				m := newWorkModel(ctx)
+				close(m.release)
+				created <- m
+				return m
+			}, logger)
+			defer func() {
+				stop()
+				// Neither rejected input nor library errors are operational diagnostics.
+				if got := logs.String(); got != "" {
+					t.Errorf("got logs %q, want no operational events for rejected input", got)
+				}
+			}()
+			conn := connect(t, address)
+			writeFrame(t, conn, `2{"cols":80,"rows":24}`)
+			readUntil(t, conn, "1")
+			m := <-created
+			waitClosed(t, m.started, time.Second, "session command startup")
+			writeFrame(t, conn, tc.frame)
+			if tc.tooBig {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				var err error
+				for err == nil {
+					_, frame, readErr := conn.Read(ctx)
+					err = readErr
+					if bytes.Contains(frame, []byte("PRIVATE-FRAME-MARKER")) {
+						t.Fatal("rejected input leaked into terminal output")
+					}
+				}
+				cancel()
+				var closed websocket.CloseError
+				if !errors.As(err, &closed) || closed.Code != websocket.StatusMessageTooBig || closed.Reason != fmt.Sprintf("read limited at %d bytes", maxPasteBytes+2) {
+					t.Fatalf("got close %v, want fixed message-too-big limit diagnostic", err)
+				}
+			} else {
+				// Cancellation must not depend on an invalid peer acknowledging close.
+				waitClosed(t, m.cancelled, time.Second, "invalid-input cancellation before close acknowledgement")
+				if got := readUntil(t, conn, "7"); got != "7input" {
+					t.Fatalf("got %q, want fixed 7input", got)
+				}
+			}
+			waitClosed(t, m.cleaned, time.Second, "invalid-input command cleanup")
+			freshSession(t, address)
+			next := <-created
+			if next.ctx.Err() != nil {
+				t.Fatal("fresh valid session was cancelled")
+			}
+		})
+	}
+}
+
+// The server already accepts a net.Listener. A close-aware write gate models a
+// full socket send buffer without depending on kernel buffer sizes or megabytes
+// of output. HTTP upgrade and WebSocket framing still use the real library/TCP.
+type stalledConn struct {
+	net.Conn
+	stall     atomic.Bool
+	blocked   chan struct{}
+	closed    chan struct{}
+	blockOnce sync.Once
+	closeOnce sync.Once
+}
+
+func (c *stalledConn) Write(data []byte) (int, error) {
+	if c.stall.Load() {
+		c.blockOnce.Do(func() { close(c.blocked) })
+		<-c.closed
+		return 0, net.ErrClosed
+	}
+	return c.Conn.Write(data)
+}
+func (c *stalledConn) Close() error {
+	c.closeOnce.Do(func() { close(c.closed) })
+	return c.Conn.Close()
+}
+
+type stalledListener struct {
+	net.Listener
+	accepted chan *stalledConn
+}
+
+func (l *stalledListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	c := &stalledConn{Conn: conn, blocked: make(chan struct{}), closed: make(chan struct{})}
+	select {
+	case l.accepted <- c:
+	default:
+	}
+	return c, nil
+}
+
+type workModel struct {
+	ctx                                  context.Context
+	started, cancelled, release, cleaned chan struct{}
+	output                               string
+}
+
+func newWorkModel(ctx context.Context) *workModel {
+	return &workModel{
+		ctx:       ctx,
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+		release:   make(chan struct{}),
+		cleaned:   make(chan struct{}),
+		output:    "browser probe",
+	}
+}
+func (m *workModel) Init() tea.Cmd {
+	return func() tea.Msg {
+		close(m.started)
+		<-m.ctx.Done()
+		close(m.cancelled)
+		<-m.release
+		close(m.cleaned)
+		return nil
+	}
+}
+func (m *workModel) View() tea.View { return tea.NewView(m.output) }
+func (m *workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "x" {
+		m.output = "changed output"
+	}
+	return m, nil
+}
+func waitClosed(t *testing.T, ch <-chan struct{}, bound time.Duration, operation string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(bound):
+		t.Fatalf("%s did not finish within %s", operation, bound)
+	}
+}
+func freshSession(t *testing.T, address string) *websocket.Conn {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		conn := connect(t, address)
+		writeFrame(t, conn, `2{"cols":80,"rows":24}`)
+		frame := readUntil(t, conn, "")
+		if strings.HasPrefix(frame, "1") {
+			return conn
+		}
+		conn.CloseNow()
+		if frame != "7busy" || time.Now().After(deadline) {
+			t.Fatalf("got %q, want a healthy new session", frame)
+		}
+	}
+}
+
+func TestServerStalledOutput(t *testing.T) {
+	t.Run("write timeout cancels work releases admission and shutdown joins cleanup", func(t *testing.T) {
+		ln, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		listener := &stalledListener{Listener: ln, accepted: make(chan *stalledConn, 10)}
+		created := make(chan *workModel, 3)
+		var logs bytes.Buffer
+		logger, err := logging.New(&logs, "browser-test", "debug")
+		if err != nil {
+			t.Fatal(err)
+		}
+		address, stop := testServerListener(t, listener, func(ctx context.Context) tea.Model {
+			m := newWorkModel(ctx)
+			created <- m
+			return m
+		}, logger)
+		var stopOnce sync.Once
+		stopServer := func() { stopOnce.Do(stop) }
+		defer stopServer()
+		conn := connect(t, address)
+		writeFrame(t, conn, `2{"cols":80,"rows":24}`)
+		readUntil(t, conn, "1")
+		transport := <-listener.accepted
+		m := <-created
+		// Always release held cleanup on assertion failures before stopping Serve.
+		defer func() {
+			select {
+			case <-m.release:
+			default:
+				close(m.release)
+			}
+		}()
+		waitClosed(t, m.started, time.Second, "tracked command startup")
+		transport.stall.Store(true)
+		writeFrame(t, conn, "0x")
+		waitClosed(t, transport.blocked, time.Second, "real socket output blocking")
+		// The client stops reading. Only terminalWriter's configured deadline can
+		// close this blocked write; the test neither releases it nor shuts down.
+		waitClosed(t, m.cancelled, writeTimeout+time.Second, "stalled-output cancellation")
+		waitClosed(t, transport.closed, time.Second, "timed-out socket closure")
+		busy := connect(t, address)
+		if got := readUntil(t, busy, "7"); got != "7busy" {
+			t.Fatalf("got %q, want busy during tracked cleanup", got)
+		}
+		close(m.release)
+		waitClosed(t, m.cleaned, time.Second, "timed-out session cleanup")
+		freshSession(t, address)
+		next := <-created
+		defer func() {
+			select {
+			case <-next.release:
+			default:
+				close(next.release)
+			}
+		}()
+		waitClosed(t, next.started, time.Second, "replacement command startup")
+		resourcesClosed := make(chan struct{})
+		go func() { stopServer(); close(resourcesClosed) }()
+		waitClosed(t, next.cancelled, time.Second, "shutdown cancellation")
+		select {
+		case <-resourcesClosed:
+			t.Fatal("shared runtime boundary closed before tracked work finished")
+		default:
+		}
+		close(next.release)
+		waitClosed(t, next.cleaned, time.Second, "shutdown command cleanup")
+		waitClosed(t, resourcesClosed, time.Second, "server shutdown after cleanup")
+		if got := logs.String(); got != "" {
+			t.Fatalf("got logs %q, want no raw output/write errors", got)
 		}
 	})
 }

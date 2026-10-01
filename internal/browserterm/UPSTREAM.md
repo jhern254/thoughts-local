@@ -48,7 +48,9 @@ There is no compatibility promise with sip's protocol or page extension APIs.
   performed by a PTY. OSC 52 is consumed without clipboard side effects; links
   do not open automatically. Initial admission retries a busy slot for up to one
   second to allow a reloaded page's previous session to finish closing. Established
-  connections do not automatically reconnect. There is no replay or draft restoration.
+  connections do not automatically reconnect. One pending resize retains only the
+  latest dimensions and retries every 50ms while backpressured. It is cleared on
+  socket change/close; keypresses and pastes are never retained or replayed.
 
 Limits: 1 MiB per whole paste (+ one framing byte), 4 KiB per key event, 512×128
 cells, 16 KiB HTTP headers, 10s initial resize, 5s per output write. HTTP shutdown
@@ -62,6 +64,27 @@ handshakes retain their status but replace dependency error bodies with fixed
 text. Application close messages are fixed identifiers; the browser never prints
 socket errors or peer close reasons. The WebSocket library's protocol-level close
 responses are not forwarded to diagnostics. No terminal traffic is recorded.
+
+## Data path and lifecycle contracts
+
+Browser event → binary WebSocket frame → `inputMessages` → Bubble Tea message →
+existing TUI. Bubble Tea output → `terminalWriter` → WebSocket output frame →
+xterm.js. Malformed input cancels application work before awaiting peer closure.
+
+The server owns the shared native Runtime; each session owns its model/context.
+Started commands must respect cancellation. Shutdown joins tracked work before
+the command closes Runtime resources. Reconnect creates a new UI session and
+never restores drafts or replays unsaved input. Tracking supports ordinary
+`tea.Cmd` and `tea.BatchMsg`; `tea.Sequence`, detached goroutines, or other
+scheduling behavior requires reviewing session cleanup again.
+
+Completing a network write does not mean xterm has rendered its queued output.
+The current text MVP bounds socket writes without acknowledging browser rendering.
+High-frequency effects or image/video-like output needs a dedicated renderer
+flow-control review. The stalled-output regression gates an accepted TCP socket's
+write after a real WebSocket session starts, exercising the actual write deadline
+and cleanup without relying on OS buffer sizes or a large output payload. It
+does not measure xterm render-queue pressure.
 
 ## Terminal artifacts
 
