@@ -1,6 +1,6 @@
 .PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed tui tui/demo tui/demo/seeded tui/build migrate/new migrate/up migrate/down migrate/version
 .PHONY: tui/demo/stress
-.PHONY: tui/browser tui/browser/demo
+.PHONY: tui/browser tui/browser/demo tui/browser/demo/seeded tui/browser/demo/stress
 
 help:
 	@echo "Available commands:"
@@ -27,6 +27,8 @@ help:
 	@echo "  make tui/build    Build the TUI binary"
 	@echo "  make tui/browser Migrate, build, and serve the TUI in a local browser"
 	@echo "  make tui/browser/demo Serve a disposable seeded browser demo"
+	@echo "  make tui/browser/demo/seeded Serve sample events and thoughts in the browser"
+	@echo "  make tui/browser/demo/stress Serve 721 events and 20,000 thoughts in the browser"
 	@echo "  make migrate/new  Create a migration (name=<description>)"
 	@echo "  make migrate/up   Apply all pending migrations"
 	@echo "  make migrate/down Roll back one migration"
@@ -119,8 +121,11 @@ tui: migrate/up tui/build
 tui/browser: migrate/up tui/build
 	"$(TUI_BIN)" --browser --db-dsn "$(APP_DSN)"
 
-tui/browser/demo: TUI_ARGS = --browser
-tui/browser/demo: tui/demo/seeded
+tui/browser/demo tui/browser/demo/seeded: TUI_ARGS = --browser
+tui/browser/demo tui/browser/demo/seeded: tui/demo/seeded
+
+tui/browser/demo/stress: TUI_ARGS = --browser
+tui/browser/demo/stress: tui/demo/stress
 
 tui/demo/seeded: DEMO_SEED = ./scripts/demo.sql
 tui/demo/seeded: tui/demo

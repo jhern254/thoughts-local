@@ -13,9 +13,25 @@ before using a new database. The executable never applies migrations at startup.
 
 Both modes accept `--db-dsn` / `THOUGHTS_DB_DSN`. Browser mode accepts
 `THOUGHTS_BROWSER_PORT`; the flag takes precedence. Open the printed address.
-`make tui/browser` migrates and launches the persistent database;
-`make tui/browser/demo` launches the existing seeded disposable demo.
-For the stress fixture: `make tui/demo/stress TUI_ARGS=--browser`.
+`make tui/browser` migrates and launches the persistent database.
+
+For disposable browser demos:
+
+| Command | Synthetic data |
+| --- | --- |
+| `make tui/browser/demo/seeded` | 2 subjects, 3 events, 12 thoughts |
+| `make tui/browser/demo/stress` | 4 subjects, 721 events, 20,000 thoughts |
+
+Both build the same executable, migrate a fresh temporary database, and open on
+Events. Open the printed local address; stop the server with Ctrl+C to delete
+the temporary database. Each launch starts fresh and leaves your usual database
+untouched. `make tui/browser/demo` remains an alias for the seeded version.
+Set `THOUGHTS_BROWSER_PORT=8123` if the default port is occupied.
+
+The stress fixture spans about a month, includes empty historical events, and
+puts 200 thoughts in the current event. Expand events, scroll the thought picker,
+browse Subjects and Misc thoughts, and resize the browser to exercise the larger
+dataset. This is an interactive stress demo, with no fixed performance promise.
 
 The application, SQLite, and filesystem remain native. The Go executable embeds
 the browser terminal assets; Node/npm, a CDN, WASM, and a separate frontend server
