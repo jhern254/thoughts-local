@@ -416,14 +416,14 @@ func (m Model) View() string {
 	}
 	if m.distributions.open {
 		status = m.distributions.label()
-		if m.width < 60 {
+		if m.width < distributionMinWidth {
 			status = "Curves hidden below 60 columns"
 		}
 		if m.load.eventsPending && m.load.showStatus {
 			status = "Loading… " + status
 		}
 		help = "←/→ boost  ↑/↓ size  f mode  [0 Reset to default]  Esc done"
-		if m.width < 60 {
+		if m.width < distributionMinWidth {
 			help = "f mode · [0 Reset to default] · Esc done"
 		}
 	}
