@@ -88,7 +88,7 @@
     return true;
   });
 
-  function connect() {
+  function connect(attempt = 0) {
     if (socket) socket.close();
     ended = false;
     connected = false;
@@ -98,6 +98,7 @@
     reconnect.hidden = true;
     status.textContent = 'Connecting…';
     const connection = new WebSocket(`ws://${location.host}/ws`);
+    let retryBusy = false;
     socket = connection;
     connection.binaryType = 'arraybuffer';
     connection.onopen = () => {
@@ -116,7 +117,10 @@
       } else if (frame[0] === 55) {
         ended = true;
         const reason = new TextDecoder().decode(frame.subarray(1));
-        status.textContent = ({
+        // A reload can arrive while the old model's cursor command is finishing.
+        // Retry only admission, for at most one second. No input or UI is replayed.
+        retryBusy = reason === 'busy' && attempt < 4;
+        status.textContent = retryBusy ? 'Connecting…' : ({
           busy: 'Another tab is active. Close it, then reconnect.',
           quit: 'Session ended. Reconnect to start again.',
           input: 'Unsupported terminal input. Reconnect to start again.',
@@ -130,10 +134,16 @@
       if (socket !== connection) return;
       connected = false;
       term.options.disableStdin = true;
+      if (retryBusy) {
+        setTimeout(() => {
+          if (socket === connection) connect(attempt + 1);
+        }, 250);
+        return;
+      }
       reconnect.hidden = false;
       if (!ended) status.textContent = 'Connection lost. Unsaved changes are not restored.';
     };
   }
-  reconnect.addEventListener('click', connect);
+  reconnect.addEventListener('click', () => connect());
   connect();
 })();

@@ -24,6 +24,8 @@ are not needed to build or run it.
 ### Browser behavior
 
 - One active tab. A second tab reports that the first is busy and offers Reconnect.
+  Opening/reloading retries admission for up to one second while an old session
+  finishes closing.
 - Quit (`q` where available, or Ctrl+C without a browser selection) ends that
   session. Ctrl+C in the launching terminal stops the server.
 - Reload/disconnect discards unsaved UI state. Reconnect starts on Events and

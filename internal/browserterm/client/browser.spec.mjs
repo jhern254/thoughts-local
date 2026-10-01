@@ -29,6 +29,23 @@ test('second tab is busy; quit and reload start independent sessions', async ({p
   await expect(screen(second)).toContainText('Events');
 });
 
+test('reload during filter editing waits for the previous session to finish', async ({page}) => {
+  await ready(page);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Misc thoughts');
+  await expect(screen(page)).not.toContainText('Loading…');
+  await page.keyboard.press('/');
+  await page.keyboard.type('Building');
+  await expect(screen(page)).toContainText('Filter: Building');
+  // The old session must join its already-running cursor command. The new
+  // connection may arrive during that short cleanup window.
+  await page.reload();
+  await expect(screen(page)).toContainText('Events');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await expect(screen(page)).not.toContainText('Filter: Building');
+});
+
 test('Ctrl+C copies a terminal selection and quits only when there is no selection', async ({page}) => {
   await ready(page);
   const box = await screen(page).locator('div').first().boundingBox();

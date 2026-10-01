@@ -41,7 +41,9 @@ There is no compatibility promise with sip's protocol or page extension APIs.
 - `static/client.js`: fitting, browser clipboard capture, fixed status messages,
   and explicit reconnect. `convertEol` supplies the output translation normally
   performed by a PTY. OSC 52 is consumed without clipboard side effects; links
-  do not open automatically. There is no replay or draft restoration.
+  do not open automatically. Initial admission retries a busy slot for up to one
+  second to allow a reloaded page's previous session to finish closing. Established
+  connections do not automatically reconnect. There is no replay or draft restoration.
 
 Limits: 1 MiB per whole paste (+ one framing byte), 4 KiB per key event, 512×128
 cells, 16 KiB HTTP headers, 10s initial resize, 5s per output write. HTTP shutdown
