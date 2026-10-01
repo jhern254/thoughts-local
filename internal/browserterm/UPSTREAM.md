@@ -23,6 +23,11 @@ There is no compatibility promise with sip's protocol or page extension APIs.
 
 ## Local implementation
 
+- `cmd/thoughts-tui/browser.go`: defaults to port 7777 and opens the OS default
+  browser using `xdg-open`, macOS `open`, or Windows `rundll32`. Only the generated
+  loopback URL is passed; subprocess diagnostics are discarded. Launching is
+  bounded and joined on shutdown. `--browser-open=false` suppresses launching;
+  a failed launcher leaves the server available at the printed address.
 - `server.go`: exact loopback authority/origin checks, embedded files, WebSocket
   admission, bounded frames, one model per session, and explicit cleanup. No
   static directory on disk, forwarded-header trust, origin wildcard, or shell.
@@ -99,7 +104,8 @@ does not cover them. Internal code ownership is not a security guarantee.
 
 ## Browser acceptance
 
-Start `make tui/browser/demo`, then in `client/`:
+Start `THOUGHTS_BROWSER_OPEN=false make tui/browser/demo` so the automated tests
+can own the single browser session, then in `client/`:
 
 ```sh
 npm ci --ignore-scripts

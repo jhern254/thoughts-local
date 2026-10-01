@@ -7,12 +7,16 @@ before using a new database. The executable never applies migrations at startup.
 
 ```sh
 ./bin/thoughts-tui                       # native terminal (default)
-./bin/thoughts-tui --browser             # http://127.0.0.1:7681
+./bin/thoughts-tui --browser             # http://127.0.0.1:7777
 ./bin/thoughts-tui --browser --browser-port 8123
 ```
 
 Both modes accept `--db-dsn` / `THOUGHTS_DB_DSN`. Browser mode accepts
-`THOUGHTS_BROWSER_PORT`; the flag takes precedence. Open the printed address.
+`THOUGHTS_BROWSER_PORT`; the flag takes precedence. Browser mode automatically
+opens your operating system's default browser (including Brave when configured
+as the default). The address is also printed for manual opening if needed.
+Use `--browser-open=false` or `THOUGHTS_BROWSER_OPEN=false` to serve without
+opening a tab.
 `make tui/browser` migrates and launches the persistent database.
 
 For disposable browser demos:
@@ -23,8 +27,8 @@ For disposable browser demos:
 | `make tui/browser/demo/stress` | 4 subjects, 721 events, 20,000 thoughts |
 
 Both build the same executable, migrate a fresh temporary database, and open on
-Events. Open the printed local address; stop the server with Ctrl+C to delete
-the temporary database. Each launch starts fresh and leaves your usual database
+Events. Your default browser opens automatically; stop the server with Ctrl+C to
+delete the temporary database. Each launch starts fresh and leaves your usual database
 untouched. `make tui/browser/demo` remains an alias for the seeded version.
 Set `THOUGHTS_BROWSER_PORT=8123` if the default port is occupied.
 

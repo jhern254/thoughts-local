@@ -80,7 +80,6 @@ func Serve(ctx context.Context, listener net.Listener, newModel func(context.Con
 	s.mu.Lock()
 	s.closing = true
 	s.mu.Unlock()
-	listener.Close()
 	cancel()
 	shutdownCtx, stop := context.WithTimeout(context.Background(), initialTimeout)
 	defer stop()

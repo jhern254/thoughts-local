@@ -182,6 +182,23 @@ func TestTUI_RuntimeLifecycle(t *testing.T) {
 }
 
 func TestTUI_BrowserMode(t *testing.T) {
+	t.Run("defaults to port 7777", func(t *testing.T) {
+		t.Setenv("THOUGHTS_BROWSER_PORT", "")
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
+		app.openRuntime = func(context.Context, string) (runtime, error) { return &runtimeStub{}, nil }
+		app.runBrowser = func(_ context.Context, port int, autoOpen bool, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger) error {
+			if !autoOpen {
+				t.Fatal("default browser opening was disabled")
+			}
+			if port != 7777 {
+				t.Fatalf("got port %d, want 7777", port)
+			}
+			return nil
+		}
+		if err := newTUI(app).Run(context.Background(), []string{"thoughts-tui", "--browser"}); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("selects browser explicitly and closes the shared runtime after serving", func(t *testing.T) {
 		t.Setenv("THOUGHTS_BROWSER_PORT", "8123")
 		closed := false
@@ -193,7 +210,10 @@ func TestTUI_BrowserMode(t *testing.T) {
 			t.Fatal("native program launched")
 			return nil
 		}
-		app.runBrowser = func(ctx context.Context, port int, factory func(context.Context) tea.Model, out io.Writer, logger logging.Logger) error {
+		app.runBrowser = func(ctx context.Context, port int, autoOpen bool, factory func(context.Context) tea.Model, out io.Writer, logger logging.Logger) error {
+			if !autoOpen {
+				t.Fatal("default browser opening was disabled")
+			}
 			if port != 8124 {
 				t.Fatalf("port got %d, want flag override 8124", port)
 			}
@@ -216,6 +236,20 @@ func TestTUI_BrowserMode(t *testing.T) {
 			t.Fatal("runtime was not closed")
 		}
 	})
+	t.Run("allows suppressing default browser opening", func(t *testing.T) {
+		t.Setenv("THOUGHTS_BROWSER_OPEN", "true")
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
+		app.openRuntime = func(context.Context, string) (runtime, error) { return &runtimeStub{}, nil }
+		app.runBrowser = func(_ context.Context, _ int, autoOpen bool, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger) error {
+			if autoOpen {
+				t.Fatal("opened browser despite explicit suppression")
+			}
+			return nil
+		}
+		if err := newTUI(app).Run(context.Background(), []string{"thoughts-tui", "--browser", "--browser-open=false"}); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("validates browser configuration before opening runtime", func(t *testing.T) {
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) {
@@ -230,7 +264,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		want := errors.New("runtime failure")
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) { return nil, want }
-		app.runBrowser = func(context.Context, int, func(context.Context) tea.Model, io.Writer, logging.Logger) error {
+		app.runBrowser = func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger) error {
 			t.Fatal("served after runtime failure")
 			return nil
 		}
@@ -245,7 +279,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return &runtimeStub{close: func() error { closed = true; return nil }}, nil
 		}
-		app.runBrowser = func(context.Context, int, func(context.Context) tea.Model, io.Writer, logging.Logger) error {
+		app.runBrowser = func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger) error {
 			return want
 		}
 		err := newTUI(app).Run(context.Background(), []string{"thoughts-tui", "--browser"})

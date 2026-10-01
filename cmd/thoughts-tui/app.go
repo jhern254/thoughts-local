@@ -42,7 +42,7 @@ type application struct {
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
-	runBrowser  func(context.Context, int, func(context.Context) tea.Model, io.Writer, logging.Logger) error
+	runBrowser  func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger) error
 }
 
 func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) *application {
@@ -66,7 +66,8 @@ func newTUI(app *application) *cli.Command {
 		Writer: app.out,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "browser", Usage: "serve the TUI in a local browser"},
-			&cli.IntFlag{Name: "browser-port", Usage: "loopback browser port", Value: 7681, Sources: cli.EnvVars("THOUGHTS_BROWSER_PORT")},
+			&cli.BoolFlag{Name: "browser-open", Usage: "open the default browser when serving", Value: true, Sources: cli.EnvVars("THOUGHTS_BROWSER_OPEN")},
+			&cli.IntFlag{Name: "browser-port", Usage: "loopback browser port", Value: 7777, Sources: cli.EnvVars("THOUGHTS_BROWSER_PORT")},
 			&cli.StringFlag{
 				Name:        "db-dsn",
 				Usage:       "SQLite data source name",
@@ -102,7 +103,7 @@ func newTUI(app *application) *cli.Command {
 			}
 			var err error
 			if cmd.Bool("browser") {
-				err = app.runBrowser(ctx, cmd.Int("browser-port"), newModel, app.out, app.logger)
+				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), newModel, app.out, app.logger)
 			} else {
 				err = app.runProgram(ctx, newModel(ctx), app.in, app.out)
 			}
