@@ -30,6 +30,26 @@ type eventStub struct {
 	listErr              error
 }
 
+func TestModel_TickCancellation(t *testing.T) {
+	t.Run("session cancellation releases a pending clock command", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		model := Model{ctx: ctx, clock: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)}
+		cmd := model.tick()
+		done := make(chan tea.Msg, 1)
+		go func() { done <- cmd() }()
+		cancel()
+		select {
+		case msg := <-done:
+			if msg != nil {
+				t.Fatalf("got %T after cancellation, want nil", msg)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("clock command retained a closed session")
+		}
+	})
+}
+
 func (s *eventStub) List(context.Context, string, time.Time, time.Time) ([]data.Event, error) {
 	s.lists++
 	return s.items, s.listErr
