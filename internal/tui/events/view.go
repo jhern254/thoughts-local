@@ -146,9 +146,9 @@ func (m *Model) cardContent(item data.Event) []string {
 }
 
 func (m *Model) paintCard(content []string, selected bool) []string {
-	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(m.cardWidth() + 2)
+	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(m.cardWidth() + cardBorderColumns)
 	if selected && !m.blurred {
-		style = style.BorderForeground(lipgloss.Color("62"))
+		style = style.BorderForeground(lipgloss.Color(selectedEventColor))
 	}
 	return strings.Split(style.Render(strings.Join(content, "\n")), "\n")
 }
@@ -257,7 +257,7 @@ func (m *Model) measureTimeline() timelineLayout {
 		if !previousTime.IsZero() {
 			gap := int(math.Ceil(entry.at.Sub(previousTime).Hours() * float64(hourHeight)))
 			for len(lines) < previousTop+gap {
-				lines = append(lines, "          │")
+				lines = append(lines, timelineLabelPadding+"│")
 			}
 		}
 		if entry.id != 0 && len(lines) == previousTop+1 && !previousTime.IsZero() {
@@ -272,13 +272,13 @@ func (m *Model) measureTimeline() timelineLayout {
 			nowLine = len(lines)
 		}
 		if entry.now {
-			lines = append(lines, "          "+entry.text)
+			lines = append(lines, timelineLabelPadding+entry.text)
 		} else if entry.id == 0 {
-			lines = append(lines, fmt.Sprintf("%-10s│", entry.text))
+			lines = append(lines, fmt.Sprintf("%-*s│", timelineLabelWidth, entry.text))
 		} else {
 			height := len(entry.content) + 2
 			cards = append(cards, timelineCard{top: len(lines), content: entry.content, selected: entry.selected})
-			if m.cardColumn() != 10 && entry.id != m.expanded && m.load.countErr == nil {
+			if m.cardColumn() != timelineLabelWidth && entry.id != m.expanded && m.load.countErr == nil {
 				for _, count := range m.counts {
 					if count.EventID != entry.id {
 						continue
@@ -287,6 +287,8 @@ func (m *Model) measureTimeline() timelineLayout {
 						selectedCurve = len(curves)
 					}
 					// Counts affect the renderer's shape, never the card height.
+					// Convert rows to Braille dots (four per cell); center between
+					// the first and last dot, hence (height*4-1)/2.
 					center := float64(len(lines)*4) + float64(height*4-1)/2
 					curves = append(curves, render.Distribution{CenterY: center, Count: count.Count})
 					break
@@ -298,7 +300,7 @@ func (m *Model) measureTimeline() timelineLayout {
 				labels[height-1] = displaytime.Format(entry.end, "03:04 PM")
 			}
 			for _, label := range labels {
-				lines = append(lines, fmt.Sprintf("%-10s", label))
+				lines = append(lines, fmt.Sprintf("%-*s", timelineLabelWidth, label))
 			}
 			previousTop, previousTime = len(lines)-1, entry.end
 		}
@@ -309,7 +311,7 @@ func (m *Model) measureTimeline() timelineLayout {
 	}
 	if m.day.Before(displaytime.Day(m.clock)) {
 		end = len(lines)
-		lines = append(lines, "          ...")
+		lines = append(lines, timelineLabelPadding+"...")
 	}
 	return timelineLayout{
 		lines:         lines,

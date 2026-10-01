@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -205,7 +206,7 @@ func TestModel_EventsHome(t *testing.T) {
 		m, _ := newHome(t)
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
 		hasCurve := func(view string) bool {
-			return strings.ContainsFunc(view, func(r rune) bool { return r >= 0x2800 && r <= 0x28ff })
+			return strings.ContainsFunc(view, func(r rune) bool { return unicode.Is(unicode.Braille, r) })
 		}
 		before := m.events.View()
 		if !hasCurve(before) {

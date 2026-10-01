@@ -18,7 +18,7 @@ const (
 	curveColumn     = 12 // Ten timestamp columns, then a two-column gutter.
 	curveWidth      = 10
 	cardColumn      = curveColumn + curveWidth + 2
-	selectedColor   = 62
+	selectedColor   = 62 // Xterm 256-color palette: purple selection, gray curves/rail.
 	unselectedColor = 245
 	baselineColor   = 240
 )
@@ -79,6 +79,7 @@ func color(text string, code int, plain bool) string {
 	if plain {
 		return text
 	}
+	// SGR 38;5 selects a palette foreground; SGR 0 resets it after the text.
 	return fmt.Sprintf("\x1b[38;5;%dm%s\x1b[0m", code, text)
 }
 
@@ -129,7 +130,8 @@ func draw(scene scene, width, height, selected int, options render.Options, plai
 		if card.ongoing {
 			contents = append(contents, "   Building  Break the next task into one small step.", "  Thought 31 • 12:24 PM")
 		}
-		cardHeight := len(contents) + 2
+		cardHeight := len(contents) + 2 // Top and bottom borders.
+		// Four Braille dot rows per terminal cell; center on the first/last dot midpoint.
 		curves = append(curves, render.Distribution{CenterY: float64(card.top*4) + float64(cardHeight*4-1)/2, Count: card.count})
 		labels[card.top], labels[card.top+cardHeight-1] = card.start, card.end
 		borderColor := unselectedColor

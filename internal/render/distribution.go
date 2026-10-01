@@ -43,12 +43,22 @@ type Cell struct {
 	CurveIndex int  // Index in the input slice; -1 means blank or connecting baseline.
 }
 
+// Unicode Braille Patterns encode a two-column, four-row dot cell. These are
+// encoding dimensions, not visual tuning parameters.
+const (
+	brailleColumns = 2
+	brailleRows    = 4
+	brailleBlank   = '\u2800' // Add the eight dot bits to this Unicode block base.
+)
+
 // Tuning values are in Braille dots unless otherwise noted. These defaults match
 // the reviewed preview; changing them must not change the caller's card layout.
 // Set Options.CountExponent to boost small counts relative to the day maximum.
 // For gentler boosting of low counts, raise it toward 1. For a broader,
 // shallower zero mound, raise minHeight and lower minAmplitude independently.
 const (
+	minSize        = 0.5  // Lower bound for the dimension-gain multiplier.
+	maxSize        = 1.25 // Upper bound keeps profiles within a compact lane.
 	countReference = 20.0 // Minimum reference keeps quiet days from magnifying tiny counts.
 	countExponent  = 0.8  // 1 is linear; lowering this makes small counts larger sooner.
 	minAmplitude   = 3.0  // Zero's shallow leftward peak; increase for a stronger mound.
@@ -160,8 +170,8 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
 		size = 1
 	}
-	size = min(1.25, max(0.5, size))
-	baseline := 2*width - 1
+	size = min(maxSize, max(minSize, size))
+	baseline := brailleColumns*width - 1
 	curves := make([]gaussian, 0, len(distributions))
 	first, last := math.Inf(1), math.Inf(-1)
 	for i, distribution := range distributions {
@@ -175,23 +185,25 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 		first = min(first, g.center-tailSigma*g.sigma)
 		last = max(last, g.center+tailSigma*g.sigma)
 	}
-	if len(curves) == 0 || first > float64(height*4)-0.5 || last < -0.5 {
+	if len(curves) == 0 || first > float64(height*brailleRows)-0.5 || last < -0.5 {
 		return rows
 	}
 	gain := mixtureGain(curves, min(minAmplitude+amplitudeGain*size, float64(baseline)))
 
 	strengths := make([]float64, width*height)
-	bits := [2][4]rune{{1, 2, 4, 64}, {8, 16, 32, 128}}
+	// Unicode dot numbering is column-major: left 1/2/3/7, right 4/5/6/8.
+	// Each mask is 1 << (dot number - 1); the bottom two dots are not sequential.
+	bits := [brailleColumns][brailleRows]rune{{1, 2, 4, 64}, {8, 16, 32, 128}}
 	plot := func(x, y, owner int, strength float64) {
-		if x < 0 || x > baseline || y < 0 || y >= height*4 {
+		if x < 0 || x > baseline || y < 0 || y >= height*brailleRows {
 			return
 		}
-		cell := &rows[y/4][x/2]
+		cell := &rows[y/brailleRows][x/brailleColumns]
 		if cell.Glyph == ' ' {
-			cell.Glyph = 0x2800
+			cell.Glyph = brailleBlank
 		}
-		cell.Glyph |= bits[x%2][y%4]
-		index := (y/4)*width + x/2
+		cell.Glyph |= bits[x%brailleColumns][y%brailleRows]
+		index := (y/brailleRows)*width + x/brailleColumns
 		if owner >= 0 && (strength > strengths[index] || (strength == strengths[index] && owner < cell.CurveIndex)) {
 			cell.CurveIndex = owner
 			strengths[index] = strength
@@ -199,14 +211,14 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 	}
 
 	if options.Mode == Outline {
-		drawOutline(curves, gain, baseline, height*4, first, last, plot)
+		drawOutline(curves, gain, baseline, height*brailleRows, first, last, plot)
 		return rows
 	}
 
 	// Sample on a fixed dot grid, including points that round into edge pixels.
 	// This makes clipping identical to cropping a larger render at a cell boundary.
 	start := int(math.Ceil(max(first, -0.5) * samplesPerDot))
-	end := int(math.Floor(min(last, float64(height*4)-0.5) * samplesPerDot))
+	end := int(math.Floor(min(last, float64(height*brailleRows)-0.5) * samplesPerDot))
 	previousX, previousY := 0, 0
 	for sample := start; sample <= end; sample++ {
 		y := float64(sample) / samplesPerDot

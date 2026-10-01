@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -16,13 +17,14 @@ import (
 
 // Calendar assertions inspect the unchanged time field and the card at column
 // 24 independently of the decorative lane. All callers use a wide panel.
+// Keep these expected columns literal so tests catch production geometry changes.
 func timelineCardText(line string) string {
 	line = ansi.Strip(line)
 	return ansi.Cut(line, 0, 10) + ansi.Cut(line, 24, ansi.StringWidth(line))
 }
 
 func hasDistribution(text string) bool {
-	return strings.ContainsFunc(text, func(r rune) bool { return r >= 0x2800 && r <= 0x28ff })
+	return strings.ContainsFunc(text, func(r rune) bool { return unicode.Is(unicode.Braille, r) })
 }
 
 func distributionLane(lines []string) string {

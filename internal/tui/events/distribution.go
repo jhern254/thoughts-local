@@ -8,7 +8,32 @@ import (
 	"github.com/jhern254/go-thoughts/internal/render"
 )
 
-const distributionWidth = 10
+const (
+	// Layout is measured in terminal cells, not bytes or Braille dots.
+	timelineLabelPadding = "          " // Eight-character timestamp plus two spaces.
+	timelineLabelWidth   = len(timelineLabelPadding)
+	distributionWidth    = 10
+	distributionGutter   = "  "
+	distributionMinWidth = 60   // Below this panel width, return the lane to the cards.
+	cardBorderColumns    = 2    // Left and right borders.
+	selectedEventColor   = "62" // Xterm 256-color purple, shared by card and curve.
+
+	// Percent controls mirror the renderer's supported Size range [0.5, 1.25].
+	distributionMinSize     = 50
+	distributionMaxSize     = 125
+	distributionDefaultSize = 100
+	distributionSizeStep    = 5
+)
+
+// Preset order is the left/right control order; normal matches the renderer default.
+const (
+	boostLinear = iota
+	boostNormal
+	boostMedium
+	boostStrong
+	boostExtra
+	boostCount
+)
 
 // These are session-local presentation settings, independent of day loads.
 // Reset to default restores filled mode, normal boost (exponent 0.8), size 100%.
@@ -22,7 +47,7 @@ type distributionSettings struct {
 }
 
 func defaultDistributionSettings() distributionSettings {
-	return distributionSettings{boost: 1, size: 100, mode: render.Filled}
+	return distributionSettings{boost: boostNormal, size: distributionDefaultSize, mode: render.Filled}
 }
 
 func (s distributionSettings) boostValue() (string, float64) {
@@ -30,9 +55,13 @@ func (s distributionSettings) boostValue() (string, float64) {
 		name     string
 		exponent float64
 	}{
-		{"linear", 1}, {"normal", 0.8}, {"medium", 0.5}, {"strong", 0.25}, {"extra", 0.15},
+		boostLinear: {"linear", 1},
+		boostNormal: {"normal", 0.8},
+		boostMedium: {"medium", 0.5},
+		boostStrong: {"strong", 0.25},
+		boostExtra:  {"extra", 0.15},
 	}
-	level := levels[min(4, max(0, s.boost))]
+	level := levels[min(len(levels)-1, max(boostLinear, s.boost))]
 	return level.name, level.exponent
 }
 
@@ -40,13 +69,13 @@ func (m *Model) tuneDistributions(key string) {
 	s := &m.distributions
 	switch key {
 	case "left", "h":
-		s.boost = max(0, s.boost-1)
+		s.boost = max(boostLinear, s.boost-1)
 	case "right", "l":
-		s.boost = min(4, s.boost+1)
+		s.boost = min(boostCount-1, s.boost+1)
 	case "down", "j":
-		s.size = max(50, s.size-5)
+		s.size = max(distributionMinSize, s.size-distributionSizeStep)
 	case "up", "k":
-		s.size = min(125, s.size+5)
+		s.size = min(distributionMaxSize, s.size+distributionSizeStep)
 	case "f":
 		if s.mode == render.Filled {
 			s.mode = render.Outline
@@ -72,19 +101,19 @@ func (s distributionSettings) label() string {
 }
 
 func (m *Model) cardColumn() int {
-	if m.width < 60 {
-		return 10 // Original time field and card width on narrow terminals.
+	if m.width < distributionMinWidth {
+		return timelineLabelWidth
 	}
-	return 24 // Time field (10), gutter (2), curve (10), gutter (2).
+	return timelineLabelWidth + len(distributionGutter) + distributionWidth + len(distributionGutter)
 }
 
-func (m *Model) cardWidth() int { return max(1, m.width-m.cardColumn()-2) }
+func (m *Model) cardWidth() int { return max(1, m.width-m.cardColumn()-cardBorderColumns) }
 
 // addDistributions draws the visible rows using the whole day's contributions.
 // Translating every center by a whole number of cells preserves the fixed dot
 // grid and global mixture gain. Neither selection nor scrolling changes scale.
 func (m *Model) addDistributions(lines []string, curves []render.Distribution, selected, end, offset int) []string {
-	if m.cardColumn() == 10 {
+	if m.cardColumn() == timelineLabelWidth {
 		return lines
 	}
 	var cells [][]render.Cell
@@ -99,7 +128,7 @@ func (m *Model) addDistributions(lines []string, curves []render.Distribution, s
 		shifted := make([]render.Distribution, len(curves))
 		for i, curve := range curves {
 			shifted[i] = curve
-			shifted[i].CenterY -= float64(offset) * 4
+			shifted[i].CenterY -= float64(offset) * 4 // Four Braille dot rows per terminal cell.
 		}
 		_, exponent := m.distributions.boostValue()
 		cells = render.RenderDistributions(distributionWidth, height, shifted, render.Options{
@@ -109,17 +138,24 @@ func (m *Model) addDistributions(lines []string, curves []render.Distribution, s
 			Size:           float64(m.distributions.size) / 100,
 		})
 	}
+	// Indexes identify style runs, not curve ownership or palette numbers.
+	const (
+		normalStyle = iota
+		selectedStyle
+		baselineStyle
+		plainStyle = -1
+	)
 	styles := [...]lipgloss.Style{
-		lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("62")),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("240")),
+		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("245")), // Muted gray.
+		selectedStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(selectedEventColor)),
+		baselineStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("240")), // Darker connecting rail.
 	}
 	for y, line := range lines {
 		var lane strings.Builder
-		lane.Grow(distributionWidth * 3)
+		lane.Grow(distributionWidth * 3) // A Braille rune occupies three UTF-8 bytes.
 		if y < len(cells) {
 			var run strings.Builder
-			activeStyle := -1
+			activeStyle := plainStyle
 			flush := func() {
 				if run.Len() > 0 {
 					lane.WriteString(styles[activeStyle].Render(run.String()))
@@ -127,20 +163,20 @@ func (m *Model) addDistributions(lines []string, curves []render.Distribution, s
 				}
 			}
 			for _, cell := range cells[y] {
-				style := 0
+				style := normalStyle
 				switch {
 				case cell.Glyph == ' ':
-					style = -1
+					style = plainStyle
 				case cell.CurveIndex < 0:
-					style = 2
+					style = baselineStyle
 				case cell.CurveIndex == selected && !m.blurred:
-					style = 1
+					style = selectedStyle
 				}
 				if style != activeStyle {
 					flush()
 					activeStyle = style
 				}
-				if style < 0 {
+				if style == plainStyle {
 					lane.WriteByte(' ')
 				} else {
 					run.WriteRune(cell.Glyph)
@@ -151,9 +187,9 @@ func (m *Model) addDistributions(lines []string, curves []render.Distribution, s
 			lane.WriteString(strings.Repeat(" ", distributionWidth))
 		}
 		// The existing prefix is ten ASCII timestamp cells, or an empty separator.
-		split := min(10, len(line))
+		split := min(timelineLabelWidth, len(line))
 		label, content := line[:split], line[split:]
-		lines[y] = label + strings.Repeat(" ", 10-split) + "  " + lane.String() + "  " + content
+		lines[y] = label + strings.Repeat(" ", timelineLabelWidth-split) + distributionGutter + lane.String() + distributionGutter + content
 	}
 	return lines
 }

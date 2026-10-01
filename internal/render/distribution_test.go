@@ -9,6 +9,7 @@ import (
 
 func pixels(cells [][]Cell) map[[2]int]bool {
 	result := make(map[[2]int]bool)
+	// Decode the Unicode 2×4 cell independently: dot numbers 1/2/3/7 and 4/5/6/8.
 	bits := [2][4]rune{{1, 2, 4, 64}, {8, 16, 32, 128}}
 	for y, row := range cells {
 		for x, cell := range row {
@@ -17,7 +18,7 @@ func pixels(cells [][]Cell) map[[2]int]bool {
 			}
 			for dx := range 2 {
 				for dy := range 4 {
-					if (cell.Glyph-0x2800)&bits[dx][dy] != 0 {
+					if (cell.Glyph-'\u2800')&bits[dx][dy] != 0 {
 						result[[2]int{x*2 + dx, y*4 + dy}] = true
 					}
 				}
