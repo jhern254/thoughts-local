@@ -16,6 +16,7 @@ The core philosophy is:
 * Use the standard library unless a dependency clearly earns its place.
 * Keep functions narrow and easy to test.
 * Pass `context.Context` as the first function parameter, including database and request-driven operations. Format large keyed struct literals across multiple lines, following declaration order or clear logical groups: dependencies first, then state. Prefer explicit initialization over builders or wrappers added only to shorten code.
+* Every async operation must answer: who owns this work, and what context ends it? Pass the owner’s context through blocking calls and make waits cancellation-aware. Cancellation does not replace stale-result checks or joining started work before shared resources close.
 * Return errors clearly; do not hide failures.
 * Do not introduce global state unless there is a strong reason. Justify that reason before adding.
 

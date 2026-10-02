@@ -87,6 +87,7 @@ type homeOpened struct{}
 func (Model) Init() tea.Cmd { return func() tea.Msg { return homeOpened{} } }
 
 func (m Model) openHome() (tea.Model, tea.Cmd) {
+	m.subjects.stopRead()
 	m.screen = screenEvents
 	m.events.SetFocused(!m.entityFocused)
 	cmd := m.events.Open()
@@ -94,6 +95,9 @@ func (m Model) openHome() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.ctx.Err() != nil {
+		return m, nil
+	}
 	if events.Owns(message) {
 		var cmd tea.Cmd
 		m.events, cmd = m.events.Update(message)
@@ -139,7 +143,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case subjectsListedMsg:
-		if m.screen != screenSubjectList {
+		if m.screen != screenSubjectList || message.request != m.subjects.readRequest {
 			return m, nil
 		}
 		return m.handleSubjectsListed(message)
@@ -150,6 +154,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case subjectDeletedMsg:
 		return m.handleSubjectDeleted(message)
 	case subjectFoundMsg:
+		if message.request != m.subjects.readRequest {
+			return m, nil
+		}
 		return m.handleSubjectFound(message)
 	case tea.KeyPressMsg:
 		if message.String() == "ctrl+c" {

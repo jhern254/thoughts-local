@@ -20,6 +20,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui"
 )
 
 //go:embed static/*
@@ -187,7 +188,7 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	size := messages[0].(tea.WindowSizeMsg)
-	guard := newSessionModel(ctx, cancel, s.newModel)
+	guard := tui.NewSession(ctx, cancel, s.newModel)
 	program := newProgram(ctx, guard, &terminalWriter{ctx: ctx, conn: conn, cancel: cancel}, size)
 	readCtx, stopReading := context.WithCancel(s.ctx)
 	defer stopReading()
@@ -213,14 +214,14 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 	err = runProgram(program)
 	wasCancelled := ctx.Err() != nil
 	cancel()
-	guard.stop()
+	guard.Stop()
 	// Editing has stopped. Release admission before announcing quit so a client
 	// that immediately reconnects cannot race the old socket's close handshake.
 	releaseSlot()
-	if guard.failed.Load() {
+	if guard.Failed() {
 		err = errProgram
 	}
-	if err != nil && (!wasCancelled || guard.failed.Load()) {
+	if err != nil && (!wasCancelled || guard.Failed()) {
 		if category, emit := failure.Classify(logging.TUIRun, err); emit {
 			s.logger.Failure(logging.TUIRun, category)
 		}

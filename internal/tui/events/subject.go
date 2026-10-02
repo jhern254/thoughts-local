@@ -32,6 +32,7 @@ type subjectsLoaded struct {
 func (subjectsLoaded) eventMessage() {}
 
 type subjectPicker struct {
+	cancel   context.CancelFunc
 	items    []data.Subject
 	selected *int64
 	row, top int
@@ -44,9 +45,20 @@ func (m *Model) loadSubjects() tea.Cmd {
 	m.form.subjects.loading = true
 	m.form.subjects.revision++
 	owner, save, revision := m.owner, m.save, m.form.subjects.revision
-	ctx, user, reader := m.ctx, m.userID, m.subjectReader
+	if m.form.subjects.cancel != nil {
+		m.form.subjects.cancel()
+	}
+	ctx, cancel := context.WithCancel(m.form.ctx)
+	m.form.subjects.cancel = cancel
+	user, reader := m.userID, m.subjectReader
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		items, err := reader.List(ctx, user)
+		if ctx.Err() != nil {
+			return nil
+		}
 		return subjectsLoaded{owner, save, revision, items, err}
 	}
 }
@@ -93,6 +105,7 @@ func (m *Model) anchorSubjects() {
 func (m *Model) activateSubject() tea.Cmd {
 	if m.form.subjects.row == 0 {
 		m.form.suspended = true
+		m.form.stopClipboard()
 		m.form.revision++
 		m.form.fields[1].Blur()
 		request := CreateSubjectRequest{m.form.fields[1].Value(), m.owner, m.save}
@@ -108,6 +121,7 @@ func (m *Model) selectSubject(item data.Subject) {
 	m.form.fields[1].CursorEnd()
 	m.form.subjects.row, m.form.subjects.top = 0, 0
 	m.form.index = 2
+	m.form.stopClipboard()
 	m.form.revision++
 	m.form.message = ""
 }
@@ -125,6 +139,9 @@ func (m *Model) ReturnFromSubjectCreation(request CreateSubjectRequest, subject 
 	m.form.index = 1
 	if subject != nil {
 		// A list started before creation cannot overwrite the new choice.
+		if m.form.subjects.cancel != nil {
+			m.form.subjects.cancel()
+		}
 		m.form.subjects.revision++
 		m.form.subjects.loading = false
 		m.form.subjects.err = nil

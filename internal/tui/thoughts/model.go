@@ -47,9 +47,12 @@ type Model struct {
 
 	// owner separates model instances. request owns list/get/create and cursor
 	// replies; countRequest lets a full-scope count refresh independently.
-	owner        *int
-	request      uint64
-	countRequest uint64
+	owner           *int
+	request         uint64
+	countRequest    uint64
+	cancelRead      context.CancelFunc
+	cancelCount     context.CancelFunc
+	cancelClipboard context.CancelFunc
 
 	// screen selects list, editor, or detail behavior. selected survives detail
 	// rendering, while the list or bounded browse state owns row selection.
@@ -160,6 +163,13 @@ func (m *Model) Resize(width, height int) {
 
 func (m *Model) Reset() {
 	// Invalidate both result streams before replacing their visible state.
+	if m.cancelRead != nil {
+		m.cancelRead()
+	}
+	if m.cancelCount != nil {
+		m.cancelCount()
+	}
+	m.stopClipboard()
 	m.countRequest++
 	m.browsingThoughtsView = false
 	m.browseThoughts = browseThoughtsState{width: m.browseThoughts.width, height: m.browseThoughts.height}
@@ -200,19 +210,34 @@ func (m Model) Browsing() bool {
 // ShowingDetail lets the parent render the shared detail without list context.
 func (m Model) ShowingDetail() bool { return m.screen == detail }
 
+// beginRead replaces only the list/detail/page request, never a count or write.
+func (m *Model) beginRead(ctx context.Context) context.Context {
+	if m.cancelRead != nil {
+		m.cancelRead()
+	}
+	ctx, m.cancelRead = context.WithCancel(ctx)
+	return ctx
+}
+
 func (m *Model) listThoughts() tea.Cmd {
 	m.request++
 	m.loading = true
 	m.err = nil
 	owner := m.owner
-	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
+	request, ctx, userID, subjectID, service := m.request, m.beginRead(m.ctx), m.userID, m.subjectID, m.service
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		var items []data.Thought
 		var err error
 		if subjectID == nil {
 			items, err = service.ListUnassigned(ctx, userID)
 		} else {
 			items, err = service.List(ctx, userID, *subjectID)
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 		return Result{owner: owner, request: request, operation: logging.ThoughtList, items: items, err: err}
 	}
@@ -223,26 +248,42 @@ func (m *Model) getThought(id int64) tea.Cmd {
 	m.loading = true
 	m.err = nil
 	owner := m.owner
-	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
+	request, ctx, userID, service := m.request, m.beginRead(m.ctx), m.userID, m.service
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		item, err := service.Get(ctx, userID, id)
+		if ctx.Err() != nil {
+			return nil
+		}
 		return Result{owner: owner, request: request, operation: logging.ThoughtGet, item: item, err: err}
 	}
 }
 
 func (m *Model) createThought(body string) tea.Cmd {
+	m.stopClipboard()
 	m.request++
 	m.loading = true
 	m.err = nil
 	owner := m.owner
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		item, err := service.Create(ctx, userID, body, subjectID, time.Time{})
+		if ctx.Err() != nil {
+			return nil
+		}
 		return Result{owner: owner, request: request, operation: logging.ThoughtCreate, item: item, err: err}
 	}
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	if m.ctx.Err() != nil {
+		return m, nil
+	}
 	if result, ok := msg.(ThoughtCountResult); ok {
 		return m.receiveThoughtCount(result)
 	}
@@ -255,7 +296,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 	}
 	if result, ok := msg.(Result); ok {
-		// Cancellation is optional here; ownership alone makes obsolete replies inert.
+		// Ownership also rejects results already queued before cancellation.
 		if result.owner != m.owner || result.request != m.request {
 			return m, nil
 		}
@@ -309,6 +350,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case create:
 			switch key.String() {
 			case "esc":
+				m.stopClipboard()
 				m.request++
 				m.input.Blur()
 				m.input.Reset()

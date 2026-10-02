@@ -97,6 +97,10 @@ type Model struct {
 	logger        logging.Logger
 	now           func() time.Time
 
+	clockCtx        context.Context
+	cancelClock     context.CancelFunc
+	cancelExpansion context.CancelFunc
+
 	// Clock, expansion, and form lifetimes are independent of a day load.
 	owner                    *int
 	session, expansion, save uint64
@@ -152,6 +156,10 @@ func New(ctx context.Context, userID string, service Service, view TimelineView,
 }
 
 func (m *Model) Open() tea.Cmd {
+	if m.cancelClock != nil {
+		m.cancelClock()
+	}
+	m.clockCtx, m.cancelClock = context.WithCancel(m.ctx)
 	m.active = true
 	m.session++
 	m.clock = m.now()
@@ -162,11 +170,16 @@ func (m *Model) Open() tea.Cmd {
 	return tea.Batch(m.loadDay(day), m.tick())
 }
 func (m *Model) Close() {
+	if m.cancelClock != nil {
+		m.cancelClock()
+	}
+	m.form.stopReads()
 	m.distributions.open = false
 	m.load.invalidate()
 	m.active = false
 	// Invalidate replies that can outlive this screen opening.
 	m.session++
+	m.stopExpansion()
 	m.expansion++
 	m.picker.Reset()
 	m.expanded = 0
@@ -198,7 +211,10 @@ func (m *Model) Resize(width, height int) {
 }
 func (m Model) tick() tea.Cmd {
 	owner, session := m.owner, m.session
-	ctx := m.ctx
+	ctx := m.clockCtx
+	if ctx == nil {
+		ctx = m.ctx
+	}
 	delay := time.Minute - m.clock.Sub(m.clock.Truncate(time.Minute))
 	return func() tea.Msg {
 		timer := time.NewTimer(delay)
@@ -220,6 +236,7 @@ func (m *Model) loadDay(day time.Time) tea.Cmd {
 		m.load.retainedBody = m.timelineBody()
 	}
 	feedback := m.load.begin(m.ctx, day, m.owner)
+	m.stopExpansion()
 	m.expansion++
 	m.opening = false
 	m.err = nil
@@ -239,17 +256,32 @@ func (m *Model) loadDay(day time.Time) tea.Cmd {
 		return countsMsg{owner, request, items, err}
 	}, feedback)
 }
+func (m *Model) stopExpansion() {
+	if m.cancelExpansion != nil {
+		m.cancelExpansion()
+	}
+}
+
 func (m *Model) openEvent(id int64) tea.Cmd {
 	if m.expanded != id {
 		m.picker.Reset()
 	}
+	m.stopExpansion()
 	m.expansion++
 	m.expanded = id
 	m.opening = true
 	m.position.followNow = false
-	owner, request, ctx, user, view := m.owner, m.expansion, m.ctx, m.userID, m.timelineView
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.cancelExpansion = cancel
+	owner, request, user, view := m.owner, m.expansion, m.userID, m.timelineView
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		scope, err := view.OpenThoughtsView(ctx, user, id)
+		if ctx.Err() != nil {
+			return nil
+		}
 		return openedMsg{owner, request, scope, err}
 	}
 }
@@ -260,7 +292,7 @@ func (m *Model) fail(operation logging.Operation, err error) {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	if !m.active {
+	if !m.active || m.ctx.Err() != nil {
 		return m, nil
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
@@ -432,6 +464,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			mutation = logging.EventEnded
 		}
 		m.logger.Mutation(mutation, result.item.EventID)
+		m.form.stopReads()
 		m.form = eventForm{}
 		day := m.day
 		if !result.ending {
@@ -477,6 +510,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	if m.expanded != 0 {
 		if key.String() == "esc" || key.String() == "left" || key.String() == "h" {
+			m.stopExpansion()
 			m.expansion++
 			m.expanded = 0
 			m.opening = false
@@ -567,6 +601,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, cmd
 		}
 	case "esc":
+		m.stopExpansion()
 		m.expansion++
 		m.expanded = 0
 		m.opening = false
