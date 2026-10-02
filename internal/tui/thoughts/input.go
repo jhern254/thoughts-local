@@ -1,6 +1,7 @@
 package thoughts
 
 import (
+	"context"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -20,6 +21,12 @@ type clipboardResult struct {
 	request uint64
 	content string
 	err     error
+}
+
+func (m *Model) stopClipboard() {
+	if m.cancelClipboard != nil {
+		m.cancelClipboard()
+	}
 }
 
 func (m Model) updateInput(msg tea.Msg) (Model, tea.Cmd) {
@@ -47,9 +54,18 @@ func (m Model) updateInput(msg tea.Msg) (Model, tea.Cmd) {
 		case keybinding.Matches(message, m.input.KeyMap.Paste):
 			// Do not use textarea.Paste: its private result bypasses validation and
 			// its shortcut deletes the selection before the clipboard read succeeds.
+			m.stopClipboard()
+			ctx, cancel := context.WithCancel(m.ctx)
+			m.cancelClipboard = cancel
 			request := m.request
 			return m, func() tea.Msg {
+				if ctx.Err() != nil {
+					return nil
+				}
 				content, err := clipboard.ReadAll()
+				if ctx.Err() != nil {
+					return nil
+				}
 				return clipboardResult{request: request, content: content, err: err}
 			}
 		case keybinding.Matches(message, m.input.KeyMap.InsertNewline):

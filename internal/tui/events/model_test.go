@@ -504,3 +504,24 @@ func TestModel_EventForms(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_ClockOwnership(t *testing.T) {
+	t.Run("closing Events cancels its queued clock without ending the session", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		batch := m.Open()().(tea.BatchMsg)
+		m.Close()
+		done := make(chan tea.Msg, 1)
+		go func() { done <- batch[1]() }()
+		select {
+		case got := <-done:
+			if got != nil {
+				t.Fatalf("got %T, want no closed-screen tick", got)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("clock survived Events closure")
+		}
+		if m.ctx.Err() != nil {
+			t.Fatal("screen close cancelled the session")
+		}
+	})
+}

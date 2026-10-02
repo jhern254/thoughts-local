@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -15,6 +16,9 @@ import (
 )
 
 type eventForm struct {
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	cancelClipboard      context.CancelFunc
 	open, ending, saving bool
 	suspended            bool
 	subjects             subjectPicker
@@ -36,9 +40,32 @@ type formClipboard struct {
 
 func (formClipboard) eventMessage() {}
 
+func (f *eventForm) stopClipboard() {
+	if f.cancelClipboard != nil {
+		f.cancelClipboard()
+	}
+}
+
+func (f *eventForm) stopReads() {
+	f.stopClipboard()
+	if f.cancel != nil {
+		f.cancel()
+	}
+	if f.subjects.cancel != nil {
+		f.subjects.cancel()
+	}
+}
+
 func (m *Model) startForm(ending bool) tea.Cmd {
+	m.form.stopReads()
 	m.save++
-	m.form = eventForm{open: true, ending: ending}
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.form = eventForm{
+		ctx:    ctx,
+		cancel: cancel,
+		open:   true,
+		ending: ending,
+	}
 	for i := range m.form.fields {
 		m.form.fields[i] = textinput.New()
 		m.form.fields[i].CharLimit = 0
@@ -93,6 +120,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 		switch input.String() {
 		case "esc":
 			m.save++
+			m.form.stopReads()
 			m.form = eventForm{}
 			return nil
 		case "tab", "shift+tab":
@@ -102,6 +130,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 					step = -1
 				}
 				m.form.index = (m.form.index + step + 3) % 3
+				m.form.stopClipboard()
 				m.form.revision++
 				return m.focusForm()
 			}
@@ -132,6 +161,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 				m.anchorSubjects()
 				return nil
 			}
+			m.form.stopClipboard()
 			m.form.saving = true
 			for i := range m.form.fields {
 				m.form.fields[i].Blur()
@@ -139,20 +169,41 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 			owner, save, ctx, user, service, ending, item, label := m.owner, m.save, m.ctx, m.userID, m.service, m.form.ending, m.form.event, m.form.fields[0].Value()
 			if ending {
 				return func() tea.Msg {
+					if ctx.Err() != nil {
+						return nil
+					}
 					saved, err := service.End(ctx, user, item.EventID, item.Version, at)
+					if ctx.Err() != nil {
+						return nil
+					}
 					return savedMsg{owner, save, saved, true, err}
 				}
 			}
 			subjectID := m.form.subjects.selected
 			return func() tea.Msg {
+				if ctx.Err() != nil {
+					return nil
+				}
 				saved, err := service.Create(ctx, user, label, at, subjectID)
+				if ctx.Err() != nil {
+					return nil
+				}
 				return savedMsg{owner, save, saved, false, err}
 			}
 		}
 		if key.Matches(input, m.form.fields[m.form.index].KeyMap.Paste) {
 			owner, save, revision := m.owner, m.save, m.form.revision
+			m.form.stopClipboard()
+			ctx, cancel := context.WithCancel(m.form.ctx)
+			m.form.cancelClipboard = cancel
 			return func() tea.Msg {
+				if ctx.Err() != nil {
+					return nil
+				}
 				text, err := clipboard.ReadAll()
+				if ctx.Err() != nil {
+					return nil
+				}
 				return formClipboard{owner, save, revision, text, err}
 			}
 		}
@@ -170,6 +221,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 	}
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.PasteMsg:
+		m.form.stopClipboard()
 		m.form.revision++
 	}
 	before := m.form.fields[1].Value()

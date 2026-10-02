@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -288,6 +289,104 @@ func TestTUI_BrowserMode(t *testing.T) {
 		}
 		if app.failureMessage != "Could not run the browser interface." {
 			t.Fatalf("got diagnostic %q", app.failureMessage)
+		}
+	})
+}
+
+func TestTUI_NativeSessionCancellation(t *testing.T) {
+	t.Run("ends the native session before closing Runtime", func(t *testing.T) {
+		var session context.Context
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
+		app.openRuntime = func(context.Context, string) (runtime, error) {
+			return &runtimeStub{localUser: &data.User{UserID: "u"}, close: func() error {
+				if session.Err() != context.Canceled {
+					t.Errorf("got %v at Runtime close, want cancelled UI session", session.Err())
+				}
+				return nil
+			}}, nil
+		}
+		app.runProgram = func(ctx context.Context, _ tea.Model, _ io.Reader, _ io.Writer) error { session = ctx; return nil }
+		if err := newTUI(app).Run(t.Context(), []string{"thoughts-tui"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+type cancellationEventStore struct {
+	event.Store
+	started   chan context.Context
+	cancelled chan struct{}
+	release   chan struct{}
+	finished  chan struct{}
+}
+
+func (s cancellationEventStore) ListEvents(ctx context.Context, _ string, _, _ time.Time) ([]data.Event, error) {
+	s.started <- ctx
+	<-ctx.Done()
+	close(s.cancelled)
+	<-s.release
+	close(s.finished)
+	return nil, ctx.Err()
+}
+
+func TestTUI_NativeSessionCleanup(t *testing.T) {
+	t.Run("joins a started Events read before closing Runtime", func(t *testing.T) {
+		store := cancellationEventStore{
+			started:   make(chan context.Context, 1),
+			cancelled: make(chan struct{}),
+			release:   make(chan struct{}),
+			finished:  make(chan struct{}),
+		}
+		defer func() {
+			select {
+			case <-store.release:
+			default:
+				close(store.release)
+			}
+		}()
+		closed := make(chan struct{})
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
+		app.openRuntime = func(context.Context, string) (runtime, error) {
+			return &runtimeStub{localUser: &data.User{UserID: "u"}, events: event.NewService(store), close: func() error { close(closed); return nil }}, nil
+		}
+		app.runProgram = func(_ context.Context, model tea.Model, _ io.Reader, _ io.Writer) error {
+			_, cmd := model.Update(model.Init()())
+			opening := cmd().(tea.BatchMsg)
+			reads := opening[0]().(tea.BatchMsg)
+			go reads[0]()
+			<-store.started
+			return nil
+		}
+		done := make(chan error, 1)
+		go func() { done <- newTUI(app).Run(t.Context(), []string{"thoughts-tui"}) }()
+		select {
+		case <-store.cancelled:
+		case <-time.After(time.Second):
+			t.Fatal("native quit did not cancel active read")
+		}
+		select {
+		case <-closed:
+			t.Fatal("Runtime closed underneath started read")
+		default:
+		}
+		close(store.release)
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("native cleanup did not finish")
+		}
+		select {
+		case <-store.finished:
+		default:
+			t.Fatal("native cleanup did not join read")
+		}
+		select {
+		case <-closed:
+		default:
+			t.Fatal("Runtime remained open after joined work")
 		}
 	})
 }

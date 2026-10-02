@@ -32,6 +32,8 @@ type SubjectService interface {
 type subjectState struct {
 	service       SubjectService
 	createSession *int
+	readRequest   *int
+	cancelRead    context.CancelFunc
 	// filter scopes asynchronous Bubbles matches to this list and query revision.
 	filter listfilter.Scope
 
@@ -89,6 +91,7 @@ func (row subjectRow) FilterValue() string {
 }
 
 type subjectsListedMsg struct {
+	request      *int
 	miscCount    int64
 	miscCountErr error
 	subjects     []data.Subject
@@ -104,6 +107,7 @@ type subjectCreatedMsg struct {
 }
 
 type subjectFoundMsg struct {
+	request *int
 	subject *data.Subject
 	err     error
 }
@@ -156,20 +160,48 @@ func (m Model) openSubjects() (tea.Model, tea.Cmd) {
 	m.screen = screenSubjectList
 	m.subjects.err = nil
 	m.subjects.loading = true
-	return m, m.listSubjects()
+	cmd := m.listSubjects()
+	return m, cmd
 }
 
-func (m Model) listSubjects() tea.Cmd {
-	ctx := m.ctx
+func (s *subjectState) stopRead() {
+	if s.cancelRead != nil {
+		s.cancelRead()
+	}
+	s.readRequest = nil
+}
+
+func (s *subjectState) beginRead(ctx context.Context) context.Context {
+	s.stopRead()
+	s.readRequest = new(int)
+	ctx, s.cancelRead = context.WithCancel(ctx)
+	return ctx
+}
+
+func (m *Model) listSubjects() tea.Cmd {
+	ctx := m.subjects.beginRead(m.ctx)
+	request := m.subjects.readRequest
 	userID := m.user.UserID
 	service := m.subjects.service
 	metrics := m.metrics
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		subjects, err := service.List(ctx, userID)
-		result := subjectsListedMsg{subjects: subjects, err: err}
+		result := subjectsListedMsg{request: request, subjects: subjects, err: err}
+		if ctx.Err() != nil {
+			return nil
+		}
 		if err == nil {
 			result.counts, result.countErr = metrics.ThoughtCountsBySubject(ctx, userID)
+			if ctx.Err() != nil {
+				return nil
+			}
 			result.miscCount, result.miscCountErr = metrics.CountUnassignedThoughts(ctx, userID)
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 		return result
 	}
@@ -181,18 +213,31 @@ func (m Model) createSubject(name string) tea.Cmd {
 	service := m.subjects.service
 	session := m.subjects.createSession
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		subject, err := service.Create(ctx, userID, name)
+		if ctx.Err() != nil {
+			return nil
+		}
 		return subjectCreatedMsg{session: session, subject: subject, err: err}
 	}
 }
 
-func (m Model) getSubject(subjectID int64) tea.Cmd {
-	ctx := m.ctx
+func (m *Model) getSubject(subjectID int64) tea.Cmd {
+	ctx := m.subjects.beginRead(m.ctx)
+	request := m.subjects.readRequest
 	userID := m.user.UserID
 	service := m.subjects.service
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		subject, err := service.Get(ctx, userID, subjectID)
-		return subjectFoundMsg{subject: subject, err: err}
+		if ctx.Err() != nil {
+			return nil
+		}
+		return subjectFoundMsg{request: request, subject: subject, err: err}
 	}
 }
 
@@ -202,7 +247,13 @@ func (m Model) updateSubject(name string) tea.Cmd {
 	service := m.subjects.service
 	id := m.subjects.selected.SubjectID
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		item, err := service.Update(ctx, userID, id, name)
+		if ctx.Err() != nil {
+			return nil
+		}
 		return subjectUpdatedMsg{subject: item, err: err}
 	}
 }
@@ -213,7 +264,13 @@ func (m Model) deleteSubject() tea.Cmd {
 	service := m.subjects.service
 	id := m.subjects.selected.SubjectID
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		err := service.Delete(ctx, userID, id)
+		if ctx.Err() != nil {
+			return nil
+		}
 		return subjectDeletedMsg{subjectID: id, err: err}
 	}
 }
@@ -342,7 +399,8 @@ func (m Model) handleSubjectDeleted(message subjectDeletedMsg) (tea.Model, tea.C
 	m.subjects.loading = true
 	m.screen = screenSubjectList
 	m.logger.Mutation(logging.SubjectDeleted, message.subjectID)
-	return m, m.listSubjects()
+	cmd := m.listSubjects()
+	return m, cmd
 }
 
 func logSubjectError(logger logging.Logger, operation logging.Operation, err error) {
@@ -377,6 +435,7 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.subjects.err = nil
 				switch row.kind {
 				case subjectRowMisc:
+					m.subjects.stopRead()
 					m.subjects.selected = nil
 					m.screen = screenMiscThoughts
 					cmd := m.thoughts.OpenUnassigned()
@@ -386,7 +445,8 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m.openSubjectCreate("")
 				case subjectRowRecord:
 					m.subjects.loading = true
-					return m, m.getSubject(row.subject.SubjectID)
+					cmd := m.getSubject(row.subject.SubjectID)
+					return m, cmd
 				}
 			}
 		}
@@ -397,6 +457,7 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) openSubjectCreate(query string) (tea.Model, tea.Cmd) {
+	m.subjects.stopRead()
 	m.screen = screenSubjectCreate
 	m.subjects.createSession = new(int)
 	m.subjects.loading = false
@@ -475,7 +536,8 @@ func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = screenSubjectList
 			if m.subjects.listStale {
 				m.subjects.loading = true
-				return m, m.listSubjects()
+				cmd := m.listSubjects()
+				return m, cmd
 			}
 			return m, nil
 		}
