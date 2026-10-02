@@ -1,5 +1,6 @@
 .PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed tui tui/demo tui/demo/seeded tui/build migrate/new migrate/up migrate/down migrate/version
 .PHONY: tui/demo/stress
+.PHONY: tui/browser tui/browser/demo tui/browser/demo/seeded tui/browser/demo/stress
 
 help:
 	@echo "Available commands:"
@@ -24,6 +25,10 @@ help:
 	@echo "  make tui/demo/seeded Start a disposable TUI with sample events and thoughts"
 	@echo "  make tui/demo/stress Start a disposable agent diary (721 events, 20,000 thoughts)"
 	@echo "  make tui/build    Build the TUI binary"
+	@echo "  make tui/browser Migrate, build, and serve the TUI in a local browser"
+	@echo "  make tui/browser/demo Serve a disposable seeded browser demo"
+	@echo "  make tui/browser/demo/seeded Serve sample events and thoughts in the browser"
+	@echo "  make tui/browser/demo/stress Serve 721 events and 20,000 thoughts in the browser"
 	@echo "  make migrate/new  Create a migration (name=<description>)"
 	@echo "  make migrate/up   Apply all pending migrations"
 	@echo "  make migrate/down Roll back one migration"
@@ -80,6 +85,7 @@ DB_PATH ?= ./data/thoughts.db
 MIGRATE_DSN ?= sqlite://$(DB_PATH)
 APP_DSN ?= file:$(DB_PATH)
 TUI_BIN ?= ./bin/thoughts-tui
+TUI_ARGS ?=
 DB_DIR := $(dir $(DB_PATH))
 
 migrate/new:
@@ -112,6 +118,15 @@ tui/build:
 tui: migrate/up tui/build
 	"$(TUI_BIN)" --db-dsn "$(APP_DSN)"
 
+tui/browser: migrate/up tui/build
+	"$(TUI_BIN)" --browser --db-dsn "$(APP_DSN)"
+
+tui/browser/demo tui/browser/demo/seeded: TUI_ARGS = --browser
+tui/browser/demo tui/browser/demo/seeded: tui/demo/seeded
+
+tui/browser/demo/stress: TUI_ARGS = --browser
+tui/browser/demo/stress: tui/demo/stress
+
 tui/demo/seeded: DEMO_SEED = ./scripts/demo.sql
 tui/demo/seeded: tui/demo
 
@@ -127,4 +142,4 @@ tui/demo: tui/build
 	echo "Starting disposable TUI with $$demo_db (deleted on exit)."; \
 	migrate -path=./migrations -database="sqlite://$$demo_db" up; \
 	if [ -n "$(DEMO_SEED)" ]; then sqlite3 -bail "$$demo_db" < "$(DEMO_SEED)"; fi; \
-	"$(TUI_BIN)" --db-dsn "file:$$demo_db"
+	"$(TUI_BIN)" --db-dsn "file:$$demo_db" $(TUI_ARGS)

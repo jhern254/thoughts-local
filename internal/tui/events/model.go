@@ -198,8 +198,18 @@ func (m *Model) Resize(width, height int) {
 }
 func (m Model) tick() tea.Cmd {
 	owner, session := m.owner, m.session
+	ctx := m.ctx
 	delay := time.Minute - m.clock.Sub(m.clock.Truncate(time.Minute))
-	return tea.Tick(delay, func(at time.Time) tea.Msg { return tickMsg{owner, session, at} })
+	return func() tea.Msg {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return nil
+		case at := <-timer.C:
+			return tickMsg{owner, session, at}
+		}
+	}
 }
 
 // loadDay keeps the displayed date with its cards until the requested list arrives.

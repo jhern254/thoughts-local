@@ -1,0 +1,6 @@
+:root { color-scheme: dark; font: 14px system-ui, sans-serif; background: #171717; color: #eee; }
+body { margin: 0; }
+header { height: 42px; box-sizing: border-box; display: flex; align-items: center; gap: 18px; padding: 0 12px; }
+#status { flex: 1; font-size: 12px; }
+button { font: inherit; }
+#terminal { position: absolute; inset: 42px 0 0; padding: 8px; }

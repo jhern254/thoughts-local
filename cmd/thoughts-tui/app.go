@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	tea "charm.land/bubbletea/v2"
@@ -41,6 +42,7 @@ type application struct {
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
+	runBrowser  func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger) error
 }
 
 func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) *application {
@@ -53,6 +55,7 @@ func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) 
 			return appcore.Open(ctx, dsn)
 		},
 		runProgram: runBubbleTea,
+		runBrowser: runBrowser,
 	}
 }
 
@@ -62,6 +65,9 @@ func newTUI(app *application) *cli.Command {
 		Usage:  "capture and organize thoughts",
 		Writer: app.out,
 		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "browser", Usage: "serve the TUI in a local browser"},
+			&cli.BoolFlag{Name: "browser-open", Usage: "open the default browser when serving", Value: true, Sources: cli.EnvVars("THOUGHTS_BROWSER_OPEN")},
+			&cli.IntFlag{Name: "browser-port", Usage: "loopback browser port", Value: 7777, Sources: cli.EnvVars("THOUGHTS_BROWSER_PORT")},
 			&cli.StringFlag{
 				Name:        "db-dsn",
 				Usage:       "SQLite data source name",
@@ -71,6 +77,10 @@ func newTUI(app *application) *cli.Command {
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			if cmd.Bool("browser") && (cmd.Int("browser-port") < 1 || cmd.Int("browser-port") > 65535) {
+				app.failureMessage = "Browser port must be between 1 and 65535."
+				return ctx, errors.New("invalid browser port")
+			}
 			app.logger.Started()
 			dsn := cmd.String("db-dsn")
 			if dsn == "" {
@@ -87,15 +97,21 @@ func newTUI(app *application) *cli.Command {
 			app.runtime = runtime
 			return ctx, nil
 		},
-		Action: func(ctx context.Context, _ *cli.Command) error {
-			err := app.runProgram(
-				ctx,
-				tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.runtime.Events(), app.runtime.TimelineView(), app.logger),
-				app.in,
-				app.out,
-			)
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			newModel := func(ctx context.Context) tea.Model {
+				return tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.runtime.Events(), app.runtime.TimelineView(), app.logger)
+			}
+			var err error
+			if cmd.Bool("browser") {
+				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), newModel, app.out, app.logger)
+			} else {
+				err = app.runProgram(ctx, newModel(ctx), app.in, app.out)
+			}
 			if err != nil {
 				app.failureMessage = "Could not run the terminal interface."
+				if cmd.Bool("browser") {
+					app.failureMessage = "Could not run the browser interface."
+				}
 				if category, emit := failure.Classify(logging.TUIRun, err); emit {
 					app.logger.Failure(logging.TUIRun, category)
 				}
