@@ -337,6 +337,12 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.detailTitle = "Created subject"
 	m.subjects.listStale = true
 	m.logger.Mutation(logging.SubjectCreated, message.subject.SubjectID)
+	if m.voiceSubjectReturn != nil {
+		cmd := m.thoughts.ReturnFromVoiceSubject(*m.voiceSubjectReturn, message.subject)
+		m.voiceSubjectReturn = nil
+		m.screen = screenVoiceThought
+		return m, cmd
+	}
 	if m.subjectReturn != nil {
 		cmd := m.events.ReturnFromSubjectCreation(*m.subjectReturn, message.subject)
 		m.subjectReturn = nil
@@ -476,6 +482,14 @@ func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch key.String() {
 		case "esc":
 			m.subjects.createSession = nil
+			if m.voiceSubjectReturn != nil {
+				cmd := m.thoughts.ReturnFromVoiceSubject(*m.voiceSubjectReturn, nil)
+				m.voiceSubjectReturn = nil
+				m.subjects.input.Blur()
+				m.subjects.err = nil
+				m.screen = screenVoiceThought
+				return m, cmd
+			}
 			if m.subjectReturn != nil {
 				cmd := m.events.ReturnFromSubjectCreation(*m.subjectReturn, nil)
 				m.subjectReturn = nil

@@ -57,7 +57,23 @@ are not needed to build or run it.
   behavior in Thoughts/Events. Browser text selection uses the normal copy path.
 - Application shortcuts work while the terminal has focus. Browser-reserved
   shortcuts such as Ctrl+L and Ctrl+W remain browser actions. Click the terminal
-  to return focus. Microphone, attachments, and mobile packaging are deferred.
+  to return focus. Attachments and mobile packaging are deferred.
+
+### Voice input
+
+Click **Voice input** to open the Thoughts editor with **Record / Stop** controls.
+The browser requests microphone permission when recording starts. Each recording
+can last twenty minutes; Stop restores editing, and Record again keeps the draft.
+Editing, subject changes, and saving are disabled during recording.
+
+While stopped, use **Tab** to switch between the text and subject search. Choose
+an existing subject, **Unassigned**, or **Create subject…**; creating or cancelling
+returns to the preserved draft. **Ctrl+S** saves and **Esc** cancels.
+
+This first stage captures microphone audio without transcription. Audio chunks
+are discarded immediately; there is no playback, audio upload, or recording
+storage. Type or paste draft text while stopped. Reloading or disconnecting ends
+capture and discards unsaved state. Live native transcription follows separately.
 
 ### Local trust and maintenance
 

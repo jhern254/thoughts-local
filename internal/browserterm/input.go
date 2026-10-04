@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
 const (
@@ -28,6 +29,24 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 	}
 	body := frame[1:]
 	switch frame[0] {
+	case 'v':
+		var action thoughts.VoiceAction
+		if len(body) > 256 || json.Unmarshal(body, &action) != nil || action.Draft > 9007199254740991 || action.Recording > 9007199254740991 {
+			return nil, errInput
+		}
+		switch action.Action {
+		case "open":
+			if action.Draft != 0 || action.Recording != 0 {
+				return nil, errInput
+			}
+		case "start", "stop", "recording", "stopped", "denied", "unavailable", "failed":
+			if action.Draft == 0 {
+				return nil, errInput
+			}
+		default:
+			return nil, errInput
+		}
+		return []tea.Msg{action}, nil
 	case 'p':
 		if len(body) > maxPasteBytes {
 			return nil, errInput

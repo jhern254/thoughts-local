@@ -11,6 +11,78 @@
   let ended = false;
   let pendingResize;
   let resizeRetry;
+  const voiceOpen = document.getElementById('voice-open');
+  const voiceControls = document.getElementById('voice-controls');
+  const voiceRecord = document.getElementById('voice-record');
+  const voiceStop = document.getElementById('voice-stop');
+  const voiceTime = document.getElementById('voice-time');
+  let voiceState = {};
+  let captureIdentity;
+  let captureStarted;
+  let captureClock;
+  const microphone = new ThoughtsMicrophone((action, started) => {
+    if (!captureIdentity || !connected) return;
+    if (action === 'recording') {
+      captureStarted = started;
+      clearInterval(captureClock);
+      captureClock = setInterval(updateCaptureTime, 1000);
+    }
+    if (['stopped', 'denied', 'unavailable', 'failed'].includes(action)) {
+      if (captureStarted !== undefined) updateCaptureTime();
+      clearInterval(captureClock);
+    }
+    sendVoice({action, ...captureIdentity});
+  });
+  function updateCaptureTime() {
+    const seconds = Math.min(1200, Math.floor((performance.now() - captureStarted) / 1000));
+    voiceTime.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')} / 20:00`;
+  }
+  function sendVoice(action) {
+    if (send('v', encoder.encode(JSON.stringify(action)))) return true;
+    // Recording controls are never replayed. End capture/session if its control
+    // cannot be delivered, so the backend cannot remain incorrectly unlocked.
+    clearVoice();
+    if (socket) socket.close();
+    return false;
+  }
+  function clearVoice() {
+    microphone.cancel();
+    clearInterval(captureClock);
+    captureIdentity = undefined;
+    captureStarted = undefined;
+    voiceState = {};
+    voiceOpen.hidden = true;
+    voiceControls.hidden = true;
+  }
+  function receiveVoice(state) {
+    const restoreFocus = state.draft && (voiceState.draft !== state.draft || (voiceState.state !== "idle" && state.state === "idle"));
+    const identity = {draft: state.draft, recording: state.recording};
+    if (!captureIdentity || captureIdentity.draft !== identity.draft || captureIdentity.recording !== identity.recording) {
+      microphone.cancel();
+      clearInterval(captureClock);
+      captureIdentity = identity.draft ? identity : undefined;
+      captureStarted = undefined;
+      voiceTime.textContent = '00:00 / 20:00';
+    }
+    voiceState = state;
+    voiceOpen.hidden = !state.available || Boolean(state.draft);
+    voiceOpen.disabled = !state.canOpen;
+    voiceControls.hidden = !state.draft;
+    voiceRecord.disabled = state.state !== 'idle';
+    voiceStop.disabled = !['requesting', 'recording'].includes(state.state);
+    if (state.state === 'requesting') microphone.start();
+    else if (state.state === 'stopping') microphone.stop();
+    else if (state.state === 'idle' || !state.draft) microphone.cancel();
+    if (restoreFocus) term.focus();
+  }
+  voiceOpen.addEventListener('click', () => { if (sendVoice({action: 'open'})) term.focus(); });
+  voiceRecord.addEventListener('click', () => {
+    if (voiceState.state !== 'idle') return;
+    voiceRecord.disabled = true;
+    sendVoice({action: 'start', draft: voiceState.draft, recording: voiceState.recording});
+  });
+  voiceStop.addEventListener('click', () => microphone.stop());
+  window.addEventListener('pagehide', clearVoice);
 
   // Use xterm's supported logger seam. Never forward terminal data or errors.
   const quiet = () => {};
@@ -113,6 +185,7 @@
   });
 
   function connect(attempt = 0) {
+    clearVoice();
     clearResize();
     if (socket) socket.close();
     ended = false;
@@ -139,6 +212,8 @@
       const frame = new Uint8Array(event.data);
       if (frame[0] === 49) {
         term.write(frame.subarray(1));
+      } else if (frame[0] === 118) {
+        receiveVoice(JSON.parse(new TextDecoder().decode(frame.subarray(1))));
       } else if (frame[0] === 55) {
         ended = true;
         const reason = new TextDecoder().decode(frame.subarray(1));
@@ -158,6 +233,7 @@
     connection.onclose = () => {
       if (socket !== connection) return;
       connected = false;
+      clearVoice();
       clearResize();
       term.options.disableStdin = true;
       if (retryBusy) {

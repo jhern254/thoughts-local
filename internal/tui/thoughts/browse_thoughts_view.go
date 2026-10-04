@@ -73,6 +73,9 @@ func (m Model) SelectedSubjectName() string {
 	if m.selected == nil || m.selected.SubjectID == nil {
 		return "Misc"
 	}
+	if m.selectedSubjectName != "" {
+		return m.selectedSubjectName
+	}
 	for _, row := range m.browseThoughts.rows {
 		if row.kind == rowRecord && row.item.ThoughtID == m.selected.ThoughtID && row.item.SubjectName != nil {
 			return *row.item.SubjectName

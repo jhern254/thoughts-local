@@ -31,6 +31,7 @@ const (
 	screenSubjectDelete
 	screenMiscThoughts
 	screenBrowseThoughts
+	screenVoiceThought
 )
 
 type entityKind uint8
@@ -51,9 +52,12 @@ type Model struct {
 	ctx  context.Context
 	user *data.User
 	// screen selects the root child that owns ordinary messages and rendering.
-	screen        screen
-	subjectReturn *events.CreateSubjectRequest
-	logger        logging.Logger
+	screen             screen
+	subjectReturn      *events.CreateSubjectRequest
+	logger             logging.Logger
+	voiceAvailable     bool
+	voiceDraft         uint64
+	voiceSubjectReturn *thoughts.VoiceSubjectRequest
 
 	// Entity selection and panel focus are separate: selectedEntity remembers the
 	// strip choice while entityFocused decides whether the strip or Events owns keys.
@@ -104,6 +108,32 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch message := message.(type) {
+	case thoughts.VoiceAvailable:
+		m.voiceAvailable = true
+		return m, nil
+	case thoughts.VoiceAction:
+		if message.Action == "open" {
+			if !m.VoiceState().CanOpen {
+				return m, nil
+			}
+			m.events.Close()
+			m.subjects.stopRead()
+			m.screen = screenVoiceThought
+			m.voiceDraft++
+			return m, m.thoughts.OpenVoice(m.voiceDraft, m.subjects.service)
+		}
+		if m.screen == screenVoiceThought {
+			var cmd tea.Cmd
+			m.thoughts, cmd = m.thoughts.Update(message)
+			return m, cmd
+		}
+		return m, nil
+	case thoughts.VoiceSubjectRequest:
+		if m.screen != screenVoiceThought || !m.thoughts.AwaitingVoiceSubject(message) {
+			return m, nil
+		}
+		m.voiceSubjectReturn = &message
+		return m.openSubjectCreate(message.Query)
 	case events.CreateSubjectRequest:
 		if m.screen != screenEvents || !m.events.AwaitingSubject(message) {
 			return m, nil
@@ -179,6 +209,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSubjectDetail(message)
 	case screenMiscThoughts:
 		return m.updateMiscThoughts(message)
+	case screenVoiceThought:
+		if key, ok := message.(tea.KeyPressMsg); ok && key.String() == "esc" && m.thoughts.ShowingDetail() {
+			m.thoughts.Reset()
+			return m.openHome()
+		}
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		if m.thoughts.Browsing() {
+			return m.openHome()
+		}
+		return m, cmd
 	case screenBrowseThoughts:
 		if key, ok := message.(tea.KeyPressMsg); ok && m.thoughts.Browsing() {
 			switch key.String() {
@@ -261,7 +302,7 @@ func (m Model) View() tea.View {
 	view := tea.NewView("")
 	view.AltScreen = true
 	switch m.screen {
-	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts:
+	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts, screenVoiceThought:
 		if m.thoughts.ShowingDetail() {
 			name := m.thoughts.SelectedSubjectName()
 			if m.screen == screenSubjectDetail && m.subjects.selected != nil {
@@ -290,6 +331,8 @@ func (m Model) View() tea.View {
 		content = m.viewSubjectDelete()
 	case screenSubjectDetail:
 		content = m.viewSubjectDetail()
+	case screenVoiceThought:
+		content = m.thoughts.View()
 	case screenMiscThoughts:
 		content = "Misc thoughts\n\n" + m.thoughts.View()
 		if m.thoughts.Browsing() {
@@ -311,4 +354,25 @@ func localUserLabel(user *data.User) string {
 		return fmt.Sprintf("%s (%s)", *user.Handle, user.UserID)
 	}
 	return user.UserID
+}
+
+// VoiceState exposes only bounded control metadata to the browser bridge.
+func (m Model) VoiceState() thoughts.VoiceState {
+	state := thoughts.VoiceState{Available: m.voiceAvailable}
+	if !m.voiceAvailable {
+		return state
+	}
+	switch m.screen {
+	case screenEvents:
+		state.CanOpen = m.events.CanLeave()
+	case screenSubjectList:
+		state.CanOpen = !m.subjects.loading
+	case screenBrowseThoughts, screenMiscThoughts, screenSubjectDetail:
+		state.CanOpen = m.thoughts.Browsing() || m.thoughts.ShowingDetail()
+	case screenVoiceThought:
+		state = m.thoughts.VoiceState()
+		state.Available = true
+		state.CanOpen = m.thoughts.ShowingDetail()
+	}
+	return state
 }
