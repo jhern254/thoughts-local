@@ -8,8 +8,13 @@ import (
 	"time"
 )
 
+// SQLite length(TEXT) stops at NUL. The uncommon NUL path substitutes bytes
+// through hex before counting, preserving code-point count without returning bodies.
+const thoughtCharacterCountSQL = `CASE WHEN instr(t.thought, char(0)) = 0 THEN length(t.thought)
+ ELSE length(CAST(unhex(replace(hex(t.thought), '00', '01')) AS TEXT)) END`
+
 const thoughtSummarySelect = `SELECT t.thought_id, substr(t.thought, 1, 81), s.subject_name,
-	t.observed_at, t.created_at
+	t.observed_at, t.created_at, ` + thoughtCharacterCountSQL + `
 	FROM thoughts t
 	LEFT JOIN subjects s ON s.subject_id = t.subject_id AND s.user_id = t.user_id AND s.deleted_at IS NULL
 	WHERE t.user_id = ? AND t.deleted_at IS NULL
@@ -56,7 +61,7 @@ func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query s
 		var item ThoughtSummaryView
 		var subject sql.NullString
 		var observed, created int64
-		if err := rows.Scan(&item.ThoughtID, &item.Preview, &subject, &observed, &created); err != nil {
+		if err := rows.Scan(&item.ThoughtID, &item.Preview, &subject, &observed, &created, &item.CharacterCount); err != nil {
 			return ThoughtSummaryViewResult{}, fmt.Errorf("scan thought summary: %w", TranslateSQLiteError(err))
 		}
 		if subject.Valid {

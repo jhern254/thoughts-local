@@ -66,8 +66,19 @@ func TestService_ThoughtView(t *testing.T) {
 		if count != 230 || err != cause {
 			t.Fatalf("got %d, %v; want 230 and original error", count, err)
 		}
+		stats, statsErr := s.ThoughtStats(t.Context(), "u", scope)
+		if stats.Count != 230 || stats.MaxCharacters != 320 || statsErr != cause {
+			t.Fatalf("got stats %+v, %v; want 230, 320 and original error", stats, statsErr)
+		}
+		if _, err := s.ThoughtStats(t.Context(), "other", scope); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatal("accepted foreign statistics scope")
+		}
 		if _, err := s.BrowseThoughtsView(t.Context(), "other", scope, data.ThoughtSummaryViewRequest{}); !errors.Is(err, data.ErrRecordNotFound) {
 			t.Fatal("accepted foreign scope")
 		}
 	})
+}
+
+func (s metricsStub) ThoughtStatsInRange(ctx context.Context, u string, from, until time.Time) (data.ThoughtIntervalStats, error) {
+	return data.ThoughtIntervalStats{Count: 230, MaxCharacters: 320}, s.err
 }

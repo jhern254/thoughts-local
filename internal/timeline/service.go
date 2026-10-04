@@ -22,6 +22,7 @@ type ThoughtReader interface {
 type MetricsReader interface {
 	ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error)
 	CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error)
+	ThoughtStatsInRange(context.Context, string, time.Time, time.Time) (data.ThoughtIntervalStats, error)
 }
 
 type Service struct {

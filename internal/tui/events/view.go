@@ -339,7 +339,7 @@ func (m *Model) paintTimeline(layout timelineLayout, offset, height int) []strin
 			lines[row-offset] += painted[row-card.top]
 		}
 	}
-	return m.addDistributions(lines, layout.curves, layout.selectedCurve, layout.curveEnd, offset)
+	return m.addDistributions(lines, layout, offset)
 }
 
 func (m *Model) bodyHeight() int { return max(1, m.height-4) }
@@ -397,12 +397,12 @@ func (m Model) View() string {
 	}
 	status := m.message
 	if status == "" {
-		status = "d: curve settings"
+		status = "d: distribution settings"
 	}
 	if m.load.eventsPending && m.load.showStatus {
 		status = "Loading events for " + displaytime.Format(m.load.pendingDay, "January 2, 2006") + "…"
 	} else if !m.load.eventsPending && len(m.items) == 0 && m.message == "" {
-		status = "No events on this day. n: start event • d: curves"
+		status = "No events on this day. n: start event • d: distributions"
 	}
 	if m.expanded != 0 {
 		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
@@ -412,12 +412,12 @@ func (m Model) View() string {
 		help = "← day / → open • Home/End: first/now • r: refresh • n: start • e: end • q: quit"
 	}
 	if m.expanded != 0 {
-		help = "r: refresh event • d: curves • q: quit"
+		help = "r: refresh event • d: distributions • q: quit"
 	}
 	if m.distributions.open {
 		status = m.distributions.label()
 		if m.width < distributionMinWidth {
-			status = "Curves hidden below 60 columns"
+			status = "Distributions hidden below 60 columns"
 		}
 		if m.load.eventsPending && m.load.showStatus {
 			status = "Loading… " + status

@@ -25,10 +25,11 @@ type Metrics interface {
 
 // ThoughtCountResult has refresh ownership independent of cursor-page requests.
 type ThoughtCountResult struct {
-	owner   *int
-	request uint64
-	total   int64
-	err     error
+	owner         *int
+	request       uint64
+	total         int64
+	maxCharacters int64
+	err           error
 }
 
 type summaryRow struct {
@@ -50,8 +51,10 @@ type browseThoughtsState struct {
 	index, offset        int
 	width, height        int
 	moreOlder, moreNewer bool
+	summariesCurrent     bool // Retained refresh rows must not use a new interval reference.
 	metrics              Metrics
 	total                int64
+	maxCharacters        int64
 	countPending         bool
 	countErr             error
 }
@@ -99,6 +102,7 @@ func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
 	}
 	m.browseThoughts.index, m.browseThoughts.offset = 0, 0
 	m.browseThoughts.moreOlder, m.browseThoughts.moreNewer = false, false
+	m.browseThoughts.summariesCurrent = false
 	if m.cancelCount != nil {
 		m.cancelCount()
 	}
@@ -108,23 +112,31 @@ func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
 	m.browseThoughts.countPending, m.browseThoughts.countErr = true, nil
 	owner, scope, reader := m.owner, m.browseThoughts.eventScope, m.browseThoughts.timelineView
 	request, ctx, userID, metrics := m.countRequest, countCtx, m.userID, m.browseThoughts.metrics
-	// Count and the first summary batch are independent reads. Pagination loads
-	// later batches without repeating this full-scope count.
+	// Statistics and the first summary batch are independent reads. Event stats
+	// include the full-interval length reference; paging does not repeat the read.
 	count := func() tea.Msg {
 		if ctx.Err() != nil {
 			return nil
 		}
-		var total int64
+		var total, maxCharacters int64
 		var err error
 		if scope != nil {
-			total, err = reader.CountThoughts(ctx, userID, *scope)
+			var stats data.ThoughtIntervalStats
+			stats, err = reader.ThoughtStats(ctx, userID, *scope)
+			total, maxCharacters = stats.Count, stats.MaxCharacters
 		} else {
 			total, err = metrics.CountThoughts(ctx, userID)
 		}
 		if ctx.Err() != nil {
 			return nil
 		}
-		return ThoughtCountResult{owner: owner, request: request, total: total, err: err}
+		return ThoughtCountResult{
+			owner:         owner,
+			request:       request,
+			total:         total,
+			maxCharacters: maxCharacters,
+			err:           err,
+		}
 	}
 	return tea.Batch(m.loadThoughtsView(data.ThoughtSummaryViewRequest{}, 0), count)
 }
@@ -134,6 +146,7 @@ func (m Model) receiveThoughtCount(result ThoughtCountResult) (Model, tea.Cmd) {
 	if result.owner != m.owner || !m.browsingThoughtsView || result.request != m.countRequest {
 		return m, nil
 	}
+	m.browseThoughts.maxCharacters = result.maxCharacters
 	m.browseThoughts.total, m.browseThoughts.countErr, m.browseThoughts.countPending = result.total, result.err, false
 	operation := logging.ThoughtCountAll
 	if m.browseThoughts.eventScope != nil {
@@ -200,6 +213,7 @@ func (m Model) receiveBrowseThoughts(result BrowseThoughtsResult) (Model, tea.Cm
 	// A cursorless reply replaces the window. Cursor replies extend the edge
 	// requested by scrolling; storage always returns each batch newest first.
 	case result.query.Cursor == nil:
+		m.browseThoughts.summariesCurrent = true
 		m.browseThoughts.index = 0
 		m.browseThoughts.rows = rows
 		if m.browseThoughts.eventScope == nil {

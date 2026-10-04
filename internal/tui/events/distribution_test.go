@@ -91,7 +91,7 @@ func TestModel_Distributions(t *testing.T) {
 			}
 		}
 		press("d")
-		if !strings.Contains(m.View(), "Curves:") {
+		if !strings.Contains(m.View(), "Distributions:") {
 			t.Fatal("distribution controls did not open")
 		}
 		press("right")
@@ -118,7 +118,7 @@ func TestModel_Distributions(t *testing.T) {
 			t.Fatal("tuning changed timeline navigation")
 		}
 		press("esc")
-		if strings.Contains(m.View(), "Curves:") {
+		if strings.Contains(m.View(), "Distributions:") {
 			t.Fatal("Escape did not close controls")
 		}
 		press("d")
@@ -226,8 +226,8 @@ func TestModel_Distributions(t *testing.T) {
 		before, _, _ := m.layout()
 		m = execute(t, m, m.openEvent(1))
 		expanded, positions, _ := m.layout()
-		if hasDistribution(strings.Join(expanded, "\n")) {
-			t.Fatal("expanded event still has a distribution")
+		if len(m.measureTimeline().curves) != 0 {
+			t.Fatal("expanded event still contributes a Gaussian")
 		}
 		if ansi.Cut(ansi.Strip(expanded[positions[1]]), 24, 25) != "╭" {
 			t.Fatal("expansion moved card out of its column")

@@ -204,3 +204,59 @@ func TestPreview(t *testing.T) {
 		}
 	})
 }
+
+func TestPreview_Histogram(t *testing.T) {
+	t.Run("expanded bars preserve card geometry and highlight the selected thought", func(t *testing.T) {
+		filled := preview(t, "-scenario", "expanded", "-plain")
+		outline := preview(t, "-scenario", "expanded", "-plain", "-mode", "outline")
+		for mode, got := range map[string]string{"filled": filled, "outline": outline} {
+			want, err := os.ReadFile("testdata/expanded-" + mode + "-100x36.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != string(want) {
+				t.Fatalf("%s expanded snapshot changed", mode)
+			}
+		}
+		f, o := strings.Split(filled, "\n"), strings.Split(outline, "\n")
+		for i := range f {
+			if ansi.Cut(f[i], 0, 12) != ansi.Cut(o[i], 0, 12) || ansi.Cut(f[i], 22, 100) != ansi.Cut(o[i], 22, 100) {
+				t.Fatalf("mode changed content at row %d", i)
+			}
+		}
+		if filled == outline {
+			t.Fatal("outline did not change bars")
+		}
+		for _, text := range []string{"09:00 - 10:00 AM PDT", "3 thoughts · Newest first", "Thought 43", "Walking"} {
+			if !strings.Contains(filled, text) {
+				t.Fatalf("missing %q", text)
+			}
+		}
+		colored := preview(t, "-scenario", "expanded", "-selected-thought", "2")
+		if ansi.Strip(colored) != filled {
+			t.Fatal("selection changed geometry")
+		}
+		for _, row := range strings.Split(colored, "\n") {
+			if strings.Contains(row, "Compare these") && !strings.Contains(ansi.Cut(row, 12, 22), "38;5;62") {
+				t.Fatal("selected bar missing purple")
+			}
+		}
+	})
+	t.Run("histogram only preview uses the same renderer and fixed dimensions", func(t *testing.T) {
+		for _, mode := range []string{"filled", "outline"} {
+			output := preview(t, "-scenario", "histogram", "-mode", mode, "-plain", "-width", "60", "-height", "28")
+			rows := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+			if len(rows) != 28 {
+				t.Fatalf("got height %d, want 28", len(rows))
+			}
+			for _, row := range rows {
+				if ansi.StringWidth(row) != 60 {
+					t.Fatal("preview width changed")
+				}
+			}
+			if !strings.Contains(output, "320 characters") {
+				t.Fatal("reference missing")
+			}
+		}
+	})
+}

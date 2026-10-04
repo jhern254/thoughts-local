@@ -11,6 +11,7 @@ import (
 type Store interface {
 	ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error)
 	CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error)
+	ThoughtStatsInRange(context.Context, string, time.Time, time.Time) (data.ThoughtIntervalStats, error)
 	CountThoughts(context.Context, string) (int64, error)
 	CountUnassignedThoughts(context.Context, string) (int64, error)
 	ThoughtCountsBySubject(context.Context, string) ([]data.SubjectThoughtCountView, error)
@@ -38,4 +39,8 @@ func (s *Service) CountUnassignedThoughts(ctx context.Context, userID string) (i
 
 func (s *Service) ThoughtCountsBySubject(ctx context.Context, userID string) ([]data.SubjectThoughtCountView, error) {
 	return s.store.ThoughtCountsBySubject(ctx, userID)
+}
+
+func (s *Service) ThoughtStatsInRange(ctx context.Context, userID string, from, until time.Time) (data.ThoughtIntervalStats, error) {
+	return s.store.ThoughtStatsInRange(ctx, userID, from, until)
 }

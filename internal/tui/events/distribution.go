@@ -97,7 +97,7 @@ func (s distributionSettings) label() string {
 	if s.mode == render.Outline {
 		mode = "outline"
 	}
-	return fmt.Sprintf("Curves: %s boost · %d%% size · %s", boost, s.size, mode)
+	return fmt.Sprintf("Distributions: %s boost · %d%% size · %s", boost, s.size, mode)
 }
 
 func (m *Model) cardColumn() int {
@@ -112,7 +112,8 @@ func (m *Model) cardWidth() int { return max(1, m.width-m.cardColumn()-cardBorde
 // addDistributions draws the visible rows using the whole day's contributions.
 // Translating every center by a whole number of cells preserves the fixed dot
 // grid and global mixture gain. Neither selection nor scrolling changes scale.
-func (m *Model) addDistributions(lines []string, curves []render.Distribution, selected, end, offset int) []string {
+func (m *Model) addDistributions(lines []string, layout timelineLayout, offset int) []string {
+	curves, selected, end := layout.curves, layout.selectedCurve, layout.curveEnd
 	if m.cardColumn() == timelineLabelWidth {
 		return lines
 	}
@@ -138,6 +139,43 @@ func (m *Model) addDistributions(lines []string, curves []render.Distribution, s
 			Size:           float64(m.distributions.size) / 100,
 		})
 	}
+
+	// Expanded cards reserve their lane rows, including blank header/metadata rows.
+	// Paint only the visible intersection; the picker supplies its own scroll mapping.
+	histogramTop, histogramEnd, histogramSelected := -1, -1, -1
+	var histogram [][]render.Cell
+	if top, ok := layout.positions[m.expanded]; ok && m.expanded != 0 {
+		for _, card := range layout.cards {
+			if card.top != top {
+				continue
+			}
+			histogramTop = max(0, top-offset)
+			histogramEnd = min(len(lines), top+len(card.content)+2-offset)
+			if histogramTop >= histogramEnd || m.opening || m.err != nil {
+				break
+			}
+			previews, reference := m.picker.EventThoughtBars()
+			bars := make([]render.HistogramBar, 0, len(previews))
+			for _, preview := range previews {
+				// Border, heading and blank line precede the picker; its count row is
+				// already included in preview.Row. All offsets are terminal rows.
+				bars = append(bars, render.HistogramBar{Row: top + 3 + preview.Row - offset - histogramTop, Value: preview.Characters})
+				if preview.Selected {
+					histogramSelected = len(bars) - 1
+				}
+			}
+			if len(bars) > 0 && reference > 0 {
+				_, exponent := m.distributions.boostValue()
+				histogram = render.RenderHistogram(distributionWidth, histogramEnd-histogramTop, bars, render.HistogramOptions{
+					Mode:      m.distributions.mode,
+					Reference: reference,
+					Exponent:  exponent,
+					Size:      float64(m.distributions.size) / 100,
+				})
+			}
+			break
+		}
+	}
 	// Indexes identify style runs, not curve ownership or palette numbers.
 	const (
 		normalStyle = iota
@@ -153,7 +191,17 @@ func (m *Model) addDistributions(lines []string, curves []render.Distribution, s
 	for y, line := range lines {
 		var lane strings.Builder
 		lane.Grow(distributionWidth * 3) // A Braille rune occupies three UTF-8 bytes.
-		if y < len(cells) {
+		var rowCells []render.Cell
+		rowSelected := selected
+		if y >= histogramTop && y < histogramEnd {
+			rowSelected = histogramSelected
+			if y-histogramTop < len(histogram) {
+				rowCells = histogram[y-histogramTop]
+			}
+		} else if y < len(cells) {
+			rowCells = cells[y]
+		}
+		if len(rowCells) > 0 {
 			var run strings.Builder
 			activeStyle := plainStyle
 			flush := func() {
@@ -162,14 +210,14 @@ func (m *Model) addDistributions(lines []string, curves []render.Distribution, s
 					run.Reset()
 				}
 			}
-			for _, cell := range cells[y] {
+			for _, cell := range rowCells {
 				style := normalStyle
 				switch {
 				case cell.Glyph == ' ':
 					style = plainStyle
 				case cell.CurveIndex < 0:
 					style = baselineStyle
-				case cell.CurveIndex == selected && !m.blurred:
+				case cell.CurveIndex == rowSelected && !m.blurred:
 					style = selectedStyle
 				}
 				if style != activeStyle {
