@@ -178,3 +178,17 @@ func TestModel_ClipboardIntegrity(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_ClipboardCancellation(t *testing.T) {
+	t.Run("closing a draft drops its queued clipboard read before accessing the host", func(t *testing.T) {
+		m := thoughtEditor(t)
+		m, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Mod: tea.ModCtrl}))
+		if cmd == nil {
+			t.Fatal("paste did not produce a command")
+		}
+		m, _ = m.Update(key(tea.KeyEscape))
+		if got := cmd(); got != nil {
+			t.Fatalf("got %T, want no cancelled clipboard reply", got)
+		}
+	})
+}

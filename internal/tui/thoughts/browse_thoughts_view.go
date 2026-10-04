@@ -96,19 +96,30 @@ func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
 	}
 	m.browseThoughts.index, m.browseThoughts.offset = 0, 0
 	m.browseThoughts.moreOlder, m.browseThoughts.moreNewer = false, false
+	if m.cancelCount != nil {
+		m.cancelCount()
+	}
+	countCtx, cancelCount := context.WithCancel(m.ctx)
+	m.cancelCount = cancelCount
 	m.countRequest++
 	m.browseThoughts.countPending, m.browseThoughts.countErr = true, nil
 	owner, scope, reader := m.owner, m.browseThoughts.eventScope, m.browseThoughts.timelineView
-	request, ctx, userID, metrics := m.countRequest, m.ctx, m.userID, m.browseThoughts.metrics
+	request, ctx, userID, metrics := m.countRequest, countCtx, m.userID, m.browseThoughts.metrics
 	// Count and the first summary batch are independent reads. Pagination loads
 	// later batches without repeating this full-scope count.
 	count := func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		var total int64
 		var err error
 		if scope != nil {
 			total, err = reader.CountThoughts(ctx, userID, *scope)
 		} else {
 			total, err = metrics.CountThoughts(ctx, userID)
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 		return ThoughtCountResult{owner: owner, request: request, total: total, err: err}
 	}
@@ -135,8 +146,11 @@ func (m *Model) loadThoughtsView(query data.ThoughtSummaryViewRequest, move int)
 	m.request++
 	m.loading, m.err = true, nil
 	owner, scope, reader := m.owner, m.browseThoughts.eventScope, m.browseThoughts.timelineView
-	request, ctx, userID, service := m.request, m.ctx, m.userID, m.service
+	request, ctx, userID, service := m.request, m.beginRead(m.ctx), m.userID, m.service
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		var view data.ThoughtSummaryViewResult
 		var err error
 		// Event browsing goes through TimelineReader so the resolved event range stays
@@ -145,6 +159,9 @@ func (m *Model) loadThoughtsView(query data.ThoughtSummaryViewRequest, move int)
 			view, err = reader.BrowseThoughtsView(ctx, userID, *scope, query)
 		} else {
 			view, err = service.BrowseView(ctx, userID, query)
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 		return BrowseThoughtsResult{owner: owner, request: request, query: query, move: move, view: view, err: err}
 	}

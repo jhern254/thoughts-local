@@ -105,7 +105,14 @@ func newTUI(app *application) *cli.Command {
 			if cmd.Bool("browser") {
 				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), newModel, app.out, app.logger)
 			} else {
-				err = app.runProgram(ctx, newModel(ctx), app.in, app.out)
+				sessionCtx, cancel := context.WithCancel(ctx)
+				session := tui.NewSession(sessionCtx, cancel, newModel)
+				defer session.Stop()
+				err = app.runProgram(sessionCtx, session, app.in, app.out)
+				session.Stop()
+				if session.Failed() {
+					err = errors.New("terminal program failed")
+				}
 			}
 			if err != nil {
 				app.failureMessage = "Could not run the terminal interface."

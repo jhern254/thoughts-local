@@ -74,7 +74,8 @@ xterm.js. Malformed input cancels application work before awaiting peer closure.
 The server owns the shared native Runtime; each session owns its model/context.
 Started commands must respect cancellation. Shutdown joins tracked work before
 the command closes Runtime resources. Reconnect creates a new UI session and
-never restores drafts or replays unsaved input. Tracking supports ordinary
+never restores drafts or replays unsaved input. Both launch modes reuse the
+command guard in `internal/tui/session.go`. Tracking supports ordinary
 `tea.Cmd` and `tea.BatchMsg`; `tea.Sequence`, detached goroutines, or other
 scheduling behavior requires reviewing session cleanup again.
 
@@ -85,6 +86,11 @@ flow-control review. The stalled-output regression gates an accepted TCP socket'
 write after a real WebSocket session starts, exercising the actual write deadline
 and cleanup without relying on OS buffer sizes or a large output payload. It
 does not measure xterm render-queue pressure.
+
+Native clipboard reads do not expose cancellation; commands check before/after
+the call and join any read already running. Pinned Bubbles cursor timers and
+synchronous filters are also joined rather than abandoned. These dependency
+limits require separate review before promising immediately interruptible work.
 
 ## Terminal artifacts
 
