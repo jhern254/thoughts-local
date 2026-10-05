@@ -4,8 +4,3 @@ header { height: 42px; box-sizing: border-box; display: flex; align-items: cente
 #status { flex: 1; font-size: 12px; }
 button { font: inherit; }
 #terminal { position: absolute; inset: 42px 0 0; padding: 8px; }
-
-#voice-controls { display: inline-flex; align-items: center; gap: 8px; }
-#voice-controls[hidden] { display: none; }
-#voice-time { font-size: 12px; white-space: nowrap; }
-@media (max-width: 640px) { header { gap: 6px; } #status { font-size: 10px; } #voice-time { font-size: 10px; } }

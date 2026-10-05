@@ -12,6 +12,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/coder/websocket"
 	"github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/browserterm"
@@ -115,7 +116,7 @@ func TestVoiceTUIWorkflow_SQLite(t *testing.T) {
 				for {
 					select {
 					case last = <-views:
-						if strings.Contains(last, text) && !strings.Contains(last, "Loading…") {
+						if strings.Contains(ansi.Strip(last), text) && !strings.Contains(last, "Loading…") {
 							return
 						}
 					case <-timer.C:
@@ -125,9 +126,9 @@ func TestVoiceTUIWorkflow_SQLite(t *testing.T) {
 			}
 			write(`2{"cols":100,"rows":35}`)
 			waitControl(func(s thoughts.VoiceState) bool { return s.CanOpen })
-			write(`v{"action":"open"}`)
+			write("0t")
 			state := waitControl(func(s thoughts.VoiceState) bool { return s.Draft != 0 })
-			waitView("Voice thought")
+			waitView("Create thought")
 			const body = "voice draft\n界 café 👩‍💻"
 			write("p" + body)
 			waitView("voice draft")
@@ -146,16 +147,17 @@ func TestVoiceTUIWorkflow_SQLite(t *testing.T) {
 				write("0\t")
 				write("pVoice subject")
 				waitView("Create subject…")
-				write("0\x1b[B")
 				if choice == "existing subject" {
 					write("0\x1b[B")
 				}
 				write("0\r")
 				if choice == "new subject" {
 					waitView("Create subject\n")
+					waitControl(func(s thoughts.VoiceState) bool { return s.Draft == 0 })
 					write("0\r")
+					waitControl(func(s thoughts.VoiceState) bool { return s.Draft == 1 && s.State == "idle" })
 				}
-				waitView("Subject: Voice subject")
+				waitView("Voice subject")
 			}
 			write("0\x13")
 			waitView("Thought 1 •")

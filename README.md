@@ -61,14 +61,18 @@ are not needed to build or run it.
 
 ### Voice input
 
-Click **Voice input** to open the Thoughts editor with **Record / Stop** controls.
-The browser requests microphone permission when recording starts. Each recording
-can last twenty minutes; Stop restores editing, and Record again keeps the draft.
-Editing, subject changes, and saving are disabled during recording.
+In browser mode, press **t** from browsing to open the regular Thoughts editor,
+with the same blue Thoughts heading used by normal creation. **F8** toggles
+**Record / Stop**; the TUI displays only the current action. The browser requests
+microphone permission when recording starts. Each recording can last twenty
+minutes; Stop restores editing, and recording again keeps the draft. Editing,
+subject changes, and saving are disabled during recording.
 
-While stopped, use **Tab** to switch between the text and subject search. Choose
-an existing subject, **Unassigned**, or **Create subject…**; creating or cancelling
-returns to the preserved draft. **Ctrl+S** saves and **Esc** cancels.
+While stopped, use **Tab** to switch between the text and optional subject search.
+The first choice is **Create subject…**, followed by matching subjects, as in
+Events. An empty field means **Misc**; clear it to return to Misc. Creating or
+cancelling returns to the preserved draft. **Ctrl+S** saves and **Esc** cancels.
+Plain **v** remains text; Vim-style normal/insert modes are deferred.
 
 This first stage captures microphone audio without transcription. Audio chunks
 are discarded immediately; there is no playback, audio upload, or recording

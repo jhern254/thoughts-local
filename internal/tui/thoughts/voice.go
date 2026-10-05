@@ -61,6 +61,7 @@ type voiceDraft struct {
 	row, width, height        int
 	loading                   bool
 	subjectName               string
+	originalSubjectID         *int64
 }
 
 func (m *Model) stopVoice() {
@@ -74,22 +75,31 @@ func (m *Model) stopVoice() {
 }
 func (m *Model) OpenVoice(id uint64, reader VoiceSubjectReader) tea.Cmd {
 	m.Reset()
+	m.screen = create
+	return tea.Batch(m.input.Focus(), m.EnableVoice(id, reader, ""))
+}
+
+// EnableVoice equips the existing editor without replacing its text or subject.
+func (m *Model) EnableVoice(id uint64, reader VoiceSubjectReader, subjectName string) tea.Cmd {
 	ctx, cancel := context.WithCancel(m.ctx)
 	query := textinput.New()
-	query.Placeholder = "Search subjects"
+	query.Placeholder = "Misc"
 	query.CharLimit = 0
+	query.SetValue(subjectName)
+	query.CursorEnd()
 	m.voice = voiceDraft{
-		ctx:    ctx,
-		cancel: cancel,
-		id:     id,
-		state:  "idle",
-		query:  query,
-		width:  m.list.Width(),
-		height: m.list.Height() + 4,
+		ctx:               ctx,
+		cancel:            cancel,
+		id:                id,
+		state:             "idle",
+		query:             query,
+		width:             m.list.Width(),
+		height:            m.list.Height() + 4,
+		subjectName:       subjectName,
+		originalSubjectID: m.subjectID,
 	}
-	m.screen = create
 	m.resizeVoice(m.voice.width, m.voice.height)
-	return tea.Batch(m.input.Focus(), m.loadVoiceSubjects(reader))
+	return m.loadVoiceSubjects(reader)
 }
 func (m Model) VoiceState() VoiceState {
 	state := VoiceState{Draft: m.voice.id, Recording: m.voice.recording, State: m.voice.state}
@@ -106,9 +116,9 @@ func (m Model) voiceLocked() bool {
 func (m *Model) resizeVoice(width, height int) {
 	m.voice.width, m.voice.height = max(1, width), max(1, height)
 	m.voice.query.SetWidth(max(1, width-2))
-	reserved := 7
+	reserved := 5
 	if m.voice.subjectFocused {
-		reserved += 5
+		reserved += 4
 	}
 	m.input.SetHeight(max(1, height-reserved))
 }
@@ -195,7 +205,8 @@ func (m *Model) ReturnFromVoiceSubject(request VoiceSubjectRequest, subject *dat
 		m.voice.items = append(m.voice.items, *subject)
 		m.subjectID = &subject.SubjectID
 		m.voice.subjectName = subject.SubjectName
-		m.voice.query.SetValue("")
+		m.voice.query.SetValue(subject.SubjectName)
+		m.voice.query.CursorEnd()
 		m.voice.subjectFocused = false
 		m.resizeVoice(m.voice.width, m.voice.height)
 		return m.input.Focus()
@@ -210,26 +221,22 @@ func (m Model) updateVoicePicker(msg tea.Msg) (Model, tea.Cmd) {
 			if key.String() == "up" {
 				step = -1
 			}
-			m.voice.row = max(0, min(m.voice.row+step, len(m.matchingVoiceSubjects())+1))
+			m.voice.row = max(0, min(m.voice.row+step, len(m.matchingVoiceSubjects())))
 			return m, nil
 		case "enter":
-			switch m.voice.row {
-			case 0:
-				m.subjectID = nil
-				m.voice.subjectName = ""
-			case 1:
+			if m.voice.row == 0 {
 				m.voice.suspended = true
 				m.voice.query.Blur()
 				request := VoiceSubjectRequest{m.voice.query.Value(), m.owner, m.voice.id}
 				return m, func() tea.Msg { return request }
-			default:
-				item := m.matchingVoiceSubjects()[m.voice.row-2]
-				m.subjectID = &item.SubjectID
-				m.voice.subjectName = item.SubjectName
 			}
+			item := m.matchingVoiceSubjects()[m.voice.row-1]
+			m.subjectID = &item.SubjectID
+			m.voice.subjectName = item.SubjectName
+			m.voice.query.SetValue(item.SubjectName)
+			m.voice.query.CursorEnd()
 			m.voice.subjectFocused = false
 			m.voice.query.Blur()
-			m.voice.query.SetValue("")
 			m.voice.row = 0
 			m.resizeVoice(m.voice.width, m.voice.height)
 			return m, m.input.Focus()
@@ -259,6 +266,9 @@ func (m Model) updateVoicePicker(msg tea.Msg) (Model, tea.Cmd) {
 	before := m.voice.query.Value()
 	m.voice.query, cmd = m.voice.query.Update(msg)
 	if m.voice.query.Value() != before {
+		m.subjectID = nil
+		m.voice.subjectName = ""
+		m.voice.message = ""
 		m.voice.row = 0
 	}
 	return m, cmd
@@ -278,43 +288,44 @@ func (m Model) acceptVoiceSubjects(reply voiceSubjectsLoaded) (Model, tea.Cmd) {
 	}
 	return m, nil
 }
-func (m Model) voiceView(status string) string {
-	subject := "Unassigned"
-	if m.subjectID != nil {
-		subject = m.voice.subjectName
-	}
-	if m.voice.loading {
-		subject += " • loading choices…"
-	}
-	label := map[string]string{"idle": "Stopped", "requesting": "Requesting microphone…", "recording": "Recording • stop to edit", "stopping": "Stopping microphone…"}[m.voice.state]
-	body := "Voice thought • microphone capture\n" + ansi.Truncate(label, max(1, m.voice.width), "…") + "\n"
-	if m.voice.message != "" {
+
+// editorView is shared by ordinary creation and browser recording.
+func (m Model) editorView(status string) string {
+	if m.inputWarning != "" {
+		status = m.inputWarning + "\n"
+	} else if m.voice.message != "" {
 		status = m.voice.message + "\n"
 	}
-	body += ansi.Truncate(strings.TrimSpace(status), max(1, m.voice.width), "…") + "\n"
-	body += m.input.View() + "\n" + ansi.Truncate("Subject: "+subject, max(1, m.voice.width), "…")
-	if m.voice.subjectFocused {
-		body += "\n" + m.voice.query.View()
-		items := m.matchingVoiceSubjects()
-		visible := max(1, min(4, m.voice.height-10))
-		top := max(0, m.voice.row-visible+1)
-		for row := top; row < min(top+visible, len(items)+2); row++ {
-			label := "Unassigned"
-			if row == 1 {
-				label = "Create subject…"
-			} else if row >= 2 {
-				label = items[row-2].SubjectName
+	body := "Create thought\n" + status + m.input.View()
+	help := "Ctrl+S: save • Enter: newline • Esc: cancel"
+	if m.VoiceOpen() {
+		body += "\nSubject (optional)\n" + m.voice.query.View()
+		if m.voice.subjectFocused {
+			items := m.matchingVoiceSubjects()
+			visible := max(1, min(4, m.voice.height-8))
+			top := max(0, m.voice.row-visible+1)
+			for row := top; row < min(top+visible, len(items)+1); row++ {
+				label := "Create subject…"
+				if row > 0 {
+					label = items[row-1].SubjectName
+				}
+				prefix := "    "
+				if row == m.voice.row {
+					prefix = "  > "
+				}
+				body += "\n" + ansi.Truncate(prefix+label, max(1, m.voice.width), "…")
 			}
-			prefix := "  "
-			if row == m.voice.row {
-				prefix = "> "
-			}
-			body += "\n" + ansi.Truncate(prefix+label, max(1, m.voice.width), "…")
 		}
+		action := "F8: Record"
+		if m.voiceLocked() {
+			action = "F8: Stop"
+		}
+		help = action + " • Tab: subject/text • " + help
+		if m.voiceLocked() {
+			help = action + " • Esc: cancel"
+		}
+		body += "\n" + ansi.Wrap(help, max(1, m.voice.width), "")
+		return body
 	}
-	help := "Tab: subject/text • Ctrl+S: save • Esc: cancel"
-	if m.voiceLocked() {
-		help = "Stop recording to edit or save • Esc: cancel"
-	}
-	return body + "\n" + ansi.Wrap(help, max(1, m.voice.width), "")
+	return body + "\n" + help
 }

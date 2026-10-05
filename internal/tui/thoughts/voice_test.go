@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/testutils"
@@ -64,18 +65,20 @@ func TestModel_Voice(t *testing.T) {
 			t.Fatal("stale stopped callback unlocked new recording")
 		}
 	})
-	t.Run("picker selects clears and preserves subject across recording", func(t *testing.T) {
+	t.Run("picker starts with creation and clears assignment through the optional field", func(t *testing.T) {
 		m := voiceModel(t)
 		reader := &voiceSubjects{items: []data.Subject{{SubjectID: 7, SubjectName: "Work"}}}
 		cmd := m.loadVoiceSubjects(reader)
 		m, _ = m.Update(cmd())
 		m, _ = m.Update(key(tea.KeyTab))
+		if view := ansi.Strip(m.View()); !strings.Contains(view, "> Create subject…") || strings.Contains(view, "Unassigned") || !strings.Contains(view, "Misc") {
+			t.Fatalf("picker got %q, want creation first without Unassigned", view)
+		}
 		m, _ = m.Update(tea.PasteMsg{Content: "Wor"})
 		m, _ = m.Update(key(tea.KeyDown))
-		m, _ = m.Update(key(tea.KeyDown))
 		m, _ = m.Update(key(tea.KeyEnter))
-		if m.subjectID == nil || *m.subjectID != 7 || !strings.Contains(m.View(), "Work") {
-			t.Fatal("picker did not select Work")
+		if m.subjectID == nil || *m.subjectID != 7 || !strings.Contains(ansi.Strip(m.View()), "Work") {
+			t.Fatalf("picker subject got %v, name %q, view %q, want Work", m.subjectID, m.voice.subjectName, m.View())
 		}
 		m, _ = m.Update(VoiceAction{Action: "start", Draft: 1})
 		m, _ = m.Update(VoiceAction{Action: "denied", Draft: 1, Recording: 1})
@@ -83,11 +86,55 @@ func TestModel_Voice(t *testing.T) {
 			t.Fatal("permission failure lost subject or focus")
 		}
 		m, _ = m.Update(key(tea.KeyTab))
-		m, _ = m.Update(key(tea.KeyEnter))
-		if m.subjectID != nil {
-			t.Fatal("Unassigned did not clear subject")
+		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'u', Mod: tea.ModCtrl}))
+		if m.subjectID != nil || m.voice.query.Value() != "" || !strings.Contains(ansi.Strip(m.View()), "Misc") {
+			t.Fatal("clearing the subject field did not restore Misc")
 		}
 	})
+	t.Run("recording shortcut preserves ordinary v input and shows one active action", func(t *testing.T) {
+		m := voiceModel(t)
+		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
+		if m.input.Value() != "v" || !strings.Contains(m.View(), "F8: Record") || strings.Contains(m.View(), "F8: Stop") || strings.Contains(m.View(), "Voice thought") {
+			t.Fatalf("got %q, want normal editor with v and Record only", m.View())
+		}
+		m, _ = m.Update(key(tea.KeyF8))
+		if m.VoiceState().State != "requesting" || !strings.Contains(m.View(), "F8: Stop") || strings.Contains(m.View(), "F8: Record") {
+			t.Fatalf("got %q, want Stop only while requesting", m.View())
+		}
+		m, _ = m.Update(key(tea.KeyF8))
+		if m.VoiceState().State != "stopping" || m.input.Value() != "v" {
+			t.Fatal("F8 did not stop without changing draft")
+		}
+	})
+
+	t.Run("cancel and save preserve the original browsing subject", func(t *testing.T) {
+		for _, save := range []bool{false, true} {
+			m := New(t.Context(), "u", thought.NewService(testutils.NewFakeThoughtStore()), logging.Nop())
+			original, chosen := int64(7), int64(9)
+			m.subjectID = &original
+			m.screen = create
+			m.EnableVoice(1, &voiceSubjects{}, "Original")
+			m.subjectID = &chosen
+			m.voice.query.SetValue("Chosen")
+			m.voice.subjectName = "Chosen"
+			m.input.SetValue("preserved")
+			if save {
+				var cmd tea.Cmd
+				m, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+				m, cmd = m.Update(cmd())
+				change := cmd().(ChangedMsg)
+				if change.SubjectID == nil || *change.SubjectID != chosen || m.selected.SubjectID == nil || *m.selected.SubjectID != chosen {
+					t.Fatal("save did not persist and invalidate the chosen subject")
+				}
+			} else {
+				m, _ = m.Update(key(tea.KeyEsc))
+			}
+			if m.subjectID == nil || *m.subjectID != original || m.VoiceOpen() {
+				t.Fatal("leaving editor lost its original browsing scope")
+			}
+		}
+	})
+
 	t.Run("closing cancels subject reads and ignores queued replies", func(t *testing.T) {
 		m := voiceModel(t)
 		reader := &voiceSubjects{items: []data.Subject{{SubjectID: 7, SubjectName: "old"}}}

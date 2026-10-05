@@ -214,6 +214,9 @@ func (m Model) Browsing() bool {
 	return m.screen == browse && !m.list.SettingFilter() && !m.list.IsFiltered()
 }
 
+// Creating lets the parent equip and render the shared thought editor.
+func (m Model) Creating() bool { return m.screen == create }
+
 // ShowingDetail lets the parent render the shared detail without list context.
 func (m Model) ShowingDetail() bool { return m.screen == detail }
 
@@ -349,10 +352,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if result.operation == logging.ThoughtCreate {
 			m.input.Reset()
 			m.selectedSubjectName = m.voice.subjectName
+			id := m.subjectID
+			if m.VoiceOpen() {
+				m.subjectID = m.voice.originalSubjectID
+			}
 			m.stopVoice()
 			m.stale = true
 			m.logger.Mutation(logging.ThoughtCreated, result.item.ThoughtID)
-			id := m.subjectID
 			return m, func() tea.Msg { return ChangedMsg{SubjectID: id} }
 		}
 		return m, nil
@@ -370,8 +376,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch m.screen {
 		case create:
 			if m.VoiceOpen() && key.String() == "esc" {
-				m.Reset()
-				return m, nil
+				m.subjectID = m.voice.originalSubjectID
+				m.stopVoice()
+			}
+			if m.VoiceOpen() && key.String() == "f8" {
+				action := "start"
+				if m.voiceLocked() {
+					action = "stop"
+				}
+				return m.updateVoiceAction(VoiceAction{Action: action, Draft: m.voice.id, Recording: m.voice.recording})
 			}
 			if m.voiceLocked() {
 				return m, nil
@@ -397,6 +410,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.screen = browse
 				return m, nil
 			case "ctrl+s":
+				if m.VoiceOpen() && m.voice.query.Value() != "" && m.subjectID == nil {
+					m.voice.message = "Select a subject, create one, or clear the optional field."
+					m.voice.subjectFocused = true
+					m.resizeVoice(m.voice.width, m.voice.height)
+					m.input.Blur()
+					return m, m.voice.query.Focus()
+				}
 				m.inputWarning = ""
 				m.input.Blur()
 				cmd := m.createThought(m.input.Value())
@@ -473,16 +493,7 @@ func (m Model) View() string {
 	}
 	switch m.screen {
 	case create:
-		if m.VoiceOpen() {
-			if m.inputWarning != "" {
-				status = m.inputWarning + "\n"
-			}
-			return m.voiceView(status)
-		}
-		if m.inputWarning != "" {
-			status = m.inputWarning + "\n"
-		}
-		return "Create thought\n" + status + m.input.View() + "\nCtrl+S: save • Enter: newline • Esc: cancel"
+		return m.editorView(status)
 	case detail:
 		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:
