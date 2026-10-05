@@ -153,7 +153,7 @@ func TestModel_Distributions(t *testing.T) {
 			m, _ = m.Update(eventKey("left"))
 			m, _ = m.Update(eventKey("down"))
 		}
-		if !strings.Contains(m.View(), "linear boost · 50% size") {
+		if !strings.Contains(m.View(), "low boost · 50% size") {
 			t.Fatal("lower tuning bounds are wrong")
 		}
 		m, _ = m.Update(eventKey("f"))

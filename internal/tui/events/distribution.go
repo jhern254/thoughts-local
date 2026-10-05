@@ -36,7 +36,8 @@ const (
 )
 
 // These are session-local presentation settings, independent of day loads.
-// Reset to default restores filled mode, normal boost (exponent 0.8), size 100%.
+// Reset restores filled mode, size 100%, and normal boost: curves use exponent
+// 0.8, while histograms use their separate cubic default via HistogramExponent.
 // Smaller exponents give low counts more presence without moving the maximum.
 // Size scales the renderer's gains; the lane and card geometry stay fixed.
 type distributionSettings struct {
@@ -55,7 +56,7 @@ func (s distributionSettings) boostValue() (string, float64) {
 		name     string
 		exponent float64
 	}{
-		boostLinear: {"linear", 1},
+		boostLinear: {"low", 1},
 		boostNormal: {"normal", 0.8},
 		boostMedium: {"medium", 0.5},
 		boostStrong: {"strong", 0.25},
@@ -169,7 +170,7 @@ func (m *Model) addDistributions(lines []string, layout timelineLayout, offset i
 				histogram = render.RenderHistogram(distributionWidth, histogramEnd-histogramTop, bars, render.HistogramOptions{
 					Mode:      m.distributions.mode,
 					Reference: reference,
-					Exponent:  exponent,
+					Exponent:  render.HistogramExponent(exponent),
 					Size:      float64(m.distributions.size) / 100,
 				})
 			}

@@ -206,6 +206,22 @@ func TestPreview(t *testing.T) {
 }
 
 func TestPreview_Histogram(t *testing.T) {
+	t.Run("similar length scenario shows distinct bars on a shared stem", func(t *testing.T) {
+		view := preview(t, "-scenario", "expanded-similar", "-plain")
+		widths := []int{}
+		for _, row := range strings.Split(view, "\n") {
+			if strings.Contains(row, "characters…") {
+				widths = append(widths, ansi.StringWidth(strings.TrimSpace(ansi.Cut(row, 12, 22))))
+			}
+			if strings.Contains(row, "Thought 43") && strings.TrimSpace(ansi.Cut(row, 12, 22)) != "⢸" {
+				t.Fatal("stem missing beside timestamp")
+			}
+		}
+		if len(widths) != 3 || widths[0] >= widths[1] || widths[1] >= widths[2] {
+			t.Fatalf("got similar-length widths %v, want strictly increasing", widths)
+		}
+	})
+
 	t.Run("expanded bars preserve card geometry and highlight the selected thought", func(t *testing.T) {
 		filled := preview(t, "-scenario", "expanded", "-plain")
 		outline := preview(t, "-scenario", "expanded", "-plain", "-mode", "outline")

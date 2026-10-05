@@ -1,10 +1,11 @@
 package events
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"errors"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/render"
@@ -28,7 +29,7 @@ func TestModel_ThoughtHistogram(t *testing.T) {
 				plain := ansi.Strip(row)
 				isTitle := strings.Contains(ansi.Cut(plain, 24, 80), "preview ")
 				lane := ansi.Cut(plain, 12, 22)
-				if hasDistribution(lane) != isTitle {
+				if (hasDistribution(lane) && strings.TrimSpace(lane) != "⢸") != isTitle {
 					t.Fatalf("bar/title mismatch: %q", plain)
 				}
 				if isTitle {
@@ -109,6 +110,10 @@ func TestModel_ThoughtHistogramOwnership(t *testing.T) {
 		m = execute(t, m, m.openEvent(1))
 		before, positions, _ := m.layout()
 		first := positions[1] + 4
+		if stem := ansi.Cut(before[first+1], 12, 22); !strings.Contains(stem, "38;5;240") || strings.TrimSpace(ansi.Strip(stem)) != "⢸" {
+			t.Fatal("stem is missing or not muted")
+		}
+
 		if !strings.Contains(ansi.Cut(before[first], 12, 22), "38;5;62") {
 			t.Fatal("selected thought bar is not purple")
 		}

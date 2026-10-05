@@ -15,13 +15,29 @@ type HistogramBar struct {
 type HistogramOptions struct {
 	Mode      Mode
 	Reference int64
-	Exponent  float64 // Positive power; invalid values use the curve default, 0.8.
+	Exponent  float64 // Positive power; invalid values use the histogram default, 3.0.
 	Size      float64 // Dimension multiplier, default 1, bounded to [0.5, 1.25].
+}
+
+// A cubic default spreads similar lengths near the event maximum farther apart.
+// This is separate from countExponent: collapsed event curves keep their 0.8
+// default. Raise histogramExponent for more contrast; lower it for fuller bars.
+const histogramExponent = 3.0
+
+// HistogramExponent maps the single distribution boost control to the histogram's
+// own default. Normal curve boost (0.8) gives cubic bars (3.0); increasing boost
+// lowers both exponents, making small values fuller in both views. This shared
+// mapping also keeps the preview command consistent with Events.
+func HistogramExponent(curveExponent float64) float64 {
+	if curveExponent <= 0 || math.IsNaN(curveExponent) || math.IsInf(curveExponent, 0) {
+		return histogramExponent
+	}
+	return histogramExponent * curveExponent / countExponent
 }
 
 // RenderHistogram draws discrete leftward bars in the existing Braille language.
 // It returns height rows of width cells; nonpositive dimensions return nil.
-// CurveIndex identifies the input bar for caller-owned coloring, or -1 for blank.
+// CurveIndex identifies the input bar for caller-owned coloring, or -1 for blank or the muted connecting stem.
 // Selection is not a drawing input and cannot change bar geometry.
 //
 // For full character count L and event maximum R:
@@ -31,9 +47,12 @@ type HistogramOptions struct {
 //	reach = max(1, round(maximumReach * ratio^exponent))
 //
 // The default maximum is 16 dots, matching the curve's default peak. Lowering
-// exponent boosts short thoughts; size changes maximum reach, never row height.
+// exponent boosts short thoughts; raising it emphasizes differences near the
+// maximum. The histogram default is cubic (3.0); size changes reach, not height.
 // Each positive bar spans all four dot rows of one cell and includes its right
-// baseline. Outline keeps only that rectangle's perimeter. Zero/negative values
+// baseline. A one-dot-wide stem connects the first positive bar to the last,
+// including clipped/offscreen bars, but never extends into headers or footers.
+// Outline keeps only each rectangle's perimeter and the same stem. Zero/negative values
 // and unknown references draw nothing, rather than inventing an aesthetic mound.
 func RenderHistogram(width, height int, bars []HistogramBar, options HistogramOptions) [][]Cell {
 	if width <= 0 || height <= 0 {
@@ -51,7 +70,7 @@ func RenderHistogram(width, height int, bars []HistogramBar, options HistogramOp
 	}
 	exponent := options.Exponent
 	if exponent <= 0 || math.IsNaN(exponent) || math.IsInf(exponent, 0) {
-		exponent = countExponent
+		exponent = histogramExponent
 	}
 	size := options.Size
 	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
@@ -60,6 +79,21 @@ func RenderHistogram(width, height int, bars []HistogramBar, options HistogramOp
 	size = min(maxSize, max(minSize, size))
 	baseline := width*brailleColumns - 1
 	maximum := min(float64(baseline), (minAmplitude+amplitudeGain)*size)
+	// Find support before clipping so cropping a viewport cannot shorten the stem.
+	first, last := height, -1
+	for _, bar := range bars {
+		if bar.Value > 0 {
+			first = min(first, bar.Row)
+			last = max(last, bar.Row)
+		}
+	}
+	var stem rune = brailleBlank
+	for dot := 0; dot < brailleRows; dot++ {
+		stem |= brailleBit(baseline%brailleColumns, dot)
+	}
+	for row := max(0, first); row <= min(height-1, last); row++ {
+		rows[row][width-1] = Cell{Glyph: stem, CurveIndex: -1}
+	}
 	for index, bar := range bars {
 		if bar.Row < 0 || bar.Row >= height || bar.Value <= 0 {
 			continue

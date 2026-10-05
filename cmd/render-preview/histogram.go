@@ -30,7 +30,7 @@ func drawHistogram(width, height, selected int, options render.Options, plain bo
 	cells := render.RenderHistogram(curveWidth, 8, bars, render.HistogramOptions{
 		Mode:      options.Mode,
 		Reference: 320,
-		Exponent:  options.CountExponent,
+		Exponent:  render.HistogramExponent(options.CountExponent),
 		Size:      options.Size,
 	})
 	lines := []string{"Thought length histogram", "Whole-event maximum: 320 characters", ""}

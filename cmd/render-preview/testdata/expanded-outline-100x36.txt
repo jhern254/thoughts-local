@@ -12,12 +12,12 @@ Local user: local (demo)
                         │                                                                          │
                         │3 thoughts · Newest first                                                 │
              ⢸⣉⣉⣉⣉⣉⣉⣉⣹  │   Reading  A longer reflection on the chapter…                           │
-                        │  Thought 43 • Oct 4, 2026 9:50 AM PDT                                    │
-                        │                                                                          │
-                  ⢸⣉⣉⣹  │   Reading  Compare these two explanations…                               │
-                        │  Thought 42 • Oct 4, 2026 9:30 AM PDT                                    │
-                        │                                                                          │
-                    ⢸⣹  │   Reading  Revisit this passage.                                         │
+                     ⢸  │  Thought 43 • Oct 4, 2026 9:50 AM PDT                                    │
+                     ⢸  │                                                                          │
+                     ⣿  │   Reading  Compare these two explanations…                               │
+                     ⢸  │  Thought 42 • Oct 4, 2026 9:30 AM PDT                                    │
+                     ⢸  │                                                                          │
+                     ⣿  │   Reading  Revisit this passage.                                         │
                         │  Thought 41 • Oct 4, 2026 9:10 AM PDT                                    │
                         ╰──────────────────────────────────────────────────────────────────────────╯
                      ⢸                                                                              

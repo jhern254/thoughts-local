@@ -35,7 +35,7 @@ func run(args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	width := flags.Int("width", 100, "terminal columns (at least 32)")
 	height := flags.Int("height", 36, "terminal rows (at least 12)")
-	scenario := flags.String("scenario", "main", "distributions, histogram, expanded, main, adjacent, gapped, crowded, scale, or empty")
+	scenario := flags.String("scenario", "main", "distributions, histogram, expanded, expanded-similar, main, adjacent, gapped, crowded, scale, or empty")
 	selectedThought := flags.Int("selected-thought", 1, "selected histogram thought, numbered from 1; 0 means none")
 	mode := flags.String("mode", "filled", "filled or outline")
 	selected := flags.Int("selected", 3, "selected event, numbered from 1; 0 means none")
@@ -174,7 +174,7 @@ func draw(scene scene, width, height, selected, selectedThought int, options ren
 			histogram = render.RenderHistogram(curveWidth, cardHeight, bars, render.HistogramOptions{
 				Mode:      options.Mode,
 				Reference: reference,
-				Exponent:  options.CountExponent,
+				Exponent:  render.HistogramExponent(options.CountExponent),
 				Size:      options.Size,
 			})
 		}
