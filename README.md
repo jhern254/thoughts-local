@@ -1,5 +1,31 @@
 # Building AI Chat app in Go Lang, Python, SQLite 
 
+## Database migrations
+
+Run `make migrate/up` (optionally `DB_PATH=/path/to/thoughts.db`). The Make targets
+build the standard golang-migrate CLI into `bin/migrate` from the pinned module in
+`tools/migrate`. No globally installed migration CLI is required. The tool uses
+modernc SQLite v1.46.1, matching the application; older CLI builds can lack
+`unhex()`, which the schema needs for exact counts after embedded NULs. Keep the
+tool and application SQLite versions aligned when upgrading. `make build` also
+builds the migration tool; its dependencies do not enter the application module.
+
+`make migrate/down` rolls back one migration; `make migrate/version` reports the
+version. Disposable TUI demos use the same local migration binary. Migrations
+remain explicit and are never applied automatically by the executable.
+
+The development schema was revised in migration `000004`: recreate disposable
+development databases after this change. Running migrations against an already
+migrated database does not retrofit the revised table definition.
+
+Thoughts store a generated `character_count`: the number of Unicode code points
+in the complete stored text, including whitespace, newlines and embedded NULs.
+SQLite maintains this STORED value on every write, including SQL imports. The
+existing active chronological index appends the count, letting Event statistics
+read integers from the index; Event pages read the same value for visible rows.
+Ordinary browsing and latest previews still select zero for their unused count.
+The SQL migrations are authoritative; `mvp_schema.dbml` is a schema overview.
+
 ## Thoughts TUI
 
 Build with `make tui/build`. Apply migrations explicitly with `make migrate/up`

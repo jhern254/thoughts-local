@@ -12,7 +12,7 @@ func TestMigrations_ThoughtBrowse(t *testing.T) {
 		if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE name='idx_thoughts_active_user_observed_created_id'`).Scan(&definition); err != nil {
 			t.Fatal(err)
 		}
-		for _, part := range []string{"user_id, observed_at DESC, created_at DESC, thought_id DESC", "WHERE deleted_at IS NULL"} {
+		for _, part := range []string{"user_id, observed_at DESC, created_at DESC, thought_id DESC, character_count", "WHERE deleted_at IS NULL"} {
 			if !strings.Contains(definition, part) {
 				t.Fatalf("got index %q, want %q", definition, part)
 			}
@@ -31,6 +31,16 @@ func TestMigrations_ThoughtBrowse(t *testing.T) {
 		}
 		if count != 1 {
 			t.Fatalf("got %d indexes after redeploy, want 1", count)
+		}
+		insertUsers(t, db)
+		if _, err := db.Exec("INSERT INTO thoughts(user_id,thought) VALUES('user-1',?)", "a\x00界😀\n"); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.QueryRow("SELECT character_count FROM thoughts WHERE user_id='user-1'").Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 5 {
+			t.Fatalf("count after schema redeploy: got %d, want 5", count)
 		}
 	})
 }

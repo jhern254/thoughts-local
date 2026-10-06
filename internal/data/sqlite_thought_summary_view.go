@@ -8,11 +8,6 @@ import (
 	"time"
 )
 
-// SQLite length(TEXT) stops at NUL. The uncommon NUL path substitutes bytes
-// through hex before counting, preserving code-point count without returning bodies.
-const thoughtCharacterCountSQL = `CASE WHEN instr(t.thought, char(0)) = 0 THEN length(t.thought)
- ELSE length(CAST(unhex(replace(hex(t.thought), '00', '01')) AS TEXT)) END`
-
 const thoughtSummarySelectPrefix = `SELECT t.thought_id, substr(t.thought, 1, 81), s.subject_name,
 	t.observed_at, t.created_at, `
 
@@ -25,7 +20,7 @@ const thoughtSummaryFrom = `
 // Generic browsing and latest previews only use the bounded text prefix.
 // Event pages opt into full character counts for their per-Thought length bars.
 const thoughtSummarySelect = thoughtSummarySelectPrefix + "0" + thoughtSummaryFrom
-const eventThoughtSummarySelect = thoughtSummarySelectPrefix + thoughtCharacterCountSQL + thoughtSummaryFrom
+const eventThoughtSummarySelect = thoughtSummarySelectPrefix + "t.character_count" + thoughtSummaryFrom
 
 func (s *SQLiteThoughtStore) BrowseThoughtsView(ctx context.Context, userID string, request ThoughtSummaryViewRequest) (ThoughtSummaryViewResult, error) {
 	return s.browseThoughtSummaries(ctx, thoughtSummarySelect, []any{userID}, request, ThoughtSummaryViewBatchSize)

@@ -47,10 +47,10 @@ type ThoughtIntervalStats struct {
 }
 
 // ThoughtStatsInRange returns the whole-interval count and maximum length.
-// The shared character-count expression includes text after embedded NULs.
+// The indexed, generated count includes text after embedded NULs.
 func (s *SQLiteMetricsStore) ThoughtStatsInRange(ctx context.Context, userID string, from, until time.Time) (ThoughtIntervalStats, error) {
 	var stats ThoughtIntervalStats
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(MAX(`+thoughtCharacterCountSQL+`), 0)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(MAX(t.character_count), 0)
  FROM thoughts t JOIN users u ON u.user_id=t.user_id
  WHERE t.user_id=? AND t.deleted_at IS NULL AND u.deleted_at IS NULL
  AND t.observed_at >= ? AND t.observed_at < ?`, userID, from.Unix(), until.Unix()).Scan(&stats.Count, &stats.MaxCharacters)
