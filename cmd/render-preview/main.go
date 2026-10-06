@@ -35,8 +35,8 @@ func run(args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	width := flags.Int("width", 100, "terminal columns (at least 32)")
 	height := flags.Int("height", 36, "terminal rows (at least 12)")
-	scenario := flags.String("scenario", "main", "distributions, histogram, expanded, expanded-similar, main, adjacent, gapped, crowded, scale, or empty")
-	selectedThought := flags.Int("selected-thought", 1, "selected histogram thought, numbered from 1; 0 means none")
+	scenario := flags.String("scenario", "main", "distributions, thought-lengths, expanded, expanded-similar, main, adjacent, gapped, crowded, scale, or empty")
+	selectedThought := flags.Int("selected-thought", 1, "selected Thought bar, numbered from 1; 0 means none")
 	mode := flags.String("mode", "filled", "filled or outline")
 	selected := flags.Int("selected", 3, "selected event, numbered from 1; 0 means none")
 	exponent := flags.Float64("count-exponent", 0.8, "positive count exponent; 0.25 strongly boosts smaller counts")
@@ -64,8 +64,8 @@ func run(args []string, output io.Writer) error {
 	default:
 		return fmt.Errorf("mode must be filled or outline")
 	}
-	if *scenario == "histogram" {
-		_, err := io.WriteString(output, drawHistogram(*width, *height, *selectedThought-1, options, *plain))
+	if *scenario == "thought-lengths" {
+		_, err := io.WriteString(output, drawThoughtLengths(*width, *height, *selectedThought-1, options, *plain))
 		return err
 	}
 	if *scenario == "distributions" {
@@ -131,8 +131,8 @@ func draw(scene scene, width, height, selected, selectedThought int, options ren
 		}
 	}
 	curves := make([]render.Distribution, 0, len(scene.cards))
-	histogramTop, histogramEnd := -1, -1
-	var histogram [][]render.Cell
+	thoughtPlotTop, thoughtPlotEnd := -1, -1
+	var thoughtPlotCells [][]render.Cell
 	selectedCurve := -1
 	for i, card := range scene.cards {
 		count := fmt.Sprintf("%d thoughts", card.count)
@@ -164,17 +164,17 @@ func draw(scene scene, width, height, selected, selectedThought int, options ren
 			}
 			curves = append(curves, render.Distribution{CenterY: float64(card.top*4) + float64(cardHeight*4-1)/2, Count: card.count})
 		} else {
-			histogramTop, histogramEnd = card.top, card.top+cardHeight
-			bars := make([]render.HistogramBar, 0, len(card.thoughts))
+			thoughtPlotTop, thoughtPlotEnd = card.top, card.top+cardHeight
+			bars := make([]render.ThoughtLengthBar, 0, len(card.thoughts))
 			var reference int64
 			for i, thought := range card.thoughts {
-				bars = append(bars, render.HistogramBar{Row: 4 + 3*i, Value: thought.characters})
+				bars = append(bars, render.ThoughtLengthBar{Row: 4 + 3*i, CharacterCount: thought.characters})
 				reference = max(reference, thought.characters)
 			}
-			histogram = render.RenderHistogram(curveWidth, cardHeight, bars, render.HistogramOptions{
+			thoughtPlotCells = render.RenderThoughtLengthBars(curveWidth, cardHeight, bars, render.ThoughtLengthBarOptions{
 				Mode:      options.Mode,
 				Reference: reference,
-				Exponent:  render.HistogramExponent(options.CountExponent),
+				Exponent:  render.ThoughtLengthExponent(options.CountExponent),
 				Size:      options.Size,
 			})
 		}
@@ -196,8 +196,8 @@ func draw(scene scene, width, height, selected, selectedThought int, options ren
 	body := make([]string, len(labels))
 	for y := range body {
 		lane := strings.Repeat(" ", curveWidth)
-		if y >= histogramTop && y < histogramEnd {
-			lane = distributionRow(histogram[y-histogramTop], selectedThought, plain)
+		if y >= thoughtPlotTop && y < thoughtPlotEnd {
+			lane = distributionRow(thoughtPlotCells[y-thoughtPlotTop], selectedThought, plain)
 		} else if y < len(cells) {
 			lane = distributionRow(cells[y], selectedCurve, plain)
 		}
@@ -214,7 +214,7 @@ func draw(scene scene, width, height, selected, selectedThought int, options ren
 	if scene.ending == "..." {
 		help = "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end • q: quit"
 	}
-	if histogram != nil {
+	if thoughtPlotCells != nil {
 		help = "← collapse • → open • ↑/↓ thoughts • PgUp/PgDn scroll • d distributions"
 	}
 	lines = append(lines, "", help, strings.Repeat("─", width), "Thoughts   Subjects", "Tab: panel • ←/→: entity • Enter: open")

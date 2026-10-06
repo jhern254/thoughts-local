@@ -41,20 +41,20 @@ func (m *Model) ResizeEventView(width, rows int) {
 	m.browseThoughts.keepVisible()
 }
 
-// EventThoughtBar identifies a visible preview row relative to the picker's View.
+// ThoughtPlot identifies a visible preview row relative to the picker's View.
 // Events owns lane placement and rendering; the picker owns scrolling/selection.
-type EventThoughtBar struct {
-	Row        int
-	Characters int64
-	Selected   bool
+type ThoughtPlot struct {
+	Row            int
+	CharacterCount int64
+	Selected       bool
 }
 
-func (m Model) EventThoughtBars() ([]EventThoughtBar, int64) {
+func (m Model) EventThoughtPlots() ([]ThoughtPlot, int64) {
 	s := m.browseThoughts
-	if s.eventScope == nil || m.ShowingDetail() || s.countPending || s.countErr != nil || !s.summariesCurrent {
+	if s.eventScope == nil || m.ShowingDetail() || s.statsPending || s.statsErr != nil || !s.summariesCurrent {
 		return nil, 0
 	}
-	var bars []EventThoughtBar
+	var plots []ThoughtPlot
 	for index := s.offset / summaryLines; index < len(s.rows); index++ {
 		row := index*summaryLines - s.offset
 		if row >= s.height {
@@ -63,7 +63,11 @@ func (m Model) EventThoughtBars() ([]EventThoughtBar, int64) {
 		if row < 0 || s.rows[index].kind != rowRecord {
 			continue
 		}
-		bars = append(bars, EventThoughtBar{Row: row + 1, Characters: s.rows[index].item.CharacterCount, Selected: index == s.index && !m.blurred})
+		plots = append(plots, ThoughtPlot{
+			Row:            row + 1,
+			CharacterCount: s.rows[index].item.CharacterCount,
+			Selected:       index == s.index && !m.blurred,
+		})
 	}
-	return bars, s.maxCharacters
+	return plots, s.maxCharacters
 }

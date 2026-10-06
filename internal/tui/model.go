@@ -178,7 +178,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
 		return m, nil
-	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtCountResult:
+	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtBrowseStatsResult:
 		var cmd, eventCmd tea.Cmd
 		m.thoughts, cmd = m.thoughts.Update(message)
 		m.events, eventCmd = m.events.Update(message)

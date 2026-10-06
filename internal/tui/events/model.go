@@ -474,7 +474,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		cmd := m.loadDay(day)
 		return m, cmd
-	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtCountResult:
+	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtBrowseStatsResult:
 		m.load.retainedBody = ""
 		var cmd tea.Cmd
 		m.picker, cmd = m.picker.Update(msg)

@@ -339,7 +339,7 @@ func (m *Model) paintTimeline(layout timelineLayout, offset, height int) []strin
 			lines[row-offset] += painted[row-card.top]
 		}
 	}
-	return m.addDistributions(lines, layout, offset)
+	return m.paintDistributionLane(lines, layout, offset)
 }
 
 func (m *Model) bodyHeight() int { return max(1, m.height-4) }

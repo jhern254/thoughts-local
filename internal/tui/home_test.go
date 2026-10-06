@@ -239,15 +239,15 @@ func TestModel_EventsHome(t *testing.T) {
 		}
 		for i, row := range focusedRows {
 			if ansi.Cut(ansi.Strip(row), 12, 22) != ansi.Cut(ansi.Strip(blurredRows[i]), 12, 22) {
-				t.Fatal("panel switch changed histogram geometry")
+				t.Fatal("panel switch changed thought plot geometry")
 			}
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 		if m.events.View() != expanded {
-			t.Fatal("focus return changed histogram highlight")
+			t.Fatal("focus return changed thought plot highlight")
 		}
 		if !hasCurve(expanded) || !strings.Contains(expanded, "Newest first") {
-			t.Fatal("expansion failed to show its thought histogram")
+			t.Fatal("expansion failed to show its thought length plot")
 		}
 		m, cmd = rootUpdate(m, enterKey())
 		m = runHomeData(t, m, cmd)

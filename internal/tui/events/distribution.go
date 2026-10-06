@@ -27,7 +27,7 @@ const (
 
 // Preset order is the left/right control order; normal matches the renderer default.
 const (
-	boostLinear = iota
+	boostLow = iota
 	boostNormal
 	boostMedium
 	boostStrong
@@ -37,7 +37,7 @@ const (
 
 // These are session-local presentation settings, independent of day loads.
 // Reset restores filled mode, size 100%, and normal boost: curves use exponent
-// 0.8, while histograms use their separate cubic default via HistogramExponent.
+// 0.8, while thought length bars use their separate cubic default via ThoughtLengthExponent.
 // Smaller exponents give low counts more presence without moving the maximum.
 // Size scales the renderer's gains; the lane and card geometry stay fixed.
 type distributionSettings struct {
@@ -51,18 +51,18 @@ func defaultDistributionSettings() distributionSettings {
 	return distributionSettings{boost: boostNormal, size: distributionDefaultSize, mode: render.Filled}
 }
 
-func (s distributionSettings) boostValue() (string, float64) {
+func (s distributionSettings) boostPreset() (string, float64) {
 	levels := [...]struct {
 		name     string
 		exponent float64
 	}{
-		boostLinear: {"low", 1},
+		boostLow:    {"low", 1},
 		boostNormal: {"normal", 0.8},
 		boostMedium: {"medium", 0.5},
 		boostStrong: {"strong", 0.25},
 		boostExtra:  {"extra", 0.15},
 	}
-	level := levels[min(len(levels)-1, max(boostLinear, s.boost))]
+	level := levels[min(len(levels)-1, max(boostLow, s.boost))]
 	return level.name, level.exponent
 }
 
@@ -70,7 +70,7 @@ func (m *Model) tuneDistributions(key string) {
 	s := &m.distributions
 	switch key {
 	case "left", "h":
-		s.boost = max(boostLinear, s.boost-1)
+		s.boost = max(boostLow, s.boost-1)
 	case "right", "l":
 		s.boost = min(boostCount-1, s.boost+1)
 	case "down", "j":
@@ -93,7 +93,7 @@ func (m *Model) tuneDistributions(key string) {
 }
 
 func (s distributionSettings) label() string {
-	boost, _ := s.boostValue()
+	boost, _ := s.boostPreset()
 	mode := "filled"
 	if s.mode == render.Outline {
 		mode = "outline"
@@ -110,29 +110,25 @@ func (m *Model) cardColumn() int {
 
 func (m *Model) cardWidth() int { return max(1, m.width-m.cardColumn()-cardBorderColumns) }
 
-// addDistributions draws the visible rows using the whole day's contributions.
-// Translating every center by a whole number of cells preserves the fixed dot
-// grid and global mixture gain. Neither selection nor scrolling changes scale.
-func (m *Model) addDistributions(lines []string, layout timelineLayout, offset int) []string {
-	curves, selected, end := layout.curves, layout.selectedCurve, layout.curveEnd
-	if m.cardColumn() == timelineLabelWidth {
-		return lines
-	}
+// renderEventCurveCells draws visible rows using the whole day's contributions.
+// Translating centers by whole cells preserves the dot grid and mixture gain;
+// neither selection nor scrolling changes scale.
+func (m *Model) renderEventCurveCells(layout timelineLayout, offset, height int) [][]render.Cell {
 	var cells [][]render.Cell
-	height := min(len(lines), max(0, end-offset)) // Never draw over the ending marker.
-	if height > 0 && len(curves) > 0 {
+	height = min(height, max(0, layout.curveEnd-offset)) // Never draw over the ending marker.
+	if height > 0 && len(layout.curves) > 0 {
 		// Include expanded cards in the count reference even though their curves
 		// are hidden, and retain offscreen inputs for normalization and overlap.
 		var reference int64
 		for _, count := range m.counts {
 			reference = max(reference, count.Count)
 		}
-		shifted := make([]render.Distribution, len(curves))
-		for i, curve := range curves {
+		shifted := make([]render.Distribution, len(layout.curves))
+		for i, curve := range layout.curves {
 			shifted[i] = curve
 			shifted[i].CenterY -= float64(offset) * 4 // Four Braille dot rows per terminal cell.
 		}
-		_, exponent := m.distributions.boostValue()
+		_, exponent := m.distributions.boostPreset()
 		cells = render.RenderDistributions(distributionWidth, height, shifted, render.Options{
 			Mode:           m.distributions.mode,
 			CountReference: reference,
@@ -141,42 +137,61 @@ func (m *Model) addDistributions(lines []string, layout timelineLayout, offset i
 		})
 	}
 
+	return cells
+}
+
+func (m *Model) renderExpandedThoughtPlotCells(layout timelineLayout, offset, height int) ([][]render.Cell, int, int, int) {
 	// Expanded cards reserve their lane rows, including blank header/metadata rows.
 	// Paint only the visible intersection; the picker supplies its own scroll mapping.
-	histogramTop, histogramEnd, histogramSelected := -1, -1, -1
-	var histogram [][]render.Cell
+	thoughtPlotTop, thoughtPlotEnd, selectedThoughtPlot := -1, -1, -1
+	var thoughtPlotCells [][]render.Cell
 	if top, ok := layout.positions[m.expanded]; ok && m.expanded != 0 {
 		for _, card := range layout.cards {
 			if card.top != top {
 				continue
 			}
-			histogramTop = max(0, top-offset)
-			histogramEnd = min(len(lines), top+len(card.content)+2-offset)
-			if histogramTop >= histogramEnd || m.opening || m.err != nil {
+			thoughtPlotTop = max(0, top-offset)
+			thoughtPlotEnd = min(height, top+len(card.content)+2-offset)
+			if thoughtPlotTop >= thoughtPlotEnd || m.opening || m.err != nil {
 				break
 			}
-			previews, reference := m.picker.EventThoughtBars()
-			bars := make([]render.HistogramBar, 0, len(previews))
+			previews, reference := m.picker.EventThoughtPlots()
+			bars := make([]render.ThoughtLengthBar, 0, len(previews))
 			for _, preview := range previews {
 				// Border, heading and blank line precede the picker; its count row is
 				// already included in preview.Row. All offsets are terminal rows.
-				bars = append(bars, render.HistogramBar{Row: top + 3 + preview.Row - offset - histogramTop, Value: preview.Characters})
+				bars = append(bars, render.ThoughtLengthBar{
+					Row:            top + 3 + preview.Row - offset - thoughtPlotTop,
+					CharacterCount: preview.CharacterCount,
+				})
 				if preview.Selected {
-					histogramSelected = len(bars) - 1
+					selectedThoughtPlot = len(bars) - 1
 				}
 			}
 			if len(bars) > 0 && reference > 0 {
-				_, exponent := m.distributions.boostValue()
-				histogram = render.RenderHistogram(distributionWidth, histogramEnd-histogramTop, bars, render.HistogramOptions{
+				_, exponent := m.distributions.boostPreset()
+				thoughtPlotCells = render.RenderThoughtLengthBars(distributionWidth, thoughtPlotEnd-thoughtPlotTop, bars, render.ThoughtLengthBarOptions{
 					Mode:      m.distributions.mode,
 					Reference: reference,
-					Exponent:  render.HistogramExponent(exponent),
+					Exponent:  render.ThoughtLengthExponent(exponent),
 					Size:      float64(m.distributions.size) / 100,
 				})
 			}
 			break
 		}
 	}
+	return thoughtPlotCells, thoughtPlotTop, thoughtPlotEnd, selectedThoughtPlot
+}
+
+// paintDistributionLane chooses each row's cells, styles them, and inserts the
+// lane between timestamps and cards. Expanded cards mask neighboring curve tails.
+func (m *Model) paintDistributionLane(lines []string, layout timelineLayout, offset int) []string {
+	if m.cardColumn() == timelineLabelWidth {
+		return lines
+	}
+	cells := m.renderEventCurveCells(layout, offset, len(lines))
+	thoughtPlotCells, thoughtPlotTop, thoughtPlotEnd, selectedThoughtPlot := m.renderExpandedThoughtPlotCells(layout, offset, len(lines))
+
 	// Indexes identify style runs, not curve ownership or palette numbers.
 	const (
 		normalStyle = iota
@@ -193,11 +208,11 @@ func (m *Model) addDistributions(lines []string, layout timelineLayout, offset i
 		var lane strings.Builder
 		lane.Grow(distributionWidth * 3) // A Braille rune occupies three UTF-8 bytes.
 		var rowCells []render.Cell
-		rowSelected := selected
-		if y >= histogramTop && y < histogramEnd {
-			rowSelected = histogramSelected
-			if y-histogramTop < len(histogram) {
-				rowCells = histogram[y-histogramTop]
+		rowSelected := layout.selectedCurve
+		if y >= thoughtPlotTop && y < thoughtPlotEnd {
+			rowSelected = selectedThoughtPlot
+			if y-thoughtPlotTop < len(thoughtPlotCells) {
+				rowCells = thoughtPlotCells[y-thoughtPlotTop]
 			}
 		} else if y < len(cells) {
 			rowCells = cells[y]

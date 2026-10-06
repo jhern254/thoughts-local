@@ -23,8 +23,8 @@ type Metrics interface {
 	CountThoughts(context.Context, string) (int64, error)
 }
 
-// ThoughtCountResult has refresh ownership independent of cursor-page requests.
-type ThoughtCountResult struct {
+// ThoughtBrowseStatsResult has refresh ownership independent of cursor-page requests.
+type ThoughtBrowseStatsResult struct {
 	owner         *int
 	request       uint64
 	total         int64
@@ -55,8 +55,8 @@ type browseThoughtsState struct {
 	metrics              Metrics
 	total                int64
 	maxCharacters        int64
-	countPending         bool
-	countErr             error
+	statsPending         bool
+	statsErr             error
 }
 
 // BrowseThoughtsResult captures the cursor query and deferred selection move for
@@ -103,18 +103,18 @@ func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
 	m.browseThoughts.index, m.browseThoughts.offset = 0, 0
 	m.browseThoughts.moreOlder, m.browseThoughts.moreNewer = false, false
 	m.browseThoughts.summariesCurrent = false
-	if m.cancelCount != nil {
-		m.cancelCount()
+	if m.cancelStats != nil {
+		m.cancelStats()
 	}
-	countCtx, cancelCount := context.WithCancel(m.ctx)
-	m.cancelCount = cancelCount
-	m.countRequest++
-	m.browseThoughts.countPending, m.browseThoughts.countErr = true, nil
+	statsCtx, cancelStats := context.WithCancel(m.ctx)
+	m.cancelStats = cancelStats
+	m.statsRequest++
+	m.browseThoughts.statsPending, m.browseThoughts.statsErr = true, nil
 	owner, scope, reader := m.owner, m.browseThoughts.eventScope, m.browseThoughts.timelineView
-	request, ctx, userID, metrics := m.countRequest, countCtx, m.userID, m.browseThoughts.metrics
+	request, ctx, userID, metrics := m.statsRequest, statsCtx, m.userID, m.browseThoughts.metrics
 	// Statistics and the first summary batch are independent reads. Event stats
 	// include the full-interval length reference; paging does not repeat the read.
-	count := func() tea.Msg {
+	statsCmd := func() tea.Msg {
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -130,7 +130,7 @@ func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
 		if ctx.Err() != nil {
 			return nil
 		}
-		return ThoughtCountResult{
+		return ThoughtBrowseStatsResult{
 			owner:         owner,
 			request:       request,
 			total:         total,
@@ -138,16 +138,16 @@ func (m *Model) reloadBrowseThoughtsView() tea.Cmd {
 			err:           err,
 		}
 	}
-	return tea.Batch(m.loadThoughtsView(data.ThoughtSummaryViewRequest{}, 0), count)
+	return tea.Batch(m.loadThoughtsView(data.ThoughtSummaryViewRequest{}, 0), statsCmd)
 }
 
-func (m Model) receiveThoughtCount(result ThoughtCountResult) (Model, tea.Cmd) {
-	// The mode check prevents a count from a closed browser from updating reused state.
-	if result.owner != m.owner || !m.browsingThoughtsView || result.request != m.countRequest {
+func (m Model) receiveThoughtBrowseStats(result ThoughtBrowseStatsResult) (Model, tea.Cmd) {
+	// The mode check prevents statistics from a closed browser from updating reused state.
+	if result.owner != m.owner || !m.browsingThoughtsView || result.request != m.statsRequest {
 		return m, nil
 	}
 	m.browseThoughts.maxCharacters = result.maxCharacters
-	m.browseThoughts.total, m.browseThoughts.countErr, m.browseThoughts.countPending = result.total, result.err, false
+	m.browseThoughts.total, m.browseThoughts.statsErr, m.browseThoughts.statsPending = result.total, result.err, false
 	operation := logging.ThoughtCountAll
 	if m.browseThoughts.eventScope != nil {
 		operation = logging.EventThoughtCount
@@ -374,9 +374,9 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		label = "thought"
 	}
 	count := fmt.Sprintf("%d %s", s.total, label)
-	if s.countPending {
+	if s.statsPending {
 		count = "Counting thoughts…"
-	} else if s.countErr != nil {
+	} else if s.statsErr != nil {
 		count = "Thought count unavailable"
 	}
 	if s.eventScope != nil {

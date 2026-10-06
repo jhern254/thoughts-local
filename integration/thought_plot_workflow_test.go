@@ -11,7 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 )
 
-func TestThoughtHistogramWorkflow_SQLite(t *testing.T) {
+func TestThoughtLengthPlotWorkflow_SQLite(t *testing.T) {
 	t.Run("counts full Unicode bodies including spaces and embedded NUL", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		if _, err := db.Exec(`INSERT INTO users(user_id) VALUES ('u')`); err != nil {

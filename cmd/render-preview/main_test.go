@@ -205,7 +205,7 @@ func TestPreview(t *testing.T) {
 	})
 }
 
-func TestPreview_Histogram(t *testing.T) {
+func TestPreview_ThoughtLengths(t *testing.T) {
 	t.Run("similar length scenario shows distinct bars on a shared stem", func(t *testing.T) {
 		view := preview(t, "-scenario", "expanded-similar", "-plain")
 		widths := []int{}
@@ -258,9 +258,9 @@ func TestPreview_Histogram(t *testing.T) {
 			}
 		}
 	})
-	t.Run("histogram only preview uses the same renderer and fixed dimensions", func(t *testing.T) {
+	t.Run("thought-length only preview uses the same renderer and fixed dimensions", func(t *testing.T) {
 		for _, mode := range []string{"filled", "outline"} {
-			output := preview(t, "-scenario", "histogram", "-mode", mode, "-plain", "-width", "60", "-height", "28")
+			output := preview(t, "-scenario", "thought-lengths", "-mode", mode, "-plain", "-width", "60", "-height", "28")
 			rows := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
 			if len(rows) != 28 {
 				t.Fatalf("got height %d, want 28", len(rows))

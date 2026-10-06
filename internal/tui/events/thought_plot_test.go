@@ -11,7 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/render"
 )
 
-func TestModel_ThoughtHistogram(t *testing.T) {
+func TestModel_ThoughtLengthPlot(t *testing.T) {
 	t.Run("bars align only with thought titles and survive paging and detail return", func(t *testing.T) {
 		m, _, store := fixture(t)
 		// The longest body is beyond the initial page. All visible titles stay small.
@@ -61,11 +61,11 @@ func TestModel_ThoughtHistogram(t *testing.T) {
 		m, cmd = m.Update(eventKey("esc"))
 		m = execute(t, m, cmd)
 		if after := check(); after != before {
-			t.Fatal("same-length visible thoughts changed histogram on return")
+			t.Fatal("same-length visible thoughts changed thought plot on return")
 		}
 		m.Resize(40, 20)
 		if hasDistribution(m.View()) {
-			t.Fatal("narrow layout retained histogram")
+			t.Fatal("narrow layout retained thought plot")
 		}
 		m.Resize(80, 27)
 		check()
@@ -104,7 +104,7 @@ func TestModel_ThoughtHistogram(t *testing.T) {
 	})
 }
 
-func TestModel_ThoughtHistogramOwnership(t *testing.T) {
+func TestModel_ThoughtLengthPlotOwnership(t *testing.T) {
 	t.Run("selection and panel focus change only the corresponding bar color", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m = execute(t, m, m.openEvent(1))

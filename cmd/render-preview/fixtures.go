@@ -49,7 +49,7 @@ func fixture(name string) (scene, error) {
 				heading:  " Reading · 1h · 09:00 - 10:00 AM PDT",
 				count:    3,
 				start:    "09:00 AM",
-				thoughts: histogramThoughts(),
+				thoughts: previewThoughts(),
 			},
 			{
 				top:     19,

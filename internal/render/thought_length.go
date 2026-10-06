@@ -2,40 +2,40 @@ package render
 
 import "math"
 
-// HistogramBar occupies one terminal row. Value is a nonnegative measurement,
-// such as the full character count of a thought; Row may be outside the viewport.
-type HistogramBar struct {
-	Row   int
-	Value int64
+// ThoughtLengthBar occupies one terminal row. CharacterCount is the full
+// nonnegative code-point count of a thought; Row may be outside the viewport.
+type ThoughtLengthBar struct {
+	Row            int
+	CharacterCount int64
 }
 
-// HistogramOptions uses the same mode, boost and size conventions as curves.
+// ThoughtLengthBarOptions uses the same mode, boost and size conventions as curves.
 // Reference is the whole event's maximum, including offscreen thoughts. It is
 // deliberately not inferred from visible bars: scrolling must not change scale.
-type HistogramOptions struct {
+type ThoughtLengthBarOptions struct {
 	Mode      Mode
 	Reference int64
-	Exponent  float64 // Positive power; invalid values use the histogram default, 3.0.
+	Exponent  float64 // Positive power; invalid values use the thought length default, 3.0.
 	Size      float64 // Dimension multiplier, default 1, bounded to [0.5, 1.25].
 }
 
 // A cubic default spreads similar lengths near the event maximum farther apart.
 // This is separate from countExponent: collapsed event curves keep their 0.8
-// default. Raise histogramExponent for more contrast; lower it for fuller bars.
-const histogramExponent = 3.0
+// default. Raise thoughtLengthExponent for more contrast; lower it for fuller bars.
+const thoughtLengthExponent = 3.0
 
-// HistogramExponent maps the single distribution boost control to the histogram's
+// ThoughtLengthExponent maps the single distribution boost control to the thought length bars'
 // own default. Normal curve boost (0.8) gives cubic bars (3.0); increasing boost
 // lowers both exponents, making small values fuller in both views. This shared
 // mapping also keeps the preview command consistent with Events.
-func HistogramExponent(curveExponent float64) float64 {
+func ThoughtLengthExponent(curveExponent float64) float64 {
 	if curveExponent <= 0 || math.IsNaN(curveExponent) || math.IsInf(curveExponent, 0) {
-		return histogramExponent
+		return thoughtLengthExponent
 	}
-	return histogramExponent * curveExponent / countExponent
+	return thoughtLengthExponent * curveExponent / countExponent
 }
 
-// RenderHistogram draws discrete leftward bars in the existing Braille language.
+// RenderThoughtLengthBars draws discrete leftward bars in the existing Braille language.
 // It returns height rows of width cells; nonpositive dimensions return nil.
 // CurveIndex identifies the input bar for caller-owned coloring, or -1 for blank or the muted connecting stem.
 // Selection is not a drawing input and cannot change bar geometry.
@@ -48,13 +48,13 @@ func HistogramExponent(curveExponent float64) float64 {
 //
 // The default maximum is 16 dots, matching the curve's default peak. Lowering
 // exponent boosts short thoughts; raising it emphasizes differences near the
-// maximum. The histogram default is cubic (3.0); size changes reach, not height.
+// maximum. The thought length default is cubic (3.0); size changes reach, not height.
 // Each positive bar spans all four dot rows of one cell and includes its right
 // baseline. A one-dot-wide stem connects the first positive bar to the last,
 // including clipped/offscreen bars, but never extends into headers or footers.
 // Outline keeps only each rectangle's perimeter and the same stem. Zero/negative values
 // and unknown references draw nothing, rather than inventing an aesthetic mound.
-func RenderHistogram(width, height int, bars []HistogramBar, options HistogramOptions) [][]Cell {
+func RenderThoughtLengthBars(width, height int, bars []ThoughtLengthBar, options ThoughtLengthBarOptions) [][]Cell {
 	if width <= 0 || height <= 0 {
 		return nil
 	}
@@ -70,7 +70,7 @@ func RenderHistogram(width, height int, bars []HistogramBar, options HistogramOp
 	}
 	exponent := options.Exponent
 	if exponent <= 0 || math.IsNaN(exponent) || math.IsInf(exponent, 0) {
-		exponent = histogramExponent
+		exponent = thoughtLengthExponent
 	}
 	size := options.Size
 	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
@@ -82,7 +82,7 @@ func RenderHistogram(width, height int, bars []HistogramBar, options HistogramOp
 	// Find support before clipping so cropping a viewport cannot shorten the stem.
 	first, last := height, -1
 	for _, bar := range bars {
-		if bar.Value > 0 {
+		if bar.CharacterCount > 0 {
 			first = min(first, bar.Row)
 			last = max(last, bar.Row)
 		}
@@ -95,10 +95,10 @@ func RenderHistogram(width, height int, bars []HistogramBar, options HistogramOp
 		rows[row][width-1] = Cell{Glyph: stem, CurveIndex: -1}
 	}
 	for index, bar := range bars {
-		if bar.Row < 0 || bar.Row >= height || bar.Value <= 0 {
+		if bar.Row < 0 || bar.Row >= height || bar.CharacterCount <= 0 {
 			continue
 		}
-		ratio := min(1, float64(bar.Value)/float64(options.Reference))
+		ratio := min(1, float64(bar.CharacterCount)/float64(options.Reference))
 		reach := min(baseline, max(1, int(math.Round(maximum*math.Pow(ratio, exponent)))))
 		left := baseline - reach
 		for x := left; x <= baseline; x++ {

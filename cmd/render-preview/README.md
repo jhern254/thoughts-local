@@ -29,7 +29,7 @@ Options:
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `-mode` | `filled` | `filled` or `outline`; Gaussian curves or rectangular thought bars |
-| `-scenario` | `main` | `distributions`, `histogram`, `expanded`, `expanded-similar`, `main`, `adjacent`, `gapped`, `crowded`, `scale`, or `empty` |
+| `-scenario` | `main` | `distributions`, `thought-lengths`, `expanded`, `expanded-similar`, `main`, `adjacent`, `gapped`, `crowded`, `scale`, or `empty` |
 | `-count-exponent` | `0.8` | Positive exponent: lower values boost smaller counts; try `0.25` |
 | `-size` | `1` | Scale gains from `0.5` to `1.25`, within the fixed lane |
 | `-selected` | `3` | One-based event number; `0` or an absent event means no highlight |
@@ -54,7 +54,7 @@ no event cards or timestamps: it isolates curve behavior from Events placement.
 The Events screen uses the same renderer for collapsed cards with known counts.
 It reserves this separate lane at panel widths of 60 columns and above; below
 60, it hides the lane and restores the original card width. Expanding an event
-replaces its contribution with a thought histogram, retaining other collapsed
+replaces its contribution with a thought length plot, retaining other collapsed
 curves outside the expanded card’s rows. Unknown or failed
 counts do not draw a mound; a known zero count does. Existing successful counts
 remain visible during refresh when their event intervals are unchanged.
@@ -172,7 +172,7 @@ Keep transient captures under `/tmp`; do not regenerate snapshots merely to make
 a failing test pass. The static preview does not validate live panel switching,
 day navigation, expansion, or asynchronous ownership.
 
-## Expanded thought histograms
+## Expanded thought length bars
 
 Expanded Events replace their Gaussian with one leftward bar per visible thought,
 using the same lane and colors. Each bar aligns with the preview title. A muted
@@ -183,7 +183,7 @@ Events panel has focus. Cards and paging keep their existing dimensions.
 Try the production bar renderer in isolation or beside full event cards:
 
 ```sh
-go run ./cmd/render-preview -scenario histogram
+go run ./cmd/render-preview -scenario thought-lengths
 go run ./cmd/render-preview -scenario expanded -selected-thought 2
 go run ./cmd/render-preview -scenario expanded -mode outline
 go run ./cmd/render-preview -scenario expanded-similar # 80, 90, 100 characters
@@ -203,14 +203,14 @@ bars. While statistics load or fail, previews remain usable without bars.
 The existing **d** controls apply to both curves and bars: boost changes the power,
 size changes horizontal reach, **f** switches filled/outline, and **0** restores
 filled, size 100%, and separate normal exponents: 0.8 for event curves and 3.0
-for thought bars. The histogram exponent is `3.0 * curveExponent / 0.8`; the same
+for thought bars. The thought length exponent is `3.0 * curveExponent / 0.8`; the same
 boost control therefore adjusts both around their own defaults. Cubic bars make
 similar lengths near the event maximum more distinct. More boost fills out shorter
 bars when lengths vary widely. Equal lengths remain equal. Bars occupy one row in
 both modes; an outline traces a thin rectangle and keeps the same stem. Below 60 panel columns the lane is hidden.
 
 The equation and parameters are documented in
-[`internal/render/histogram.go`](../../internal/render/histogram.go):
+[`internal/render/thought_length.go`](../../internal/render/thought_length.go):
 
 ```text
 ratio = min(characterCount / eventMaximum, 1)

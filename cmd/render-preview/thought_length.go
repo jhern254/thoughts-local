@@ -13,7 +13,7 @@ type previewThought struct {
 	characters int64
 }
 
-func histogramThoughts() []previewThought {
+func previewThoughts() []previewThought {
 	return []previewThought{
 		{preview: "A longer reflection on the chapter…", timestamp: "  Thought 43 • Oct 4, 2026 9:50 AM PDT", characters: 320},
 		{preview: "Compare these two explanations…", timestamp: "  Thought 42 • Oct 4, 2026 9:30 AM PDT", characters: 90},
@@ -21,19 +21,19 @@ func histogramThoughts() []previewThought {
 	}
 }
 
-func drawHistogram(width, height, selected int, options render.Options, plain bool) string {
-	thoughts := histogramThoughts()
-	bars := make([]render.HistogramBar, len(thoughts))
+func drawThoughtLengths(width, height, selected int, options render.Options, plain bool) string {
+	thoughts := previewThoughts()
+	bars := make([]render.ThoughtLengthBar, len(thoughts))
 	for i, thought := range thoughts {
-		bars[i] = render.HistogramBar{Row: 3 * i, Value: thought.characters}
+		bars[i] = render.ThoughtLengthBar{Row: 3 * i, CharacterCount: thought.characters}
 	}
-	cells := render.RenderHistogram(curveWidth, 8, bars, render.HistogramOptions{
+	cells := render.RenderThoughtLengthBars(curveWidth, 8, bars, render.ThoughtLengthBarOptions{
 		Mode:      options.Mode,
 		Reference: 320,
-		Exponent:  render.HistogramExponent(options.CountExponent),
+		Exponent:  render.ThoughtLengthExponent(options.CountExponent),
 		Size:      options.Size,
 	})
-	lines := []string{"Thought length histogram", "Whole-event maximum: 320 characters", ""}
+	lines := []string{"Thought length bars", "Whole-event maximum: 320 characters", ""}
 	for y, row := range cells {
 		text := distributionRow(row, selected, plain)
 		if y%3 == 0 {
