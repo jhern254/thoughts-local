@@ -1,8 +1,6 @@
 name: Model assets
 
 on:
-  push:
-    branches: [feature/modelassets]
   pull_request:
     paths:
       - 'internal/modelassets/**'

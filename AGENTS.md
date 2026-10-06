@@ -12,6 +12,8 @@ The core philosophy is:
 
 * Prefer small, explicit, idiomatic Go.
 * Keep code boring and readable.
+* Prefer explicit domain names when code carries non-obvious behavior, state, security meaning, or architectural responsibility. Generic names such as `entry`, `item`, `data`, `value`, `obj`, `a`, `e`, `f`, or `x` are acceptable only when their meaning is truly local and obvious. Name functions for their actual side effects: copying, hashing, validating, and writing a model file is more than "verify".
+* In security, concurrency, persistence, networking, migration, and lifecycle code, favor explicit identifiers and linear, readable control flow over terse expressions or hidden behavior. Extract well-named helpers for meaningful concepts, not abstraction layers solely to shorten functions.
 * Avoid clever abstractions, premature generalization, and framework-style magic.
 * Use the standard library unless a dependency clearly earns its place.
 * Keep functions narrow and easy to test.

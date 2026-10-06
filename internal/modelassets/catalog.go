@@ -4,10 +4,10 @@
 // SHA-256 digests; callers cannot supply manifests, URLs or install destinations.
 //
 // The caller owns the root and must keep it open until all operations return.
-// Only Lookup establishes installation validity; directory existence does not.
-// After a process interruption, remove stale .install.lock, .stage-* directories
-// and incomplete revisions manually, only while no installer is running. There
-// is no automatic repair or lock takeover. Earlier revisions are retained.
+// Only VerifyInstallation establishes installation validity; directory existence
+// does not. After a process interruption, remove stale .install.lock, .stage-*
+// directories and incomplete revisions manually, only while no installer is
+// running. There is no automatic repair or lock takeover. Earlier revisions remain.
 //
 // Downloaded file contents are integrity-verified, synced and closed before
 // publication. Directory metadata (including rename and marker creation) is not
@@ -17,18 +17,15 @@
 package modelassets
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"math"
-	"net"
-	"net/http"
 	"net/url"
-	"os"
 	"strings"
-	"time"
 )
 
-// ModelID selects an entry from the application-approved catalog.
+// ModelID selects a manifest from the application-approved catalog.
 type ModelID string
 
 // Installation describes a verified revision. Directory is relative to the root.
@@ -48,138 +45,181 @@ var (
 	ErrFilesystem     = errors.New("model filesystem operation failed")
 )
 
-// operationError prints only a fixed category while retaining causes for errors.Is.
-type operationError struct{ category, cause error }
+// categorizedError exposes only the fixed category through Error while
+// retaining the underlying cause for errors.Is and errors.As. Unwrapped causes
+// can contain sensitive URLs, paths or content and must not be logged.
+type categorizedError struct {
+	category error
+	cause    error
+}
 
-func (e *operationError) Error() string   { return e.category.Error() }
-func (e *operationError) Unwrap() []error { return []error{e.category, e.cause} }
-func failure(category, cause error) error {
+func (categorized *categorizedError) Error() string { return categorized.category.Error() }
+func (categorized *categorizedError) Unwrap() []error {
+	return []error{categorized.category, categorized.cause}
+}
+func withErrorCategory(category, cause error) error {
 	if cause == nil {
 		return category
 	}
-	return &operationError{category: category, cause: cause}
+	return &categorizedError{category: category, cause: cause}
 }
 
-type asset struct {
-	URL    string
-	Path   string
-	Size   int64
-	SHA256 string
+type modelFileManifest struct {
+	DownloadURL       string
+	RelativePath      string
+	ExpectedSizeBytes int64
+	SHA256Hex         string
 }
-type entry struct {
+type modelManifest struct {
 	ID          ModelID
 	Kind        string
 	Runtime     string
 	Revision    string
-	Files       []asset
+	Files       []modelFileManifest
 	Attribution string
 }
 
-// Installer shares no mutable operation state; its methods may be called concurrently.
-type Installer struct {
-	root        *os.Root
-	catalog     map[ModelID]entry
-	client      *http.Client
-	idleTimeout time.Duration
-	fileTimeout time.Duration
-	// Narrow fault-injection seams for resource closure and publication tests.
-	syncFile  func(*os.File) error
-	closeFile func(*os.File) error
-	rename    func(string, string) error
-	complete  func(string) error
-}
-
-// NewInstaller uses a dedicated credential-free client and the pinned catalog.
-func NewInstaller(root *os.Root) (*Installer, error) {
-	transport := &http.Transport{
-		Proxy:                 nil,
-		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
-		DisableCompression:    true,
-		// No idle pooled connections outlive individual operations.
-		DisableKeepAlives: true,
-	}
-	client := &http.Client{
-		Transport:     transport,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	return newInstaller(root, nil, client)
-}
-
-func newInstaller(root *os.Root, entries []entry, client *http.Client) (*Installer, error) {
-	if root == nil {
-		return nil, ErrFilesystem
-	}
-	catalog := make(map[ModelID]entry, len(entries))
-	for _, e := range entries {
-		if !identifier(string(e.ID)) || !identifier(e.Revision) || !identifier(e.Kind) || !identifier(e.Runtime) || len(e.Files) == 0 {
+func buildModelCatalog(manifests []modelManifest) (map[ModelID]modelManifest, error) {
+	catalog := make(map[ModelID]modelManifest, len(manifests))
+	for _, manifest := range manifests {
+		if !isValidModelManifest(manifest) {
 			return nil, ErrInvalidCatalog
 		}
-		if _, exists := catalog[e.ID]; exists {
+		if _, duplicateID := catalog[manifest.ID]; duplicateID {
 			return nil, ErrInvalidCatalog
 		}
-		for n, f := range e.Files {
-			u, err := url.Parse(f.URL)
-			digest, digestErr := hex.DecodeString(f.SHA256)
-			if err != nil {
-				return nil, ErrInvalidCatalog
-			}
-			if u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.Opaque != "" {
-				return nil, ErrInvalidCatalog
-			}
-			if !relativePath(f.Path) || f.Size <= 0 || f.Size == math.MaxInt64 || digestErr != nil || len(digest) != 32 {
-				return nil, ErrInvalidCatalog
-			}
-			for _, prior := range e.Files[:n] {
-				a, b := strings.ToLower(f.Path), strings.ToLower(prior.Path)
-				if a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/") {
-					return nil, ErrInvalidCatalog
-				}
-			}
+		// Own the slice so later changes to the supplied manifest cannot change trust.
+		manifest.Files = append([]modelFileManifest(nil), manifest.Files...)
+		for fileIndex := range manifest.Files {
+			manifest.Files[fileIndex].SHA256Hex = strings.ToLower(manifest.Files[fileIndex].SHA256Hex)
 		}
-		e.Files = append([]asset(nil), e.Files...)
-		for n := range e.Files {
-			e.Files[n].SHA256 = strings.ToLower(e.Files[n].SHA256)
-		}
-		catalog[e.ID] = e
+		catalog[manifest.ID] = manifest
 	}
-	return &Installer{
-		root:        root,
-		catalog:     catalog,
-		client:      client,
-		idleTimeout: 30 * time.Second,
-		fileTimeout: 30 * time.Minute,
-		syncFile:    func(f *os.File) error { return f.Sync() },
-		closeFile:   func(f *os.File) error { return f.Close() },
-		rename:      root.Rename,
-		complete:    func(name string) error { return root.Mkdir(name, 0700) },
-	}, nil
+	return catalog, nil
 }
 
-// Portable names avoid case aliases, Windows device names and special syntax.
-func identifier(s string) bool {
-	if s == "" || !(s[0] >= 'a' && s[0] <= 'z' || s[0] >= '0' && s[0] <= '9') || strings.HasSuffix(s, ".") {
+func isValidModelManifest(manifest modelManifest) bool {
+	if !isPortableIdentifier(string(manifest.ID)) {
 		return false
 	}
-	for _, c := range s {
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.') {
+	if !isPortableIdentifier(manifest.Revision) {
+		return false
+	}
+	if !isPortableIdentifier(manifest.Kind) {
+		return false
+	}
+	if !isPortableIdentifier(manifest.Runtime) {
+		return false
+	}
+	if len(manifest.Files) == 0 {
+		return false
+	}
+	for fileIndex, modelFile := range manifest.Files {
+		if !isValidModelFileManifest(modelFile) {
 			return false
 		}
-	}
-	base := strings.ToUpper(strings.SplitN(s, ".", 2)[0])
-	switch base {
-	case "CON", "PRN", "AUX", "NUL":
-		return false
-	}
-	if len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && base[3] >= '0' && base[3] <= '9' {
-		return false
+		for _, previousFile := range manifest.Files[:fileIndex] {
+			if modelFilePathsConflict(modelFile.RelativePath, previousFile.RelativePath) {
+				return false
+			}
+		}
 	}
 	return true
 }
-func relativePath(s string) bool {
-	for _, part := range strings.Split(s, "/") {
-		if !identifier(part) || part == ".complete" {
+
+func isValidModelFileManifest(modelFile modelFileManifest) bool {
+	downloadURL, err := url.Parse(modelFile.DownloadURL)
+	if err != nil {
+		return false
+	}
+	if downloadURL.Scheme != "https" {
+		return false
+	}
+	if downloadURL.Hostname() == "" {
+		return false
+	}
+	if downloadURL.User != nil {
+		return false
+	}
+	if downloadURL.Fragment != "" {
+		return false
+	}
+	if downloadURL.Opaque != "" {
+		return false
+	}
+	if !isValidModelRelativePath(modelFile.RelativePath) {
+		return false
+	}
+	if modelFile.ExpectedSizeBytes <= 0 {
+		return false
+	}
+	// Overflow detection reads one extra byte; that bound must fit in an int64.
+	if modelFile.ExpectedSizeBytes == math.MaxInt64 {
+		return false
+	}
+	digest, err := hex.DecodeString(modelFile.SHA256Hex)
+	if err != nil {
+		return false
+	}
+	return len(digest) == sha256.Size
+}
+
+func modelFilePathsConflict(relativePath, previousRelativePath string) bool {
+	normalizedPath := strings.ToLower(relativePath)
+	normalizedPreviousPath := strings.ToLower(previousRelativePath)
+	if normalizedPath == normalizedPreviousPath {
+		return true
+	}
+	if strings.HasPrefix(normalizedPath, normalizedPreviousPath+"/") {
+		return true
+	}
+	return strings.HasPrefix(normalizedPreviousPath, normalizedPath+"/")
+}
+
+// Portable identifiers use lowercase ASCII and avoid Windows device names and
+// special path syntax, including case aliases across supported filesystems.
+func isPortableIdentifier(identifier string) bool {
+	if identifier == "" {
+		return false
+	}
+	if !isLowercaseASCIIAlphanumeric(rune(identifier[0])) {
+		return false
+	}
+	if strings.HasSuffix(identifier, ".") {
+		return false
+	}
+	for _, character := range identifier {
+		switch character {
+		case '-', '_', '.':
+			continue
+		default:
+			if !isLowercaseASCIIAlphanumeric(character) {
+				return false
+			}
+		}
+	}
+	deviceName := strings.ToUpper(strings.SplitN(identifier, ".", 2)[0])
+	switch deviceName {
+	case "CON", "PRN", "AUX", "NUL":
+		return false
+	}
+	if len(deviceName) == 4 {
+		isNumberedDevice := strings.HasPrefix(deviceName, "COM") || strings.HasPrefix(deviceName, "LPT")
+		if isNumberedDevice && deviceName[3] >= '0' && deviceName[3] <= '9' {
+			return false
+		}
+	}
+	return true
+}
+func isLowercaseASCIIAlphanumeric(character rune) bool {
+	return character >= 'a' && character <= 'z' || character >= '0' && character <= '9'
+}
+func isValidModelRelativePath(relativePath string) bool {
+	for _, component := range strings.Split(relativePath, "/") {
+		if component == ".complete" {
+			return false
+		}
+		if !isPortableIdentifier(component) {
 			return false
 		}
 	}
