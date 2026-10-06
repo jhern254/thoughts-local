@@ -149,13 +149,49 @@ results. Run `make quick` before commits and `make ci` for full Go verification
 Interactive platform evidence belongs in the PR; cross-compilation alone does
 not establish Windows/macOS support or Safari/iPhone acceptance.
 
+## Microphone capture
+
+The Thoughts-owned `microphone.js` uses browser microphone permission and
+MediaRecorder, requests roughly one-second chunks, and immediately discards them.
+A separate elapsed-time deadline stops capture at twenty minutes. No audio
+bytes are sent to Go, persisted, or made playable in this stage.
+
+`BrowserRecordingEnabledMsg` tells the root TUI that this session uses browser
+recording controls. `VoiceState.BrowserRecordingEnabled` reports that capability;
+it does not mean microphone permission was granted or a device is available.
+`CanOpenThoughtDraft` separately reports whether the current screen permits quick
+entry without interrupting a form or filter.
+
+`DraftID` identifies the current draft, and `RecordingID` identifies an attempt
+within it. `RecordingStatus` describes its phase. These names are also used in
+the JSON frames exchanged with the embedded client.
+
+Recording is controlled by the shared Thoughts editor, using F8 for now:
+
+1. The TUI key changes the draft's recording state through `updateVoiceAction`.
+2. `voiceBridgeModel` sends a `VoiceState` snapshot to `client.js`, which starts
+   or stops `ThoughtsMicrophone` on the browser's device.
+3. Browser callbacks send control acknowledgements through `inputMessages`
+   back to the TUI. Editing and saving stay locked until capture stops.
+
+Binary `v` frames carry bounded recording controls and state only. `inputMessages`
+validates controls; the Thoughts draft checks its draft/recording identities.
+`voiceBridgeModel` publishes authoritative state after model updates through the
+same bounded socket-write path as terminal output. Native programs do not enable
+this capability. The session/draft owns capture; late permission grants release
+their tracks, and navigation/disconnect cancels capture without replay.
+
+The subject picker follows Events' explicit create-and-return behavior. Draft
+reads have cancellable child contexts; submitted writes remain session-owned.
+No audio, authored text, or raw microphone errors enter operational diagnostics.
+
 ## Future voice/media boundary
 
-A later recording control belongs in this page's HTML/client script and sends
-recorded bytes to an explicit native HTTP upload handler. That work must define
+Later transcription will deliver audio incrementally from the browser capture
+control to an explicit native endpoint, separate from terminal input. That work must define
 session/draft ownership, limits, and the existing origin checks for the endpoint.
-Native transcription should return a preview; explicit insertion can then use a
-validated paste/draft operation. Audio bytes and transcripts must not be encoded
+Live native transcription should update the recording draft through validated
+draft operations; editing and explicit subject confirmation follow Stop. Audio bytes and transcripts must not be encoded
 as terminal keystrokes or submitted by synthesizing Enter. Browser recording uses
 the browser device's microphone; no offline claim is made for browser speech APIs.
 Browser playback can supplement the terminal later. No speculative endpoints or

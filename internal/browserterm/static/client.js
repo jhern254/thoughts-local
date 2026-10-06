@@ -11,6 +11,39 @@
   let ended = false;
   let pendingResize;
   let resizeRetry;
+  let voiceState = {};
+  let captureIdentity;
+  const microphone = new ThoughtsMicrophone(action => {
+    if (!captureIdentity || !connected) return;
+    sendVoice({action, ...captureIdentity});
+  });
+  function sendVoice(action) {
+    if (send('v', encoder.encode(JSON.stringify(action)))) return true;
+    // Recording controls are never replayed. End capture/session if its control
+    // cannot be delivered, so the backend cannot remain incorrectly unlocked.
+    clearVoice();
+    if (socket) socket.close();
+    return false;
+  }
+  function clearVoice() {
+    microphone.cancel();
+    captureIdentity = undefined;
+    voiceState = {};
+  }
+  function receiveVoice(state) {
+    const restoreFocus = state.draftID && (voiceState.draftID !== state.draftID || (voiceState.recordingStatus !== "idle" && state.recordingStatus === "idle"));
+    const identity = {draftID: state.draftID, recordingID: state.recordingID};
+    if (!captureIdentity || captureIdentity.draftID !== identity.draftID || captureIdentity.recordingID !== identity.recordingID) {
+      microphone.cancel();
+      captureIdentity = identity.draftID ? identity : undefined;
+    }
+    voiceState = state;
+    if (state.recordingStatus === 'requesting') microphone.start();
+    else if (state.recordingStatus === 'stopping') microphone.stop();
+    else if (state.recordingStatus === 'idle' || !state.draftID) microphone.cancel();
+    if (restoreFocus) term.focus();
+  }
+  window.addEventListener('pagehide', clearVoice);
 
   // Use xterm's supported logger seam. Never forward terminal data or errors.
   const quiet = () => {};
@@ -113,6 +146,7 @@
   });
 
   function connect(attempt = 0) {
+    clearVoice();
     clearResize();
     if (socket) socket.close();
     ended = false;
@@ -139,6 +173,8 @@
       const frame = new Uint8Array(event.data);
       if (frame[0] === 49) {
         term.write(frame.subarray(1));
+      } else if (frame[0] === 118) {
+        receiveVoice(JSON.parse(new TextDecoder().decode(frame.subarray(1))));
       } else if (frame[0] === 55) {
         ended = true;
         const reason = new TextDecoder().decode(frame.subarray(1));
@@ -158,6 +194,7 @@
     connection.onclose = () => {
       if (socket !== connection) return;
       connected = false;
+      clearVoice();
       clearResize();
       term.options.disableStdin = true;
       if (retryBusy) {

@@ -16,6 +16,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/browserterm"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
+	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
 // Observes the actual model running behind the socket. Rendering/transport
@@ -29,6 +30,9 @@ func (m browserObservedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.Model, cmd = m.Model.Update(msg)
 	return m, cmd
+}
+func (m browserObservedModel) VoiceState() thoughts.VoiceState {
+	return m.Model.(tui.Model).VoiceState()
 }
 func (m browserObservedModel) View() tea.View {
 	view := m.Model.View()

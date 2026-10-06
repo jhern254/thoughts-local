@@ -31,6 +31,7 @@ const (
 	screenSubjectDelete
 	screenMiscThoughts
 	screenBrowseThoughts
+	screenVoiceThought
 )
 
 type entityKind uint8
@@ -51,9 +52,13 @@ type Model struct {
 	ctx  context.Context
 	user *data.User
 	// screen selects the root child that owns ordinary messages and rendering.
-	screen        screen
-	subjectReturn *events.CreateSubjectRequest
-	logger        logging.Logger
+	screen                  screen
+	subjectReturn           *events.CreateSubjectRequest
+	logger                  logging.Logger
+	browserRecordingEnabled bool
+	voiceDraftID            uint64
+	voiceSubjectReturn      *thoughts.VoiceSubjectRequest
+	voiceSubjectScreen      screen
 
 	// Entity selection and panel focus are separate: selectedEntity remembers the
 	// strip choice while entityFocused decides whether the strip or Events owns keys.
@@ -95,6 +100,21 @@ func (m Model) openHome() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	updated, cmd := m.update(message)
+	next := updated.(Model)
+	if next.ctx.Err() == nil && next.browserRecordingEnabled && next.thoughts.Creating() && !next.thoughts.VoiceOpen() {
+		next.voiceDraftID++
+		name := ""
+		if next.screen == screenSubjectDetail && next.subjects.selected != nil {
+			name = next.subjects.selected.SubjectName
+		}
+		voiceCmd := next.thoughts.EnableVoice(next.voiceDraftID, next.subjects.service, name)
+		return next, tea.Batch(cmd, voiceCmd)
+	}
+	return next, cmd
+}
+
+func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.ctx.Err() != nil {
 		return m, nil
 	}
@@ -104,6 +124,33 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch message := message.(type) {
+	case thoughts.BrowserRecordingEnabledMsg:
+		m.browserRecordingEnabled = true
+		return m, nil
+	case thoughts.VoiceAction:
+		if message.Action == "open" {
+			if !m.VoiceState().CanOpenThoughtDraft {
+				return m, nil
+			}
+			m.events.Close()
+			m.subjects.stopRead()
+			m.screen = screenVoiceThought
+			m.voiceDraftID++
+			return m, m.thoughts.OpenVoice(m.voiceDraftID, m.subjects.service)
+		}
+		if m.thoughts.VoiceOpen() {
+			var cmd tea.Cmd
+			m.thoughts, cmd = m.thoughts.Update(message)
+			return m, cmd
+		}
+		return m, nil
+	case thoughts.VoiceSubjectRequest:
+		if !m.thoughts.AwaitingVoiceSubject(message) {
+			return m, nil
+		}
+		m.voiceSubjectReturn = &message
+		m.voiceSubjectScreen = m.screen
+		return m.openSubjectCreate(message.Query)
 	case events.CreateSubjectRequest:
 		if m.screen != screenEvents || !m.events.AwaitingSubject(message) {
 			return m, nil
@@ -159,6 +206,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.handleSubjectFound(message)
 	case tea.KeyPressMsg:
+		if message.String() == "t" && m.VoiceState().CanOpenThoughtDraft {
+			return m.update(thoughts.VoiceAction{Action: "open"})
+		}
 		if message.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
@@ -179,6 +229,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSubjectDetail(message)
 	case screenMiscThoughts:
 		return m.updateMiscThoughts(message)
+	case screenVoiceThought:
+		if key, ok := message.(tea.KeyPressMsg); ok && key.String() == "esc" && m.thoughts.ShowingDetail() {
+			m.thoughts.Reset()
+			return m.openHome()
+		}
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		if m.thoughts.Browsing() {
+			return m.openHome()
+		}
+		return m, cmd
 	case screenBrowseThoughts:
 		if key, ok := message.(tea.KeyPressMsg); ok && m.thoughts.Browsing() {
 			switch key.String() {
@@ -254,17 +315,26 @@ func (m Model) entityStrip() string {
 			line = m.subjects.list.Styles.Title.Render(line)
 		}
 	}
-	return ansi.Truncate(line, max(1, m.width), "…") + "\n" + ansi.Truncate("Tab: panel • ←/→: entity • Enter: open", max(1, m.width), "…")
+	help := "Tab: panel • ←/→: entity • Enter: open"
+	if m.browserRecordingEnabled {
+		help += " • t: create thought"
+	}
+	return ansi.Truncate(line, max(1, m.width), "…") + "\n" + ansi.Truncate(help, max(1, m.width), "…")
 }
 
 func (m Model) View() tea.View {
 	view := tea.NewView("")
 	view.AltScreen = true
 	switch m.screen {
-	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts:
+	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts, screenVoiceThought:
+		if m.thoughts.Creating() {
+			heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
+			view.Content = heading + "\n" + m.thoughts.View()
+			return view
+		}
 		if m.thoughts.ShowingDetail() {
 			name := m.thoughts.SelectedSubjectName()
-			if m.screen == screenSubjectDetail && m.subjects.selected != nil {
+			if m.screen == screenSubjectDetail && m.subjects.selected != nil && name == "Subject" {
 				name = m.subjects.selected.SubjectName
 			}
 			heading := m.subjects.list.Styles.Title.Render(name)
@@ -290,6 +360,8 @@ func (m Model) View() tea.View {
 		content = m.viewSubjectDelete()
 	case screenSubjectDetail:
 		content = m.viewSubjectDetail()
+	case screenVoiceThought:
+		content = m.thoughts.View()
 	case screenMiscThoughts:
 		content = "Misc thoughts\n\n" + m.thoughts.View()
 		if m.thoughts.Browsing() {
@@ -311,4 +383,27 @@ func localUserLabel(user *data.User) string {
 		return fmt.Sprintf("%s (%s)", *user.Handle, user.UserID)
 	}
 	return user.UserID
+}
+
+// VoiceState exposes only bounded control metadata to the browser bridge.
+func (m Model) VoiceState() thoughts.VoiceState {
+	state := thoughts.VoiceState{BrowserRecordingEnabled: m.browserRecordingEnabled}
+	if !m.browserRecordingEnabled {
+		return state
+	}
+	switch m.screen {
+	case screenEvents:
+		state.CanOpenThoughtDraft = m.events.CanLeave()
+	case screenSubjectList:
+		state.CanOpenThoughtDraft = !m.subjects.loading && !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered()
+	case screenBrowseThoughts, screenMiscThoughts, screenSubjectDetail:
+		state.CanOpenThoughtDraft = m.thoughts.Browsing() || m.thoughts.ShowingDetail()
+	case screenVoiceThought:
+		state.CanOpenThoughtDraft = m.thoughts.ShowingDetail()
+	}
+	if m.thoughts.VoiceOpen() && m.voiceSubjectReturn == nil {
+		state = m.thoughts.VoiceState()
+		state.BrowserRecordingEnabled = true
+	}
+	return state
 }

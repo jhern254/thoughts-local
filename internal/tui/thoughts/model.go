@@ -56,12 +56,14 @@ type Model struct {
 
 	// screen selects list, editor, or detail behavior. selected survives detail
 	// rendering, while the list or bounded browse state owns row selection.
-	screen    screen
-	subjectID *int64
-	list      list.Model
-	input     textarea.Model
-	viewport  viewport.Model
-	selected  *data.Thought
+	screen              screen
+	subjectID           *int64
+	list                list.Model
+	input               textarea.Model
+	viewport            viewport.Model
+	voice               voiceDraft
+	selected            *data.Thought
+	selectedSubjectName string
 
 	loading    bool
 	stale      bool
@@ -159,9 +161,13 @@ func (m *Model) Resize(width, height int) {
 	m.input.SetHeight(max(1, height-5))
 	m.viewport.SetWidth(max(1, width))
 	m.viewport.SetHeight(max(1, height-5))
+	if m.VoiceOpen() {
+		m.resizeVoice(width, height)
+	}
 }
 
 func (m *Model) Reset() {
+	m.stopVoice()
 	// Invalidate both result streams before replacing their visible state.
 	if m.cancelRead != nil {
 		m.cancelRead()
@@ -177,6 +183,7 @@ func (m *Model) Reset() {
 	m.request++
 	m.subjectID = nil
 	m.selected = nil
+	m.selectedSubjectName = ""
 	m.screen = browse
 	m.loading = false
 	m.stale = false
@@ -206,6 +213,9 @@ func (m *Model) OpenUnassigned() tea.Cmd {
 func (m Model) Browsing() bool {
 	return m.screen == browse && !m.list.SettingFilter() && !m.list.IsFiltered()
 }
+
+// Creating lets the parent equip and render the shared thought editor.
+func (m Model) Creating() bool { return m.screen == create }
 
 // ShowingDetail lets the parent render the shared detail without list context.
 func (m Model) ShowingDetail() bool { return m.screen == detail }
@@ -266,6 +276,9 @@ func (m *Model) createThought(body string) tea.Cmd {
 	m.request++
 	m.loading = true
 	m.err = nil
+	if m.voice.cancelRead != nil {
+		m.voice.cancelRead()
+	}
 	owner := m.owner
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
 	return func() tea.Msg {
@@ -282,6 +295,15 @@ func (m *Model) createThought(body string) tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if m.ctx.Err() != nil {
+		return m, nil
+	}
+	if action, ok := msg.(VoiceAction); ok {
+		return m.updateVoiceAction(action)
+	}
+	if reply, ok := msg.(voiceSubjectsLoaded); ok {
+		return m.acceptVoiceSubjects(reply)
+	}
+	if m.VoiceOpen() && m.screen == create && m.voice.suspended {
 		return m, nil
 	}
 	if result, ok := msg.(ThoughtCountResult); ok {
@@ -329,9 +351,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.viewport.GotoTop()
 		if result.operation == logging.ThoughtCreate {
 			m.input.Reset()
+			m.selectedSubjectName = m.voice.subjectName
+			id := m.subjectID
+			if m.VoiceOpen() {
+				m.subjectID = m.voice.originalSubjectID
+			}
+			m.stopVoice()
 			m.stale = true
 			m.logger.Mutation(logging.ThoughtCreated, result.item.ThoughtID)
-			id := m.subjectID
 			return m, func() tea.Msg { return ChangedMsg{SubjectID: id} }
 		}
 		return m, nil
@@ -348,6 +375,31 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		switch m.screen {
 		case create:
+			if m.VoiceOpen() && key.String() == "esc" {
+				m.subjectID = m.voice.originalSubjectID
+				m.stopVoice()
+			}
+			if m.VoiceOpen() && key.String() == "f8" {
+				action := "start"
+				if m.voiceLocked() {
+					action = "stop"
+				}
+				return m.updateVoiceAction(VoiceAction{Action: action, DraftID: m.voice.draftID, RecordingID: m.voice.recordingID})
+			}
+			if m.voiceLocked() {
+				return m, nil
+			}
+			if m.VoiceOpen() && (key.String() == "tab" || key.String() == "shift+tab") {
+				m.stopClipboard()
+				m.voice.subjectFocused = !m.voice.subjectFocused
+				m.resizeVoice(m.voice.width, m.voice.height)
+				if m.voice.subjectFocused {
+					m.input.Blur()
+					return m, m.voice.query.Focus()
+				}
+				m.voice.query.Blur()
+				return m, m.input.Focus()
+			}
 			switch key.String() {
 			case "esc":
 				m.stopClipboard()
@@ -358,6 +410,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.screen = browse
 				return m, nil
 			case "ctrl+s":
+				if m.VoiceOpen() && m.voice.query.Value() != "" && m.subjectID == nil {
+					m.voice.message = "Select a subject, create one, or clear the optional field."
+					m.voice.subjectFocused = true
+					m.resizeVoice(m.voice.width, m.voice.height)
+					m.input.Blur()
+					return m, m.voice.query.Focus()
+				}
 				m.inputWarning = ""
 				m.input.Blur()
 				cmd := m.createThought(m.input.Value())
@@ -412,6 +471,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case browse:
 		cmd = m.filter.Update(&m.list, msg)
 	case create:
+		if m.voiceLocked() {
+			return m, nil
+		}
+		if m.VoiceOpen() && m.voice.subjectFocused {
+			return m.updateVoicePicker(msg)
+		}
 		return m.updateInput(msg)
 	case detail:
 		m.viewport, cmd = m.viewport.Update(msg)
@@ -428,10 +493,7 @@ func (m Model) View() string {
 	}
 	switch m.screen {
 	case create:
-		if m.inputWarning != "" {
-			status = m.inputWarning + "\n"
-		}
-		return "Create thought\n" + status + m.input.View() + "\nCtrl+S: save • Enter: newline • Esc: cancel"
+		return m.editorView(status)
 	case detail:
 		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:

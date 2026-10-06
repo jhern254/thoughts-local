@@ -21,6 +21,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
+	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
 //go:embed static/*
@@ -101,6 +102,7 @@ func Serve(ctx context.Context, listener net.Listener, newModel func(context.Con
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Permissions-Policy", "microphone=(self), camera=()")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Cache-Control", "no-store")
@@ -188,8 +190,15 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	size := messages[0].(tea.WindowSizeMsg)
-	guard := tui.NewSession(ctx, cancel, s.newModel)
-	program := newProgram(ctx, guard, &terminalWriter{ctx: ctx, conn: conn, cancel: cancel}, size)
+	writer := &terminalWriter{ctx: ctx, conn: conn, cancel: cancel}
+	guard := tui.NewSession(ctx, cancel, func(ctx context.Context) tea.Model {
+		model := s.newModel(ctx)
+		if _, ok := model.(interface{ VoiceState() thoughts.VoiceState }); ok {
+			return voiceBridgeModel{Model: model, writer: writer}
+		}
+		return model
+	})
+	program := newProgram(ctx, guard, writer, size)
 	readCtx, stopReading := context.WithCancel(s.ctx)
 	defer stopReading()
 	readDone := make(chan struct{})
@@ -271,16 +280,28 @@ func (w *terminalWriter) Write(data []byte) (int, error) {
 		frame := make([]byte, n+1)
 		frame[0] = '1'
 		copy(frame[1:], data[:n])
-		ctx, cancel := context.WithTimeout(w.ctx, writeTimeout)
-		err := w.conn.Write(ctx, websocket.MessageBinary, frame)
-		cancel()
+		err := w.writeFrame(frame)
 		if err != nil {
-			w.cancel()
 			return total - len(data), io.ErrClosedPipe
 		}
 		data = data[n:]
 	}
 	return total, nil
+}
+
+// writeFrame shares the output deadline and failure cleanup for terminal and
+// recording metadata. coder/websocket serializes concurrent socket writes.
+func (w *terminalWriter) writeFrame(frame []byte) error {
+	if w.ctx.Err() != nil {
+		return io.ErrClosedPipe
+	}
+	ctx, cancel := context.WithTimeout(w.ctx, writeTimeout)
+	defer cancel()
+	if err := w.conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
+		w.cancel()
+		return io.ErrClosedPipe
+	}
+	return nil
 }
 
 type handshakeWriter struct {
