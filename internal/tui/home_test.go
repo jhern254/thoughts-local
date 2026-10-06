@@ -79,9 +79,6 @@ func (s homeThoughtStore) BrowseThoughtsViewInRange(context.Context, string, tim
 func (s homeThoughtStore) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error) {
 	return &s.summary, nil
 }
-func (s homeThoughtStore) CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error) {
-	return 1, nil
-}
 func (s homeThoughtStore) ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error) {
 	return []data.EventThoughtCountView{{EventID: 1, Count: 1}}, nil
 }

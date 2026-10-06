@@ -37,13 +37,6 @@ func (s *Service) BrowseThoughtsView(ctx context.Context, userID string, scope T
 	return s.thoughts.BrowseThoughtsViewInRange(ctx, userID, scope.event.StartedAt, scope.until, request)
 }
 
-func (s *Service) CountThoughts(ctx context.Context, userID string, scope ThoughtScope) (int64, error) {
-	if scope.userID == "" || scope.userID != userID {
-		return 0, data.ErrRecordNotFound
-	}
-	return s.metrics.CountThoughtsInRange(ctx, userID, scope.event.StartedAt, scope.until)
-}
-
 func (s *Service) LatestThought(ctx context.Context, userID string, eventID int64) (*data.ThoughtSummaryView, error) {
 	scope, err := s.OpenThoughtsView(ctx, userID, eventID)
 	if err != nil {

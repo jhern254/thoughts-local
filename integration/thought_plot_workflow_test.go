@@ -12,6 +12,35 @@ import (
 )
 
 func TestThoughtLengthPlotWorkflow_SQLite(t *testing.T) {
+	t.Run("generic browsing and latest preview omit unused full body counts", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		if _, err := db.Exec(`INSERT INTO users(user_id) VALUES ('u')`); err != nil {
+			t.Fatal(err)
+		}
+		body := strings.Repeat("界 🙂 ", 1000)
+		if _, err := db.Exec(`INSERT INTO thoughts(user_id,thought,observed_at) VALUES ('u',?,100)`, body); err != nil {
+			t.Fatal(err)
+		}
+		store := data.NewSQLiteThoughtStore(db)
+		view, err := store.BrowseThoughtsView(t.Context(), "u", data.ThoughtSummaryViewRequest{})
+		if err != nil || len(view.Items) != 1 {
+			t.Fatalf("browse: got %d items, %v; want one", len(view.Items), err)
+		}
+		if got := view.Items[0].CharacterCount; got != 0 {
+			t.Errorf("generic character count: got %d, want unrequested zero", got)
+		}
+		latest, err := store.LatestThoughtInRange(t.Context(), "u", time.Unix(100, 0), time.Unix(200, 0))
+		if err != nil || latest == nil {
+			t.Fatalf("latest: got %v, %v; want preview", latest, err)
+		}
+		if got := latest.CharacterCount; got != 0 {
+			t.Errorf("latest character count: got %d, want unrequested zero", got)
+		}
+		if got, want := latest.Preview, string([]rune(body)[:80])+"…"; got != want || view.Items[0].Preview != want {
+			t.Fatalf("previews: got %q / %q, want %q", got, view.Items[0].Preview, want)
+		}
+	})
+
 	t.Run("counts full Unicode bodies including spaces and embedded NUL", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		if _, err := db.Exec(`INSERT INTO users(user_id) VALUES ('u')`); err != nil {

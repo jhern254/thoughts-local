@@ -40,24 +40,14 @@ func (s *SQLiteMetricsStore) ThoughtCountsByEvent(ctx context.Context, userID st
 	return counts, nil
 }
 
-func (s *SQLiteMetricsStore) CountThoughtsInRange(ctx context.Context, userID string, from, until time.Time) (int64, error) {
-	var count int64
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM thoughts t JOIN users u ON u.user_id=t.user_id
-		WHERE t.user_id=? AND t.deleted_at IS NULL AND u.deleted_at IS NULL AND t.observed_at >= ? AND t.observed_at < ?`, userID, from.Unix(), until.Unix()).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("count interval thoughts: %w", TranslateSQLiteError(err))
-	}
-	return count, nil
-}
-
 // ThoughtIntervalStats describes the entire browsing interval, not a cursor page.
 type ThoughtIntervalStats struct {
 	Count         int64
 	MaxCharacters int64
 }
 
-// ThoughtStatsInRange replaces the expanded picker's count-only query. Replacing
-// embedded NULs in the shared count expression preserves full code-point counts.
+// ThoughtStatsInRange returns the whole-interval count and maximum length.
+// The shared character-count expression includes text after embedded NULs.
 func (s *SQLiteMetricsStore) ThoughtStatsInRange(ctx context.Context, userID string, from, until time.Time) (ThoughtIntervalStats, error) {
 	var stats ThoughtIntervalStats
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(MAX(`+thoughtCharacterCountSQL+`), 0)

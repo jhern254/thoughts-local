@@ -123,10 +123,6 @@ func (s *viewStore) ThoughtCountsByEvent(context.Context, string, time.Time, tim
 	s.counts++
 	return []data.EventThoughtCountView{{EventID: 1, Count: int64(len(s.items))}}, s.err
 }
-func (s *viewStore) CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error) {
-	s.counts++
-	return int64(len(s.items)), s.err
-}
 
 func TestModel_DayArrival(t *testing.T) {
 	t.Run("previous day opens at first event without entering its thought picker", func(t *testing.T) {

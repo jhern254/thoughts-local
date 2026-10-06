@@ -16,7 +16,7 @@ const (
 type ThoughtSummaryView struct {
 	ThoughtID      int64
 	Preview        string
-	CharacterCount int64 // Unicode code points in the full stored text, including whitespace.
+	CharacterCount int64 // Full Unicode code points (including whitespace) on Event pages; zero when not requested.
 	SubjectName    *string
 	ObservedAt     time.Time
 	CreatedAt      time.Time
