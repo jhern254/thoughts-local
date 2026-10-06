@@ -746,3 +746,122 @@ func TestInstaller_Encoding(t *testing.T) {
 		assertError(t, err, ErrDownload)
 	})
 }
+
+func TestInstaller_FileDurability(t *testing.T) {
+	t.Run("sync failure prevents publication and releases resources", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "tiny") }))
+		defer server.Close()
+		root := testRoot(t)
+		installer := testInstaller(t, root, []entry{fixtureEntry(server.URL, "tiny")}, server.Client())
+		syncCause := errors.New("sync failed")
+		syncError := &os.PathError{Op: "sync", Path: "sensitive local path", Err: syncCause}
+		installer.syncFile = func(*os.File) error { return syncError }
+		fileClosed := false
+		installer.closeFile = func(modelFile *os.File) error { fileClosed = true; return modelFile.Close() }
+		installer.rename = func(string, string) error { t.Error("published after sync failure"); return nil }
+		_, err := installer.Install(context.Background(), "tiny")
+		assertError(t, err, ErrFilesystem)
+		assertError(t, err, syncCause)
+		var pathError *os.PathError
+		if !errors.As(err, &pathError) || pathError != syncError {
+			t.Fatalf("got %v, want retained sync cause", err)
+		}
+		if err.Error() != ErrFilesystem.Error() {
+			t.Fatalf("unsafe error text: %v", err)
+		}
+		if !fileClosed {
+			t.Error("downloaded file was not closed after sync failure")
+		}
+		_, err = installer.Lookup(context.Background(), "tiny")
+		assertError(t, err, ErrNotInstalled)
+		assertNoLockOrStage(t, root)
+		if _, err = root.Lstat("tiny/rev-1"); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("target revision got %v, want absent", err)
+		}
+	})
+	t.Run("sync failure for a newer revision preserves the valid earlier revision", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "tiny") }))
+		defer server.Close()
+		root := testRoot(t)
+		previousManifest := fixtureEntry(server.URL, "tiny")
+		previousInstaller := testInstaller(t, root, []entry{previousManifest}, server.Client())
+		previousInstallation, err := previousInstaller.Install(context.Background(), previousManifest.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		newerManifest := previousManifest
+		newerManifest.Revision = "rev-2"
+		newerInstaller := testInstaller(t, root, []entry{newerManifest}, server.Client())
+		syncCause := errors.New("sync failed")
+		newerInstaller.syncFile = func(*os.File) error { return syncCause }
+		_, err = newerInstaller.Install(context.Background(), newerManifest.ID)
+		assertError(t, err, ErrFilesystem)
+		assertError(t, err, syncCause)
+		verifiedInstallation, err := previousInstaller.Lookup(context.Background(), previousManifest.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verifiedInstallation != previousInstallation {
+			t.Fatalf("got %+v, want %+v", verifiedInstallation, previousInstallation)
+		}
+		_, err = newerInstaller.Lookup(context.Background(), newerManifest.ID)
+		assertError(t, err, ErrNotInstalled)
+		assertNoLockOrStage(t, root)
+	})
+	t.Run("every verified file is synced and closed before staging is published", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "tiny") }))
+		defer server.Close()
+		root := testRoot(t)
+		manifest := fixtureEntry(server.URL, "tiny")
+		secondFile := manifest.Files[0]
+		secondFile.Path = "nested/config.bin"
+		manifest.Files = append(manifest.Files, secondFile)
+		installer := testInstaller(t, root, []entry{manifest}, server.Client())
+		syncedFiles := make(map[*os.File]bool)
+		closedFiles := make(map[*os.File]bool)
+		installer.syncFile = func(modelFile *os.File) error {
+			if closedFiles[modelFile] {
+				t.Error("file closed before sync")
+			}
+			info, err := modelFile.Stat()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Size() != 4 {
+				t.Fatalf("size at sync got %d, want 4", info.Size())
+			}
+			syncedFiles[modelFile] = true
+			return modelFile.Sync()
+		}
+		installer.closeFile = func(modelFile *os.File) error {
+			if !syncedFiles[modelFile] {
+				t.Error("file closed before sync")
+			}
+			closedFiles[modelFile] = true
+			return modelFile.Close()
+		}
+		installer.rename = func(stagingDirectory, destinationPath string) error {
+			if len(syncedFiles) != 2 || len(closedFiles) != 2 {
+				t.Errorf("synced %d and closed %d files, want 2 each", len(syncedFiles), len(closedFiles))
+			}
+			for modelFile := range syncedFiles {
+				if _, err := modelFile.Stat(); !errors.Is(err, os.ErrClosed) {
+					t.Errorf("file at publication got %v, want closed", err)
+				}
+			}
+			return root.Rename(stagingDirectory, destinationPath)
+		}
+		if _, err := installer.Install(context.Background(), manifest.ID); err != nil {
+			t.Fatal(err)
+		}
+		assertNoLockOrStage(t, root)
+	})
+	t.Run("failed integrity verification never syncs a file", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "evil") }))
+		defer server.Close()
+		installer := testInstaller(t, testRoot(t), []entry{fixtureEntry(server.URL, "tiny")}, server.Client())
+		installer.syncFile = func(*os.File) error { t.Error("synced a file with invalid integrity"); return nil }
+		_, err := installer.Install(context.Background(), "tiny")
+		assertError(t, err, ErrIntegrity)
+	})
+}

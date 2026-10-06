@@ -221,7 +221,13 @@ func (i *Installer) download(ctx context.Context, name string, a asset) (err err
 	if err != nil && !errors.Is(err, ErrIntegrity) && !errors.Is(err, ErrFilesystem) {
 		return failure(ErrDownload, err)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if err := i.syncFile(f); err != nil {
+		return failure(ErrFilesystem, err)
+	}
+	return nil
 }
 
 // verify bounds the stream independently of HTTP framing and uses fixed memory.

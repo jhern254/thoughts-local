@@ -8,6 +8,12 @@
 // After a process interruption, remove stale .install.lock, .stage-* directories
 // and incomplete revisions manually, only while no installer is running. There
 // is no automatic repair or lock takeover. Earlier revisions are retained.
+//
+// Downloaded file contents are integrity-verified, synced and closed before
+// publication. Directory metadata (including rename and marker creation) is not
+// synced: portable directory synchronization is not available through this root
+// API on all supported platforms. File Sync success does not guarantee that an
+// installation or its completion marker survives a system crash or power loss.
 package modelassets
 
 import (
@@ -77,6 +83,7 @@ type Installer struct {
 	idleTimeout time.Duration
 	fileTimeout time.Duration
 	// Narrow fault-injection seams for resource closure and publication tests.
+	syncFile  func(*os.File) error
 	closeFile func(*os.File) error
 	rename    func(string, string) error
 	complete  func(string) error
@@ -143,6 +150,7 @@ func newInstaller(root *os.Root, entries []entry, client *http.Client) (*Install
 		client:      client,
 		idleTimeout: 30 * time.Second,
 		fileTimeout: 30 * time.Minute,
+		syncFile:    func(f *os.File) error { return f.Sync() },
 		closeFile:   func(f *os.File) error { return f.Close() },
 		rename:      root.Rename,
 		complete:    func(name string) error { return root.Mkdir(name, 0700) },
