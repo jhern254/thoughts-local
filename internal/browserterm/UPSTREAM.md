@@ -156,6 +156,14 @@ MediaRecorder, requests roughly one-second chunks, and immediately discards them
 A separate elapsed-time deadline stops capture at twenty minutes. No audio
 bytes are sent to Go, persisted, or made playable in this stage.
 
+Recording is controlled by the shared Thoughts editor, using F8 for now:
+
+1. The TUI key changes the draft's recording state through `updateVoiceAction`.
+2. `voiceBridgeModel` sends a `VoiceState` snapshot to `client.js`, which starts
+   or stops `ThoughtsMicrophone` on the browser's device.
+3. Browser callbacks send control acknowledgements through `inputMessages`
+   back to the TUI. Editing and saving stay locked until capture stops.
+
 Binary `v` frames carry bounded recording controls and state only. `inputMessages`
 validates controls; the Thoughts draft checks its draft/recording identities.
 `voiceBridgeModel` publishes authoritative state after model updates through the

@@ -57,27 +57,7 @@ are not needed to build or run it.
   behavior in Thoughts/Events. Browser text selection uses the normal copy path.
 - Application shortcuts work while the terminal has focus. Browser-reserved
   shortcuts such as Ctrl+L and Ctrl+W remain browser actions. Click the terminal
-  to return focus. Attachments and mobile packaging are deferred.
-
-### Voice input
-
-In browser mode, press **t** from browsing to open the regular Thoughts editor,
-with the same blue Thoughts heading used by normal creation. **F8** toggles
-**Record / Stop**; the TUI displays only the current action. The browser requests
-microphone permission when recording starts. Each recording can last twenty
-minutes; Stop restores editing, and recording again keeps the draft. Editing,
-subject changes, and saving are disabled during recording.
-
-While stopped, use **Tab** to switch between the text and optional subject search.
-The first choice is **Create subject…**, followed by matching subjects, as in
-Events. An empty field means **Misc**; clear it to return to Misc. Creating or
-cancelling returns to the preserved draft. **Ctrl+S** saves and **Esc** cancels.
-Plain **v** remains text; Vim-style normal/insert modes are deferred.
-
-This first stage captures microphone audio without transcription. Audio chunks
-are discarded immediately; there is no playback, audio upload, or recording
-storage. Type or paste draft text while stopped. Reloading or disconnecting ends
-capture and discards unsaved state. Live native transcription follows separately.
+  to return focus. Microphone, attachments, and mobile packaging are deferred.
 
 ### Local trust and maintenance
 
