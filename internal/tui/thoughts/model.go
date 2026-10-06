@@ -384,7 +384,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				if m.voiceLocked() {
 					action = "stop"
 				}
-				return m.updateVoiceAction(VoiceAction{Action: action, Draft: m.voice.id, Recording: m.voice.recording})
+				return m.updateVoiceAction(VoiceAction{Action: action, DraftID: m.voice.draftID, RecordingID: m.voice.recordingID})
 			}
 			if m.voiceLocked() {
 				return m, nil

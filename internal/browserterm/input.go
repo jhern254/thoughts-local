@@ -36,18 +36,18 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 		// Voice frames contain only small control metadata, so cap JSON at 256 bytes.
 		// 9007199254740991 is JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1):
 		// larger IDs can round in the browser and break draft/recording ownership.
-		if len(body) > 256 || json.Unmarshal(body, &action) != nil || action.Draft > 9007199254740991 || action.Recording > 9007199254740991 {
+		if len(body) > 256 || json.Unmarshal(body, &action) != nil || action.DraftID > 9007199254740991 || action.RecordingID > 9007199254740991 {
 			return nil, errInput
 		}
 		// Open has no existing draft; later controls must identify one. The model
 		// checks that both IDs still belong to its current recording attempt.
 		switch action.Action {
 		case "open":
-			if action.Draft != 0 || action.Recording != 0 {
+			if action.DraftID != 0 || action.RecordingID != 0 {
 				return nil, errInput
 			}
 		case "start", "stop", "recording", "stopped", "denied", "unavailable", "failed":
-			if action.Draft == 0 {
+			if action.DraftID == 0 {
 				return nil, errInput
 			}
 		default:

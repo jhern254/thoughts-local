@@ -125,23 +125,23 @@ func TestVoiceTUIWorkflow_SQLite(t *testing.T) {
 				}
 			}
 			write(`2{"cols":100,"rows":35}`)
-			waitControl(func(s thoughts.VoiceState) bool { return s.CanOpen })
+			waitControl(func(s thoughts.VoiceState) bool { return s.CanOpenThoughtDraft })
 			write("0t")
-			state := waitControl(func(s thoughts.VoiceState) bool { return s.Draft != 0 })
+			state := waitControl(func(s thoughts.VoiceState) bool { return s.DraftID != 0 })
 			waitView("Create thought")
 			const body = "voice draft\n界 café 👩‍💻"
 			write("p" + body)
 			waitView("voice draft")
 			// Exercise controls through the actual socket; no audio is sent over it.
-			write(`v{"action":"start","draft":1}`)
-			waitControl(func(s thoughts.VoiceState) bool { return s.State == "requesting" })
+			write(`v{"action":"start","draftID":1}`)
+			waitControl(func(s thoughts.VoiceState) bool { return s.RecordingStatus == "requesting" })
 			write("pPRIVATE-NOT-INSERTED")
-			write(`v{"action":"stop","draft":1,"recording":1}`)
-			waitControl(func(s thoughts.VoiceState) bool { return s.State == "stopping" })
-			write(`v{"action":"stopped","draft":1,"recording":1}`)
-			waitControl(func(s thoughts.VoiceState) bool { return s.State == "idle" && s.Recording == 1 })
-			if state.Draft != 1 {
-				t.Fatalf("draft got %d, want 1", state.Draft)
+			write(`v{"action":"stop","draftID":1,"recordingID":1}`)
+			waitControl(func(s thoughts.VoiceState) bool { return s.RecordingStatus == "stopping" })
+			write(`v{"action":"stopped","draftID":1,"recordingID":1}`)
+			waitControl(func(s thoughts.VoiceState) bool { return s.RecordingStatus == "idle" && s.RecordingID == 1 })
+			if state.DraftID != 1 {
+				t.Fatalf("draft got %d, want 1", state.DraftID)
 			}
 			if choice != "unassigned" {
 				write("0\t")
@@ -153,9 +153,9 @@ func TestVoiceTUIWorkflow_SQLite(t *testing.T) {
 				write("0\r")
 				if choice == "new subject" {
 					waitView("Create subject\n")
-					waitControl(func(s thoughts.VoiceState) bool { return s.Draft == 0 })
+					waitControl(func(s thoughts.VoiceState) bool { return s.DraftID == 0 })
 					write("0\r")
-					waitControl(func(s thoughts.VoiceState) bool { return s.Draft == 1 && s.State == "idle" })
+					waitControl(func(s thoughts.VoiceState) bool { return s.DraftID == 1 && s.RecordingStatus == "idle" })
 				}
 				waitView("Voice subject")
 			}

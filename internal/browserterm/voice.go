@@ -11,20 +11,20 @@ import (
 // cannot announce an obsolete draft. It carries no audio or authored text.
 type voiceBridgeModel struct {
 	tea.Model
-	writer *terminalWriter
-	state  thoughts.VoiceState
+	writer         *terminalWriter
+	lastVoiceState thoughts.VoiceState
 }
 
 func (m voiceBridgeModel) Init() tea.Cmd {
-	return tea.Batch(m.Model.Init(), func() tea.Msg { return thoughts.VoiceAvailable{} })
+	return tea.Batch(m.Model.Init(), func() tea.Msg { return thoughts.BrowserRecordingEnabledMsg{} })
 }
 func (m voiceBridgeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.Model, cmd = m.Model.Update(msg)
 	if model, ok := m.Model.(interface{ VoiceState() thoughts.VoiceState }); ok {
 		state := model.VoiceState()
-		if state != m.state {
-			m.state = state
+		if state != m.lastVoiceState {
+			m.lastVoiceState = state
 			data, _ := json.Marshal(state)
 			_ = m.writer.writeFrame(append([]byte{'v'}, data...))
 		}

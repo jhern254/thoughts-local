@@ -18,9 +18,30 @@ func TestModel_VoiceDraft(t *testing.T) {
 			t.Fatal("native voice action changed screen")
 		}
 	})
+	t.Run("browser controls stay enabled when an active draft blocks quick entry", func(t *testing.T) {
+		m := newRootTestModel()
+		if state := m.VoiceState(); state.BrowserRecordingEnabled || state.CanOpenThoughtDraft {
+			t.Fatalf("native state got %+v, want browser controls disabled", state)
+		}
+		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
+		if state := m.VoiceState(); !state.BrowserRecordingEnabled || !state.CanOpenThoughtDraft {
+			t.Fatalf("browser home got %+v, want controls enabled and quick entry allowed", state)
+		}
+		m, _ = rootUpdate(m, thoughts.VoiceAction{Action: "open"})
+		state := m.VoiceState()
+		if !state.BrowserRecordingEnabled || state.CanOpenThoughtDraft || state.DraftID == 0 || state.RecordingStatus != "idle" {
+			t.Fatalf("draft got %+v, want enabled controls without quick entry", state)
+		}
+		m, _ = rootUpdate(m, thoughts.VoiceAction{Action: "start", DraftID: state.DraftID})
+		m, _ = rootUpdate(m, thoughts.VoiceAction{Action: "unavailable", DraftID: state.DraftID, RecordingID: 1})
+		if state := m.VoiceState(); !state.BrowserRecordingEnabled || state.RecordingStatus != "idle" {
+			t.Fatalf("unavailable microphone got %+v, want browser controls still enabled", state)
+		}
+	})
+
 	t.Run("t opens the same titled editor as regular browser creation", func(t *testing.T) {
 		m := newRootTestModel()
-		m, _ = rootUpdate(m, thoughts.VoiceAvailable{})
+		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 't', Text: "t"}))
 		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
 		if !m.thoughts.Creating() || !strings.HasPrefix(m.View().Content, heading+"\nCreate thought\n") || strings.Contains(m.View().Content, "Voice thought") {
@@ -28,7 +49,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 		}
 		quick := m.View().Content
 		m = newRootTestModel()
-		m, _ = rootUpdate(m, thoughts.VoiceAvailable{})
+		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
 		m.entityFocused = true
 		m.selectedEntity = entityThoughts
 		m = runModelCommand(t, m, enterKey())
@@ -37,7 +58,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 			t.Fatalf("regular entry got %q, want same editor %q", m.View().Content, quick)
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 't', Text: "t"}))
-		if !strings.Contains(m.View().Content, "t") || m.voiceDraft != 1 {
+		if !strings.Contains(m.View().Content, "t") || m.voiceDraftID != 1 {
 			t.Fatal("t replaced the active draft instead of inserting text")
 		}
 	})
@@ -47,7 +68,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 		m.subjects.service = &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }, create: func(_ context.Context, user, name string) (*data.Subject, error) {
 			return &data.Subject{SubjectID: 42, UserID: user, SubjectName: name}, nil
 		}}
-		m, _ = rootUpdate(m, thoughts.VoiceAvailable{})
+		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
 		m, cmd := rootUpdate(m, thoughts.VoiceAction{Action: "open"})
 		original := &data.Subject{SubjectID: 7, SubjectName: "Original"}
 		m.subjects.selected = original
@@ -57,16 +78,16 @@ func TestModel_VoiceDraft(t *testing.T) {
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: "Voice subject"})
 		m = runModelCommand(t, m, enterKey())
-		if m.screen != screenSubjectCreate || m.subjects.input.Value() != "Voice subject" || m.VoiceState().Draft != 0 {
+		if m.screen != screenSubjectCreate || m.subjects.input.Value() != "Voice subject" || m.VoiceState().DraftID != 0 {
 			t.Fatal("creation did not suspend voice draft")
 		}
 		m = runModelCommand(t, m, enterKey())
 		view := m.View().Content
-		if m.subjects.selected != original || m.screen != screenVoiceThought || !strings.Contains(view, "preserved draft 界") || !strings.Contains(view, "Voice subject") || m.VoiceState().Draft == 0 {
+		if m.subjects.selected != original || m.screen != screenVoiceThought || !strings.Contains(view, "preserved draft 界") || !strings.Contains(view, "Voice subject") || m.VoiceState().DraftID == 0 {
 			t.Fatalf("got resumed view %s", view)
 		}
 		m, _ = rootUpdate(m, escapeKey())
-		if m.screen != screenEvents || m.VoiceState().Draft != 0 {
+		if m.screen != screenEvents || m.VoiceState().DraftID != 0 {
 			t.Fatal("cancel did not end voice draft")
 		}
 	})

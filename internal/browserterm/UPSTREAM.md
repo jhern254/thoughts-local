@@ -156,6 +156,16 @@ MediaRecorder, requests roughly one-second chunks, and immediately discards them
 A separate elapsed-time deadline stops capture at twenty minutes. No audio
 bytes are sent to Go, persisted, or made playable in this stage.
 
+`BrowserRecordingEnabledMsg` tells the root TUI that this session uses browser
+recording controls. `VoiceState.BrowserRecordingEnabled` reports that capability;
+it does not mean microphone permission was granted or a device is available.
+`CanOpenThoughtDraft` separately reports whether the current screen permits quick
+entry without interrupting a form or filter.
+
+`DraftID` identifies the current draft, and `RecordingID` identifies an attempt
+within it. `RecordingStatus` describes its phase. These names are also used in
+the JSON frames exchanged with the embedded client.
+
 Recording is controlled by the shared Thoughts editor, using F8 for now:
 
 1. The TUI key changes the draft's recording state through `updateVoiceAction`.

@@ -31,16 +31,16 @@
     voiceState = {};
   }
   function receiveVoice(state) {
-    const restoreFocus = state.draft && (voiceState.draft !== state.draft || (voiceState.state !== "idle" && state.state === "idle"));
-    const identity = {draft: state.draft, recording: state.recording};
-    if (!captureIdentity || captureIdentity.draft !== identity.draft || captureIdentity.recording !== identity.recording) {
+    const restoreFocus = state.draftID && (voiceState.draftID !== state.draftID || (voiceState.recordingStatus !== "idle" && state.recordingStatus === "idle"));
+    const identity = {draftID: state.draftID, recordingID: state.recordingID};
+    if (!captureIdentity || captureIdentity.draftID !== identity.draftID || captureIdentity.recordingID !== identity.recordingID) {
       microphone.cancel();
-      captureIdentity = identity.draft ? identity : undefined;
+      captureIdentity = identity.draftID ? identity : undefined;
     }
     voiceState = state;
-    if (state.state === 'requesting') microphone.start();
-    else if (state.state === 'stopping') microphone.stop();
-    else if (state.state === 'idle' || !state.draft) microphone.cancel();
+    if (state.recordingStatus === 'requesting') microphone.start();
+    else if (state.recordingStatus === 'stopping') microphone.stop();
+    else if (state.recordingStatus === 'idle' || !state.draftID) microphone.cancel();
     if (restoreFocus) term.focus();
   }
   window.addEventListener('pagehide', clearVoice);

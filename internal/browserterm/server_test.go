@@ -275,7 +275,7 @@ func TestServerInvalidInput(t *testing.T) {
 		tooBig bool
 	}{
 		{"malformed resize", `2{"cols":0,"rows":24,"text":"PRIVATE-FRAME-MARKER"}`, false},
-		{"malformed voice control", `v{"action":"recording","draft":-1,"text":"PRIVATE-FRAME-MARKER"}`, false},
+		{"malformed voice control", `v{"action":"recording","draftID":-1,"text":"PRIVATE-FRAME-MARKER"}`, false},
 		{"oversized paste", "p" + strings.Repeat("x", maxPasteBytes) + "PRIVATE-FRAME-MARKER", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

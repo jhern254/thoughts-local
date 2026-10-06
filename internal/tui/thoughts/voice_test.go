@@ -34,9 +34,9 @@ func TestModel_Voice(t *testing.T) {
 	t.Run("recording locks editor paste subject and save until stopped", func(t *testing.T) {
 		m := voiceModel(t)
 		m, _ = m.Update(tea.PasteMsg{Content: "preserved 界"})
-		m, _ = m.Update(VoiceAction{Action: "start", Draft: 1})
+		m, _ = m.Update(VoiceAction{Action: "start", DraftID: 1})
 		state := m.VoiceState()
-		if state.State != "requesting" || state.Recording != 1 {
+		if state.RecordingStatus != "requesting" || state.RecordingID != 1 {
 			t.Fatalf("got %+v, want requesting recording 1", state)
 		}
 		for _, msg := range []tea.Msg{tea.PasteMsg{Content: "PRIVATE"}, tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}), key(tea.KeyTab), tea.KeyPressMsg(tea.Key{Code: 'x', Text: "x"})} {
@@ -46,22 +46,25 @@ func TestModel_Voice(t *testing.T) {
 				t.Fatal("recording mutated or saved draft")
 			}
 		}
-		m, _ = m.Update(VoiceAction{Action: "recording", Draft: 1, Recording: 1})
-		m, _ = m.Update(VoiceAction{Action: "stop", Draft: 1, Recording: 1})
-		if m.VoiceState().State != "stopping" {
+		m, _ = m.Update(VoiceAction{Action: "recording", DraftID: 1, RecordingID: 1})
+		if got := m.VoiceState().RecordingStatus; got != "recording" {
+			t.Fatalf("recording acknowledgement got %q, want recording", got)
+		}
+		m, _ = m.Update(VoiceAction{Action: "stop", DraftID: 1, RecordingID: 1})
+		if m.VoiceState().RecordingStatus != "stopping" {
 			t.Fatal("Stop did not lock pending finalization")
 		}
-		m, _ = m.Update(VoiceAction{Action: "stopped", Draft: 1, Recording: 1})
+		m, _ = m.Update(VoiceAction{Action: "stopped", DraftID: 1, RecordingID: 1})
 		m, _ = m.Update(tea.PasteMsg{Content: " edited"})
 		if got := m.input.Value(); got != "preserved 界 edited" || !m.input.Focused() {
 			t.Fatalf("got %q, want preserved focused editor", got)
 		}
-		m, _ = m.Update(VoiceAction{Action: "start", Draft: 1, Recording: 1})
-		if m.VoiceState().Recording != 2 || m.input.Value() != "preserved 界 edited" {
+		m, _ = m.Update(VoiceAction{Action: "start", DraftID: 1, RecordingID: 1})
+		if m.VoiceState().RecordingID != 2 || m.input.Value() != "preserved 界 edited" {
 			t.Fatal("restart lost edits or reused identity")
 		}
-		m, _ = m.Update(VoiceAction{Action: "stopped", Draft: 1, Recording: 1})
-		if m.VoiceState().State != "requesting" {
+		m, _ = m.Update(VoiceAction{Action: "stopped", DraftID: 1, RecordingID: 1})
+		if m.VoiceState().RecordingStatus != "requesting" {
 			t.Fatal("stale stopped callback unlocked new recording")
 		}
 	})
@@ -80,8 +83,8 @@ func TestModel_Voice(t *testing.T) {
 		if m.subjectID == nil || *m.subjectID != 7 || !strings.Contains(ansi.Strip(m.View()), "Work") {
 			t.Fatalf("picker subject got %v, name %q, view %q, want Work", m.subjectID, m.voice.subjectName, m.View())
 		}
-		m, _ = m.Update(VoiceAction{Action: "start", Draft: 1})
-		m, _ = m.Update(VoiceAction{Action: "denied", Draft: 1, Recording: 1})
+		m, _ = m.Update(VoiceAction{Action: "start", DraftID: 1})
+		m, _ = m.Update(VoiceAction{Action: "denied", DraftID: 1, RecordingID: 1})
 		if m.subjectID == nil || *m.subjectID != 7 || !m.input.Focused() {
 			t.Fatal("permission failure lost subject or focus")
 		}
@@ -98,11 +101,11 @@ func TestModel_Voice(t *testing.T) {
 			t.Fatalf("got %q, want normal editor with v and Record only", m.View())
 		}
 		m, _ = m.Update(key(tea.KeyF8))
-		if m.VoiceState().State != "requesting" || !strings.Contains(m.View(), "F8: Stop") || strings.Contains(m.View(), "F8: Record") {
+		if m.VoiceState().RecordingStatus != "requesting" || !strings.Contains(m.View(), "F8: Stop") || strings.Contains(m.View(), "F8: Record") {
 			t.Fatalf("got %q, want Stop only while requesting", m.View())
 		}
 		m, _ = m.Update(key(tea.KeyF8))
-		if m.VoiceState().State != "stopping" || m.input.Value() != "v" {
+		if m.VoiceState().RecordingStatus != "stopping" || m.input.Value() != "v" {
 			t.Fatal("F8 did not stop without changing draft")
 		}
 	})
@@ -154,8 +157,8 @@ func TestModel_Voice(t *testing.T) {
 		m.Resize(40, 24)
 		before := m.input.Height()
 		oldRequest := m.request
-		m, _ = m.Update(VoiceAction{Action: "start", Draft: 1})
-		m, _ = m.Update(VoiceAction{Action: "stopped", Draft: 1, Recording: 1})
+		m, _ = m.Update(VoiceAction{Action: "start", DraftID: 1})
+		m, _ = m.Update(VoiceAction{Action: "stopped", DraftID: 1, RecordingID: 1})
 		m, _ = m.Update(clipboardResult{request: oldRequest, content: "PRIVATE-CLIPBOARD"})
 		if m.input.Value() != "" {
 			t.Fatal("old clipboard result was inserted after recording")
@@ -181,7 +184,7 @@ func TestModel_Voice(t *testing.T) {
 		m.voice.subjectName = "PRIVATE-SUBJECT"
 		m, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
 		m, _ = m.Update(cmd())
-		if !m.input.Focused() || m.input.Value() != "PRIVATE-VOICE-DRAFT" || m.subjectID == nil || *m.subjectID != 7 || m.VoiceState().State != "idle" {
+		if !m.input.Focused() || m.input.Value() != "PRIVATE-VOICE-DRAFT" || m.subjectID == nil || *m.subjectID != 7 || m.VoiceState().RecordingStatus != "idle" {
 			t.Fatal("save failure lost editable voice draft")
 		}
 		if strings.Contains(logs.String(), "PRIVATE-") || strings.Contains(m.View(), "PRIVATE-VOICE-ERROR") {
@@ -197,7 +200,7 @@ func TestModel_Voice(t *testing.T) {
 		m.voice.subjectName = "Work"
 		m, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
 		m, _ = m.Update(cmd())
-		if !m.ShowingDetail() || m.VoiceState().Draft != 0 || m.SelectedSubjectName() != "Work" {
+		if !m.ShowingDetail() || m.VoiceState().DraftID != 0 || m.SelectedSubjectName() != "Work" {
 			t.Fatal("saved voice detail lost subject name or retained recording capability")
 		}
 	})
