@@ -426,16 +426,22 @@ func TestInstaller_FileDurability(t *testing.T) {
 			if !syncedFiles[modelFile] {
 				t.Error("file closed before sync")
 			}
+			if err := modelFile.Close(); err != nil {
+				return err
+			}
 			closedFiles[modelFile] = true
-			return modelFile.Close()
+			return nil
 		}
 		installer.publishStagingDirectory = func(stagingDirectory, destinationPath string) error {
 			if len(syncedFiles) != 2 || len(closedFiles) != 2 {
 				t.Errorf("synced %d and closed %d files, want 2 each", len(syncedFiles), len(closedFiles))
 			}
 			for modelFile := range syncedFiles {
-				if _, err := modelFile.Stat(); !errors.Is(err, os.ErrClosed) {
-					t.Errorf("file at publication got %v, want closed", err)
+				// Stat exposes platform-specific native errors after Close.
+				// Write must reject the closed handle before publication.
+				writtenBytes, err := modelFile.Write([]byte("must not be written"))
+				if writtenBytes != 0 || !errors.Is(err, os.ErrClosed) {
+					t.Errorf("write at publication got %d bytes, %v, want zero bytes and closed", writtenBytes, err)
 				}
 			}
 			return modelRoot.Rename(stagingDirectory, destinationPath)
