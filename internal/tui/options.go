@@ -31,6 +31,15 @@ type BrowserOptionsState struct {
 	Preview  PreviewRect `json:"preview"`
 }
 
+const (
+	optionsFocusChooseImage = iota
+	optionsFocusDarkness
+	optionsFocusApply
+	optionsFocusRemoveBackground
+	optionsFocusBack
+	optionsFocusCount
+)
+
 type optionsState struct {
 	open     bool
 	id       uint64
@@ -63,7 +72,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 	if msg.Action == "open" {
 		if !m.options.open {
 			m.options.open = true
-			m.options.focus = 0
+			m.options.focus = optionsFocusChooseImage
 			m.options.darkness = 70
 			m.options.status = "Loading appearance…"
 			m.requestOptions("load")
@@ -121,14 +130,14 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "tab", "down":
 			if !busy {
-				m.options.focus = (m.options.focus + 1) % 5
+				m.options.focus = (m.options.focus + 1) % optionsFocusCount
 			}
 		case "shift+tab", "up":
 			if !busy {
-				m.options.focus = (m.options.focus + 4) % 5
+				m.options.focus = (m.options.focus + optionsFocusCount - 1) % optionsFocusCount
 			}
 		case "left", "right", "home", "end":
-			if !busy && m.options.focus == 1 {
+			if !busy && m.options.focus == optionsFocusDarkness {
 				switch msg.String() {
 				case "left":
 					m.options.darkness = max(0, m.options.darkness-5)
@@ -159,16 +168,16 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) activateOption() {
 	switch m.options.focus {
-	case 0:
+	case optionsFocusChooseImage:
 		m.options.status = "Choose a JPEG or PNG…"
 		m.requestOptions("choose")
-	case 2:
+	case optionsFocusApply:
 		m.options.status = "Saving…"
 		m.requestOptions("apply")
-	case 3:
+	case optionsFocusRemoveBackground:
 		m.options.status = "Removing…"
 		m.requestOptions("remove")
-	case 4:
+	case optionsFocusBack:
 		m.options.open = false
 		m.requestOptions("")
 	}
@@ -194,15 +203,15 @@ func (m *Model) clickOption(x, y int, activate bool) {
 	}
 	switch {
 	case y == 5 && activate:
-		m.options.focus = 0
+		m.options.focus = optionsFocusChooseImage
 		m.activateOption()
 	case y == 7+shift && activate:
-		m.options.focus = 1
+		m.options.focus = optionsFocusDarkness
 	case y == 8+shift:
-		m.options.focus = 1
+		m.options.focus = optionsFocusDarkness
 		m.options.darkness = max(0, min(95, (x-left)*95/max(1, width-1)))
 	case y >= 10+shift && y <= 12+shift && activate:
-		m.options.focus = 2 + y - (10 + shift)
+		m.options.focus = optionsFocusApply + y - (10 + shift)
 		m.activateOption()
 	}
 }
@@ -218,7 +227,7 @@ func (m Model) viewOptions() tea.View {
 		}
 		return plain.Render(text)
 	}
-	lines := []string{selected.Render("Options"), "", "Appearance", "", "Background image", label(0, "Choose image"), ""}
+	lines := []string{selected.Render("Options"), "", "Appearance", "", "Background image", label(optionsFocusChooseImage, "Choose image"), ""}
 	if rect.Height > 0 {
 		lines = append(lines, muted.Render("╭"+strings.Repeat("─", rect.Width)+"╮"))
 		for range rect.Height {
@@ -229,8 +238,8 @@ func (m Model) viewOptions() tea.View {
 	peak := m.options.darkness * (width - 1) / 95
 	slider := strings.Repeat("━", peak) + "●" + strings.Repeat("─", width-peak-1)
 	slider = muted.Render(slider)
-	lines = append(lines, label(1, fmt.Sprintf("Background darkness: %d%%", m.options.darkness)), slider, "",
-		label(2, "Apply"), label(3, "Remove background"), label(4, "Back"))
+	lines = append(lines, label(optionsFocusDarkness, fmt.Sprintf("Background darkness: %d%%", m.options.darkness)), slider, "",
+		label(optionsFocusApply, "Apply"), label(optionsFocusRemoveBackground, "Remove background"), label(optionsFocusBack, "Back"))
 	lines = append(lines, "", muted.Render(m.options.status), "", muted.Render("↑/↓/Tab: focus · ←/→: darkness"), muted.Render("Enter: activate · Q/Esc: back"))
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")

@@ -1,13 +1,13 @@
 /* Bubble Tea owns controls; the browser owns the picker, image pixels and HTTP. */
 class ThoughtsAppearance {
-  constructor(term, send) {
-    this.term = term;
-    this.send = send;
+  constructor(terminal, sendAction) {
+    this.terminal = terminal;
+    this.sendAction = sendAction;
     this.image = document.getElementById('background-image');
     this.overlay = document.getElementById('background-overlay');
     this.file = document.getElementById('background-file');
     this.preview = document.getElementById('background-preview');
-    this.previewWrap = document.getElementById('background-preview-wrap');
+    this.previewContainer = document.getElementById('background-preview-wrap');
     this.saved = {background: false, darkness: 70};
     this.state = {open: false};
     this.previewGeneration = 0;
@@ -17,51 +17,51 @@ class ThoughtsAppearance {
       if ((event.ctrlKey || event.metaKey) && event.key === ',') {
         event.preventDefault();
         event.stopImmediatePropagation();
-        this.send({action: 'open'});
+        this.sendAction({action: 'open'});
       }
     }, true);
     this.file.addEventListener('change', () => this.previewFile());
     this.file.addEventListener('cancel', () => this.reply('cancelled', this.state.id));
-    this.term.onRender(() => {
+    this.terminal.onRender(() => {
       if (this.refreshAfterClose) {
         this.refreshAfterClose = false;
         // Closing metadata arrives before the returning TUI screen. Repaint
         // every row after that render to retire pixels behind the image overlay.
-        this.term.refresh(0, this.term.rows - 1);
+        this.terminal.refresh(0, this.terminal.rows - 1);
       }
       this.queuePreview();
     });
-    new ResizeObserver(() => { this.previewWrap.hidden = true; this.queuePreview(); }).observe(this.term.element);
+    new ResizeObserver(() => { this.previewContainer.hidden = true; this.queuePreview(); }).observe(this.terminal.element);
   }
   isOpen() { return this.state.open; }
-  reply(action, id, connection = this.connectionGeneration) {
-    if (connection === this.connectionGeneration && this.state.open && this.state.id === id) {
-      this.send({action, id, darkness: this.saved.darkness});
+  reply(action, operationID, connectionGeneration = this.connectionGeneration) {
+    if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) {
+      this.sendAction({action, id: operationID, darkness: this.saved.darkness});
     }
   }
   async receive(state) {
-    const previous = this.state;
+    const previousState = this.state;
     this.state = state;
-    this.refreshAfterClose = previous.open && !state.open;
-    if (JSON.stringify(state.preview) !== JSON.stringify(previous.preview)) this.previewWrap.hidden = true;
+    this.refreshAfterClose = previousState.open && !state.open;
+    if (JSON.stringify(state.preview) !== JSON.stringify(previousState.preview)) this.previewContainer.hidden = true;
     if (!state.open) {
       this.discardPreview();
       this.updateDarkness(this.saved.darkness);
-      if (previous.open) this.term.focus();
+      if (previousState.open) this.terminal.focus();
       return;
     }
     this.updateDarkness(state.request === 'load' ? this.saved.darkness : state.darkness);
     this.queuePreview();
-    if (state.id === previous.id && state.request === previous.request) return;
-    const id = state.id;
-    const connection = this.connectionGeneration;
+    if (state.id === previousState.id && state.request === previousState.request) return;
+    const operationID = state.id;
+    const connectionGeneration = this.connectionGeneration;
     switch (state.request) {
       case 'load':
         await this.ready;
-        if (connection !== this.connectionGeneration || !this.state.open || this.state.id !== id) return;
+        if (connectionGeneration !== this.connectionGeneration || !this.state.open || this.state.id !== operationID) return;
         if (this.activeURL) this.preview.src = this.activeURL;
-        this.reply(this.loadFailed ? 'failed' : 'loaded', id);
-        this.term.focus();
+        this.reply(this.loadFailed ? 'failed' : 'loaded', operationID);
+        this.terminal.focus();
         break;
       case 'choose':
         // Keep the native picker attached to the existing document. No terminal
@@ -69,7 +69,7 @@ class ThoughtsAppearance {
         this.file.click();
         break;
       case 'apply': case 'remove':
-        await this.save(state.request === 'remove', id, state.darkness, connection);
+        await this.save(state.request === 'remove', operationID, state.darkness, connectionGeneration);
         break;
     }
   }
@@ -82,40 +82,40 @@ class ThoughtsAppearance {
   }
   updateDarkness(value) {
     value = Number.isInteger(value) ? Math.max(0, Math.min(95, value)) : 70;
-    this.previewWrap.style.setProperty('--darkness', value / 100);
+    this.previewContainer.style.setProperty('--darkness', value / 100);
     this.overlay.style.backgroundColor = `rgb(0 0 0 / ${value}%)`;
   }
   queuePreview() {
-    if (!this.state.open) { this.previewWrap.hidden = true; return; }
+    if (!this.state.open) { this.previewContainer.hidden = true; return; }
     cancelAnimationFrame(this.previewFrame);
     this.previewFrame = requestAnimationFrame(() => this.positionPreview());
   }
   positionPreview() {
-    this.previewWrap.hidden = true;
-    const r = this.state.preview;
-    if (!this.state.open || !r || !r.Height || !this.preview.getAttribute('src')) return;
-    if (this.state.request === 'load' || this.term.cols < r.X + r.Width + 1 || this.term.rows < r.Y + r.Height + 1) return;
+    this.previewContainer.hidden = true;
+    const previewRect = this.state.preview;
+    if (!this.state.open || !previewRect || !previewRect.Height || !this.preview.getAttribute('src')) return;
+    if (this.state.request === 'load' || this.terminal.cols < previewRect.X + previewRect.Width + 1 || this.terminal.rows < previewRect.Y + previewRect.Height + 1) return;
     // Metadata can arrive before Bubble Tea's next paint. Verify the reserved
     // cells in xterm's public buffer before placing pixels over them. Geometry
     // comes from the TUI; buffer reads only guard against a stale/partial paint.
-    const line = y => this.term.buffer.active.getLine(y)?.translateToString(false) || '';
-    if (line(r.Y - 1).slice(r.X - 1, r.X + r.Width + 1) !== '╭' + '─'.repeat(r.Width) + '╮') return;
-    if (line(r.Y + r.Height).slice(r.X - 1, r.X + r.Width + 1) !== '╰' + '─'.repeat(r.Width) + '╯') return;
-    for (let y = r.Y; y < r.Y + r.Height; y++) {
-      if (line(y).slice(r.X - 1, r.X + r.Width + 1) !== '│' + ' '.repeat(r.Width) + '│') return;
+    const rowText = row => this.terminal.buffer.active.getLine(row)?.translateToString(false) || '';
+    if (rowText(previewRect.Y - 1).slice(previewRect.X - 1, previewRect.X + previewRect.Width + 1) !== '╭' + '─'.repeat(previewRect.Width) + '╮') return;
+    if (rowText(previewRect.Y + previewRect.Height).slice(previewRect.X - 1, previewRect.X + previewRect.Width + 1) !== '╰' + '─'.repeat(previewRect.Width) + '╯') return;
+    for (let row = previewRect.Y; row < previewRect.Y + previewRect.Height; row++) {
+      if (rowText(row).slice(previewRect.X - 1, previewRect.X + previewRect.Width + 1) !== '│' + ' '.repeat(previewRect.Width) + '│') return;
     }
-    const screen = this.term.element.querySelector('.xterm-screen').getBoundingClientRect();
-    const cellWidth = screen.width / this.term.cols;
-    const cellHeight = screen.height / this.term.rows;
-    Object.assign(this.previewWrap.style, {
-      left: `${screen.left + r.X * cellWidth}px`, top: `${screen.top + r.Y * cellHeight}px`,
-      width: `${r.Width * cellWidth}px`, height: `${r.Height * cellHeight}px`
+    const screenBounds = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
+    const cellWidth = screenBounds.width / this.terminal.cols;
+    const cellHeight = screenBounds.height / this.terminal.rows;
+    Object.assign(this.previewContainer.style, {
+      left: `${screenBounds.left + previewRect.X * cellWidth}px`, top: `${screenBounds.top + previewRect.Y * cellHeight}px`,
+      width: `${previewRect.Width * cellWidth}px`, height: `${previewRect.Height * cellHeight}px`
     });
-    this.previewWrap.hidden = false;
+    this.previewContainer.hidden = false;
   }
   discardPreview() {
     cancelAnimationFrame(this.previewFrame);
-    this.previewWrap.hidden = true;
+    this.previewContainer.hidden = true;
     this.previewGeneration++;
     if (this.previewURL) URL.revokeObjectURL(this.previewURL);
     this.previewURL = undefined;
@@ -123,11 +123,11 @@ class ThoughtsAppearance {
     this.file.value = '';
   }
   async previewFile() {
-    const id = this.state.id;
+    const operationID = this.state.id;
     if (!this.state.open || this.state.request !== 'choose') { this.file.value = ''; return; }
-    const generation = ++this.previewGeneration;
+    const previewGeneration = ++this.previewGeneration;
     const file = this.file.files[0];
-    if (!file) {this.reply('cancelled', id); return;}
+    if (!file) {this.reply('cancelled', operationID); return;}
     try {
       if (file.size > 16 * 1024 * 1024) throw new Error();
       const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
@@ -145,19 +145,19 @@ class ThoughtsAppearance {
         canvas.height = Math.max(1, Math.round(bitmap.height * scale));
         canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         const blob = await new Promise(resolve => canvas.toBlob(resolve));
-        if (!blob || generation !== this.previewGeneration || this.state.id !== id) return;
+        if (!blob || previewGeneration !== this.previewGeneration || this.state.id !== operationID) return;
         if (this.previewURL) URL.revokeObjectURL(this.previewURL);
         this.previewURL = URL.createObjectURL(blob);
         this.preview.src = this.previewURL;
         this.queuePreview();
-        this.reply('selected', id);
+        this.reply('selected', operationID);
       } finally { bitmap.close(); }
     } catch {
-      if (generation !== this.previewGeneration || this.state.id !== id) return;
+      if (previewGeneration !== this.previewGeneration || this.state.id !== operationID) return;
       this.discardPreview();
       if (this.activeURL) this.preview.src = this.activeURL;
-      this.reply('failed', id);
-    } finally { this.term.focus(); }
+      this.reply('failed', operationID);
+    } finally { this.terminal.focus(); }
   }
   async activate(settings) {
     if (!Number.isInteger(settings.darkness) || settings.darkness < 0 || settings.darkness > 95) settings.darkness = 70;
@@ -179,7 +179,7 @@ class ThoughtsAppearance {
     this.saved = settings;
     this.image.hidden = !settings.background;
     this.overlay.hidden = !settings.background;
-    this.term.options.theme = {...this.term.options.theme, background: settings.background ? '#00000000' : '#171717'};
+    this.terminal.options.theme = {...this.terminal.options.theme, background: settings.background ? '#00000000' : '#171717'};
     this.updateDarkness(settings.darkness);
   }
   async restore() {
@@ -190,18 +190,18 @@ class ThoughtsAppearance {
       this.loadFailed = false;
     } catch { this.loadFailed = true; }
   }
-  async save(remove, id, darkness, connection) {
+  async save(removeBackground, operationID, darkness, connectionGeneration) {
     try {
-      let url = '/appearance/settings';
-      let options = {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({darkness})};
-      if (remove) {
-        url = '/appearance/background'; options = {method: 'DELETE'};
+      let requestURL = '/appearance/settings';
+      let requestOptions = {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({darkness})};
+      if (removeBackground) {
+        requestURL = '/appearance/background'; requestOptions = {method: 'DELETE'};
       } else if (this.file.files[0]) {
         const form = new FormData();
         form.append('image', this.file.files[0]); form.append('darkness', darkness);
-        url = '/appearance/background'; options = {method: 'POST', body: form};
+        requestURL = '/appearance/background'; requestOptions = {method: 'POST', body: form};
       }
-      const response = await fetch(url, options);
+      const response = await fetch(requestURL, requestOptions);
       if (!response.ok) throw new Error();
       const settings = await response.json();
       await this.activate(settings);
@@ -209,11 +209,11 @@ class ThoughtsAppearance {
         this.discardPreview();
         if (this.activeURL) this.preview.src = this.activeURL;
       }
-      this.reply(settings.cleanupWarning ? 'warning' : 'saved', id, connection);
+      this.reply(settings.cleanupWarning ? 'warning' : 'saved', operationID, connectionGeneration);
     } catch {
       // Reconcile an ambiguous lost response with authoritative native state.
       await this.restore();
-      this.reply('failed', id, connection);
+      this.reply('failed', operationID, connectionGeneration);
     }
   }
 }

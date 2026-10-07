@@ -52,17 +52,34 @@ func appearanceError(w http.ResponseWriter, err error) {
 }
 
 func (s *server) serveAppearance(w http.ResponseWriter, r *http.Request) {
-	allowed := "GET"
+	var handler http.HandlerFunc
+	var allowed string
 	switch r.URL.Path {
+	case "/appearance":
+		allowed = "GET"
+		if r.Method == http.MethodGet {
+			handler = s.loadAppearance
+		}
 	case "/appearance/background":
 		allowed = "GET, POST, DELETE"
+		switch r.Method {
+		case http.MethodGet:
+			handler = s.serveAppearanceBackground
+		case http.MethodPost:
+			handler = s.importAppearanceBackground
+		case http.MethodDelete:
+			handler = s.removeAppearanceBackground
+		}
 	case "/appearance/settings":
 		allowed = "PUT"
+		if r.Method == http.MethodPut {
+			handler = s.updateAppearanceSettings
+		}
+	default:
+		http.NotFound(w, r)
+		return
 	}
-	valid := r.Method == http.MethodGet && r.URL.Path != "/appearance/settings" ||
-		r.URL.Path == "/appearance/background" && (r.Method == http.MethodPost || r.Method == http.MethodDelete) ||
-		r.URL.Path == "/appearance/settings" && r.Method == http.MethodPut
-	if !valid {
+	if handler == nil {
 		w.Header().Set("Allow", allowed)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -75,73 +92,77 @@ func (s *server) serveAppearance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Backgrounds require a persistent application database.", http.StatusServiceUnavailable)
 		return
 	}
-	if r.Method == http.MethodGet {
-		if r.URL.Path == "/appearance" {
-			settings, err := s.appearance.Load(r.Context())
-			if err != nil {
-				appearanceError(w, err)
-				return
-			}
-			writeAppearance(w, settings, false)
-			return
-		}
-		file, contentType, err := s.appearance.OpenBackground(r.Context())
-		if errors.Is(err, os.ErrNotExist) {
-			http.NotFound(w, r)
-			return
-		}
-		if err != nil {
-			appearanceError(w, err)
-			return
-		}
-		defer file.Close()
-		info, err := file.Stat()
-		if err != nil {
-			appearanceError(w, err)
-			return
-		}
-		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
-		http.ServeContent(w, r, "", info.ModTime(), file)
+	handler(w, r)
+}
+
+func (s *server) loadAppearance(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.appearance.Load(r.Context())
+	if err != nil {
+		appearanceError(w, err)
 		return
 	}
-	if r.Method == http.MethodDelete {
-		r.Body = http.MaxBytesReader(w, r.Body, maxAppearanceSettingsBytes)
-		if _, err := io.Copy(io.Discard, r.Body); err != nil {
-			appearanceError(w, err)
-			return
-		}
-		settings, warning, err := s.appearance.Remove(r.Context())
-		if err != nil {
-			appearanceError(w, err)
-			return
-		}
-		writeAppearance(w, settings, warning)
+	writeAppearance(w, settings, false)
+}
+
+func (s *server) serveAppearanceBackground(w http.ResponseWriter, r *http.Request) {
+	file, contentType, err := s.appearance.OpenBackground(r.Context())
+	if errors.Is(err, os.ErrNotExist) {
+		http.NotFound(w, r)
 		return
 	}
-	if r.Method == http.MethodPut {
-		r.Body = http.MaxBytesReader(w, r.Body, maxAppearanceSettingsBytes)
-		var input struct {
-			Darkness *int `json:"darkness"`
-		}
-		decoder := json.NewDecoder(r.Body)
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&input); err != nil {
-			http.Error(w, "Invalid appearance settings.", http.StatusBadRequest)
-			return
-		}
-		if input.Darkness == nil || decoder.Decode(new(any)) != io.EOF {
-			http.Error(w, "Invalid appearance settings.", http.StatusBadRequest)
-			return
-		}
-		settings, err := s.appearance.SetDarkness(r.Context(), *input.Darkness)
-		if err != nil {
-			appearanceError(w, err)
-			return
-		}
-		writeAppearance(w, settings, false)
+	if err != nil {
+		appearanceError(w, err)
 		return
 	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		appearanceError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+	http.ServeContent(w, r, "", info.ModTime(), file)
+}
+
+func (s *server) removeAppearanceBackground(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAppearanceSettingsBytes)
+	if _, err := io.Copy(io.Discard, r.Body); err != nil {
+		appearanceError(w, err)
+		return
+	}
+	settings, warning, err := s.appearance.Remove(r.Context())
+	if err != nil {
+		appearanceError(w, err)
+		return
+	}
+	writeAppearance(w, settings, warning)
+}
+
+func (s *server) updateAppearanceSettings(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAppearanceSettingsBytes)
+	var input struct {
+		Darkness *int `json:"darkness"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		http.Error(w, "Invalid appearance settings.", http.StatusBadRequest)
+		return
+	}
+	if input.Darkness == nil || decoder.Decode(new(any)) != io.EOF {
+		http.Error(w, "Invalid appearance settings.", http.StatusBadRequest)
+		return
+	}
+	settings, err := s.appearance.SetDarkness(r.Context(), *input.Darkness)
+	if err != nil {
+		appearanceError(w, err)
+		return
+	}
+	writeAppearance(w, settings, false)
+}
+
+func (s *server) importAppearanceBackground(w http.ResponseWriter, r *http.Request) {
 	if !s.importMu.TryLock() {
 		appearanceError(w, appearance.ErrBusy)
 		return
