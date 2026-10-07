@@ -20,6 +20,18 @@ The core philosophy is:
 * Return errors clearly; do not hide failures.
 * Do not introduce global state unless there is a strong reason. Justify that reason before adding.
 
+### Readability and self-documenting code
+
+Prefer code that future maintainers can understand directly from its types, names,
+boundaries and control flow, without depending on implementation comments.
+
+* Use explicit domain names for important concepts, state and side effects. Avoid generic or abbreviated identifiers unless their meaning is obvious within a very small local scope.
+* Name functions for what they actually do. Avoid vague names such as `handle`, `process`, `do` or `verify` when a more precise domain name exists.
+* Prefer linear control flow over terse expressions, compressed logic, clever abstractions or hidden behavior, especially in security, concurrency, persistence, networking, migration and lifecycle code.
+* Make responsibilities apparent through function and package structure. Extract well-named helpers when they clarify meaningful concepts, not abstraction layers solely to shorten functions.
+* Do not use comments to compensate for unclear names or complicated code; improve the implementation instead.
+* Comments should primarily explain why: architecture, design decisions, invariants, security/concurrency constraints, tradeoffs, protocol semantics, mathematical reasoning or behavior that naming cannot clarify. Avoid comments that merely restate what the next line does.
+
 ## Architecture Principles
 
 Operational logging accepts only approved typed metadata and uses fixed event messages. Never pass authored content, arbitrary objects, or raw error text into logs. Classify existing errors at the presentation boundary; services and stores return errors without logging them.
