@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/jhern254/go-thoughts/internal/appearance"
+	"path/filepath"
 	"strings"
 
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -146,4 +148,32 @@ func sqliteDSNWithForeignKeys(dsn string) string {
 		separator = "&"
 	}
 	return dsn + separator + "_pragma=foreign_keys(1)"
+}
+
+// BrowserAppearance constructs browser-only persistence without changing native
+// entity services. SQLite supplies the actual filename, including URI DSNs.
+func (runtime *Runtime) BrowserAppearance(ctx context.Context) (*appearance.Service, error) {
+	rows, err := runtime.db.QueryContext(ctx, "PRAGMA database_list")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var filename string
+	for rows.Next() {
+		var seq int
+		var name, path string
+		if err := rows.Scan(&seq, &name, &path); err != nil {
+			return nil, err
+		}
+		if name == "main" {
+			filename = path
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if filename == "" {
+		return nil, nil
+	}
+	return appearance.NewService(data.NewSQLiteAppearanceStore(runtime.db), runtime.localUser.UserID, filepath.Join(filename+".assets", "appearance")), nil
 }

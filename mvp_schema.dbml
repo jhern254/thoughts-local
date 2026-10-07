@@ -336,3 +336,10 @@ Ref: subjects.subject_id < subject_time_rollups.subject_id [delete: cascade]
 
 Ref: users.user_id   < subject_time_totals.user_id    [delete: cascade]
 Ref: subjects.subject_id < subject_time_totals.subject_id  [delete: cascade]
+
+
+Table browser_appearance {
+  user_id text [pk, not null, ref: > users.user_id]
+  background_asset text [note: 'Nullable opaque 32 lowercase hex characters plus .jpg or .png; no user path or original filename']
+  darkness integer [not null, default: 70, note: 'Integer percentage, 0 through 95']
+}
