@@ -117,7 +117,7 @@ func (installer *Installer) verifyInstalledModelFile(ctx context.Context, filePa
 	if err != nil {
 		return withErrorCategory(ErrFilesystem, err)
 	}
-	// Check the opened descriptor too, rather than relying only on path metadata.
+	// Path metadata can change before Open; validate the descriptor actually read.
 	fileMetadata, err = modelFile.Stat()
 	if err == nil {
 		if !fileMetadata.Mode().IsRegular() {
@@ -131,6 +131,18 @@ func (installer *Installer) verifyInstalledModelFile(ctx context.Context, filePa
 		err = copyAndVerifyModelFile(ctx, modelFile, io.Discard, fileManifest, nil)
 	}
 	closeErr := installer.closeFile(modelFile)
+	var lifecycleErr error
+	if errors.Is(err, context.Canceled) {
+		lifecycleErr = context.Canceled
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		lifecycleErr = context.DeadlineExceeded
+	}
+	if lifecycleErr != nil {
+		if closeErr != nil {
+			err = errors.Join(err, withErrorCategory(ErrFilesystem, closeErr))
+		}
+		return withErrorCategory(lifecycleErr, err)
+	}
 	if err != nil {
 		if errors.Is(err, ErrIntegrity) {
 			return withErrorCategory(ErrIntegrity, errors.Join(err, closeErr))
