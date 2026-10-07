@@ -112,7 +112,7 @@ Table thoughts {
   updated_at   timestamptz [not null, default: `now()`]
 
   Note: '''
-    CHECK (length(trim(thought)) > 0 AND length(thought) <= 1000000)
+    CHECK (length(trim(thought)) > 0 AND character_count <= 1000000)
     character_count is GENERATED ALWAYS AS (
       CASE WHEN instr(thought, char(0)) = 0 THEN length(thought)
       ELSE length(CAST(unhex(replace(hex(thought), '00', '01')) AS TEXT)) END

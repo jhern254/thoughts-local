@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -87,6 +88,40 @@ func TestThoughtCharacterCountWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("deleted interval: got %+v, %v; want zero stats", stats, err)
 		}
 	})
+
+	for _, operation := range []string{"insert", "update"} {
+		t.Run("rejects over limit Unicode after NUL on "+operation, func(t *testing.T) {
+			db, _ := openMigratedSQLite(t)
+			insertUsers(t, db, "owner")
+			// ASCII and NUL contribute two code points; the complete text is
+			// exactly at the limit even though SQLite length(TEXT) returns one.
+			body := "a\x00" + strings.Repeat("界", 999998)
+			if _, err := db.ExecContext(t.Context(), "INSERT INTO thoughts(thought_id,user_id,thought) VALUES(1,'owner',?)", body); err != nil {
+				t.Fatalf("insert at limit: got %v, want success", err)
+			}
+			query := "INSERT INTO thoughts(thought_id,user_id,thought) VALUES(2,'owner',?)"
+			if operation == "update" {
+				query = "UPDATE thoughts SET thought=? WHERE thought_id=1"
+			}
+			if _, err := db.ExecContext(t.Context(), query, body+"😀"); err == nil || !strings.Contains(err.Error(), "ck_thoughts_text_len") {
+				t.Fatalf("%s over limit after NUL: got %v, want ck_thoughts_text_len rejection", operation, err)
+			}
+			var text string
+			var count, rows int64
+			if err := db.QueryRowContext(t.Context(), "SELECT thought,character_count FROM thoughts WHERE thought_id=1").Scan(&text, &count); err != nil {
+				t.Fatal(err)
+			}
+			if text != body || count != 1000000 {
+				t.Fatalf("retained row: text unchanged=%t, count=%d; want true and 1000000", text == body, count)
+			}
+			if err := db.QueryRowContext(t.Context(), "SELECT count(*) FROM thoughts").Scan(&rows); err != nil {
+				t.Fatal(err)
+			}
+			if rows != 1 {
+				t.Fatalf("rows after rejected write: got %d, want 1", rows)
+			}
+		})
+	}
 
 	t.Run("raw SQL edits maintain indexed counts across connections", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)

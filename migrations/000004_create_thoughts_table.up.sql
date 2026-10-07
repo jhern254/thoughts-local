@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS thoughts (
     -- Validation checks
     -- Non-empty after trim; cap size to 1,000,000 characters.
     CONSTRAINT ck_thoughts_text_len
-        CHECK (length(trim(thought)) > 0 AND length(thought) <= 1000000),
+        CHECK (length(trim(thought)) > 0 AND character_count <= 1000000),
 
     -- Timestamps must be logical
     CONSTRAINT ck_thoughts_deleted_at
