@@ -30,7 +30,7 @@ type Installer struct {
 
 // NewInstaller uses a dedicated credential-free client and the pinned catalog.
 func NewInstaller(modelRoot *os.Root) (*Installer, error) {
-	return newInstaller(modelRoot, nil, newDownloadClient())
+	return newInstaller(modelRoot, []modelManifest{moonshineSmallStreamingManifest()}, newDownloadClient())
 }
 func newInstaller(modelRoot *os.Root, manifests []modelManifest, httpClient *http.Client) (*Installer, error) {
 	if modelRoot == nil {

@@ -29,7 +29,7 @@ func openTestModelRoot(t *testing.T) *os.Root {
 }
 
 func TestInstaller_Unknown(t *testing.T) {
-	t.Run("empty production catalog rejects IDs without filesystem changes", func(t *testing.T) {
+	t.Run("unknown production IDs make no filesystem changes", func(t *testing.T) {
 		modelRoot := openTestModelRoot(t)
 		installer, err := NewInstaller(modelRoot)
 		if err != nil {
