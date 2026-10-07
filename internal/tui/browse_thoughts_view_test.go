@@ -101,9 +101,10 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		if !strings.Contains(m.View().Content, "newer observation") {
 			t.Fatal("selected record did not open")
 		}
-		_, quit := rootUpdate(m, runeKey('q'))
-		assertQuitCommand(t, quit)
-		m, _ = rootUpdate(m, escapeKey())
+		m, _ = rootUpdate(m, runeKey('q'))
+		if !m.thoughts.Browsing() {
+			t.Fatal("Q should return to thought browse view")
+		}
 		m, _ = rootUpdate(m, escapeKey())
 		m.screen = screenMiscThoughts
 		cmd = m.thoughts.OpenUnassigned()
@@ -114,7 +115,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 			t.Fatal("thought browse view result changed Misc")
 		}
 	})
-	t.Run("Create treats q as text while control C always quits", func(t *testing.T) {
+	t.Run("Create treats q as text and ignores control C", func(t *testing.T) {
 		m := newRootTestModel()
 		m.selectedEntity = entityThoughts
 		m = runModelCommand(t, m, enterKey())
@@ -129,6 +130,8 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 			t.Fatal("q missing from draft")
 		}
 		_, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
-		assertQuitCommand(t, cmd)
+		if cmd != nil {
+			t.Fatal("Ctrl+C should do nothing in the editor")
+		}
 	})
 }

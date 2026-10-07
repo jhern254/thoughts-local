@@ -20,6 +20,9 @@ test('second tab is busy; quit and reload start independent sessions', async ({p
   await second.goto('/');
   await expect(second.locator('#status')).toContainText('Another tab is active');
   await page.keyboard.press('Control+c');
+  await expect(screen(page)).toContainText('Exit app?');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await page.keyboard.press('y');
   await expect(page.locator('#status')).toContainText('Session ended');
   await second.getByRole('button', {name: 'Reconnect'}).click();
   await expect(second.locator('#status')).toHaveText('Connected');
@@ -27,6 +30,37 @@ test('second tab is busy; quit and reload start independent sessions', async ({p
   await second.reload();
   await expect(second.locator('#status')).toHaveText('Connected');
   await expect(screen(second)).toContainText('Events');
+});
+
+test('back navigation and default No preserve the session until exit is confirmed', async ({page}) => {
+  await ready(page);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Misc thoughts');
+  await page.keyboard.press('Control+c');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await expect(screen(page)).not.toContainText('Exit app?');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Subject name:');
+  await page.keyboard.type('q');
+  await expect(screen(page)).toContainText('Subject name: q');
+  await page.keyboard.press('Escape');
+  await expect(screen(page)).toContainText('Misc thoughts');
+  await page.keyboard.press('q');
+  await expect(screen(page)).toContainText('Events');
+  await page.keyboard.press('q');
+  await page.keyboard.press('Control+c');
+  await expect(screen(page)).toContainText('Exit app?');
+  await expect(screen(page)).toContainText('> No');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Events');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await page.keyboard.press('Escape');
+  await expect(screen(page)).toContainText('Exit app?');
+  await page.keyboard.press('Tab');
+  await expect(screen(page)).toContainText('> Yes');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#status')).toContainText('Session ended');
 });
 
 test('reload during filter editing waits for the previous session to finish', async ({page}) => {
@@ -46,7 +80,7 @@ test('reload during filter editing waits for the previous session to finish', as
   await expect(screen(page)).not.toContainText('Filter: Building');
 });
 
-test('Ctrl+C copies a terminal selection and quits only when there is no selection', async ({page}) => {
+test('Ctrl+C copies a terminal selection and requests exit only without a selection', async ({page}) => {
   await ready(page);
   const box = await screen(page).locator('div').first().boundingBox();
   await page.mouse.move(box.x + 2, box.y + box.height / 2);
@@ -58,6 +92,9 @@ test('Ctrl+C copies a terminal selection and quits only when there is no selecti
   await expect(page.locator('#status')).toHaveText('Connected');
   await page.mouse.click(box.x + 3, box.y + box.height / 2);
   await page.keyboard.press('Control+c');
+  await expect(screen(page)).toContainText('Exit app?');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await page.keyboard.press('y');
   await expect(page.locator('#status')).toContainText('Session ended');
 });
 
@@ -113,7 +150,7 @@ test('backpressured resize converges to the latest backend size without replayin
         const kind = String.fromCharCode(frame[0]);
         const size = kind === '2' ? JSON.parse(new TextDecoder().decode(frame.subarray(1))) : null;
         const record = {kind, size, session: window.resizeProbe.sockets.indexOf(this)};
-        if (kind === '0' || kind === 'p') record.mutating = kind === 'p' || new TextDecoder().decode(frame.subarray(1)) === 'q';
+        if (kind === '0' || kind === 'p') record.mutating = kind === 'p' || new TextDecoder().decode(frame.subarray(1)) === '\u001b';
         window.resizeProbe.frames.push(record);
         super.send(frame);
       }
@@ -151,7 +188,7 @@ test('backpressured resize converges to the latest backend size without replayin
     window.resizeProbe.terminal.resize(90, 30);
     window.resizeProbe.terminal.resize(100, 35);
   });
-  await page.keyboard.type('q'); // Would end the session if replayed.
+  await page.keyboard.press('Escape'); // Would open exit confirmation if replayed.
   await page.evaluate(() => {
     const event = new Event('paste', {bubbles: true, cancelable: true});
     Object.defineProperty(event, 'clipboardData', {value: {getData: () => 'unsent synthetic draft'}});
@@ -164,6 +201,7 @@ test('backpressured resize converges to the latest backend size without replayin
   expect(delivered).toEqual([{kind: '2', size: {cols: 100, rows: 35}, session: currentSession}]);
   await expect(page.locator('#reconnect')).toBeHidden();
   await expect(screen(page)).not.toContainText('unsent synthetic draft');
+  await expect(screen(page)).not.toContainText('Exit app?');
   // A pending resize belongs only to its old socket. Reconnect sends the fresh
   // fitted size; it must not send either stale resize or refused input.
   await page.evaluate(currentSession => {

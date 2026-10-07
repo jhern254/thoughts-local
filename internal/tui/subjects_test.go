@@ -427,7 +427,7 @@ func TestSubjectModel_Mutations(t *testing.T) {
 				t.Fatal("got no pending mutation, want loading command")
 			}
 			screen := model.screen
-			for _, key := range []tea.KeyPressMsg{action.submit, escapeKey(), runeKey('n'), runeKey('e'), runeKey('d')} {
+			for _, key := range []tea.KeyPressMsg{action.submit, escapeKey(), runeKey('q'), runeKey('n'), runeKey('e'), runeKey('d')} {
 				updated, cmd = model.Update(key)
 				model = updated.(Model)
 				if cmd != nil || model.screen != screen {
@@ -435,8 +435,8 @@ func TestSubjectModel_Mutations(t *testing.T) {
 				}
 			}
 			_, quit := model.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
-			if quit == nil {
-				t.Fatal("got nil quit command, want global Ctrl+C")
+			if quit != nil {
+				t.Fatal("Ctrl+C should do nothing during a pending mutation")
 			}
 		})
 		t.Run(action.name+" preserves failures and logs metadata without authored content", func(t *testing.T) {

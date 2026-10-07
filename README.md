@@ -74,13 +74,24 @@ The application, SQLite, and filesystem remain native. The Go executable embeds
 the browser terminal assets; Node/npm, a CDN, WASM, and a separate frontend server
 are not needed to build or run it.
 
+### Navigation and exit
+
+- Q and Esc go back through lists, details, expanded events, and curve controls.
+- In forms and filter input, Q remains text; Esc cancels or goes back.
+- At top-level Events or the focused entity selector, Esc or Ctrl+C opens an
+  exit confirmation. No is selected by default. Use Left/Right or Tab to select,
+  then Enter to accept; Y exits immediately, and N/Q/Esc cancels.
+- Ctrl+C does nothing in nested views and forms. Q on the entity selector
+  focuses Events; Q on top-level Events does nothing.
+
 ### Browser behavior
 
 - One active tab. A second tab reports that the first is busy and offers Reconnect.
   Opening/reloading retries admission for up to one second while an old session
   finishes closing.
-- Quit (`q` where available, or Ctrl+C without a browser selection) ends that
-  session. Ctrl+C in the launching terminal stops the server.
+- Confirming exit ends that session. Ctrl+C with a browser text selection
+  copies it; without a selection it follows the exit rules above. Ctrl+C in
+  the launching terminal stops the server.
 - Reload/disconnect discards unsaved UI state. Reconnect starts on Events and
   reloads saved data; input is never replayed and nothing is automatically saved.
 - Use the browser's normal paste command (Ctrl+V, Cmd+V, Shift+Insert, or its

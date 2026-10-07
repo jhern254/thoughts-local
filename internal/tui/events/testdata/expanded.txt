@@ -24,4 +24,4 @@
 
 
 ←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll
-r: refresh event • d: distributions • q: quit
+Q/Esc back • r reload • d distributions

@@ -134,6 +134,7 @@ func subjectRows(subjects []data.Subject) []list.Item {
 
 func newSubjectState(service SubjectService) subjectState {
 	subjectList := list.New(subjectRows(nil), list.NewDefaultDelegate(), defaultWidth, max(0, defaultHeight-4))
+	subjectList.DisableQuitKeybindings()
 	subjectList.Title = "Subjects"
 	subjectList.SetShowStatusBar(false)
 
@@ -417,6 +418,10 @@ func logSubjectError(logger logging.Logger, operation logging.Operation, err err
 
 func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok {
+		if key.String() == "q" && !m.subjects.list.SettingFilter() {
+			key = tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape})
+			message = key
+		}
 		switch key.String() {
 		case "r":
 			if !m.subjects.list.SettingFilter() && !m.subjects.loading {
@@ -427,10 +432,6 @@ func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.subjects.filter.Invalidate()
 				m.subjects.err = nil
 				return m.openHome()
-			}
-		case "q":
-			if !m.subjects.list.SettingFilter() {
-				return m, tea.Quit
 			}
 		case "enter":
 			if !m.subjects.list.SettingFilter() && !m.subjects.loading {
@@ -541,9 +542,7 @@ func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = screenSubjectDelete
 			m.subjects.err = nil
 			return m, nil
-		case "q":
-			return m, tea.Quit
-		case "esc":
+		case "q", "esc":
 			m.thoughts.Reset()
 			m.subjects.selected = nil
 			m.subjects.err = nil
@@ -594,7 +593,7 @@ func (m Model) updateSubjectDelete(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
-		case "esc", "n":
+		case "esc", "q", "n":
 			m.subjects.err = nil
 			m.screen = screenSubjectDetail
 		case "y":
@@ -626,7 +625,13 @@ func (m Model) viewSubjectList() string {
 	if count == 1 {
 		label = "subject"
 	}
-	return fmt.Sprintf("%s%s\n%d %s\nEsc: entities • q: quit", status, m.subjects.list.View(), count, label)
+	help := "Q/Esc: entities"
+	if m.subjects.list.SettingFilter() {
+		help = "Esc: cancel filter"
+	} else if m.subjects.list.IsFiltered() {
+		help = "Q/Esc: clear filter"
+	}
+	return fmt.Sprintf("%s%s\n%d %s\n%s", status, m.subjects.list.View(), count, label, help)
 }
 
 func (m Model) viewSubjectCreate() string {
@@ -641,7 +646,7 @@ func (m Model) viewSubjectCreate() string {
 
 func (m Model) viewSubjectDetail() string {
 	if m.subjects.selected == nil {
-		return "Subject unavailable\n\nEsc: subjects • q: quit"
+		return "Subject unavailable\n\nQ/Esc: subjects"
 	}
 	title := m.subjects.detailTitle
 	if title == "" {
@@ -658,7 +663,7 @@ func (m Model) viewSubjectDetail() string {
 
 func (m Model) subjectDetailHelp() string {
 	if m.thoughts.Browsing() {
-		return "e: edit subject • d: delete subject • Esc: subjects • q: quit"
+		return "e: edit subject • d: delete subject • Q/Esc: subjects"
 	}
 	return ""
 }
@@ -675,7 +680,7 @@ func (m Model) viewSubjectEdit() string {
 
 func (m Model) viewSubjectDelete() string {
 	if m.subjects.selected == nil {
-		return "Subject unavailable\n\nEsc: subject"
+		return "Subject unavailable\n\nQ/Esc: subject"
 	}
 	status := ""
 	if m.subjects.loading {
@@ -683,5 +688,5 @@ func (m Model) viewSubjectDelete() string {
 	} else if m.subjects.err != nil {
 		status = fmt.Sprintf("Error: %s\n\n", m.subjects.errMessage)
 	}
-	return fmt.Sprintf("Delete subject\n\n%sDelete %q?\nIt will disappear from subjects. Existing thoughts will be kept.\n\ny: delete • n/Esc: cancel", status, m.subjects.selected.SubjectName)
+	return fmt.Sprintf("Delete subject\n\n%sDelete %q?\nIt will disappear from subjects. Existing thoughts will be kept.\n\ny: delete • n/Q/Esc: cancel", status, m.subjects.selected.SubjectName)
 }

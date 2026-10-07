@@ -455,8 +455,8 @@ func TestModel_EventForms(t *testing.T) {
 			t.Fatal("End lost version or called wrong operation")
 		}
 		_, quit := m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
-		if quit == nil {
-			t.Fatal("Ctrl+C blocked by pending save")
+		if quit != nil {
+			t.Fatal("Ctrl+C should do nothing during pending save")
 		}
 	})
 	t.Run("opening and canceling do not write and Save uses captured time", func(t *testing.T) {
