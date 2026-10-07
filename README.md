@@ -103,10 +103,32 @@ are not needed to build or run it.
   shortcuts such as Ctrl+L and Ctrl+W remain browser actions. Click the terminal
   to return focus. Microphone, attachments, and mobile packaging are deferred.
 
+### Browser background
+
+Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use
+**Ctrl+,** / **Cmd+,** without leaving a draft. Under Appearance, choose a local JPEG or PNG, preview it, and
+apply it behind the terminal. Background darkness changes only the readability
+overlay; Apply saves it. Remove background returns to the normal dark surface.
+These controls affect browser presentation, not terminal drafts or stored Thoughts.
+
+Images must be non-animated, at most **16 MiB**, **8,192 pixels per side**, and
+**24 million pixels** total. SVG, GIF, animated PNG, and remote URLs are unsupported.
+The default darkness is 70%; the range is 0–95%.
+
+Settings live in SQLite. Imported copies live in
+`<database filename>.assets/appearance/` (normally
+`data/thoughts.db.assets/appearance/`), independently of the browser profile.
+Back up the database and its asset directory together. In-memory databases do
+not support persistent backgrounds.
+
+Background assets are local application data, are not cloud-uploaded, and are
+**not encrypted**. Future encrypted-vault work must include these personal media
+assets. Video backgrounds and AI animation are separate future work.
+
 ### Local trust and maintenance
 
 Browser mode binds only `127.0.0.1`, validates the exact Host and Origin, and
-serves only embedded files. Use the printed numeric address, not a hostname or
+serves embedded client files and the selected application-owned background image. Use the printed numeric address, not a hostname or
 reverse proxy. This is a local single-user application: processes running as
 your user can access it. There is no LAN mode, authentication, or shell endpoint.
 Disable `TEA_TRACE` before launching browser mode; terminal traffic recording is

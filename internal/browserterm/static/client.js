@@ -45,7 +45,7 @@
     if (connected && !ended) {
       status.textContent = ({requesting: 'Requesting microphone…', recording: 'Recording audio (recognizer not connected)', stopping: 'Stopping audio…'})[state.recordingStatus] || 'Connected';
     }
-    if (restoreFocus) term.focus();
+    if (restoreFocus && !appearance.isOpen()) term.focus();
   }
   window.addEventListener('pagehide', clearVoice);
   container.addEventListener('keydown', event => {
@@ -57,6 +57,7 @@
   const terminalFailure = () => { status.textContent = 'Terminal rendering failed. Reload to reconnect.'; };
   const term = new Terminal({
     allowProposedApi: true,
+    allowTransparency: true,
     fontFamily: 'monospace', fontSize: 14, lineHeight: 1,
     // Bubble Tea writes LF to this stream; there is no PTY applying ONLCR.
     scrollback: 0, convertEol: true,
@@ -70,6 +71,7 @@
   term.loadAddon(new UnicodeGraphemesAddon.UnicodeGraphemesAddon());
   term.unicode.activeVersion = '15-graphemes';
   term.open(container);
+  const appearance = new ThoughtsAppearance(term);
   // No programmatic clipboard writes or reads from terminal escape sequences.
   term.parser.registerOscHandler(52, () => true);
 
@@ -145,6 +147,7 @@
 
   term.attachCustomKeyEventHandler(event => {
     const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && key === ',') return false;
     // Let the browser deliver paste and copy selected text. With no selection,
     // Ctrl+C retains Thoughts' normal session-quit behavior.
     if (((event.ctrlKey || event.metaKey) && key === 'v') || (event.shiftKey && key === 'insert')) return false;
@@ -173,13 +176,15 @@
       sendResize({cols: term.cols, rows: term.rows});
       term.options.disableStdin = false;
       status.textContent = 'Connected';
-      term.focus();
+      if (!appearance.isOpen()) term.focus();
     };
     connection.onmessage = event => {
       if (socket !== connection) return;
       const frame = new Uint8Array(event.data);
       if (frame[0] === 49) {
         term.write(frame.subarray(1));
+      } else if (frame[0] === 111) {
+        appearance.open();
       } else if (frame[0] === 118) {
         receiveVoice(JSON.parse(new TextDecoder().decode(frame.subarray(1))));
       } else if (frame[0] === 55) {

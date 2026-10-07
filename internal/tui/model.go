@@ -33,6 +33,7 @@ const (
 	screenMiscThoughts
 	screenBrowseThoughts
 	screenVoiceThought
+	screenOptions
 )
 
 type entityKind uint8
@@ -40,9 +41,13 @@ type entityKind uint8
 const (
 	entitySubjects entityKind = iota
 	entityThoughts
+	entityOptions
 )
 
 func (entity entityKind) title() string {
+	if entity == entityOptions {
+		return "Options"
+	}
 	if entity == entityThoughts {
 		return "Thoughts"
 	}
@@ -57,6 +62,7 @@ type Model struct {
 	subjectReturn           *events.CreateSubjectRequest
 	logger                  logging.Logger
 	browserRecordingEnabled bool
+	browserOptionsEnabled   bool
 	voiceDraftID            uint64
 	voiceSubjectReturn      *thoughts.VoiceSubjectRequest
 	voiceSubjectScreen      screen
@@ -149,6 +155,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch message := message.(type) {
+	case BrowserOptionsEnabledMsg:
+		m.browserOptionsEnabled = true
+		return m, nil
 	case thoughts.BrowserRecordingEnabledMsg:
 		m.browserRecordingEnabled = true
 		m.thoughts, _ = m.thoughts.Update(message)
@@ -242,6 +251,15 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.screen {
+	case screenOptions:
+		if key, ok := message.(tea.KeyPressMsg); ok {
+			switch key.String() {
+			case "esc", "q":
+				m.screen = screenEvents
+				return m, nil
+			}
+		}
+		return m, nil
 	case screenEvents:
 		return m.updateHome(message)
 	case screenSubjectList:
@@ -297,13 +315,27 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.events.SetFocused(true)
 				return m, nil
 			case "left", "right", "h", "l":
-				if m.selectedEntity == entitySubjects {
-					m.selectedEntity = entityThoughts
-				} else {
-					m.selectedEntity = entitySubjects
+				order := []entityKind{entityThoughts, entitySubjects, entityOptions}
+				for index, entity := range order {
+					if entity != m.selectedEntity {
+						continue
+					}
+					step := 1
+					if key.String() == "left" || key.String() == "h" {
+						step = -1
+					}
+					m.selectedEntity = order[(index+step+len(order))%len(order)]
+					break
 				}
 				return m, nil
 			case "enter":
+				if m.selectedEntity == entityOptions {
+					if m.browserOptionsEnabled {
+						return m, func() tea.Msg { return OpenBrowserOptionsMsg{} }
+					}
+					m.screen = screenOptions
+					return m, nil
+				}
 				m.events.Close()
 				if m.selectedEntity == entitySubjects {
 					return m.openSubjects()
@@ -322,7 +354,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) entityStrip() string {
 	parts := []string{}
-	for _, entity := range []entityKind{entityThoughts, entitySubjects} {
+	for _, entity := range []entityKind{entityThoughts, entitySubjects, entityOptions} {
 		label := entity.title()
 		if m.selectedEntity == entity && m.entityFocused {
 			label = m.subjects.list.Styles.Title.Render(label)
@@ -379,6 +411,8 @@ func (m Model) View() tea.View {
 	}
 	var content string
 	switch m.screen {
+	case screenOptions:
+		content = "Options\n\nAppearance backgrounds are available in browser mode.\n\nq/Esc: events"
 	case screenEvents:
 		content = m.events.View()
 		if m.events.CanLeave() {

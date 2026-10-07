@@ -219,3 +219,29 @@ recording-owned queue and publish identity-fenced Go updates, without automatic
 model downloads or audio persistence. Browser PCM never belongs in terminal
 input. Finish/finalize behavior, VAD, live partial transcript UI, and product
 speech wiring are intentionally deferred.
+
+## Local image appearance
+
+Appearance metadata belongs to SQLite; the concrete appearance service owns
+immutable image files beside that database. Import validates bounded JPEG/PNG
+content before writing. It commits the selection before deleting the old asset;
+failure before that commit preserves the working selection. A crash or failed
+cleanup may leave an unreferenced file; there is no background cleanup worker.
+
+The browser changes only the image layer, black overlay, and xterm theme
+background. `allowTransparency` must be set before `Terminal.open`; the
+application CSS also clears the outer viewport's black fallback. Terminal
+foreground opacity, input transport, and microphone ownership remain unchanged.
+The image layer can later be replaced with a video element without changing
+the overlay or terminal layers; no playback infrastructure is implemented.
+
+Only exact appearance routes access native images. Mutations require the same
+exact local Host and Origin as the terminal boundary; no directory is served.
+Imported bytes, filenames, paths, and decoder errors must never enter logs or
+public diagnostics.
+
+The root entity strip includes Options. In browser mode its command sends a
+single outbound `o` control frame, opening the browser-owned settings page
+without leaving the timeline. Ctrl+, / Cmd+, opens that same page during a
+draft or recording. The bridge carries no asset or settings data; native
+Options explains that background appearance requires browser mode.

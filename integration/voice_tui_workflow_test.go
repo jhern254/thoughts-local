@@ -45,7 +45,7 @@ func TestVoiceTUIWorkflow_SQLite(t *testing.T) {
 			go func() {
 				done <- browserterm.Serve(ctx, listener, func(session context.Context) tea.Model {
 					return browserObservedModel{Model: tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop()), views: views}
-				}, logging.Nop())
+				}, logging.Nop(), nil)
 			}()
 			defer func() {
 				cancel()

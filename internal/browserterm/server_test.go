@@ -46,7 +46,7 @@ func testServerListener(t *testing.T, ln net.Listener, factory func(context.Cont
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Serve(ctx, ln, factory, logger) }()
+	go func() { done <- Serve(ctx, ln, factory, logger, nil) }()
 	stop := func() {
 		cancel()
 		select {
@@ -108,7 +108,7 @@ func TestServer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = Serve(context.Background(), ln, func(context.Context) tea.Model { t.Fatal("constructed model with tracing enabled"); return nil }, logging.Nop())
+		err = Serve(context.Background(), ln, func(context.Context) tea.Model { t.Fatal("constructed model with tracing enabled"); return nil }, logging.Nop(), nil)
 		if err == nil {
 			t.Fatal("accepted terminal tracing")
 		}
