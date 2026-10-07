@@ -35,13 +35,13 @@ func TestTimelineViewWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got counts %v, want events 1:2, 2:0, 3:1", counts)
 		}
 		for _, user := range []string{"u", "deleted"} {
-			got, err := s.CountThoughtsInRange(t.Context(), user, time.Unix(100, 0), time.Unix(200, 0))
+			got, err := s.ThoughtStatsInRange(t.Context(), user, time.Unix(100, 0), time.Unix(200, 0))
 			want := int64(2)
 			if user == "deleted" {
 				want = 0
 			}
-			if err != nil || got != want {
-				t.Fatalf("got %s count %d, %v; want %d, nil", user, got, err, want)
+			if err != nil || got.Count != want {
+				t.Fatalf("got %s count %d, %v; want %d, nil", user, got.Count, err, want)
 			}
 		}
 	})

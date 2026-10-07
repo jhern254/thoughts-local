@@ -204,3 +204,75 @@ func TestPreview(t *testing.T) {
 		}
 	})
 }
+
+func TestPreview_ThoughtLengths(t *testing.T) {
+	t.Run("similar length scenario shows distinct bars on a shared stem", func(t *testing.T) {
+		view := preview(t, "-scenario", "expanded-similar", "-plain")
+		widths := []int{}
+		for _, row := range strings.Split(view, "\n") {
+			if strings.Contains(row, "characters…") {
+				widths = append(widths, ansi.StringWidth(strings.TrimSpace(ansi.Cut(row, 12, 22))))
+			}
+			if strings.Contains(row, "Thought 43") && strings.TrimSpace(ansi.Cut(row, 12, 22)) != "⢸" {
+				t.Fatal("stem missing beside timestamp")
+			}
+		}
+		if len(widths) != 3 || widths[0] >= widths[1] || widths[1] >= widths[2] {
+			t.Fatalf("got similar-length widths %v, want strictly increasing", widths)
+		}
+	})
+
+	t.Run("expanded bars preserve card geometry and highlight the selected thought", func(t *testing.T) {
+		filled := preview(t, "-scenario", "expanded", "-plain")
+		outline := preview(t, "-scenario", "expanded", "-plain", "-mode", "outline")
+		for mode, got := range map[string]string{"filled": filled, "outline": outline} {
+			want, err := os.ReadFile("testdata/expanded-" + mode + "-100x36.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != string(want) {
+				t.Fatalf("%s expanded snapshot changed", mode)
+			}
+		}
+		f, o := strings.Split(filled, "\n"), strings.Split(outline, "\n")
+		for i := range f {
+			if ansi.Cut(f[i], 0, 12) != ansi.Cut(o[i], 0, 12) || ansi.Cut(f[i], 22, 100) != ansi.Cut(o[i], 22, 100) {
+				t.Fatalf("mode changed content at row %d", i)
+			}
+		}
+		if filled == outline {
+			t.Fatal("outline did not change bars")
+		}
+		for _, text := range []string{"09:00 - 10:00 AM PDT", "3 thoughts · Newest first", "Thought 43", "Walking"} {
+			if !strings.Contains(filled, text) {
+				t.Fatalf("missing %q", text)
+			}
+		}
+		colored := preview(t, "-scenario", "expanded", "-selected-thought", "2")
+		if ansi.Strip(colored) != filled {
+			t.Fatal("selection changed geometry")
+		}
+		for _, row := range strings.Split(colored, "\n") {
+			if strings.Contains(row, "Compare these") && !strings.Contains(ansi.Cut(row, 12, 22), "38;5;62") {
+				t.Fatal("selected bar missing purple")
+			}
+		}
+	})
+	t.Run("thought-length only preview uses the same renderer and fixed dimensions", func(t *testing.T) {
+		for _, mode := range []string{"filled", "outline"} {
+			output := preview(t, "-scenario", "thought-lengths", "-mode", mode, "-plain", "-width", "60", "-height", "28")
+			rows := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+			if len(rows) != 28 {
+				t.Fatalf("got height %d, want 28", len(rows))
+			}
+			for _, row := range rows {
+				if ansi.StringWidth(row) != 60 {
+					t.Fatal("preview width changed")
+				}
+			}
+			if !strings.Contains(output, "320 characters") {
+				t.Fatal("reference missing")
+			}
+		}
+	})
+}

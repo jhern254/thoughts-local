@@ -68,7 +68,12 @@ func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string
 		if len(preview) > 80 {
 			preview = append(preview[:80], '…')
 		}
-		items = append(items, data.ThoughtSummaryView{ThoughtID: item.ThoughtID, Preview: string(preview), ObservedAt: item.ObservedAt, CreatedAt: item.CreatedAt})
+		items = append(items, data.ThoughtSummaryView{
+			ThoughtID:  item.ThoughtID,
+			Preview:    string(preview),
+			ObservedAt: item.ObservedAt,
+			CreatedAt:  item.CreatedAt,
+		})
 	}
 	compare := func(a, b data.ThoughtSummaryView) int {
 		if c := b.ObservedAt.Compare(a.ObservedAt); c != 0 {

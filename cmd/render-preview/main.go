@@ -35,7 +35,8 @@ func run(args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	width := flags.Int("width", 100, "terminal columns (at least 32)")
 	height := flags.Int("height", 36, "terminal rows (at least 12)")
-	scenario := flags.String("scenario", "main", "distributions, main, adjacent, gapped, crowded, scale, or empty")
+	scenario := flags.String("scenario", "main", "distributions, thought-lengths, expanded, expanded-similar, main, adjacent, gapped, crowded, scale, or empty")
+	selectedThought := flags.Int("selected-thought", 1, "selected Thought bar, numbered from 1; 0 means none")
 	mode := flags.String("mode", "filled", "filled or outline")
 	selected := flags.Int("selected", 3, "selected event, numbered from 1; 0 means none")
 	exponent := flags.Float64("count-exponent", 0.8, "positive count exponent; 0.25 strongly boosts smaller counts")
@@ -49,7 +50,7 @@ func run(args []string, output io.Writer) error {
 		}
 		return err
 	}
-	if flags.NArg() != 0 || *width < 32 || *height < 12 || *selected < 0 {
+	if flags.NArg() != 0 || *width < 32 || *height < 12 || *selected < 0 || *selectedThought < 0 {
 		return fmt.Errorf("use flags only, width >= 32, height >= 12, and selected >= 0")
 	}
 	if *exponent <= 0 || math.IsNaN(*exponent) || math.IsInf(*exponent, 0) || *size < 0.5 || *size > 1.25 || math.IsNaN(*size) {
@@ -63,6 +64,10 @@ func run(args []string, output io.Writer) error {
 	default:
 		return fmt.Errorf("mode must be filled or outline")
 	}
+	if *scenario == "thought-lengths" {
+		_, err := io.WriteString(output, drawThoughtLengths(*width, *height, *selectedThought-1, options, *plain))
+		return err
+	}
 	if *scenario == "distributions" {
 		_, err := io.WriteString(output, drawDistributions(*width, *height, *selected-1, options, *plain))
 		return err
@@ -71,7 +76,7 @@ func run(args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.WriteString(output, draw(scene, *width, *height, *selected-1, options, *plain))
+	_, err = io.WriteString(output, draw(scene, *width, *height, *selected-1, *selectedThought-1, options, *plain))
 	return err
 }
 
@@ -106,7 +111,7 @@ func distributionRow(cells []render.Cell, selected int, plain bool) string {
 	return line.String()
 }
 
-func draw(scene scene, width, height, selected int, options render.Options, plain bool) string {
+func draw(scene scene, width, height, selected, selectedThought int, options render.Options, plain bool) string {
 	// Fixture row anchors are independent of curves, mode, selection, and width.
 	// This deliberately is not a second implementation of Events layout.
 	labels := make([]string, scene.endRow+1)
@@ -120,7 +125,15 @@ func draw(scene scene, width, height, selected int, options render.Options, plai
 	for _, row := range scene.separators {
 		right[row] = ""
 	}
+	for i, card := range scene.cards {
+		if card.thoughts != nil {
+			selected = i
+		}
+	}
 	curves := make([]render.Distribution, 0, len(scene.cards))
+	thoughtPlotTop, thoughtPlotEnd := -1, -1
+	var thoughtPlotCells [][]render.Cell
+	selectedCurve := -1
 	for i, card := range scene.cards {
 		count := fmt.Sprintf("%d thoughts", card.count)
 		if card.count == 1 {
@@ -130,12 +143,44 @@ func draw(scene scene, width, height, selected int, options render.Options, plai
 		if card.ongoing {
 			contents = append(contents, "   Building  Break the next task into one small step.", "  Thought 31 • 12:24 PM")
 		}
+		if card.thoughts != nil {
+			contents = []string{card.heading, "", count + " · Newest first"}
+			for i, thought := range card.thoughts {
+				if i > 0 {
+					contents = append(contents, "")
+				}
+				title := "   Reading  " + thought.preview
+				if i == selectedThought {
+					title = color(title, selectedColor, plain)
+				}
+				contents = append(contents, title, thought.timestamp)
+			}
+		}
 		cardHeight := len(contents) + 2 // Top and bottom borders.
 		// Four Braille dot rows per terminal cell; center on the first/last dot midpoint.
-		curves = append(curves, render.Distribution{CenterY: float64(card.top*4) + float64(cardHeight*4-1)/2, Count: card.count})
+		if card.thoughts == nil {
+			if i == selected {
+				selectedCurve = len(curves)
+			}
+			curves = append(curves, render.Distribution{CenterY: float64(card.top*4) + float64(cardHeight*4-1)/2, Count: card.count})
+		} else {
+			thoughtPlotTop, thoughtPlotEnd = card.top, card.top+cardHeight
+			bars := make([]render.ThoughtLengthBar, 0, len(card.thoughts))
+			var reference int64
+			for i, thought := range card.thoughts {
+				bars = append(bars, render.ThoughtLengthBar{Row: 4 + 3*i, CharacterCount: thought.characters})
+				reference = max(reference, thought.characters)
+			}
+			thoughtPlotCells = render.RenderThoughtLengthBars(curveWidth, cardHeight, bars, render.ThoughtLengthBarOptions{
+				Mode:      options.Mode,
+				Reference: reference,
+				Exponent:  render.ThoughtLengthExponent(options.CountExponent),
+				Size:      options.Size,
+			})
+		}
 		labels[card.top], labels[card.top+cardHeight-1] = card.start, card.end
 		borderColor := unselectedColor
-		if i == selected {
+		if i == selected || card.thoughts != nil {
 			borderColor = selectedColor
 		}
 		innerWidth := width - cardColumn - 2
@@ -151,8 +196,10 @@ func draw(scene scene, width, height, selected int, options render.Options, plai
 	body := make([]string, len(labels))
 	for y := range body {
 		lane := strings.Repeat(" ", curveWidth)
-		if y < len(cells) {
-			lane = distributionRow(cells[y], selected, plain)
+		if y >= thoughtPlotTop && y < thoughtPlotEnd {
+			lane = distributionRow(thoughtPlotCells[y-thoughtPlotTop], selectedThought, plain)
+		} else if y < len(cells) {
+			lane = distributionRow(cells[y], selectedCurve, plain)
 		}
 		body[y] = fit(labels[y], 10) + "  " + lane + "  " + right[y]
 	}
@@ -166,6 +213,9 @@ func draw(scene scene, width, height, selected int, options render.Options, plai
 	help := "← day / → open • Home/End: first/now • r: refresh • n: start • e: end • q: quit"
 	if scene.ending == "..." {
 		help = "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end • q: quit"
+	}
+	if thoughtPlotCells != nil {
+		help = "← collapse • → open • ↑/↓ thoughts • PgUp/PgDn scroll • d distributions"
 	}
 	lines = append(lines, "", help, strings.Repeat("─", width), "Thoughts   Subjects", "Tab: panel • ←/→: entity • Enter: open")
 	for i := range lines {

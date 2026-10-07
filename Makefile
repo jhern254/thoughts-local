@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed tui tui/demo tui/demo/seeded tui/build migrate/new migrate/up migrate/down migrate/version
+.PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed tui tui/demo tui/demo/seeded tui/build migrate/build migrate/new migrate/up migrate/down migrate/version
 .PHONY: tui/demo/stress
 .PHONY: tui/browser tui/browser/demo tui/browser/demo/seeded tui/browser/demo/stress
 
@@ -70,7 +70,7 @@ build:
 
 quick: fmt-check vet test
 
-check: fmt-check vet test-fresh test-integration build
+check: fmt-check vet test-fresh test-integration build migrate/build
 
 ci: check test-race
 
@@ -79,7 +79,7 @@ hooks:
 	@echo "Git hooks enabled from .githooks/"
 
 clean:
-	rm -f coverage.out "$(TUI_BIN)"
+	rm -f coverage.out "$(TUI_BIN)" "$(MIGRATE_BIN)"
 
 DB_PATH ?= ./data/thoughts.db
 MIGRATE_DSN ?= sqlite://$(DB_PATH)
@@ -87,20 +87,29 @@ APP_DSN ?= file:$(DB_PATH)
 TUI_BIN ?= ./bin/thoughts-tui
 TUI_ARGS ?=
 DB_DIR := $(dir $(DB_PATH))
+MIGRATE_BIN := ./bin/migrate
 
-migrate/new:
+# Build the standard CLI with the same SQLite version as the application.
+# A globally installed migrate may embed SQLite too old for this schema.
+migrate/build: $(MIGRATE_BIN)
+
+$(MIGRATE_BIN): tools/migrate/go.mod tools/migrate/go.sum
+	@mkdir -p ./bin
+	go -C tools/migrate build -mod=readonly -tags sqlite -o ../../bin/migrate github.com/golang-migrate/migrate/v4/cmd/migrate
+
+migrate/new: $(MIGRATE_BIN)
 	@test -n "$(name)" || { echo "usage: make migrate/new name=create_subjects"; exit 1; }
-	migrate create -seq -ext=.sql -dir=./migrations $(name)
+	"$(MIGRATE_BIN)" create -seq -ext=.sql -dir=./migrations $(name)
 
-migrate/up:
+migrate/up: $(MIGRATE_BIN)
 	@mkdir -p "$(DB_DIR)"
-	migrate -path=./migrations -database="$(MIGRATE_DSN)" up
+	"$(MIGRATE_BIN)" -path=./migrations -database="$(MIGRATE_DSN)" up
 
-migrate/down:
-	migrate -path=./migrations -database="$(MIGRATE_DSN)" down 1
+migrate/down: $(MIGRATE_BIN)
+	"$(MIGRATE_BIN)" -path=./migrations -database="$(MIGRATE_DSN)" down 1
 
-migrate/version:
-	migrate -path=./migrations -database="$(MIGRATE_DSN)" version
+migrate/version: $(MIGRATE_BIN)
+	"$(MIGRATE_BIN)" -path=./migrations -database="$(MIGRATE_DSN)" version
 
 dev/seed: migrate/up
 	sqlite3 "$(DB_PATH)" "INSERT INTO users (user_id) VALUES ('test-user') ON CONFLICT (user_id) DO NOTHING;"
@@ -133,13 +142,13 @@ tui/demo/seeded: tui/demo
 tui/demo/stress: DEMO_SEED = ./scripts/demo_stress.sql
 tui/demo/stress: tui/demo
 
-tui/demo: tui/build
+tui/demo: tui/build $(MIGRATE_BIN)
 	@set -eu; \
 	demo_dir="$$(mktemp -d)"; \
 	cleanup() { trap - 0 1 2 15; rm -rf "$$demo_dir"; }; \
 	trap cleanup 0 1 2 15; \
 	demo_db="$$demo_dir/thoughts.db"; \
 	echo "Starting disposable TUI with $$demo_db (deleted on exit)."; \
-	migrate -path=./migrations -database="sqlite://$$demo_db" up; \
+	"$(MIGRATE_BIN)" -path=./migrations -database="sqlite://$$demo_db" up; \
 	if [ -n "$(DEMO_SEED)" ]; then sqlite3 -bail "$$demo_db" < "$(DEMO_SEED)"; fi; \
 	"$(TUI_BIN)" --db-dsn "file:$$demo_db" $(TUI_ARGS)

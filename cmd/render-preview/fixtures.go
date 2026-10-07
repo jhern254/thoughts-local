@@ -8,6 +8,7 @@ type eventCard struct {
 	count      int64
 	start, end string
 	ongoing    bool
+	thoughts   []previewThought
 }
 
 type scene struct {
@@ -33,6 +34,40 @@ func fixture(name string) (scene, error) {
 		separators: []int{10}, endRow: 23, ending: "── Now · 12:30 PM ──",
 	}
 	switch name {
+	case "expanded", "expanded-similar":
+		s.date = "October 4, 2026"
+		s.hours = nil
+		s.cards = []eventCard{
+			{
+				top:     0,
+				heading: " Preparation · 30m · 08:30 - 09:00 AM",
+				count:   8,
+				start:   "08:30 AM",
+			},
+			{
+				top:      5,
+				heading:  " Reading · 1h · 09:00 - 10:00 AM PDT",
+				count:    3,
+				start:    "09:00 AM",
+				thoughts: previewThoughts(),
+			},
+			{
+				top:     19,
+				heading: " Walking · 30m · 10:00 - 10:30 AM",
+				count:   0,
+				start:   "10:00 AM",
+				end:     "10:30 AM",
+			},
+		}
+		if name == "expanded-similar" {
+			// Similar lengths expose contrast that the mixed-length fixture cannot show.
+			for i, value := range []int64{80, 90, 100} {
+				s.cards[1].thoughts[i].characters = value
+				s.cards[1].thoughts[i].preview = fmt.Sprintf("A thought with %d characters…", value)
+			}
+		}
+		s.separators = []int{4, 18}
+		s.endRow, s.ending = 23, "..."
 	case "main":
 	case "adjacent":
 		s.date = "September 20, 2026"

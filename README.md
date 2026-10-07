@@ -1,5 +1,38 @@
 # Building AI Chat app in Go Lang, Python, SQLite 
 
+## Database migrations
+
+Run `make migrate/up` (optionally `DB_PATH=/path/to/thoughts.db`). The Make targets
+build the standard golang-migrate CLI into `bin/migrate` from the pinned module in
+`tools/migrate`. No globally installed migration CLI is required. The tool uses
+modernc SQLite v1.46.1 (SQLite 3.51.2), matching the application. Older CLI builds
+can lack `unhex()`, which the schema needs for exact counts after embedded NULs. Keep the
+tool and application SQLite versions aligned when upgrading. `make check` also
+verifies the migration tool builds; `make build` builds only the application.
+The tool dependencies do not enter the application module.
+
+`make migrate/down` rolls back one migration; `make migrate/version` reports the
+version. Disposable TUI demos use the same local migration binary. Migrations
+remain explicit and are never applied automatically by the executable.
+
+`make dev/seed` and seeded demos also use the system `sqlite3` command. Use
+SQLite **3.41.0 or newer**, which provides [`unhex()`](https://www.sqlite.org/releaselog/3_41_0.html),
+when executing migrations or writing this schema with external SQLite tools.
+Check your CLI version with `sqlite3 --version`.
+
+The development schema was revised in migration `000004`: recreate disposable
+development databases after this change. Running migrations against an already
+migrated database does not retrofit the revised table definition.
+
+Thoughts store a generated `character_count`: the number of Unicode code points
+in the complete stored text, including whitespace, newlines and embedded NULs.
+SQLite maintains this STORED value on every write, including SQL imports. The
+1,000,000-code-point limit uses this count, including text after embedded NULs. The
+existing active chronological index appends the count, letting Event statistics
+read integers from the index; Event pages read the same value for visible rows.
+Ordinary browsing and latest previews still select zero for their unused count.
+The SQL migrations are authoritative; `mvp_schema.dbml` is a schema overview.
+
 ## Thoughts TUI
 
 Build with `make tui/build`. Apply migrations explicitly with `make migrate/up`

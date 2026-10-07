@@ -123,10 +123,6 @@ func (s *viewStore) ThoughtCountsByEvent(context.Context, string, time.Time, tim
 	s.counts++
 	return []data.EventThoughtCountView{{EventID: 1, Count: int64(len(s.items))}}, s.err
 }
-func (s *viewStore) CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error) {
-	s.counts++
-	return int64(len(s.items)), s.err
-}
 
 func TestModel_DayArrival(t *testing.T) {
 	t.Run("previous day opens at first event without entering its thought picker", func(t *testing.T) {
@@ -196,7 +192,13 @@ func fixture(t testing.TB) (Model, *eventStub, *viewStore) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		v.items = append(v.items, data.ThoughtSummaryView{ThoughtID: item.ThoughtID, Preview: fmt.Sprintf("preview %03d", i), ObservedAt: item.ObservedAt, CreatedAt: item.CreatedAt})
+		v.items = append(v.items, data.ThoughtSummaryView{
+			ThoughtID:      item.ThoughtID,
+			Preview:        fmt.Sprintf("preview %03d", i),
+			CharacterCount: int64(len([]rune(item.Thought))),
+			ObservedAt:     item.ObservedAt,
+			CreatedAt:      item.CreatedAt,
+		})
 	}
 	m := New(t.Context(), "u", s, timeline.NewService(s, v, v), service, &subjectReaderStub{}, logging.Nop())
 	m.now = func() time.Time { return at }
@@ -524,4 +526,13 @@ func TestModel_ClockOwnership(t *testing.T) {
 			t.Fatal("screen close cancelled the session")
 		}
 	})
+}
+
+func (s *viewStore) ThoughtStatsInRange(ctx context.Context, u string, from, until time.Time) (data.ThoughtIntervalStats, error) {
+	s.counts++
+	var largest int64
+	for _, item := range s.items {
+		largest = max(largest, item.CharacterCount)
+	}
+	return data.ThoughtIntervalStats{Count: int64(len(s.items)), MaxCharacters: largest}, s.err
 }

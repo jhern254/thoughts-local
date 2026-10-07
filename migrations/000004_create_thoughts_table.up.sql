@@ -5,6 +5,13 @@ CREATE TABLE IF NOT EXISTS thoughts (
     subject_id   INTEGER,                                      -- nullable FK -> subjects.subject_id
     event_id     INTEGER,                                      -- nullable FK -> events.event_id
     thought      TEXT    NOT NULL,                             -- validated via CHECK below
+    -- Exact code-point count, including whitespace and text after embedded NULs.
+    -- length(TEXT) stops at NUL; replace zero bytes via hex only on that rare path.
+    -- STORED computes on writes, so reads never need to scan the complete body.
+    character_count INTEGER GENERATED ALWAYS AS (
+        CASE WHEN instr(thought, char(0)) = 0 THEN length(thought)
+        ELSE length(CAST(unhex(replace(hex(thought), '00', '01')) AS TEXT)) END
+    ) STORED,
     version      INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), -- optimistic-lock version
     observed_at  INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
     created_at   INTEGER NOT NULL DEFAULT (unixepoch('now')),  -- epoch seconds (UTC)
@@ -14,7 +21,7 @@ CREATE TABLE IF NOT EXISTS thoughts (
     -- Validation checks
     -- Non-empty after trim; cap size to 1,000,000 characters.
     CONSTRAINT ck_thoughts_text_len
-        CHECK (length(trim(thought)) > 0 AND length(thought) <= 1000000),
+        CHECK (length(trim(thought)) > 0 AND character_count <= 1000000),
 
     -- Timestamps must be logical
     CONSTRAINT ck_thoughts_deleted_at
@@ -48,8 +55,9 @@ CREATE TABLE IF NOT EXISTS thoughts (
 );
 
 -- Indexes
+-- Keep interval statistics on compact index values without another index.
 CREATE INDEX IF NOT EXISTS idx_thoughts_active_user_observed_created_id
-    ON thoughts (user_id, observed_at DESC, created_at DESC, thought_id DESC)
+    ON thoughts (user_id, observed_at DESC, created_at DESC, thought_id DESC, character_count)
     WHERE deleted_at IS NULL;
 
 -- time grouping

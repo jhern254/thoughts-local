@@ -8,19 +8,26 @@ import (
 	"time"
 )
 
-const thoughtSummarySelect = `SELECT t.thought_id, substr(t.thought, 1, 81), s.subject_name,
-	t.observed_at, t.created_at
+const thoughtSummarySelectPrefix = `SELECT t.thought_id, substr(t.thought, 1, 81), s.subject_name,
+	t.observed_at, t.created_at, `
+
+const thoughtSummaryFrom = `
 	FROM thoughts t
 	LEFT JOIN subjects s ON s.subject_id = t.subject_id AND s.user_id = t.user_id AND s.deleted_at IS NULL
 	WHERE t.user_id = ? AND t.deleted_at IS NULL
 	AND EXISTS (SELECT 1 FROM users u WHERE u.user_id = t.user_id AND u.deleted_at IS NULL)`
+
+// Generic browsing and latest previews only use the bounded text prefix.
+// Event pages opt into full character counts for their per-Thought length bars.
+const thoughtSummarySelect = thoughtSummarySelectPrefix + "0" + thoughtSummaryFrom
+const eventThoughtSummarySelect = thoughtSummarySelectPrefix + "t.character_count" + thoughtSummaryFrom
 
 func (s *SQLiteThoughtStore) BrowseThoughtsView(ctx context.Context, userID string, request ThoughtSummaryViewRequest) (ThoughtSummaryViewResult, error) {
 	return s.browseThoughtSummaries(ctx, thoughtSummarySelect, []any{userID}, request, ThoughtSummaryViewBatchSize)
 }
 
 func (s *SQLiteThoughtStore) BrowseThoughtsViewInRange(ctx context.Context, userID string, from, until time.Time, request ThoughtSummaryViewRequest) (ThoughtSummaryViewResult, error) {
-	return s.browseThoughtSummaries(ctx, thoughtSummarySelect+" AND t.observed_at >= ? AND t.observed_at < ?", []any{userID, from.Unix(), until.Unix()}, request, ThoughtSummaryViewBatchSize)
+	return s.browseThoughtSummaries(ctx, eventThoughtSummarySelect+" AND t.observed_at >= ? AND t.observed_at < ?", []any{userID, from.Unix(), until.Unix()}, request, ThoughtSummaryViewBatchSize)
 }
 
 func (s *SQLiteThoughtStore) LatestThoughtInRange(ctx context.Context, userID string, from, until time.Time) (*ThoughtSummaryView, error) {
@@ -56,7 +63,7 @@ func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query s
 		var item ThoughtSummaryView
 		var subject sql.NullString
 		var observed, created int64
-		if err := rows.Scan(&item.ThoughtID, &item.Preview, &subject, &observed, &created); err != nil {
+		if err := rows.Scan(&item.ThoughtID, &item.Preview, &subject, &observed, &created, &item.CharacterCount); err != nil {
 			return ThoughtSummaryViewResult{}, fmt.Errorf("scan thought summary: %w", TranslateSQLiteError(err))
 		}
 		if subject.Valid {

@@ -46,12 +46,12 @@ type Model struct {
 	logger  logging.Logger
 
 	// owner separates model instances. request owns list/get/create and cursor
-	// replies; countRequest lets a full-scope count refresh independently.
+	// replies; statsRequest lets a full-scope statistics refresh independently.
 	owner           *int
 	request         uint64
-	countRequest    uint64
+	statsRequest    uint64
 	cancelRead      context.CancelFunc
-	cancelCount     context.CancelFunc
+	cancelStats     context.CancelFunc
 	cancelClipboard context.CancelFunc
 
 	// screen selects list, editor, or detail behavior. selected survives detail
@@ -172,11 +172,11 @@ func (m *Model) Reset() {
 	if m.cancelRead != nil {
 		m.cancelRead()
 	}
-	if m.cancelCount != nil {
-		m.cancelCount()
+	if m.cancelStats != nil {
+		m.cancelStats()
 	}
 	m.stopClipboard()
-	m.countRequest++
+	m.statsRequest++
 	m.browsingThoughtsView = false
 	m.browseThoughts = browseThoughtsState{width: m.browseThoughts.width, height: m.browseThoughts.height}
 	m.filter.Invalidate()
@@ -306,8 +306,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if m.VoiceOpen() && m.screen == create && m.voice.suspended {
 		return m, nil
 	}
-	if result, ok := msg.(ThoughtCountResult); ok {
-		return m.receiveThoughtCount(result)
+	if result, ok := msg.(ThoughtBrowseStatsResult); ok {
+		return m.receiveThoughtBrowseStats(result)
 	}
 	if result, ok := msg.(BrowseThoughtsResult); ok {
 		return m.receiveBrowseThoughts(result)

@@ -42,7 +42,7 @@ func TestModel_BrowseThoughtsViewTotal(t *testing.T) {
 			m = browseThoughtsKey(m, tea.KeyDown)
 		}
 		m, _ = m.Update(count) // Cursor requests must not invalidate the count.
-		if m.browseThoughts.countPending || m.browseThoughts.total != 230 {
+		if m.browseThoughts.statsPending || m.browseThoughts.total != 230 {
 			t.Fatal("scrolling invalidated count reply")
 		}
 		m = browseThoughtsKey(m, tea.KeyHome)
@@ -84,7 +84,7 @@ func TestModel_BrowseThoughtsViewTotal(t *testing.T) {
 		batch := cmd().(tea.BatchMsg)
 		m = runBrowseThoughtsCommand(m, batch[1]) // Count may fail before the page finishes.
 		m = runBrowseThoughtsCommand(m, batch[0])
-		if m.browseThoughts.countErr != private || m.err != nil || m.loading || !strings.Contains(m.View(), "Thought count unavailable") || strings.Contains(m.View(), "\n2 thoughts\n") {
+		if m.browseThoughts.statsErr != private || m.err != nil || m.loading || !strings.Contains(m.View(), "Thought count unavailable") || strings.Contains(m.View(), "\n2 thoughts\n") {
 			t.Fatalf("count failure replaced browsing or invented a total: %q", m.View())
 		}
 		var event map[string]any
@@ -105,7 +105,7 @@ func TestModel_BrowseThoughtsViewTotal(t *testing.T) {
 		m = browseThoughtsKey(m, tea.KeyEscape)
 		spy.err = nil
 		m = browseThoughtsKey(m, 'r')
-		if m.browseThoughts.countErr != nil || !strings.Contains(m.View(), "\n2 thoughts\n") {
+		if m.browseThoughts.statsErr != nil || !strings.Contains(m.View(), "\n2 thoughts\n") {
 			t.Fatal("count did not recover on refresh")
 		}
 	})

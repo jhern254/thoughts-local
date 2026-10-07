@@ -3,12 +3,12 @@ package render
 
 import "math"
 
-// Mode selects a fill or continuous outline of the same Gaussian profile.
+// Mode selects a filled shape or its outline.
 type Mode uint8
 
 const (
 	Filled  Mode = iota // The default fills from the curve to its right-hand baseline.
-	Outline             // Only the connected Gaussian boundary is drawn.
+	Outline             // Only the shape boundary is drawn.
 )
 
 type Options struct {
@@ -40,7 +40,7 @@ type Distribution struct {
 
 type Cell struct {
 	Glyph      rune // A Braille glyph or an ordinary space.
-	CurveIndex int  // Index in the input slice; -1 means blank or connecting baseline.
+	CurveIndex int  // Index in the renderer input slice; -1 means blank or connecting baseline.
 }
 
 // Unicode Braille Patterns encode a two-column, four-row dot cell. These are
@@ -50,6 +50,11 @@ const (
 	brailleRows    = 4
 	brailleBlank   = '\u2800' // Add the eight dot bits to this Unicode block base.
 )
+
+// Unicode dot numbering is column-major: left 1/2/3/7, right 4/5/6/8.
+func brailleBit(column, row int) rune {
+	return [brailleColumns][brailleRows]rune{{1, 2, 4, 64}, {8, 16, 32, 128}}[column][row]
+}
 
 // Tuning values are in Braille dots unless otherwise noted. These defaults match
 // the reviewed preview; changing them must not change the caller's card layout.
@@ -193,7 +198,6 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 	strengths := make([]float64, width*height)
 	// Unicode dot numbering is column-major: left 1/2/3/7, right 4/5/6/8.
 	// Each mask is 1 << (dot number - 1); the bottom two dots are not sequential.
-	bits := [brailleColumns][brailleRows]rune{{1, 2, 4, 64}, {8, 16, 32, 128}}
 	plot := func(x, y, owner int, strength float64) {
 		if x < 0 || x > baseline || y < 0 || y >= height*brailleRows {
 			return
@@ -202,7 +206,7 @@ func RenderDistributions(width, height int, distributions []Distribution, option
 		if cell.Glyph == ' ' {
 			cell.Glyph = brailleBlank
 		}
-		cell.Glyph |= bits[x%brailleColumns][y%brailleRows]
+		cell.Glyph |= brailleBit(x%brailleColumns, y%brailleRows)
 		index := (y/brailleRows)*width + x/brailleColumns
 		if owner >= 0 && (strength > strengths[index] || (strength == strengths[index] && owner < cell.CurveIndex)) {
 			cell.CurveIndex = owner

@@ -24,9 +24,6 @@ type metricsStub struct {
 func (s metricsStub) ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error) {
 	return nil, s.err
 }
-func (s metricsStub) CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error) {
-	return 230, s.err
-}
 
 type viewReader struct {
 	thoughtReaderStub
@@ -39,7 +36,7 @@ func (s *viewReader) BrowseThoughtsViewInRange(_ context.Context, _ string, _, u
 }
 
 func TestService_ThoughtView(t *testing.T) {
-	t.Run("freezes ongoing cutoff across cursor reads and preserves count errors", func(t *testing.T) {
+	t.Run("freezes ongoing cutoff across cursor reads and preserves statistics errors", func(t *testing.T) {
 		reader := &viewReader{}
 		cause := errors.New("PRIVATE_COUNT_MARKER")
 		s := NewService(eventReaderStub(func(context.Context, string, int64) (*data.Event, error) {
@@ -62,12 +59,19 @@ func TestService_ThoughtView(t *testing.T) {
 				t.Fatalf("got cutoff %v, want 101", until)
 			}
 		}
-		count, err := s.CountThoughts(t.Context(), "u", scope)
-		if count != 230 || err != cause {
-			t.Fatalf("got %d, %v; want 230 and original error", count, err)
+		stats, statsErr := s.ThoughtStats(t.Context(), "u", scope)
+		if stats.Count != 230 || stats.MaxCharacters != 320 || statsErr != cause {
+			t.Fatalf("got stats %+v, %v; want 230, 320 and original error", stats, statsErr)
+		}
+		if _, err := s.ThoughtStats(t.Context(), "other", scope); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatal("accepted foreign statistics scope")
 		}
 		if _, err := s.BrowseThoughtsView(t.Context(), "other", scope, data.ThoughtSummaryViewRequest{}); !errors.Is(err, data.ErrRecordNotFound) {
 			t.Fatal("accepted foreign scope")
 		}
 	})
+}
+
+func (s metricsStub) ThoughtStatsInRange(ctx context.Context, u string, from, until time.Time) (data.ThoughtIntervalStats, error) {
+	return data.ThoughtIntervalStats{Count: 230, MaxCharacters: 320}, s.err
 }

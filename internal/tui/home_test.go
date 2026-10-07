@@ -79,9 +79,6 @@ func (s homeThoughtStore) BrowseThoughtsViewInRange(context.Context, string, tim
 func (s homeThoughtStore) LatestThoughtInRange(context.Context, string, time.Time, time.Time) (*data.ThoughtSummaryView, error) {
 	return &s.summary, nil
 }
-func (s homeThoughtStore) CountThoughtsInRange(context.Context, string, time.Time, time.Time) (int64, error) {
-	return 1, nil
-}
 func (s homeThoughtStore) ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error) {
 	return []data.EventThoughtCountView{{EventID: 1, Count: 1}}, nil
 }
@@ -131,7 +128,7 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal(err)
 		}
 		events := &homeEventStub{items: []data.Event{{EventID: 1, StartedAt: time.Now().Add(-time.Hour)}}}
-		store := homeThoughtStore{summary: data.ThoughtSummaryView{ThoughtID: item.ThoughtID, Preview: "bounded preview", ObservedAt: item.ObservedAt}}
+		store := homeThoughtStore{summary: data.ThoughtSummaryView{ThoughtID: item.ThoughtID, Preview: "bounded preview", CharacterCount: int64(len([]rune(item.Thought))), ObservedAt: item.ObservedAt}}
 		m := NewModel(t.Context(), &data.User{UserID: "home-user"}, &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }}, service, &metricsStub{}, events, timeline.NewService(events, store, store), logging.Nop())
 		m, cmd := rootUpdate(m, m.Init()())
 		m = startHomeData(t, m, cmd)
@@ -158,11 +155,11 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal("root did not route tuning controls")
 		}
 		press(tea.KeyTab)
-		if !m.entityFocused || strings.Contains(m.events.View(), "Curves:") {
+		if !m.entityFocused || strings.Contains(m.events.View(), "Distributions:") {
 			t.Fatal("panel switch did not close controls")
 		}
 		press('d')
-		if strings.Contains(m.events.View(), "Curves:") {
+		if strings.Contains(m.events.View(), "Distributions:") {
 			t.Fatal("entity panel key opened Events controls")
 		}
 		press(tea.KeyTab)
@@ -229,8 +226,25 @@ func TestModel_EventsHome(t *testing.T) {
 		m, cmd := rootUpdate(m, enterKey())
 		m = runHomeData(t, m, cmd)
 		expanded := m.events.View()
-		if hasCurve(expanded) || !strings.Contains(expanded, "Newest first") {
-			t.Fatal("expansion failed to remove its contribution")
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+		if !m.entityFocused {
+			t.Fatal("Tab did not focus entity panel")
+		}
+		focusedRows, blurredRows := strings.Split(expanded, "\n"), strings.Split(m.events.View(), "\n")
+		if len(focusedRows) != len(blurredRows) {
+			t.Fatal("panel switch moved expanded rows")
+		}
+		for i, row := range focusedRows {
+			if ansi.Cut(ansi.Strip(row), 12, 22) != ansi.Cut(ansi.Strip(blurredRows[i]), 12, 22) {
+				t.Fatal("panel switch changed thought plot geometry")
+			}
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+		if m.events.View() != expanded {
+			t.Fatal("focus return changed thought plot highlight")
+		}
+		if !hasCurve(expanded) || !strings.Contains(expanded, "Newest first") {
+			t.Fatal("expansion failed to show its thought length plot")
 		}
 		m, cmd = rootUpdate(m, enterKey())
 		m = runHomeData(t, m, cmd)
@@ -521,4 +535,12 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal("old expansion changed reopened home")
 		}
 	})
+}
+
+func (s homeThoughtStore) ThoughtStatsInRange(ctx context.Context, u string, from, until time.Time) (data.ThoughtIntervalStats, error) {
+	return data.ThoughtIntervalStats{Count: 1, MaxCharacters: s.summary.CharacterCount}, nil
+}
+
+func (*homeTimelineStub) ThoughtStats(context.Context, string, timeline.ThoughtScope) (data.ThoughtIntervalStats, error) {
+	panic("unexpected event stats")
 }

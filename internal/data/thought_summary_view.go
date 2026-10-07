@@ -14,11 +14,12 @@ const (
 // ThoughtSummaryView is a bounded read projection, not a partially loaded Thought.
 // CreatedAt is a cursor tie-breaker, not the displayed observation time.
 type ThoughtSummaryView struct {
-	ThoughtID   int64
-	Preview     string
-	SubjectName *string
-	ObservedAt  time.Time
-	CreatedAt   time.Time
+	ThoughtID      int64
+	Preview        string
+	CharacterCount int64 // Full Unicode code points (including whitespace) on Event pages; zero when not requested.
+	SubjectName    *string
+	ObservedAt     time.Time
+	CreatedAt      time.Time
 }
 
 type ThoughtCursor struct {

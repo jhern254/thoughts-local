@@ -31,7 +31,7 @@ func TestModel_MessageOwnership(t *testing.T) {
 		}
 	})
 	t.Run("shared thought results and terminal messages keep their own routing", func(t *testing.T) {
-		for _, msg := range []tea.Msg{thoughts.Result{}, thoughts.BrowseThoughtsResult{}, thoughts.ThoughtCountResult{}, eventKey("enter"), tea.WindowSizeMsg{}, nil} {
+		for _, msg := range []tea.Msg{thoughts.Result{}, thoughts.BrowseThoughtsResult{}, thoughts.ThoughtBrowseStatsResult{}, eventKey("enter"), tea.WindowSizeMsg{}, nil} {
 			if Owns(msg) {
 				t.Fatalf("Events claimed shared message %T", msg)
 			}

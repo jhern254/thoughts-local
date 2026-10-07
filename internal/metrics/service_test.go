@@ -19,10 +19,6 @@ func (s *storeStub) ThoughtCountsByEvent(ctx context.Context, u string, _, _, _ 
 	s.ctx, s.userID = ctx, u
 	return []data.EventThoughtCountView{{EventID: 7, Count: 2}}, s.err
 }
-func (s *storeStub) CountThoughtsInRange(ctx context.Context, u string, _, _ time.Time) (int64, error) {
-	s.ctx, s.userID = ctx, u
-	return 2, s.err
-}
 
 func (s *storeStub) CountThoughts(ctx context.Context, u string) (int64, error) {
 	s.ctx, s.userID = ctx, u
@@ -75,4 +71,9 @@ func TestService_ThoughtCountsBySubject(t *testing.T) {
 			}
 		}
 	})
+}
+
+func (s *storeStub) ThoughtStatsInRange(ctx context.Context, u string, from, until time.Time) (data.ThoughtIntervalStats, error) {
+	s.ctx, s.userID = ctx, u
+	return data.ThoughtIntervalStats{Count: 2, MaxCharacters: 320}, s.err
 }

@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func openMigratedSQLite(t *testing.T) (*sql.DB, string) {
+func openMigratedSQLite(t testing.TB) (*sql.DB, string) {
 	t.Helper()
 	dsn := "file:" + filepath.Join(t.TempDir(), "thoughts.db")
 	db := openSQLite(t, dsn)
@@ -20,7 +20,7 @@ func openMigratedSQLite(t *testing.T) (*sql.DB, string) {
 	return db, dsn
 }
 
-func openSQLite(t *testing.T, dsn string) *sql.DB {
+func openSQLite(t testing.TB, dsn string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -34,7 +34,7 @@ func openSQLite(t *testing.T, dsn string) *sql.DB {
 	return db
 }
 
-func applyUpMigrations(t *testing.T, db *sql.DB) {
+func applyUpMigrations(t testing.TB, db *sql.DB) {
 	t.Helper()
 	files, err := filepath.Glob("../migrations/*.up.sql")
 	if err != nil {

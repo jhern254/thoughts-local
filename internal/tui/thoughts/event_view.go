@@ -15,7 +15,7 @@ const eventThoughtOrderLabel = "Newest first"
 // same summary window, selection, and detail behavior as the Browse Thoughts view.
 type TimelineReader interface {
 	BrowseThoughtsView(context.Context, string, timeline.ThoughtScope, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
-	CountThoughts(context.Context, string, timeline.ThoughtScope) (int64, error)
+	ThoughtStats(context.Context, string, timeline.ThoughtScope) (data.ThoughtIntervalStats, error)
 }
 
 func (m *Model) OpenEventView(scope timeline.ThoughtScope, reader TimelineReader) tea.Cmd {
@@ -39,4 +39,35 @@ func (m *Model) OpenEventView(scope timeline.ThoughtScope, reader TimelineReader
 func (m *Model) ResizeEventView(width, rows int) {
 	m.browseThoughts.width, m.browseThoughts.height = max(1, width), max(1, rows)*summaryLines
 	m.browseThoughts.keepVisible()
+}
+
+// ThoughtPlot identifies a visible preview row relative to the picker's View.
+// Events owns lane placement and rendering; the picker owns scrolling/selection.
+type ThoughtPlot struct {
+	Row            int
+	CharacterCount int64
+	Selected       bool
+}
+
+func (m Model) EventThoughtPlots() ([]ThoughtPlot, int64) {
+	s := m.browseThoughts
+	if s.eventScope == nil || m.ShowingDetail() || s.statsPending || s.statsErr != nil || !s.summariesCurrent {
+		return nil, 0
+	}
+	var plots []ThoughtPlot
+	for index := s.offset / summaryLines; index < len(s.rows); index++ {
+		row := index*summaryLines - s.offset
+		if row >= s.height {
+			break
+		}
+		if row < 0 || s.rows[index].kind != rowRecord {
+			continue
+		}
+		plots = append(plots, ThoughtPlot{
+			Row:            row + 1,
+			CharacterCount: s.rows[index].item.CharacterCount,
+			Selected:       index == s.index && !m.blurred,
+		})
+	}
+	return plots, s.maxCharacters
 }
