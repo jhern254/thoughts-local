@@ -9,6 +9,28 @@ import (
 )
 
 func TestModel_Options(t *testing.T) {
+	t.Run("plain actions use the entity highlight and follow vertical focus", func(t *testing.T) {
+		m := newRootTestModel()
+		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Darkness: 70})
+		for _, label := range []string{"Choose image", "Background darkness: 70%", "Apply", "Remove background", "Back"} {
+			if !strings.Contains(m.View().Content, m.subjects.list.Styles.Title.Render(label)) {
+				t.Fatalf("%q does not use the entity highlight", label)
+			}
+			m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyDown})
+		}
+		rows := strings.Split(ansi.Strip(m.View().Content), "\n")
+		for i, label := range []string{"Apply", "Remove background", "Back"} {
+			if got := strings.TrimSpace(rows[20+i]); got != label {
+				t.Fatalf("row %d = %q, want %q", 20+i, got, label)
+			}
+		}
+		if strings.Contains(ansi.Strip(m.View().Content), "[") {
+			t.Fatal("Options should use plain labels, not bracketed buttons")
+		}
+	})
 	t.Run("browser controls preserve the underlying timeline and reject stale replies", func(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
@@ -78,7 +100,7 @@ func TestModel_Options(t *testing.T) {
 		for _, size := range []tea.WindowSizeMsg{{Width: 40, Height: 30}, {Width: 60, Height: 18}} {
 			m, _ = rootUpdate(m, size)
 			content := ansi.Strip(m.View().Content)
-			for _, label := range []string{"[ Apply ]", "[ Remove background ]", "[ Back ]", "Q/Esc: back"} {
+			for _, label := range []string{"Apply", "Remove background", "Back", "Q/Esc: back"} {
 				if !strings.Contains(content, label) {
 					t.Fatalf("missing %q at %v", label, size)
 				}

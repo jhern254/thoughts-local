@@ -121,7 +121,7 @@ test('appearance preserves recording and terminal focus ownership', async ({page
   await paste(page, 'appearance voice draft');
   await openAppearance(page);
   expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(0);
-  await clickControl(page, '[ Back ]');
+  await clickControl(page, 'Back');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
@@ -132,7 +132,7 @@ test('appearance preserves recording and terminal focus ownership', async ({page
   await expect(screen(page)).not.toContainText('Loading appearance');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await setDarkness(page, 65);
-  await clickControl(page, '[ Apply ]');
+  await clickControl(page, 'Apply');
   await expect(screen(page)).not.toContainText('Background darkness:');
   expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   expect(await page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(0);

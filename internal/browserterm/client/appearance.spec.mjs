@@ -36,7 +36,7 @@ test('persists one image without resetting the terminal or its draft', async ({p
   await chooseImage(page, await imageFixture(page));
   await expect(page.locator('#background-preview')).toBeVisible();
   await darkness(page, 70);
-  await clickControl(page, '[ Apply ]');
+  await clickControl(page, 'Apply');
   await expect(screen(page)).not.toContainText('Background darkness:');
   await expect(page.locator('#background-image')).toBeVisible();
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
@@ -47,13 +47,13 @@ test('persists one image without resetting the terminal or its draft', async ({p
   await page.screenshot({path: `/tmp/background-${testInfo.project.name}-image.png`});
   await open(page);
   await darkness(page, 30);
-  await clickControl(page, '[ Apply ]');
+  await clickControl(page, 'Apply');
   await expect(screen(page)).not.toContainText('Background darkness:');
   await page.screenshot({path: `/tmp/background-${testInfo.project.name}-low.png`});
   await open(page);
   await page.screenshot({path: `/tmp/background-${testInfo.project.name}-options.png`});
   await darkness(page, 90);
-  await clickControl(page, '[ Apply ]');
+  await clickControl(page, 'Apply');
   await expect(screen(page)).not.toContainText('Background darkness:');
   await page.screenshot({path: `/tmp/background-${testInfo.project.name}-high.png`});
   await page.setViewportSize({width: 620, height: 700});
@@ -80,7 +80,7 @@ test('failed replacement retains the active image', async ({page}) => {
   await expect(page.locator('#status')).toHaveText('Connected');
   await open(page);
   await chooseImage(page, await imageFixture(page));
-  await clickControl(page, '[ Apply ]');
+  await clickControl(page, 'Apply');
   await expect(page.locator('#background-image')).toBeVisible();
   const before = await page.request.get('/appearance/background');
   await open(page);
@@ -89,7 +89,7 @@ test('failed replacement retains the active image', async ({page}) => {
     if (route.request().method() === 'POST') await route.fulfill({status: 500, body: 'Could not update or load the background.'});
     else await route.continue();
   });
-  await clickControl(page, '[ Apply ]');
+  await clickControl(page, 'Apply');
   await expect(screen(page)).toContainText('Could not load or apply');
   const after = await page.request.get('/appearance/background');
   expect(await after.body()).toEqual(await before.body());
@@ -108,8 +108,14 @@ test('keyboard picker, narrow layout, dragging and resize keep preview inside it
   await expect(screen(page)).toContainText('Preview only. Apply to save.');
   for (const size of [{width:1200,height:850}, {width:620,height:700}, {width:375,height:600}, {width:620,height:400}]) {
     await page.setViewportSize(size);
+    if (size.height === 400) {
+      await expect(page.locator('#background-preview-wrap')).toBeHidden();
+      await expect(screen(page)).toContainText('Back');
+      await page.screenshot({path:`/tmp/options-${testInfo.project.name}-${size.width}x${size.height}.png`});
+      continue;
+    }
     await expect(page.locator('#background-preview-wrap')).toBeVisible();
-    await expect(screen(page)).toContainText('[ Back ]');
+    await expect(screen(page)).toContainText('Back');
     await expect.poll(async () => page.locator('#background-preview-wrap').evaluate(el => {
       const rect = el.getBoundingClientRect();
       const rows = [...document.querySelectorAll('.xterm-rows > div')];
@@ -146,7 +152,7 @@ test('invalid selection clears an unsaved preview without implying it was applie
   await expect(screen(page)).toContainText('Could not load or apply');
   await expect(page.locator('#background-preview')).not.toHaveAttribute('src');
   await expect(page.locator('#background-preview-wrap')).toBeHidden();
-  await clickControl(page, '[ Apply ]');
+  await clickControl(page, 'Apply');
   await expect(screen(page)).not.toContainText('Background darkness:');
   await expect(page.locator('#background-image')).toBeHidden();
 });

@@ -10,6 +10,7 @@ export async function clickControl(page, label) {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) {
       const node = walker.currentNode;
+      if (node.textContent.trim() !== label) continue;
       const index = node.textContent.indexOf(label);
       if (index < 0) continue;
       const range = document.createRange();

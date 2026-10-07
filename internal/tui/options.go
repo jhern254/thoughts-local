@@ -178,11 +178,7 @@ func (m *Model) activateOption() {
 func (m Model) optionsLayout() (int, PreviewRect) {
 	width := max(10, min(60, m.width-4))
 	x := max(0, (m.width-width)/2)
-	extraRows := 0
-	if width < 44 {
-		extraRows = 2
-	}
-	height := max(0, min(8, m.height-19-extraRows))
+	height := max(0, min(8, m.height-21))
 	return width, PreviewRect{X: x + 1, Y: 8, Width: width - 2, Height: height}
 }
 
@@ -200,38 +196,29 @@ func (m *Model) clickOption(x, y int, activate bool) {
 	case y == 5 && activate:
 		m.options.focus = 0
 		m.activateOption()
+	case y == 7+shift && activate:
+		m.options.focus = 1
 	case y == 8+shift:
 		m.options.focus = 1
 		m.options.darkness = max(0, min(95, (x-left)*95/max(1, width-1)))
-	case width < 44 && y >= 10+shift && y <= 12+shift && activate:
+	case y >= 10+shift && y <= 12+shift && activate:
 		m.options.focus = 2 + y - (10 + shift)
-		m.activateOption()
-	case width >= 44 && y == 10+shift && activate:
-		if x < left+9 {
-			m.options.focus = 2
-		} else if x >= left+11 && x < left+32 {
-			m.options.focus = 3
-		} else if x >= left+34 && x < left+42 {
-			m.options.focus = 4
-		} else {
-			return
-		}
 		m.activateOption()
 	}
 }
 
 func (m Model) viewOptions() tea.View {
 	width, rect := m.optionsLayout()
-	accent := lipgloss.NewStyle().Foreground(lipgloss.Color("#b294ff"))
+	selected := m.subjects.list.Styles.Title
+	plain := lipgloss.NewStyle().Padding(0, 1)
 	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("#999999"))
-	button := func(index int, text string) string {
-		value := "[ " + text + " ]"
+	label := func(index int, text string) string {
 		if m.options.focus == index {
-			return accent.Bold(true).Render(value)
+			return selected.Render(text)
 		}
-		return value
+		return plain.Render(text)
 	}
-	lines := []string{accent.Bold(true).Render("Options"), "", "Appearance", "", "Background image", button(0, "Choose image"), ""}
+	lines := []string{selected.Render("Options"), "", "Appearance", "", "Background image", label(0, "Choose image"), ""}
 	if rect.Height > 0 {
 		lines = append(lines, muted.Render("╭"+strings.Repeat("─", rect.Width)+"╮"))
 		for range rect.Height {
@@ -241,18 +228,10 @@ func (m Model) viewOptions() tea.View {
 	}
 	peak := m.options.darkness * (width - 1) / 95
 	slider := strings.Repeat("━", peak) + "●" + strings.Repeat("─", width-peak-1)
-	if m.options.focus == 1 {
-		slider = accent.Render(slider)
-	} else {
-		slider = muted.Render(slider)
-	}
-	lines = append(lines, fmt.Sprintf("Background darkness: %d%%", m.options.darkness), slider, "")
-	if width < 44 {
-		lines = append(lines, button(2, "Apply"), button(3, "Remove background"), button(4, "Back"))
-	} else {
-		lines = append(lines, button(2, "Apply")+"  "+button(3, "Remove background")+"  "+button(4, "Back"))
-	}
-	lines = append(lines, "", muted.Render(m.options.status), "", muted.Render("Tab: focus · ←/→: darkness"), muted.Render("Enter: activate · Q/Esc: back"))
+	slider = muted.Render(slider)
+	lines = append(lines, label(1, fmt.Sprintf("Background darkness: %d%%", m.options.darkness)), slider, "",
+		label(2, "Apply"), label(3, "Remove background"), label(4, "Back"))
+	lines = append(lines, "", muted.Render(m.options.status), "", muted.Render("↑/↓/Tab: focus · ←/→: darkness"), muted.Render("Enter: activate · Q/Esc: back"))
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")
 	}
