@@ -22,7 +22,15 @@ class ThoughtsAppearance {
     }, true);
     this.file.addEventListener('change', () => this.previewFile());
     this.file.addEventListener('cancel', () => this.reply('cancelled', this.state.id));
-    this.term.onRender(() => this.queuePreview());
+    this.term.onRender(() => {
+      if (this.refreshAfterClose) {
+        this.refreshAfterClose = false;
+        // Closing metadata arrives before the returning TUI screen. Repaint
+        // every row after that render to retire pixels behind the image overlay.
+        this.term.refresh(0, this.term.rows - 1);
+      }
+      this.queuePreview();
+    });
     new ResizeObserver(() => { this.previewWrap.hidden = true; this.queuePreview(); }).observe(this.term.element);
   }
   isOpen() { return this.state.open; }
@@ -34,6 +42,7 @@ class ThoughtsAppearance {
   async receive(state) {
     const previous = this.state;
     this.state = state;
+    this.refreshAfterClose = previous.open && !state.open;
     if (JSON.stringify(state.preview) !== JSON.stringify(previous.preview)) this.previewWrap.hidden = true;
     if (!state.open) {
       this.discardPreview();
@@ -67,6 +76,7 @@ class ThoughtsAppearance {
   disconnect() {
     this.connectionGeneration++;
     this.state = {open: false};
+    this.refreshAfterClose = false;
     this.discardPreview();
     this.updateDarkness(this.saved.darkness);
   }
@@ -104,11 +114,12 @@ class ThoughtsAppearance {
     this.previewWrap.hidden = false;
   }
   discardPreview() {
+    cancelAnimationFrame(this.previewFrame);
+    this.previewWrap.hidden = true;
     this.previewGeneration++;
     if (this.previewURL) URL.revokeObjectURL(this.previewURL);
     this.previewURL = undefined;
     this.preview.removeAttribute('src');
-    this.previewWrap.hidden = true;
     this.file.value = '';
   }
   async previewFile() {

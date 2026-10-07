@@ -156,3 +156,43 @@ test('invalid selection clears an unsaved preview without implying it was applie
   await expect(screen(page)).not.toContainText('Background darkness:');
   await expect(page.locator('#background-image')).toBeHidden();
 });
+
+test('returning to the entity picker repaints behind the closed preview', async ({page}, testInfo) => {
+  await page.route('**/static/client.js', async route => {
+    const response = await route.fetch();
+    await route.fulfill({response, body: `
+      window.refreshes = [];
+      window.Terminal = class extends window.Terminal {
+        refresh(start, end) {
+          window.refreshes.push({start, end, rows: this.rows});
+          return super.refresh(start, end);
+        }
+      };
+    ` + await response.text()});
+  });
+  let sockets = 0;
+  page.on('websocket', () => sockets++);
+  await page.goto('/');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await open(page);
+  await chooseImage(page, await imageFixture(page));
+  await clickControl(page, 'Apply');
+  await expect(screen(page)).not.toContainText('Background darkness:');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('ArrowRight');
+  for (const exit of ['Escape', 'Back']) {
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#background-preview-wrap')).toBeVisible();
+    await page.evaluate(() => { window.refreshes = []; });
+    if (exit === 'Escape') await page.keyboard.press('Escape');
+    else await clickControl(page, 'Back');
+    await expect(screen(page)).not.toContainText('Background darkness:');
+    await expect(page.locator('#background-preview-wrap')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.refreshes.some(r => r.start === 0 && r.end === r.rows - 1))).toBe(true);
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+    await expect(screen(page)).toContainText('Options');
+    await page.screenshot({path: `/tmp/options-return-${testInfo.project.name}-${exit}.png`});
+    expect(await page.evaluate(() => window.refreshes.length)).toBe(1);
+  }
+  expect(sockets).toBe(1);
+});
