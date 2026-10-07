@@ -24,12 +24,14 @@ func openMisc(t *testing.T, m Model) Model {
 }
 
 func TestModel_MiscThoughts(t *testing.T) {
-	t.Run("quit keys preserve editor and filter input ownership", func(t *testing.T) {
+	t.Run("back keys preserve editor and filter input ownership", func(t *testing.T) {
 		m := openMisc(t, filterRoot(t))
-		_, cmd := rootUpdate(m, runeKey('q'))
-		assertQuitCommand(t, cmd)
+		back, _ := rootUpdate(m, runeKey('q'))
+		if back.screen != screenSubjectList {
+			t.Fatal("Q should return to Subjects")
+		}
 		for _, inputKey := range []tea.KeyPressMsg{enterKey(), runeKey('/')} {
-			input, _ := rootUpdate(m, inputKey)
+			input, cmd := rootUpdate(m, inputKey)
 			input, cmd = rootUpdate(input, runeKey('q'))
 			if cmd != nil {
 				if _, quits := cmd().(tea.QuitMsg); quits {
@@ -40,7 +42,9 @@ func TestModel_MiscThoughts(t *testing.T) {
 				t.Fatal("input advertises q as quit")
 			}
 			_, cmd = rootUpdate(input, tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
-			assertQuitCommand(t, cmd)
+			if cmd != nil {
+				t.Fatal("Ctrl+C should do nothing inside input")
+			}
 		}
 	})
 	t.Run("always shows a typed filterable entry without counting it as a subject", func(t *testing.T) {

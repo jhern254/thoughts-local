@@ -147,7 +147,16 @@ func TestBrowserTUIWorkflow_SQLite(t *testing.T) {
 		if saved != body {
 			t.Fatalf("saved thought got %q, want %q", saved, body)
 		}
+		write("0\x03") // Nested detail cannot exit the session.
+		write("0q")
+		waitView(views, "Q/Esc: subjects")
+		write("0q")
+		waitView(views, "Q/Esc: entities")
+		write("0q")
+		waitView(views, "Events")
 		write("0\x03")
+		waitView(views, "Exit app?")
+		write("0y")
 		select {
 		case <-closed:
 		case <-time.After(5 * time.Second):

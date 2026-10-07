@@ -407,12 +407,12 @@ func (m Model) View() string {
 	if m.expanded != 0 {
 		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
 	}
-	help := "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end • q: quit"
+	help := "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end"
 	if m.day.Equal(displaytime.Day(m.clock)) {
-		help = "← day / → open • Home/End: first/now • r: refresh • n: start • e: end • q: quit"
+		help = "← day / → open • Home/End: first/now • r: refresh • n: start • e: end"
 	}
 	if m.expanded != 0 {
-		help = "r: refresh event • d: distributions • q: quit"
+		help = "Q/Esc back • r reload • d distributions"
 	}
 	if m.distributions.open {
 		status = m.distributions.label()
@@ -422,9 +422,9 @@ func (m Model) View() string {
 		if m.load.eventsPending && m.load.showStatus {
 			status = "Loading… " + status
 		}
-		help = "←/→ boost  ↑/↓ size  f mode  [0 Reset to default]  Esc done"
+		help = "←/→ boost ↑/↓ size f mode [0 Reset to default] Q/Esc done"
 		if m.width < distributionMinWidth {
-			help = "f mode · [0 Reset to default] · Esc done"
+			help = "f mode · [0 Reset to default] · Q/Esc done"
 		}
 	}
 	return heading + "\n\n" + body + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")

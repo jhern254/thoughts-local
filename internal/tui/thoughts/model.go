@@ -367,8 +367,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if m.browsingThoughtsView && m.screen == browse {
 			return m.updateBrowseThoughtsView(msg)
 		}
-		if m.screen == detail && key.String() == "q" {
-			return m, tea.Quit
+		if key.String() == "q" && m.screen != create && !m.list.SettingFilter() {
+			key = tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape})
+			msg = key
+		}
+		if m.screen == detail && key.String() == "esc" {
+			if m.cancelRead != nil {
+				m.cancelRead()
+			}
+			m.request++
+			m.loading = false
+			m.screen = browse
+			m.err = nil
+			if m.stale {
+				if m.browsingThoughtsView {
+					cmd := m.reloadBrowseThoughtsView()
+					return m, cmd
+				}
+				cmd := m.listThoughts()
+				return m, cmd
+			}
+			return m, nil
 		}
 		if m.loading {
 			return m, nil
@@ -424,18 +443,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		case detail:
 			switch key.String() {
-			case "esc":
-				m.screen = browse
-				m.err = nil
-				if m.stale {
-					if m.browsingThoughtsView {
-						cmd := m.reloadBrowseThoughtsView()
-						return m, cmd
-					}
-					cmd := m.listThoughts()
-					return m, cmd
-				}
-				return m, nil
 			case "r":
 				cmd := m.getThought(m.selected.ThoughtID)
 				return m, cmd
@@ -495,7 +502,7 @@ func (m Model) View() string {
 	case create:
 		return m.editorView(status)
 	case detail:
-		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Esc: thoughts • r: reload • q: quit", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
+		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Q/Esc: thoughts • r: reload", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:
 		if m.browsingThoughtsView {
 			return m.renderBrowseThoughtsView(status)

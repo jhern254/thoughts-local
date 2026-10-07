@@ -32,7 +32,7 @@ func TestModel_Layout(t *testing.T) {
 		for _, height := range []int{20, 27} {
 			m.Resize(80, height)
 			lines := strings.Split(m.View(), "\n")
-			if len(lines) != height || lines[1] != "" || !strings.Contains(lines[len(lines)-1], "q: quit") {
+			if len(lines) != height || lines[1] != "" || !strings.Contains(lines[len(lines)-1], "e: end") {
 				t.Fatalf("got %d lines at height %d, want heading gap and visible footer", len(lines), height)
 			}
 		}

@@ -65,6 +65,8 @@ type Model struct {
 	selectedEntity entityKind
 	entityFocused  bool
 	width          int
+	exitPromptOpen bool
+	exitYes        bool
 	events         events.Model
 	subjects       subjectState
 	thoughts       thoughts.Model
@@ -117,6 +119,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.ctx.Err() != nil {
 		return m, nil
+	}
+	if m.exitPromptOpen {
+		switch message := message.(type) {
+		case tea.KeyPressMsg:
+			return m.updateExitPrompt(message)
+		case tea.PasteMsg, thoughts.VoiceAction:
+			return m, nil
+		}
+	}
+	if key, ok := message.(tea.KeyPressMsg); ok {
+		switch key.String() {
+		case "ctrl+c":
+			if m.canExit() {
+				m.exitPromptOpen, m.exitYes = true, false
+			}
+			return m, nil
+		case "esc":
+			if m.canExit() {
+				m.exitPromptOpen, m.exitYes = true, false
+				return m, nil
+			}
+		}
 	}
 	if events.Owns(message) {
 		var cmd tea.Cmd
@@ -209,9 +233,6 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.String() == "t" && m.VoiceState().CanOpenThoughtDraft {
 			return m.update(thoughts.VoiceAction{Action: "open"})
 		}
-		if message.String() == "ctrl+c" {
-			return m, tea.Quit
-		}
 	}
 
 	switch m.screen {
@@ -230,7 +251,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case screenMiscThoughts:
 		return m.updateMiscThoughts(message)
 	case screenVoiceThought:
-		if key, ok := message.(tea.KeyPressMsg); ok && key.String() == "esc" && m.thoughts.ShowingDetail() {
+		if key, ok := message.(tea.KeyPressMsg); ok && (key.String() == "esc" || key.String() == "q") && m.thoughts.ShowingDetail() {
 			m.thoughts.Reset()
 			return m.openHome()
 		}
@@ -243,9 +264,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case screenBrowseThoughts:
 		if key, ok := message.(tea.KeyPressMsg); ok && m.thoughts.Browsing() {
 			switch key.String() {
-			case "q":
-				return m, tea.Quit
-			case "esc":
+			case "q", "esc":
 				m.thoughts.Reset()
 				return m.openHome()
 			}
@@ -259,11 +278,6 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
-	// Keyboard input may arrive before Init's asynchronous message. Quit is
-	// available immediately, but remains authored text inside an event form.
-	if key, ok := message.(tea.KeyPressMsg); ok && key.String() == "q" && !m.events.FormOpen() {
-		return m, tea.Quit
-	}
 	if key, ok := message.(tea.KeyPressMsg); ok && m.events.CanLeave() {
 		if key.String() == "tab" {
 			m.entityFocused = !m.entityFocused
@@ -273,7 +287,9 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.entityFocused {
 			switch key.String() {
 			case "q":
-				return m, tea.Quit
+				m.entityFocused = false
+				m.events.SetFocused(true)
+				return m, nil
 			case "left", "right", "h", "l":
 				if m.selectedEntity == entitySubjects {
 					m.selectedEntity = entityThoughts
@@ -315,8 +331,17 @@ func (m Model) entityStrip() string {
 			line = m.subjects.list.Styles.Title.Render(line)
 		}
 	}
-	help := "Tab: panel • ←/→: entity • Enter: open"
-	if m.browserRecordingEnabled {
+	help := "Tab: entities"
+	if m.entityFocused {
+		help = "Tab/Q: events • ←/→: entity • Enter: open"
+	}
+	if m.canExit() {
+		help += " • Esc/Ctrl+C: exit"
+		if m.entityFocused && m.width < 60 {
+			help = "Esc/Ctrl+C: exit • Q: back • Enter: open"
+		}
+	}
+	if m.browserRecordingEnabled && ansi.StringWidth(help+" • t: create thought") <= m.width {
 		help += " • t: create thought"
 	}
 	return ansi.Truncate(line, max(1, m.width), "…") + "\n" + ansi.Truncate(help, max(1, m.width), "…")
@@ -325,6 +350,10 @@ func (m Model) entityStrip() string {
 func (m Model) View() tea.View {
 	view := tea.NewView("")
 	view.AltScreen = true
+	if m.exitPromptOpen {
+		view.Content = m.viewExitPrompt()
+		return view
+	}
 	switch m.screen {
 	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts, screenVoiceThought:
 		if m.thoughts.Creating() {
@@ -365,13 +394,13 @@ func (m Model) View() tea.View {
 	case screenMiscThoughts:
 		content = "Misc thoughts\n\n" + m.thoughts.View()
 		if m.thoughts.Browsing() {
-			content += "\nEsc: subjects • q: quit"
+			content += "\nQ/Esc: subjects"
 		}
 	case screenBrowseThoughts:
 		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
 		content = heading + "\n" + m.thoughts.View()
 		if m.thoughts.Browsing() {
-			content += "\nEsc: events • q: quit"
+			content += "\nQ/Esc: entities"
 		}
 	}
 	view.Content = content
@@ -388,7 +417,7 @@ func localUserLabel(user *data.User) string {
 // VoiceState exposes only bounded control metadata to the browser bridge.
 func (m Model) VoiceState() thoughts.VoiceState {
 	state := thoughts.VoiceState{BrowserRecordingEnabled: m.browserRecordingEnabled}
-	if !m.browserRecordingEnabled {
+	if !m.browserRecordingEnabled || m.exitPromptOpen {
 		return state
 	}
 	switch m.screen {

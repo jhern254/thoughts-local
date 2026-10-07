@@ -106,11 +106,13 @@ func runHomeData(t *testing.T, m Model, cmd tea.Cmd) Model {
 }
 
 func TestModel_EventsHome(t *testing.T) {
-	t.Run("quit works before asynchronous home initialization", func(t *testing.T) {
+	t.Run("Q does nothing before asynchronous home initialization", func(t *testing.T) {
 		m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, thought.NewService(testutils.NewFakeThoughtStore()), &metricsStub{}, logging.Nop())
 		m.entityFocused = false
 		_, cmd := m.Update(runeKey('q'))
-		assertQuitCommand(t, cmd)
+		if cmd != nil {
+			t.Fatal("Q should not quit before initialization")
+		}
 	})
 	t.Run("delayed startup does not steal navigation", func(t *testing.T) {
 		m := newRootTestModel()

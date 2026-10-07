@@ -24,7 +24,7 @@ func TestTUIWorkflow_SQLite(t *testing.T) {
 	t.Run("bootstraps and reuses local user", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 
-		stdout, stderr, err := runTUI(t, dsn, "q")
+		stdout, stderr, err := runTUI(t, dsn, "\x03y")
 		if err != nil {
 			t.Fatalf("run TUI: %v: %s", err, stderr)
 		}
@@ -33,7 +33,7 @@ func TestTUIWorkflow_SQLite(t *testing.T) {
 		}
 		localUser := getLocalUser(t, db)
 
-		stdout, stderr, err = runTUI(t, dsn, "q")
+		stdout, stderr, err = runTUI(t, dsn, "\x03y")
 		if err != nil {
 			t.Fatalf("run TUI again: %v: %s", err, stderr)
 		}

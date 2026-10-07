@@ -198,6 +198,11 @@ func (m *Model) SetFocused(focused bool) {
 }
 func (m Model) CanLeave() bool { return !m.form.open && !m.picker.ShowingDetail() }
 func (m Model) FormOpen() bool { return m.form.open }
+
+// AtTopLevel excludes the nested views and controls owned by Events.
+func (m Model) AtTopLevel() bool {
+	return m.CanLeave() && m.expanded == 0 && !m.distributions.open
+}
 func (m *Model) Resize(width, height int) {
 	m.load.retainedBody = ""
 	m.width, m.height = max(1, width), max(1, height)
@@ -296,7 +301,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
-		return m, tea.Quit
+		return m, nil
 	}
 	switch result := msg.(type) {
 	case subjectsLoaded:
@@ -491,8 +496,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	if key.String() == "q" || key.String() == "ctrl+c" {
-		return m, tea.Quit
+	if key.String() == "q" {
+		key = tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape})
+		msg = key
 	}
 	if m.picker.ShowingDetail() {
 		var cmd tea.Cmd
