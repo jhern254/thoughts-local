@@ -240,8 +240,17 @@ exact local Host and Origin as the terminal boundary; no directory is served.
 Imported bytes, filenames, paths, and decoder errors must never enter logs or
 public diagnostics.
 
-The root entity strip includes Options. In browser mode its command sends a
-single outbound `o` control frame, opening the browser-owned settings page
-without leaving the timeline. Ctrl+, / Cmd+, opens that same page during a
-draft or recording. The bridge carries no asset or settings data; native
-Options explains that background appearance requires browser mode.
+The root entity strip includes Options. Bubble Tea renders browser Options as
+an overlay without replacing the underlying screen or draft. Ctrl+, / Cmd+,
+opens the same page during a draft or recording. Its bridge carries bounded
+`o` control/result frames and a terminal-cell preview rectangle; image bytes
+remain on HTTP. Operation IDs reject stale replies, including across page
+close/reopen. The browser also guards results across connection changes.
+
+The browser draws only the image inside that rectangle and retains the device
+file picker. Before displaying it, public xterm buffer reads verify that the
+reserved border and blank cells have actually rendered; this avoids covering
+old text when metadata arrives ahead of terminal output. Cell geometry uses the
+pinned xterm screen element and its public row/column counts. No private xterm
+APIs or alternate-screen-incompatible marker decorations are used. Mouse mode
+is enabled only on Options. Native Options retains its browser-only explanation.

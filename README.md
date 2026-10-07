@@ -109,7 +109,11 @@ Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use
 **Ctrl+,** / **Cmd+,** without leaving a draft. Under Appearance, choose a local JPEG or PNG, preview it, and
 apply it behind the terminal. Background darkness changes only the readability
 overlay; Apply saves it. Remove background returns to the normal dark surface.
-These controls affect browser presentation, not terminal drafts or stored Thoughts.
+Controls are rendered in the TUI: Tab/Shift+Tab moves focus, arrows adjust
+darkness, Enter activates, and Q/Esc returns without saving. Mouse buttons and
+slider dragging also work. The browser supplies the device picker and the real
+image inside the preview border. These controls affect browser presentation,
+not terminal drafts or stored Thoughts.
 
 Images must be non-animated, at most **16 MiB**, **8,192 pixels per side**, and
 **24 million pixels** total. SVG, GIF, animated PNG, and remote URLs are unsupported.

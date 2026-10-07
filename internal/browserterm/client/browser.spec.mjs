@@ -37,6 +37,7 @@ test('back navigation and default No preserve the session until exit is confirme
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Misc thoughts');
+  await expect(screen(page)).not.toContainText('Loading subjects');
   await page.keyboard.press('Control+c');
   await expect(page.locator('#status')).toHaveText('Connected');
   await expect(screen(page)).not.toContainText('Exit app?');

@@ -71,7 +71,7 @@
   term.loadAddon(new UnicodeGraphemesAddon.UnicodeGraphemesAddon());
   term.unicode.activeVersion = '15-graphemes';
   term.open(container);
-  const appearance = new ThoughtsAppearance(term);
+  const appearance = new ThoughtsAppearance(term, action => send('o', encoder.encode(JSON.stringify(action))));
   // No programmatic clipboard writes or reads from terminal escape sequences.
   term.parser.registerOscHandler(52, () => true);
 
@@ -184,7 +184,7 @@
       if (frame[0] === 49) {
         term.write(frame.subarray(1));
       } else if (frame[0] === 111) {
-        appearance.open();
+        appearance.receive(JSON.parse(new TextDecoder().decode(frame.subarray(1))));
       } else if (frame[0] === 118) {
         receiveVoice(JSON.parse(new TextDecoder().decode(frame.subarray(1))));
       } else if (frame[0] === 55) {
@@ -206,6 +206,7 @@
     connection.onclose = () => {
       if (socket !== connection) return;
       connected = false;
+      appearance.disconnect();
       clearVoice();
       clearResize();
       term.options.disableStdin = true;

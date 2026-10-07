@@ -72,6 +72,8 @@ type Model struct {
 	selectedEntity entityKind
 	entityFocused  bool
 	width          int
+	height         int
+	options        optionsState
 	exitPromptOpen bool
 	exitYes        bool
 	events         events.Model
@@ -87,6 +89,7 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 		screen:   screenEvents,
 		logger:   logger,
 		width:    defaultWidth,
+		height:   defaultHeight,
 		events:   events.New(ctx, user.UserID, eventService, timelineView, thoughtService, subjects, logger),
 		subjects: newSubjectState(subjects),
 		thoughts: thoughts.New(ctx, user.UserID, thoughtService, logger),
@@ -126,6 +129,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.ctx.Err() != nil {
 		return m, nil
+	}
+	if msg, ok := message.(BrowserOptionsMsg); ok {
+		return m.updateBrowserOptions(msg)
+	}
+	if m.options.open {
+		switch message.(type) {
+		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg, tea.MouseWheelMsg:
+			return m.updateOptionsInput(message)
+		}
 	}
 	if m.exitPromptOpen {
 		switch message := message.(type) {
@@ -213,6 +225,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case tea.WindowSizeMsg:
 		m.width = message.Width
+		m.height = message.Height
 		m.events.Resize(message.Width, max(1, message.Height-6))
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
@@ -331,7 +344,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if m.selectedEntity == entityOptions {
 					if m.browserOptionsEnabled {
-						return m, func() tea.Msg { return OpenBrowserOptionsMsg{} }
+						return m.updateBrowserOptions(BrowserOptionsMsg{Action: "open"})
 					}
 					m.screen = screenOptions
 					return m, nil
@@ -386,6 +399,9 @@ func (m Model) entityStrip() string {
 }
 
 func (m Model) View() tea.View {
+	if m.options.open {
+		return m.viewOptions()
+	}
 	view := tea.NewView("")
 	view.AltScreen = true
 	if m.exitPromptOpen {

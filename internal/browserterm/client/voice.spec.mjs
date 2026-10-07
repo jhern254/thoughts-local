@@ -1,5 +1,6 @@
 import {fakeMicrophone} from './capture-fixture.mjs';
 import {test, expect} from '@playwright/test';
+import {openAppearance, clickControl, setDarkness} from './appearance-helpers.mjs';
 const screen = page => page.locator('.xterm-rows');
 async function ready(page) {
   await page.goto('/');
@@ -118,21 +119,21 @@ test('regular thought creation uses the same form and recording action', async (
 test('appearance preserves recording and terminal focus ownership', async ({page}) => {
   await fakeMicrophone(page); await ready(page);
   await paste(page, 'appearance voice draft');
-  await page.keyboard.press('Control+,');
-  await expect(page.locator('#appearance-apply')).toBeEnabled();
+  await openAppearance(page);
   expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(0);
-  await page.getByRole('button', {name: 'Back to terminal', exact: true}).click();
+  await clickControl(page, '[ Back ]');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   await page.keyboard.press('Control+,');
   await page.evaluate(() => window.voiceProbe.grant(0));
   await expect.poll(() => page.evaluate(() => window.voiceProbe.recorders[0]?.state)).toBe('recording');
-  await expect(page.locator('#appearance-dialog')).toBeVisible();
-  await expect(page.locator('.xterm-helper-textarea')).not.toBeFocused();
-  await page.locator('#background-darkness').fill('65');
-  await page.getByRole('button', {name: 'Apply', exact: true}).click();
-  await expect(page.locator('#appearance-dialog')).not.toBeVisible();
+  await expect(screen(page)).toContainText('Background darkness:');
+  await expect(screen(page)).not.toContainText('Loading appearance');
+  await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+  await setDarkness(page, 65);
+  await clickControl(page, '[ Apply ]');
+  await expect(screen(page)).not.toContainText('Background darkness:');
   expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   expect(await page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(0);
   await expect(screen(page)).toContainText('appearance voice draft');
