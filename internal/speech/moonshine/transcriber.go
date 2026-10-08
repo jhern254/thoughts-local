@@ -84,6 +84,11 @@ func openVerifiedTranscriber(
 	return &Transcriber{state: &transcriberState{nativeBackend: nativeBackend}}, nil
 }
 
+// Transcribe accepts nonempty mono PCM: successive float32 amplitude samples in
+// [-1, 1], at the recording's actual sample rate in Hz (samples per second).
+// It accepts Go values, not encoded file bytes; NaN and infinity are invalid.
+// The caller must leave the slice unchanged until this synchronous call returns.
+// Cancellation during native inference discards the result once inference ends.
 func (transcriber *Transcriber) Transcribe(ctx context.Context, audioSamples []float32, sampleRateHz int) (speech.Transcript, error) {
 	if err := ctx.Err(); err != nil {
 		return speech.Transcript{}, err

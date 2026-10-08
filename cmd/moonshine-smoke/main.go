@@ -126,6 +126,10 @@ func runTranscribe(ctx context.Context, modelDirectory, pcmPath string, sampleRa
 	}
 	return nil
 }
+
+// decodePCM accepts headerless mono IEEE 754 float32 samples, four bytes each,
+// with the least significant byte first (little-endian). The raw file carries
+// no sample rate, so the command supplies it separately. See docs/moonshine.md.
 func decodePCM(encoded []byte) ([]float32, error) {
 	if len(encoded) == 0 || len(encoded)%4 != 0 {
 		return nil, speech.ErrInvalidAudio

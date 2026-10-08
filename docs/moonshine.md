@@ -6,6 +6,101 @@ browser, TUI, application runtime or database. Ordinary builds and tests require
 no native runtime; opening verified assets in those builds returns
 `speech.ErrRuntime`.
 
+## PCM and the input format
+
+**PCM (pulse-code modulation)** represents an audio waveform as a sequence of
+numbers called samples. Each sample records the signal's amplitude at one point
+in time. The speech adapter accepts these numbers directly as `[]float32`; it
+does not accept a WAV file, MP3 file or microphone device.
+
+- **Mono** means one audio channel: each successive value is the next sample in
+  time. Stereo has two channels and is not this input format.
+- **Sample rate** is the number of samples per second, measured in hertz (Hz).
+  At 16,000 Hz, 16,000 mono samples represent one second. Pass the recording's
+  actual rate; changing the rate argument does not convert the samples.
+- **Float32** is a 32-bit floating-point number. Samples use normalized amplitude
+  in `[-1, 1]`, with `0` representing zero signal amplitude. Negative amplitudes
+  are normal. NaN (not a number), infinity and values outside that range are
+  rejected, rather than silently changed.
+
+### Why the smoke file says little-endian
+
+The developer command reads a raw `.f32le` fixture: **f**loat, **32** bits,
+**l**ittle-**e**ndian. It has no header, channel information or sample-rate
+metadata. Every four bytes encode one IEEE 754 float32 sample, in time order;
+`-sample-rate` supplies the rate separately. A WAV container can hold PCM, but
+its header makes it a different file format; do not pass WAV bytes to this
+command. The same applies to signed 16-bit PCM, stereo or compressed audio.
+
+**Endianness means byte order.** A 32-bit value occupies four bytes. Little-endian
+stores the least significant byte first; big-endian stores it last. For example,
+the floating-point sample `1.0` has the bit pattern `0x3f800000`:
+
+| Encoding | Four bytes in the file (hexadecimal) |
+|---|---|
+| Little-endian, accepted by this command | `00 00 80 3f` |
+| Big-endian, a different encoding | `3f 80 00 00` |
+
+`decodePCM` first reads four bytes in the specified order using
+`binary.LittleEndian.Uint32`, then `math.Float32frombits` interprets those bits
+as a floating-point sample. This is not a numerical integer-to-float conversion:
+converting the integer `0x3f800000` numerically would produce a large number,
+rather than the sample `1.0`. The decoder rejects empty files and partial
+four-byte samples; the speech adapter checks amplitude and finiteness.
+
+Byte order matters at this file boundary. Callers already holding `[]float32`
+pass those values directly to `Transcribe`; they do not serialize them or choose
+an endian format. Keep the slice unchanged until the call returns.
+
+The committed fixture contains 93,680 mono samples at 16,000 Hz:
+`93,680 / 16,000 = 5.855` seconds and `93,680 × 4 = 374,720` bytes. See
+[the fixture notes](../internal/speech/moonshine/testdata/README.md) for the
+licensed source, conversion and checksums. This decoder is developer-tool
+plumbing, not a browser audio protocol or a production audio-file importer.
+
+## Architecture and where ownership changes
+
+```mermaid
+flowchart TD
+    A[Approved model ID] --> B[modelassets.Install: explicit network operation]
+    B --> C[Verified files and completion marker]
+    C --> D[moonshine.Open: verifies every required file again]
+    D --> E[Confined read-only model mappings]
+    E --> F[Native Moonshine handle]
+    G[Caller-owned mono float32 samples and sample rate] --> F
+    F --> H[Native transcript lines copied into Go strings]
+    H --> I[Go-owned Transcript.Text]
+```
+
+Installation and inference are separate so missing or changed assets cannot
+cause inference to make a hidden network request. `Open` hashes all required
+files through modelassets, so opening a model is deliberately more expensive
+than checking whether a directory exists. URLs, hashes and model-file sizes
+come only from the application-owned catalog.
+
+| Code | Responsibility and lifetime |
+|---|---|
+| `internal/modelassets` | Downloads only the approved manifest; checks size/hash and commits installation through its completion marker. |
+| `moonshine/transcriber.go` | Portable input validation, context checks, shared lifecycle state and fixed safe errors. Copies of a transcriber share this state. |
+| `moonshine/model_files_linux.go` | Opens verified files through `os.Root` and maps their bytes read-only. A mapping makes file contents accessible in memory without copying the whole file into a Go slice allocation. |
+| `moonshine/native_linux.go` | Uses cgo (Go's bridge to C) to create/use/free the native handle. Model mappings must stay alive because native sessions retain pointers to them. Native transcript pointers never cross this boundary; returned lines are copied into Go strings. |
+| `moonshineRuntimeGate` | Serializes all adapter instances, including loading, inference and cleanup, because Moonshine has process-wide state. Waiting for the gate is cancellable. |
+| `Transcriber.Close` | Frees the native handle before unmapping its model files. This order prevents native code from accessing released memory. Repeated closes, including closes on copies, return the stored outcome. |
+| `cmd/moonshine-smoke` | Developer-only file decoding, explicit installation and timing/output. The adapter neither reads audio files nor persists audio/transcripts. |
+
+An entered native call is synchronous and cannot be interrupted through Go's
+context. Cancellation prevents entry or discards its result after it finishes;
+it does not let Close free resources while inference still uses them. Returned
+Go strings remain valid across later inference and Close.
+
+The `moonshine && cgo && linux && amd64` build constraint isolates the native
+implementation. **amd64** means the x86-64 CPU architecture; it is unrelated to
+Moonshine's **model architecture**, which identifies a neural model layout such
+as Small Streaming. Ordinary builds select the unavailable-runtime implementation
+and need no C headers or libraries. The portable package owns lifecycle policy;
+the tagged file owns C memory and calls. This split does not implement another
+platform or wire speech into the application.
+
 ## Upstream contract
 
 The integration pins Moonshine Voice v0.1.5, upstream commit
@@ -126,7 +221,8 @@ canceled and discard results when canceled before returning; control may return
 only after native inference finishes. There are no detached inference goroutines.
 Close waits for native work and attempts all cleanup; repeated calls return the
 original close outcome without freeing twice. Transcript text is copied into
-Go-owned strings inside the native adapter before crossing into portable Go code. No-speech results are empty.
+Go-owned strings inside the native adapter before crossing into portable Go
+code. No-speech results are empty.
 
 The adapter explicitly disables returned audio, API-call logging, ORT-run logging,
 transcript logging, debug WAV output, speaker identification and word timestamps.
