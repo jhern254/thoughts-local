@@ -1,4 +1,4 @@
-package appearance
+package visual
 
 import (
 	"bytes"
@@ -15,12 +15,12 @@ import (
 )
 
 type memoryStore struct {
-	settings data.Appearance
+	settings data.Visual
 	fail     bool
 }
 
-func (s *memoryStore) Load(context.Context, string) (data.Appearance, error) { return s.settings, nil }
-func (s *memoryStore) Save(_ context.Context, _ string, value data.Appearance) error {
+func (s *memoryStore) Load(context.Context, string) (data.Visual, error) { return s.settings, nil }
+func (s *memoryStore) Save(_ context.Context, _ string, value data.Visual) error {
 	if s.fail {
 		return errors.New("PRIVATE database path")
 	}
@@ -116,7 +116,7 @@ func TestService_Background(t *testing.T) {
 		}
 	})
 	t.Run("refuses stored traversal and symlink", func(t *testing.T) {
-		store := &memoryStore{settings: data.Appearance{BackgroundAsset: "../../PRIVATE"}}
+		store := &memoryStore{settings: data.Visual{BackgroundAsset: "../../PRIVATE"}}
 		dir := t.TempDir()
 		service := NewService(store, "user", dir)
 		if _, _, err := service.OpenBackground(t.Context()); err == nil {
@@ -138,7 +138,7 @@ func TestService_FilesystemFailure(t *testing.T) {
 		if err := os.WriteFile(directory, []byte("not a directory"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		store := &memoryStore{settings: data.Appearance{BackgroundAsset: "0123456789abcdef0123456789abcdef.png", Darkness: 70}}
+		store := &memoryStore{settings: data.Visual{BackgroundAsset: "0123456789abcdef0123456789abcdef.png", Darkness: 70}}
 		before := store.settings
 		service := NewService(store, "user", directory)
 		if _, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35); err == nil {
@@ -157,7 +157,7 @@ func TestService_FilesystemFailure(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(directory, name, "block-removal"), nil, 0600); err != nil {
 			t.Fatal(err)
 		}
-		store := &memoryStore{settings: data.Appearance{BackgroundAsset: name, Darkness: 70}}
+		store := &memoryStore{settings: data.Visual{BackgroundAsset: name, Darkness: 70}}
 		service := NewService(store, "user", directory)
 		got, warning, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35)
 		if err != nil || !warning {

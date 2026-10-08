@@ -14,20 +14,20 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/jhern254/go-thoughts/internal/appearance"
 	"github.com/jhern254/go-thoughts/internal/browserterm"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
-func runBrowser(ctx context.Context, port int, autoOpen bool, newModel func(context.Context) tea.Model, out io.Writer, logger logging.Logger, appearance *appearance.Service) error {
+func runBrowser(ctx context.Context, port int, autoOpen bool, newModel func(context.Context) tea.Model, out io.Writer, logger logging.Logger, visual *visual.Service) error {
 	var opener func(context.Context, string) error
 	if autoOpen {
 		opener = openDefaultBrowser
 	}
-	return serveBrowser(ctx, port, newModel, out, logger, appearance, opener)
+	return serveBrowser(ctx, port, newModel, out, logger, visual, opener)
 }
 
-func serveBrowser(ctx context.Context, port int, newModel func(context.Context) tea.Model, out io.Writer, logger logging.Logger, appearance *appearance.Service, opener func(context.Context, string) error) error {
+func serveBrowser(ctx context.Context, port int, newModel func(context.Context) tea.Model, out io.Writer, logger logging.Logger, visual *visual.Service, opener func(context.Context, string) error) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
@@ -41,7 +41,7 @@ func serveBrowser(ctx context.Context, port int, newModel func(context.Context) 
 	// Serve rejects terminal tracing before startup. Let that validation finish
 	// without opening a tab for a server that cannot run.
 	if opener == nil || os.Getenv("TEA_TRACE") != "" {
-		return browserterm.Serve(ctx, listener, newModel, logger, appearance)
+		return browserterm.Serve(ctx, listener, newModel, logger, visual)
 	}
 	openingCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -54,7 +54,7 @@ func serveBrowser(ctx context.Context, port int, newModel func(context.Context) 
 			fmt.Fprintln(out, "Could not open the default browser. Open the printed address manually.")
 		}
 	}()
-	err = browserterm.Serve(ctx, listener, newModel, logger, appearance)
+	err = browserterm.Serve(ctx, listener, newModel, logger, visual)
 	cancel()
 	<-opened
 	return err

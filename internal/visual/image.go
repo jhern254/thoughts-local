@@ -1,4 +1,4 @@
-package appearance
+package visual
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ const (
 
 var ErrImage = errors.New("choose a valid, non-animated JPEG or PNG within the image limits")
 var ErrDarkness = errors.New("background darkness must be between 0 and 95")
-var ErrBusy = errors.New("an appearance change is already in progress")
+var ErrBusy = errors.New("an visual change is already in progress")
 
 func validateImage(body []byte) (string, error) {
 	if len(body) > MaxImageBytes {

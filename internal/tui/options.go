@@ -11,7 +11,7 @@ import (
 
 type BrowserOptionsEnabledMsg struct{}
 
-// BrowserOptionsMsg carries only bounded appearance control metadata. Images
+// BrowserOptionsMsg carries only bounded visual control metadata. Images
 // stay in the browser and travel through the existing validated HTTP routes.
 type BrowserOptionsMsg struct {
 	Action   string `json:"action"`
@@ -74,7 +74,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			m.options.open = true
 			m.options.focus = optionsFocusChooseImage
 			m.options.darkness = 70
-			m.options.status = "Loading appearance…"
+			m.options.status = "Loading visual…"
 			m.requestOptions("load")
 		}
 		return m, nil
@@ -227,7 +227,7 @@ func (m Model) viewOptions() tea.View {
 		}
 		return plain.Render(text)
 	}
-	lines := []string{selected.Render("Options"), "", "Appearance", "", "Background image", label(optionsFocusChooseImage, "Choose image"), ""}
+	lines := []string{selected.Render("Options"), "", "Visual", "", "Background image", label(optionsFocusChooseImage, "Choose image"), ""}
 	if rect.Height > 0 {
 		lines = append(lines, muted.Render("╭"+strings.Repeat("─", rect.Width)+"╮"))
 		for range rect.Height {

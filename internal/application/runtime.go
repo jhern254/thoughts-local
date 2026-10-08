@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jhern254/go-thoughts/internal/appearance"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/goal"
@@ -18,6 +17,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/user"
+	"github.com/jhern254/go-thoughts/internal/visual"
 	_ "modernc.org/sqlite"
 )
 
@@ -150,9 +150,9 @@ func sqliteDSNWithForeignKeys(dsn string) string {
 	return dsn + separator + "_pragma=foreign_keys(1)"
 }
 
-// BrowserAppearance constructs browser-only persistence without changing native
+// BrowserVisual constructs browser-only persistence without changing native
 // entity services. SQLite supplies the actual filename, including URI DSNs.
-func (runtime *Runtime) BrowserAppearance(ctx context.Context) (*appearance.Service, error) {
+func (runtime *Runtime) BrowserVisual(ctx context.Context) (*visual.Service, error) {
 	rows, err := runtime.db.QueryContext(ctx, "PRAGMA database_list")
 	if err != nil {
 		return nil, err
@@ -175,5 +175,5 @@ func (runtime *Runtime) BrowserAppearance(ctx context.Context) (*appearance.Serv
 	if filename == "" {
 		return nil, nil
 	}
-	return appearance.NewService(data.NewSQLiteAppearanceStore(runtime.db), runtime.localUser.UserID, filepath.Join(filename+".assets", "appearance")), nil
+	return visual.NewService(data.NewSQLiteVisualStore(runtime.db), runtime.localUser.UserID, filepath.Join(filename+".assets", "appearance")), nil
 }

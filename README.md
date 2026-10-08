@@ -106,7 +106,7 @@ are not needed to build or run it.
 ### Browser background
 
 Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use
-**Ctrl+,** / **Cmd+,** without leaving a draft. Under Appearance, choose a local JPEG or PNG, preview it, and
+**Ctrl+,** / **Cmd+,** without leaving a draft. Under Visual, choose a local JPEG or PNG, preview it, and
 apply it behind the terminal. Background darkness changes only the readability
 overlay; Apply saves it. Remove background returns to the normal dark surface.
 Controls are rendered in the TUI: Tab/Shift+Tab moves focus, arrows adjust

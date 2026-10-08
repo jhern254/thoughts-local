@@ -1,5 +1,5 @@
 import {test, expect} from '@playwright/test';
-import {openAppearance as open, clickControl, setDarkness as darkness, chooseImage, screen} from './appearance-helpers.mjs';
+import {openVisual as open, clickControl, setDarkness as darkness, chooseImage, screen} from './visual-helpers.mjs';
 
 async function imageFixture(page) {
   const encoded = await page.evaluate(() => {
@@ -24,14 +24,14 @@ test('persists one image without resetting the terminal or its draft', async ({p
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Background darkness:');
-  await expect(screen(page)).not.toContainText('Loading appearance');
+  await expect(screen(page)).not.toContainText('Loading visual');
   await clickControl(page, 'Remove background');
   await expect(screen(page)).not.toContainText('Background darkness:');
   await expect(page.locator('#background-image')).toBeHidden();
   await page.screenshot({path: `/tmp/background-${testInfo.project.name}-default.png`});
   await page.keyboard.press('t');
   await expect(page.locator('.xterm-rows')).toContainText('Create thought');
-  await page.keyboard.insertText('Appearance keeps this unsaved draft 界');
+  await page.keyboard.insertText('Visual keeps this unsaved draft 界');
   await open(page);
   await chooseImage(page, await imageFixture(page));
   await expect(page.locator('#background-preview')).toBeVisible();
@@ -40,7 +40,7 @@ test('persists one image without resetting the terminal or its draft', async ({p
   await expect(screen(page)).not.toContainText('Background darkness:');
   await expect(page.locator('#background-image')).toBeVisible();
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
-  await expect(page.locator('.xterm-rows')).toContainText('Appearance keeps this unsaved draft 界');
+  await expect(page.locator('.xterm-rows')).toContainText('Visual keeps this unsaved draft 界');
   expect(sockets).toBe(1);
   expect(await page.locator('.xterm-viewport').evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
   expect(await page.locator('.xterm-scrollable-element').evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
@@ -82,16 +82,16 @@ test('failed replacement retains the active image', async ({page}) => {
   await chooseImage(page, await imageFixture(page));
   await clickControl(page, 'Apply');
   await expect(page.locator('#background-image')).toBeVisible();
-  const before = await page.request.get('/appearance/background');
+  const before = await page.request.get('/visual/background');
   await open(page);
   await chooseImage(page, await imageFixture(page));
-  await page.route('**/appearance/background', async route => {
+  await page.route('**/visual/background', async route => {
     if (route.request().method() === 'POST') await route.fulfill({status: 500, body: 'Could not update or load the background.'});
     else await route.continue();
   });
   await clickControl(page, 'Apply');
   await expect(screen(page)).toContainText('Could not load or apply');
-  const after = await page.request.get('/appearance/background');
+  const after = await page.request.get('/visual/background');
   expect(await after.body()).toEqual(await before.body());
   await expect(page.locator('#background-image')).toBeVisible();
   await clickControl(page, 'Remove background');

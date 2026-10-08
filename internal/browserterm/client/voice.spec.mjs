@@ -1,6 +1,6 @@
 import {fakeMicrophone} from './capture-fixture.mjs';
 import {test, expect} from '@playwright/test';
-import {openAppearance, clickControl, setDarkness} from './appearance-helpers.mjs';
+import {openVisual, clickControl, setDarkness} from './visual-helpers.mjs';
 const screen = page => page.locator('.xterm-rows');
 async function ready(page) {
   await page.goto('/');
@@ -116,10 +116,10 @@ test('regular thought creation uses the same form and recording action', async (
   await expect(screen(page)).not.toContainText('F8: Record');
 });
 
-test('appearance preserves recording and terminal focus ownership', async ({page}) => {
+test('visual preserves recording and terminal focus ownership', async ({page}) => {
   await fakeMicrophone(page); await ready(page);
-  await paste(page, 'appearance voice draft');
-  await openAppearance(page);
+  await paste(page, 'visual voice draft');
+  await openVisual(page);
   expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(0);
   await clickControl(page, 'Back');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
@@ -129,14 +129,14 @@ test('appearance preserves recording and terminal focus ownership', async ({page
   await page.evaluate(() => window.voiceProbe.grant(0));
   await expect.poll(() => page.evaluate(() => window.voiceProbe.recorders[0]?.state)).toBe('recording');
   await expect(screen(page)).toContainText('Background darkness:');
-  await expect(screen(page)).not.toContainText('Loading appearance');
+  await expect(screen(page)).not.toContainText('Loading visual');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await setDarkness(page, 65);
   await clickControl(page, 'Apply');
   await expect(screen(page)).not.toContainText('Background darkness:');
   expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   expect(await page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(0);
-  await expect(screen(page)).toContainText('appearance voice draft');
+  await expect(screen(page)).toContainText('visual voice draft');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await page.keyboard.press('F8');
   await expect(screen(page)).toContainText('F8: Record');

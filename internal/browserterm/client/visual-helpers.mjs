@@ -1,9 +1,9 @@
 import {expect} from '@playwright/test';
 export const screen = page => page.locator('.xterm-rows');
-export async function openAppearance(page) {
+export async function openVisual(page) {
   await page.keyboard.press('Control+,');
   await expect(screen(page)).toContainText('Background darkness:');
-  await expect(screen(page)).not.toContainText('Loading appearance');
+  await expect(screen(page)).not.toContainText('Loading visual');
 }
 export async function clickControl(page, label) {
   const point = await screen(page).evaluate((el, label) => {

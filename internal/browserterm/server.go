@@ -18,11 +18,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/coder/websocket"
-	"github.com/jhern254/go-thoughts/internal/appearance"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
+	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
 //go:embed static/*
@@ -37,7 +37,7 @@ type server struct {
 	audioSession  *audioSession
 	audioConsumer PCMConsumer
 	newModel      func(context.Context) tea.Model
-	appearance    *appearance.Service
+	visual    *visual.Service
 	logger        logging.Logger
 	authority     string
 	ctx           context.Context
@@ -52,8 +52,8 @@ type server struct {
 // Serve owns a previously bound IPv4 loopback listener. It returns after HTTP
 // handlers, the active program, and its started commands have stopped. Factories
 // must give all service operations the supplied session context.
-func Serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, appearance *appearance.Service) error {
-	return serve(ctx, listener, newModel, logger, discardPCM, appearance)
+func Serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, visual *visual.Service) error {
+	return serve(ctx, listener, newModel, logger, discardPCM, visual)
 }
 
 // ServeWithAudioConsumer injects a recording-owned test consumer. Normal Serve
@@ -62,7 +62,7 @@ func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel
 	return serve(ctx, listener, newModel, logger, consumer, nil)
 }
 
-func serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumer PCMConsumer, appearance *appearance.Service) error {
+func serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumer PCMConsumer, visual *visual.Service) error {
 	defer listener.Close()
 	// Bubble Tea reads this directly from the process environment, independent
 	// of WithEnvironment, and records terminal traffic. Refuse it in browser mode.
@@ -78,7 +78,7 @@ func serve(ctx context.Context, listener net.Listener, newModel func(context.Con
 	s := &server{
 		audioConsumer: consumer,
 		newModel:      newModel,
-		appearance:    appearance,
+		visual:    visual,
 		logger:        logger,
 		authority:     listener.Addr().String(),
 		ctx:           sessionCtx,
@@ -134,7 +134,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
-	if r.URL.Path == "/appearance" || r.URL.Path == "/appearance/background" || r.URL.Path == "/appearance/settings" {
+	if r.URL.Path == "/visual" || r.URL.Path == "/visual/background" || r.URL.Path == "/visual/settings" {
 		s.mu.Lock()
 		if s.closing {
 			s.mu.Unlock()
@@ -144,7 +144,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.requests.Add(1)
 		s.mu.Unlock()
 		defer s.requests.Done()
-		s.serveAppearance(w, r)
+		s.serveVisual(w, r)
 		return
 	}
 	if r.Method != http.MethodGet {

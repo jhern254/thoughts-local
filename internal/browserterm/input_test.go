@@ -9,7 +9,7 @@ import (
 )
 
 func TestInputMessages(t *testing.T) {
-	t.Run("bounds appearance metadata and rejects unknown actions", func(t *testing.T) {
+	t.Run("bounds visual metadata and rejects unknown actions", func(t *testing.T) {
 		for _, frame := range []string{`o{"action":"open"}`, `o{"action":"loaded","id":1,"darkness":70}`} {
 			if _, err := inputMessages([]byte(frame)); err != nil {
 				t.Fatal(err)
@@ -17,7 +17,7 @@ func TestInputMessages(t *testing.T) {
 		}
 		for _, frame := range []string{`o{"action":"open","id":1}`, `o{"action":"loaded"}`, `o{"action":"saved","id":9007199254740992}`, `o{"action":"saved","id":1,"darkness":96}`, `o{"action":"path"}`, "o" + strings.Repeat(" ", 257)} {
 			if _, err := inputMessages([]byte(frame)); err == nil {
-				t.Fatal("accepted invalid appearance input")
+				t.Fatal("accepted invalid visual input")
 			}
 		}
 	})

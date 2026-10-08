@@ -7,7 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/cmd/internal/cliutil"
-	"github.com/jhern254/go-thoughts/internal/appearance"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/event"
@@ -18,6 +17,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/tui"
+	"github.com/jhern254/go-thoughts/internal/visual"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -30,7 +30,7 @@ type runtime interface {
 	Metrics() *metrics.Service
 	Events() *event.Service
 	TimelineView() *timeline.Service
-	BrowserAppearance(context.Context) (*appearance.Service, error)
+	BrowserVisual(context.Context) (*visual.Service, error)
 	Close() error
 }
 
@@ -44,7 +44,7 @@ type application struct {
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
-	runBrowser  func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger, *appearance.Service) error
+	runBrowser  func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger, *visual.Service) error
 }
 
 func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) *application {
@@ -105,10 +105,10 @@ func newTUI(app *application) *cli.Command {
 			}
 			var err error
 			if cmd.Bool("browser") {
-				var backgrounds *appearance.Service
-				backgrounds, err = app.runtime.BrowserAppearance(ctx)
+				var backgrounds *visual.Service
+				backgrounds, err = app.runtime.BrowserVisual(ctx)
 				if err != nil {
-					app.failureMessage = "Could not load browser appearance."
+					app.failureMessage = "Could not load browser visual."
 					return err
 				}
 				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), newModel, app.out, app.logger, backgrounds)

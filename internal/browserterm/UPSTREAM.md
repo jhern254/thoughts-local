@@ -220,9 +220,12 @@ model downloads or audio persistence. Browser PCM never belongs in terminal
 input. Finish/finalize behavior, VAD, live partial transcript UI, and product
 speech wiring are intentionally deferred.
 
-## Local image appearance
+## Visual settings and local backgrounds
 
-Appearance metadata belongs to SQLite; the concrete appearance service owns
+The `browser_appearance` table and `.assets/appearance/` directory retain their
+original names so existing background selections remain usable.
+
+Visual metadata belongs to SQLite; the concrete visual service owns
 immutable image files beside that database. Import validates bounded JPEG/PNG
 content before writing. It commits the selection before deleting the old asset;
 failure before that commit preserves the working selection. A crash or failed
@@ -235,7 +238,7 @@ foreground opacity, input transport, and microphone ownership remain unchanged.
 The image layer can later be replaced with a video element without changing
 the overlay or terminal layers; no playback infrastructure is implemented.
 
-Only exact appearance routes access native images. Mutations require the same
+Only exact visual routes access native images. Mutations require the same
 exact local Host and Origin as the terminal boundary; no directory is served.
 Imported bytes, filenames, paths, and decoder errors must never enter logs or
 public diagnostics.

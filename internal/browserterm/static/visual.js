@@ -1,5 +1,5 @@
 /* Bubble Tea owns controls; the browser owns the picker, image pixels and HTTP. */
-class ThoughtsAppearance {
+class ThoughtsVisual {
   constructor(terminal, sendAction) {
     this.terminal = terminal;
     this.sendAction = sendAction;
@@ -162,7 +162,7 @@ class ThoughtsAppearance {
   async activate(settings) {
     if (!Number.isInteger(settings.darkness) || settings.darkness < 0 || settings.darkness > 95) settings.darkness = 70;
     if (settings.background) {
-      const response = await fetch('/appearance/background', {cache: 'no-store'});
+      const response = await fetch('/visual/background', {cache: 'no-store'});
       if (!response.ok) throw new Error();
       const url = URL.createObjectURL(await response.blob());
       const candidate = new Image();
@@ -184,7 +184,7 @@ class ThoughtsAppearance {
   }
   async restore() {
     try {
-      const response = await fetch('/appearance', {cache: 'no-store'});
+      const response = await fetch('/visual', {cache: 'no-store'});
       if (!response.ok) throw new Error();
       await this.activate(await response.json());
       this.loadFailed = false;
@@ -192,14 +192,14 @@ class ThoughtsAppearance {
   }
   async save(removeBackground, operationID, darkness, connectionGeneration) {
     try {
-      let requestURL = '/appearance/settings';
+      let requestURL = '/visual/settings';
       let requestOptions = {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({darkness})};
       if (removeBackground) {
-        requestURL = '/appearance/background'; requestOptions = {method: 'DELETE'};
+        requestURL = '/visual/background'; requestOptions = {method: 'DELETE'};
       } else if (this.file.files[0]) {
         const form = new FormData();
         form.append('image', this.file.files[0]); form.append('darkness', darkness);
-        requestURL = '/appearance/background'; requestOptions = {method: 'POST', body: form};
+        requestURL = '/visual/background'; requestOptions = {method: 'POST', body: form};
       }
       const response = await fetch(requestURL, requestOptions);
       if (!response.ok) throw new Error();

@@ -428,7 +428,7 @@ func (m Model) View() tea.View {
 	var content string
 	switch m.screen {
 	case screenOptions:
-		content = "Options\n\nAppearance backgrounds are available in browser mode.\n\nq/Esc: events"
+		content = "Options\n\nVisual backgrounds are available in browser mode.\n\nq/Esc: events"
 	case screenEvents:
 		content = m.events.View()
 		if m.events.CanLeave() {

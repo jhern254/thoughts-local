@@ -1,5 +1,5 @@
-// Package appearance owns one local browser background and its persisted settings.
-package appearance
+// Package visual owns one local browser background and its persisted settings.
+package visual
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 )
 
 type Store interface {
-	Load(context.Context, string) (data.Appearance, error)
-	Save(context.Context, string, data.Appearance) error
+	Load(context.Context, string) (data.Visual, error)
+	Save(context.Context, string, data.Visual) error
 }
 
 type Service struct {
@@ -35,13 +35,13 @@ func NewService(store Store, userID, directory string) *Service {
 	}
 }
 
-func (s *Service) Load(ctx context.Context) (data.Appearance, error) {
+func (s *Service) Load(ctx context.Context) (data.Visual, error) {
 	settings, err := s.store.Load(ctx, s.userID)
 	if settings.Darkness < 0 || settings.Darkness > 95 {
 		settings.Darkness = data.DefaultBackgroundDarkness
 	}
 	if settings.BackgroundAsset != "" && !validAsset(settings.BackgroundAsset) {
-		return data.Appearance{}, errors.New("invalid background selection")
+		return data.Visual{}, errors.New("invalid background selection")
 	}
 	return settings, err
 }
@@ -61,28 +61,28 @@ func (s *Service) root() (*os.Root, error) {
 	return os.OpenRoot(s.directory)
 }
 
-func (s *Service) Import(ctx context.Context, input io.Reader, darkness int) (data.Appearance, bool, error) {
+func (s *Service) Import(ctx context.Context, input io.Reader, darkness int) (data.Visual, bool, error) {
 	if !s.tryAcquire() {
-		return data.Appearance{}, false, ErrBusy
+		return data.Visual{}, false, ErrBusy
 	}
 	defer s.release()
 	if darkness < 0 || darkness > 95 {
-		return data.Appearance{}, false, ErrDarkness
+		return data.Visual{}, false, ErrDarkness
 	}
 	previous, err := s.Load(ctx)
 	if err != nil {
-		return data.Appearance{}, false, err
+		return data.Visual{}, false, err
 	}
 	body, err := io.ReadAll(io.LimitReader(input, MaxImageBytes+1))
 	if err != nil {
-		return data.Appearance{}, false, err
+		return data.Visual{}, false, err
 	}
 	format, err := validateImage(body)
 	if err != nil {
-		return data.Appearance{}, false, err
+		return data.Visual{}, false, err
 	}
 	if err = ctx.Err(); err != nil {
-		return data.Appearance{}, false, err
+		return data.Visual{}, false, err
 	}
 	extension := ".png"
 	if format == "jpeg" {
@@ -90,17 +90,17 @@ func (s *Service) Import(ctx context.Context, input io.Reader, darkness int) (da
 	}
 	id := make([]byte, 16)
 	if _, err = rand.Read(id); err != nil {
-		return data.Appearance{}, false, err
+		return data.Visual{}, false, err
 	}
-	settings := data.Appearance{BackgroundAsset: hex.EncodeToString(id) + extension, Darkness: darkness}
+	settings := data.Visual{BackgroundAsset: hex.EncodeToString(id) + extension, Darkness: darkness}
 	root, err := s.root()
 	if err != nil {
-		return data.Appearance{}, false, err
+		return data.Visual{}, false, err
 	}
 	defer root.Close()
 	file, err := root.OpenFile(settings.BackgroundAsset, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		return data.Appearance{}, false, err
+		return data.Visual{}, false, err
 	}
 	_, writeErr := file.Write(body)
 	syncErr := file.Sync()
@@ -110,7 +110,7 @@ func (s *Service) Import(ctx context.Context, input io.Reader, darkness int) (da
 	}
 	if err != nil {
 		_ = root.Remove(settings.BackgroundAsset)
-		return data.Appearance{}, false, err
+		return data.Visual{}, false, err
 	}
 	return settings, removeAsset(root, previous.BackgroundAsset), nil
 }
@@ -123,13 +123,13 @@ func removeAsset(root *os.Root, name string) bool {
 	return err != nil && !errors.Is(err, os.ErrNotExist)
 }
 
-func (s *Service) SetDarkness(ctx context.Context, darkness int) (data.Appearance, error) {
+func (s *Service) SetDarkness(ctx context.Context, darkness int) (data.Visual, error) {
 	if !s.tryAcquire() {
-		return data.Appearance{}, ErrBusy
+		return data.Visual{}, ErrBusy
 	}
 	defer s.release()
 	if darkness < 0 || darkness > 95 {
-		return data.Appearance{}, ErrDarkness
+		return data.Visual{}, ErrDarkness
 	}
 	settings, err := s.Load(ctx)
 	if err != nil {
@@ -139,9 +139,9 @@ func (s *Service) SetDarkness(ctx context.Context, darkness int) (data.Appearanc
 	return settings, s.store.Save(ctx, s.userID, settings)
 }
 
-func (s *Service) Remove(ctx context.Context) (data.Appearance, bool, error) {
+func (s *Service) Remove(ctx context.Context) (data.Visual, bool, error) {
 	if !s.tryAcquire() {
-		return data.Appearance{}, false, ErrBusy
+		return data.Visual{}, false, ErrBusy
 	}
 	defer s.release()
 	settings, err := s.Load(ctx)
@@ -151,7 +151,7 @@ func (s *Service) Remove(ctx context.Context) (data.Appearance, bool, error) {
 	previous := settings.BackgroundAsset
 	settings.BackgroundAsset = ""
 	if err = s.store.Save(ctx, s.userID, settings); err != nil {
-		return data.Appearance{}, false, err
+		return data.Visual{}, false, err
 	}
 	if previous == "" {
 		return settings, false, nil

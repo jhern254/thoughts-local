@@ -1,4 +1,4 @@
-package appearance
+package visual
 
 import (
 	"bytes"

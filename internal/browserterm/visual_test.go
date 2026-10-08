@@ -17,26 +17,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jhern254/go-thoughts/internal/appearance"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
-type appearanceStore struct {
-	settings data.Appearance
+type visualStore struct {
+	settings data.Visual
 	fail     bool
 }
 
-func (s *appearanceStore) Load(context.Context, string) (data.Appearance, error) {
+func (s *visualStore) Load(context.Context, string) (data.Visual, error) {
 	return s.settings, nil
 }
-func (s *appearanceStore) Save(_ context.Context, _ string, value data.Appearance) error {
+func (s *visualStore) Save(_ context.Context, _ string, value data.Visual) error {
 	if s.fail {
 		return errors.New("PRIVATE /secret/database.sqlite")
 	}
 	s.settings = value
 	return nil
 }
-func appearanceRequest(t *testing.T, format string) (*http.Request, []byte) {
+func visualRequest(t *testing.T, format string) (*http.Request, []byte) {
 	t.Helper()
 	var imageBytes bytes.Buffer
 	img := image.NewRGBA(image.Rect(0, 0, 12, 8))
@@ -58,35 +58,35 @@ func appearanceRequest(t *testing.T, format string) (*http.Request, []byte) {
 	_, _ = part.Write(imageBytes.Bytes())
 	_ = writer.WriteField("darkness", "35")
 	_ = writer.Close()
-	request := httptest.NewRequest("POST", "http://127.0.0.1:7777/appearance/background", &body)
+	request := httptest.NewRequest("POST", "http://127.0.0.1:7777/visual/background", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	request.Header.Set("Origin", "http://127.0.0.1:7777")
 	return request, imageBytes.Bytes()
 }
-func TestAppearance_Routes(t *testing.T) {
+func TestVisual_Routes(t *testing.T) {
 	for _, format := range []string{"jpeg", "png"} {
 		t.Run("imports "+format+" by decoded content and serves only selected asset", func(t *testing.T) {
-			store := &appearanceStore{}
-			s := &server{authority: "127.0.0.1:7777", appearance: appearance.NewService(store, "user", t.TempDir())}
-			req, want := appearanceRequest(t, format)
+			store := &visualStore{}
+			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
+			req, want := visualRequest(t, format)
 			w := httptest.NewRecorder()
 			s.ServeHTTP(w, req)
 			if w.Code != 200 {
 				t.Fatalf("import = %d: %s", w.Code, w.Body.String())
 			}
 			w = httptest.NewRecorder()
-			s.ServeHTTP(w, httptest.NewRequest("GET", "http://127.0.0.1:7777/appearance/background", nil))
+			s.ServeHTTP(w, httptest.NewRequest("GET", "http://127.0.0.1:7777/visual/background", nil))
 			if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), want) {
 				t.Fatalf("retrieval = %d, want original image", w.Code)
 			}
-			for _, path := range []string{"/appearance/../PRIVATE", "/appearance/background/../../PRIVATE", "/appearance/" + store.settings.BackgroundAsset} {
+			for _, path := range []string{"/visual/../PRIVATE", "/visual/background/../../PRIVATE", "/visual/" + store.settings.BackgroundAsset} {
 				w = httptest.NewRecorder()
 				s.ServeHTTP(w, httptest.NewRequest("GET", "http://127.0.0.1:7777"+path, nil))
 				if w.Code != 404 {
 					t.Fatalf("%s = %d, want 404", path, w.Code)
 				}
 			}
-			remove := httptest.NewRequest("DELETE", "http://127.0.0.1:7777/appearance/background", nil)
+			remove := httptest.NewRequest("DELETE", "http://127.0.0.1:7777/visual/background", nil)
 			remove.Header.Set("Origin", "http://127.0.0.1:7777")
 			w = httptest.NewRecorder()
 			s.ServeHTTP(w, remove)
@@ -97,9 +97,9 @@ func TestAppearance_Routes(t *testing.T) {
 	}
 	for _, kind := range []string{"missing origin", "foreign origin", "duplicate origin", "wrong host", "forwarded host", "wrong method", "invalid image", "metadata failure", "oversized request"} {
 		t.Run(kind+" is rejected with safe diagnostics", func(t *testing.T) {
-			store := &appearanceStore{}
-			s := &server{authority: "127.0.0.1:7777", appearance: appearance.NewService(store, "user", t.TempDir())}
-			req, _ := appearanceRequest(t, "png")
+			store := &visualStore{}
+			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
+			req, _ := visualRequest(t, "png")
 			want := 403
 			switch kind {
 			case "missing origin":
@@ -117,7 +117,7 @@ func TestAppearance_Routes(t *testing.T) {
 				req.Method = "PATCH"
 				want = 405
 			case "invalid image":
-				req, _ = appearanceRequest(t, "svg")
+				req, _ = visualRequest(t, "svg")
 				want = 400
 			case "metadata failure":
 				store.fail = true
@@ -126,9 +126,9 @@ func TestAppearance_Routes(t *testing.T) {
 				var body bytes.Buffer
 				writer := multipart.NewWriter(&body)
 				part, _ := writer.CreateFormFile("image", "PRIVATE.png")
-				_, _ = part.Write(make([]byte, maxAppearanceRequestBytes+1))
+				_, _ = part.Write(make([]byte, maxVisualRequestBytes+1))
 				_ = writer.Close()
-				req = httptest.NewRequest("POST", "http://127.0.0.1:7777/appearance/background", &body)
+				req = httptest.NewRequest("POST", "http://127.0.0.1:7777/visual/background", &body)
 				req.Header.Set("Content-Type", writer.FormDataContentType())
 				req.Header.Set("Origin", "http://127.0.0.1:7777")
 				want = 413
@@ -144,10 +144,10 @@ func TestAppearance_Routes(t *testing.T) {
 		})
 	}
 	t.Run("rejects malformed darkness and preserves settings", func(t *testing.T) {
-		store := &appearanceStore{settings: data.Appearance{Darkness: 70}}
-		s := &server{authority: "127.0.0.1:7777", appearance: appearance.NewService(store, "user", t.TempDir())}
+		store := &visualStore{settings: data.Visual{Darkness: 70}}
+		s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
 		for _, body := range []string{`{}`, `{"darkness":96}`, `{"darkness":-1}`, `{"darkness":0.1}`, `{"darkness":20} {}`} {
-			req := httptest.NewRequest("PUT", "http://127.0.0.1:7777/appearance/settings", strings.NewReader(body))
+			req := httptest.NewRequest("PUT", "http://127.0.0.1:7777/visual/settings", strings.NewReader(body))
 			req.Header.Set("Origin", "http://127.0.0.1:7777")
 			w := httptest.NewRecorder()
 			s.ServeHTTP(w, req)
@@ -158,29 +158,29 @@ func TestAppearance_Routes(t *testing.T) {
 	})
 }
 
-type blockingAppearanceStore struct {
+type blockingVisualStore struct {
 	entered   chan struct{}
 	cancelled chan struct{}
 	release   chan struct{}
 }
 
-func (s *blockingAppearanceStore) Load(ctx context.Context, _ string) (data.Appearance, error) {
+func (s *blockingVisualStore) Load(ctx context.Context, _ string) (data.Visual, error) {
 	close(s.entered)
 	<-ctx.Done()
 	close(s.cancelled)
 	<-s.release
-	return data.Appearance{}, ctx.Err()
+	return data.Visual{}, ctx.Err()
 }
-func (*blockingAppearanceStore) Save(context.Context, string, data.Appearance) error { return nil }
+func (*blockingVisualStore) Save(context.Context, string, data.Visual) error { return nil }
 
-func TestAppearance_Shutdown(t *testing.T) {
+func TestVisual_Shutdown(t *testing.T) {
 	t.Run("cancels and joins requests before returning shared resources", func(t *testing.T) {
 		listener, err := net.Listen("tcp4", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
-		store := &blockingAppearanceStore{entered: make(chan struct{}), cancelled: make(chan struct{}), release: make(chan struct{})}
-		service := appearance.NewService(store, "user", t.TempDir())
+		store := &blockingVisualStore{entered: make(chan struct{}), cancelled: make(chan struct{}), release: make(chan struct{})}
+		service := visual.NewService(store, "user", t.TempDir())
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		done := make(chan error, 1)
@@ -190,7 +190,7 @@ func TestAppearance_Shutdown(t *testing.T) {
 		responseDone := make(chan struct{})
 		go func() {
 			defer close(responseDone)
-			response, err := http.Get("http://" + listener.Addr().String() + "/appearance")
+			response, err := http.Get("http://" + listener.Addr().String() + "/visual")
 			if err == nil {
 				response.Body.Close()
 			}
@@ -224,14 +224,14 @@ func TestAppearance_Shutdown(t *testing.T) {
 	})
 }
 
-func TestAppearance_MutationOrigins(t *testing.T) {
+func TestVisual_MutationOrigins(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
-		{"POST", "/appearance/background"}, {"DELETE", "/appearance/background"}, {"PUT", "/appearance/settings"},
+		{"POST", "/visual/background"}, {"DELETE", "/visual/background"}, {"PUT", "/visual/settings"},
 	} {
 		for _, origin := range []string{"", "null", "http://localhost:7777", "http://127.0.0.1:7778"} {
 			t.Run(route.method+" rejects "+origin, func(t *testing.T) {
-				store := &appearanceStore{}
-				s := &server{authority: "127.0.0.1:7777", appearance: appearance.NewService(store, "user", t.TempDir())}
+				store := &visualStore{}
+				s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
 				request := httptest.NewRequest(route.method, "http://127.0.0.1:7777"+route.path, nil)
 				request.Header.Set("Origin", origin)
 				response := httptest.NewRecorder()

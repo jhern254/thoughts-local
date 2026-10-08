@@ -9,7 +9,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/jhern254/go-thoughts/internal/appearance"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/logging"
@@ -17,6 +16,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/timeline"
+	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
 type runtimeStub struct {
@@ -188,7 +188,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		t.Setenv("THOUGHTS_BROWSER_PORT", "")
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) { return &runtimeStub{}, nil }
-		app.runBrowser = func(_ context.Context, port int, autoOpen bool, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger, _ *appearance.Service) error {
+		app.runBrowser = func(_ context.Context, port int, autoOpen bool, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger, _ *visual.Service) error {
 			if !autoOpen {
 				t.Fatal("default browser opening was disabled")
 			}
@@ -212,7 +212,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 			t.Fatal("native program launched")
 			return nil
 		}
-		app.runBrowser = func(ctx context.Context, port int, autoOpen bool, factory func(context.Context) tea.Model, out io.Writer, logger logging.Logger, _ *appearance.Service) error {
+		app.runBrowser = func(ctx context.Context, port int, autoOpen bool, factory func(context.Context) tea.Model, out io.Writer, logger logging.Logger, _ *visual.Service) error {
 			if !autoOpen {
 				t.Fatal("default browser opening was disabled")
 			}
@@ -242,7 +242,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		t.Setenv("THOUGHTS_BROWSER_OPEN", "true")
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) { return &runtimeStub{}, nil }
-		app.runBrowser = func(_ context.Context, _ int, autoOpen bool, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger, _ *appearance.Service) error {
+		app.runBrowser = func(_ context.Context, _ int, autoOpen bool, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger, _ *visual.Service) error {
 			if autoOpen {
 				t.Fatal("opened browser despite explicit suppression")
 			}
@@ -266,7 +266,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		want := errors.New("runtime failure")
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) { return nil, want }
-		app.runBrowser = func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger, *appearance.Service) error {
+		app.runBrowser = func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger, *visual.Service) error {
 			t.Fatal("served after runtime failure")
 			return nil
 		}
@@ -281,7 +281,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return &runtimeStub{close: func() error { closed = true; return nil }}, nil
 		}
-		app.runBrowser = func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger, *appearance.Service) error {
+		app.runBrowser = func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger, *visual.Service) error {
 			return want
 		}
 		err := newTUI(app).Run(context.Background(), []string{"thoughts-tui", "--browser"})
@@ -392,6 +392,6 @@ func TestTUI_NativeSessionCleanup(t *testing.T) {
 	})
 }
 
-func (r *runtimeStub) BrowserAppearance(context.Context) (*appearance.Service, error) {
+func (r *runtimeStub) BrowserVisual(context.Context) (*visual.Service, error) {
 	return nil, nil
 }

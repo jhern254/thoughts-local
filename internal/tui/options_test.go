@@ -38,7 +38,7 @@ func TestModel_Options(t *testing.T) {
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
 		id := m.OptionsState().ID
 		if !strings.Contains(m.View().Content, "Background darkness") {
-			t.Fatal("missing TUI appearance controls")
+			t.Fatal("missing TUI visual controls")
 		}
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: id, Darkness: 70})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
