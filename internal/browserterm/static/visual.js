@@ -1,4 +1,8 @@
 /* Bubble Tea owns controls; the browser owns the picker, image pixels and HTTP. */
+// Bound the preview canvas to roughly 4 MiB of RGBA pixels without collapsing
+// thin panoramas to a single row or column merely to satisfy an axis limit.
+const backgroundPreviewMaxPixels = 1200 * 800;
+
 class ThoughtsVisual {
   constructor(terminal, sendAction) {
     this.terminal = terminal;
@@ -234,7 +238,7 @@ class ThoughtsVisual {
         // Static preview also prevents an animated PNG from animating before
         // the authoritative native importer rejects it.
         const canvas = document.createElement('canvas');
-        const scale = Math.min(1200 / bitmap.width, 800 / bitmap.height, 1);
+        const scale = Math.min(1, Math.sqrt(backgroundPreviewMaxPixels / (bitmap.width * bitmap.height)));
         canvas.width = Math.max(1, Math.round(bitmap.width * scale));
         canvas.height = Math.max(1, Math.round(bitmap.height * scale));
         canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);

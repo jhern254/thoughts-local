@@ -277,7 +277,7 @@ test('frames a portrait, matches the viewport crop, and restores framing after r
 
 test('Fill preserves the viewport composition for square, panoramic and thin source images', async ({page},testInfo) => {
   await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
-  for (const [width,height] of [[500,500],[4096,256],[8,4096]]) {
+  for (const [width,height] of [[500,500],[4096,256],[4,4096]]) {
     await open(page);
     const encoded=await page.evaluate(([width,height])=>{
       const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
@@ -292,6 +292,14 @@ test('Fill preserves the viewport composition for square, panoramic and thin sou
     await expect(screen(page)).toContainText('Preview · Zoom: 100%');
     await expect(page.locator('#background-preview-frame')).toHaveAttribute('data-editing','true');
     await expect.poll(()=>page.locator('#background-preview').evaluate(image=>parseFloat(image.style.width)/parseFloat(image.style.height))).toBeCloseTo(width/height,3);
+    if (width===4) {
+      const colors=await page.locator('#background-preview').evaluate(image=>{
+        const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+        const context=canvas.getContext('2d');context.drawImage(image,0,0);
+        return [Array.from(context.getImageData(0,0,1,1).data),Array.from(context.getImageData(canvas.width-1,0,1,1).data)];
+      });
+      expect(colors).toEqual([[221,187,68,255],[51,136,170,255]]);
+    }
     await page.screenshot({path:`/tmp/framing-${testInfo.project.name}-${width}x${height}.png`});
     await clickControl(page,'Done');await expect(screen(page)).toContainText('Background darkness:');
     await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
