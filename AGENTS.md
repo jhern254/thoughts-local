@@ -31,6 +31,10 @@ boundaries and control flow, without depending on implementation comments.
 * Make responsibilities apparent through function and package structure. Extract well-named helpers when they clarify meaningful concepts, not abstraction layers solely to shorten functions.
 * Do not use comments to compensate for unclear names or complicated code; improve the implementation instead.
 * Comments should primarily explain why: architecture, design decisions, invariants, security/concurrency constraints, tradeoffs, protocol semantics, mathematical reasoning or behavior that naming cannot clarify. Avoid comments that merely restate what the next line does.
+* Prefer code that can be followed linearly, with explicit domain names, narrow responsibilities, and visible ownership and lifecycle transitions.
+* For specialized domains such as audio, video, native runtimes, or binary formats, do not assume readers know the terminology or representation. Document the input contract and explain non-obvious format rules, units, byte interpretation, and lifetime constraints near the relevant boundary.
+* Use a small concrete example when it clarifies a domain concept, as with PCM byte order. Keep broader architectural context in a focused guide linked from the code.
+* Names and control flow explain the operations; comments and documentation supply the domain context and reasons needed to understand them. Avoid both terse code that requires reverse-engineering and comments that merely narrate obvious steps.
 
 ## Architecture Principles
 
