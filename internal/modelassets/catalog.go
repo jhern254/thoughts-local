@@ -1,5 +1,5 @@
 // Package modelassets installs application-approved, pinned model files. The
-// production catalog is intentionally empty pending separately reviewed manifests.
+// production catalog contains only separately reviewed upstream manifests.
 // Catalog maintenance must pin immutable upstream revisions, exact byte sizes and
 // SHA-256 digests; callers cannot supply manifests, URLs or install destinations.
 //
