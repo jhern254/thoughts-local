@@ -117,7 +117,8 @@ references to those buffers, so Close frees the handle before unmapping them.
 Call Close explicitly; there are no finalizers. Calls are serialized across
 adapter instances because upstream has process-wide diagnostics and partially
 protected registry state. Do not call the shared C library directly alongside
-this adapter. A transcriber value must not be copied.
+this adapter. Transcriber copies share one lifecycle state: closing any copy
+closes them all and releases the native resources exactly once.
 
 Caller PCM must remain unchanged until Transcribe returns. Native inference is
 synchronous and cannot be interrupted. Context checks prevent entry when already
@@ -125,7 +126,7 @@ canceled and discard results when canceled before returning; control may return
 only after native inference finishes. There are no detached inference goroutines.
 Close waits for native work and attempts all cleanup; repeated calls return the
 original close outcome without freeing twice. Transcript text is copied into
-Go-owned memory before native result invalidation. No-speech results are empty.
+Go-owned strings inside the native adapter before crossing into portable Go code. No-speech results are empty.
 
 The adapter explicitly disables returned audio, API-call logging, ORT-run logging,
 transcript logging, debug WAV output, speaker identification and word timestamps.

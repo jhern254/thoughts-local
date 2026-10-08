@@ -52,7 +52,7 @@ type nativeModelTranscriber struct {
 	modelFiles        *mappedModelFiles
 }
 
-// The caller holds nativeCallGate through loading and result ownership transfer.
+// The caller holds moonshineRuntimeGate through loading and result ownership transfer.
 // Only the read-only mappings outlive this call; temporary C names/options are
 // copied by Moonshine. Native sessions reference the mappings until destruction.
 func openNativeTranscriber(ctx context.Context, modelRoot *os.Root, installation modelassets.Installation) (nativeTranscriber, error) {
@@ -70,28 +70,28 @@ func openNativeTranscriber(ctx context.Context, modelRoot *os.Root, installation
 	return nativeBackend, nil
 }
 func loadMappedTranscriber(ctx context.Context, modelFiles *mappedModelFiles) (nativeTranscriber, error) {
-	if len(modelFiles.buffers) != len(smallStreamingModelFilenames()) {
+	if len(modelFiles.files) != len(smallStreamingModelFilenames()) {
 		return nil, speech.ErrModelLoad
 	}
 	// Empty buffers enable upstream filesystem fallback instead of memory loading.
-	for _, modelFile := range modelFiles.buffers {
-		if len(modelFile.contents) == 0 {
+	for _, modelFile := range modelFiles.files {
+		if len(modelFile.mappedBytes) == 0 {
 			return nil, speech.ErrModelLoad
 		}
 	}
 
-	nativeFileStorage := C.malloc(C.size_t(len(modelFiles.buffers)) * C.size_t(C.sizeof_struct_thoughts_model_file))
+	nativeFileStorage := C.malloc(C.size_t(len(modelFiles.files)) * C.size_t(C.sizeof_struct_thoughts_model_file))
 	if nativeFileStorage == nil {
 		return nil, speech.ErrRuntime
 	}
 	defer C.free(nativeFileStorage)
-	nativeFiles := unsafe.Slice((*C.struct_thoughts_model_file)(nativeFileStorage), len(modelFiles.buffers))
-	for fileIndex, buffer := range modelFiles.buffers {
-		filename := C.CString(buffer.filename)
+	nativeFiles := unsafe.Slice((*C.struct_thoughts_model_file)(nativeFileStorage), len(modelFiles.files))
+	for fileIndex, modelFile := range modelFiles.files {
+		filename := C.CString(modelFile.filename)
 		defer C.free(unsafe.Pointer(filename))
 		nativeFiles[fileIndex].filename = filename
-		nativeFiles[fileIndex].data = (*C.uint8_t)(unsafe.Pointer(&buffer.contents[0]))
-		nativeFiles[fileIndex].size = C.uint64_t(len(buffer.contents))
+		nativeFiles[fileIndex].data = (*C.uint8_t)(unsafe.Pointer(&modelFile.mappedBytes[0]))
+		nativeFiles[fileIndex].size = C.uint64_t(len(modelFile.mappedBytes))
 	}
 	runtimeOptions := smallStreamingRuntimeOptions()
 	nativeOptionStorage := C.malloc(C.size_t(len(runtimeOptions)) * C.size_t(C.sizeof_struct_moonshine_option_t))
@@ -123,7 +123,7 @@ func loadMappedTranscriber(ctx context.Context, modelFiles *mappedModelFiles) (n
 		modelFiles:        modelFiles,
 	}, nil
 }
-func (nativeBackend *nativeModelTranscriber) Transcribe(audioSamples []float32, sampleRateHz int) ([][]byte, error) {
+func (nativeBackend *nativeModelTranscriber) Transcribe(audioSamples []float32, sampleRateHz int) ([]string, error) {
 	var nativeTranscript *C.struct_transcript_t
 	nativeStatus := C.moonshine_transcribe_without_streaming(
 		nativeBackend.transcriberHandle, (*C.float)(unsafe.Pointer(&audioSamples[0])),
@@ -144,7 +144,7 @@ func (nativeBackend *nativeModelTranscriber) Transcribe(audioSamples []float32, 
 		return nil, &NativeStatusError{Code: C.MOONSHINE_ERROR_UNKNOWN}
 	}
 	nativeLines := unsafe.Slice(nativeTranscript.lines, int(nativeTranscript.line_count))
-	transcriptLines := make([][]byte, 0, len(nativeLines))
+	transcriptLines := make([]string, 0, len(nativeLines))
 	for _, nativeLine := range nativeLines {
 		if nativeLine.text == nil {
 			continue
@@ -153,7 +153,8 @@ func (nativeBackend *nativeModelTranscriber) Transcribe(audioSamples []float32, 
 		if textLength > uint64(math.MaxInt) {
 			return nil, &NativeStatusError{Code: C.MOONSHINE_ERROR_UNKNOWN}
 		}
-		transcriptLines = append(transcriptLines, unsafe.Slice((*byte)(unsafe.Pointer(nativeLine.text)), int(textLength)))
+		borrowedTextBytes := unsafe.Slice((*byte)(unsafe.Pointer(nativeLine.text)), int(textLength))
+		transcriptLines = append(transcriptLines, string(borrowedTextBytes))
 	}
 	return transcriptLines, nil
 }

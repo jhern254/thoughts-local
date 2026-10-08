@@ -82,6 +82,33 @@ func TestMoonshineNative_PCM(t *testing.T) {
 		if !strings.Contains(normalizedText, "middle classes") || !strings.Contains(normalizedText, "gospel") {
 			t.Fatal("recognition did not contain the reference phrases")
 		}
+		nativeLines, originalNativeLines := func() ([]string, []string) {
+			if err := acquireMoonshineRuntime(ctx); err != nil {
+				t.Fatal(err)
+			}
+			defer releaseMoonshineRuntime()
+			nativeLines, err := transcriber.state.nativeBackend.Transcribe(audioSamples, 16000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(nativeLines) == 0 {
+				t.Fatal("native speech result had no lines")
+			}
+			originalNativeLines := make([]string, len(nativeLines))
+			for lineIndex, transcriptText := range nativeLines {
+				originalNativeLines[lineIndex] = strings.Clone(transcriptText)
+			}
+			if _, err := transcriber.state.nativeBackend.Transcribe(make([]float32, 32000), 16000); err != nil {
+				t.Fatal(err)
+			}
+			for lineIndex, transcriptText := range nativeLines {
+				if transcriptText != originalNativeLines[lineIndex] {
+					t.Fatal("later native inference mutated returned Go-owned line")
+				}
+			}
+			return nativeLines, originalNativeLines
+		}()
+
 		originalText := strings.Clone(transcript.Text)
 		silence, err := transcriber.Transcribe(ctx, make([]float32, 32000), 16000)
 		if err != nil {
@@ -93,6 +120,12 @@ func TestMoonshineNative_PCM(t *testing.T) {
 		if err := transcriber.Close(); err != nil {
 			t.Fatal(err)
 		}
+		for lineIndex, transcriptText := range nativeLines {
+			if transcriptText != originalNativeLines[lineIndex] {
+				t.Fatal("native closure mutated returned Go-owned line")
+			}
+		}
+
 		if transcript.Text != originalText {
 			t.Fatal("native result invalidation changed returned Go text")
 		}

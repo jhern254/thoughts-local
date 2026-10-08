@@ -30,12 +30,12 @@ func TestModelFiles_Ownership(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(modelFiles.buffers) != 8 {
-			t.Fatalf("buffers got %d, want 8", len(modelFiles.buffers))
+		if len(modelFiles.files) != 8 {
+			t.Fatalf("buffers got %d, want 8", len(modelFiles.files))
 		}
-		for _, buffer := range modelFiles.buffers {
-			if string(buffer.contents) != "model" {
-				t.Fatal("wrong mapped contents")
+		for _, modelFile := range modelFiles.files {
+			if string(modelFile.mappedBytes) != "model" {
+				t.Fatal("wrong mapped mappedBytes")
 			}
 		}
 		for range 2 {
@@ -43,7 +43,7 @@ func TestModelFiles_Ownership(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if len(modelFiles.buffers) != 0 {
+		if len(modelFiles.files) != 0 {
 			t.Fatal("closed mappings retained")
 		}
 	})
@@ -64,11 +64,11 @@ func TestModelFiles_Ownership(t *testing.T) {
 		if _, err := mapModelFiles(context.Background(), modelRoot, modelassets.Installation{Directory: "."}); err == nil {
 			t.Fatal("mapped outside model root")
 		}
-		contents, err := os.ReadFile(outside)
+		mappedBytes, err := os.ReadFile(outside)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(contents) != "outside" {
+		if string(mappedBytes) != "outside" {
 			t.Fatal("outside sentinel changed")
 		}
 	})
@@ -114,7 +114,7 @@ func TestModelFiles_Close(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		modelFiles := &mappedModelFiles{buffers: []mappedModelFile{{filename: "invalid", contents: []byte{1}}, {filename: "model", contents: modelBytes}}}
+		modelFiles := &mappedModelFiles{files: []mappedModelFile{{filename: "invalid", mappedBytes: []byte{1}}, {filename: "model", mappedBytes: modelBytes}}}
 		for range 2 {
 			if err := modelFiles.Close(); !errors.Is(err, syscall.EINVAL) {
 				t.Fatalf("got %v, want retained unmap failure", err)

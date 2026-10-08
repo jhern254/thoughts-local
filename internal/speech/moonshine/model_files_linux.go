@@ -26,11 +26,11 @@ func smallStreamingModelFilenames() [8]string {
 }
 
 type mappedModelFile struct {
-	filename string
-	contents []byte
+	filename    string
+	mappedBytes []byte
 }
 type mappedModelFiles struct {
-	buffers  []mappedModelFile
+	files    []mappedModelFile
 	closeErr error
 }
 
@@ -43,11 +43,11 @@ func mapModelFiles(ctx context.Context, modelRoot *os.Root, installation modelas
 		if err := ctx.Err(); err != nil {
 			return nil, errors.Join(err, modelFiles.Close())
 		}
-		contents, err := mapModelFile(modelRoot, installation.Directory+"/"+filename)
+		mappedBytes, err := mapModelFile(modelRoot, installation.Directory+"/"+filename)
 		if err != nil {
 			return nil, errors.Join(err, modelFiles.Close())
 		}
-		modelFiles.buffers = append(modelFiles.buffers, mappedModelFile{filename: filename, contents: contents})
+		modelFiles.files = append(modelFiles.files, mappedModelFile{filename: filename, mappedBytes: mappedBytes})
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, errors.Join(err, modelFiles.Close())
@@ -66,21 +66,21 @@ func mapModelFile(modelRoot *os.Root, relativePath string) ([]byte, error) {
 	if !metadata.Mode().IsRegular() || metadata.Size() <= 0 {
 		return nil, errors.Join(io.ErrUnexpectedEOF, modelFile.Close())
 	}
-	contents, mapErr := syscall.Mmap(int(modelFile.Fd()), 0, int(metadata.Size()), syscall.PROT_READ, syscall.MAP_PRIVATE)
+	mappedBytes, mapErr := syscall.Mmap(int(modelFile.Fd()), 0, int(metadata.Size()), syscall.PROT_READ, syscall.MAP_PRIVATE)
 	closeErr := modelFile.Close()
 	if mapErr != nil || closeErr != nil {
 		var unmapErr error
-		if contents != nil {
-			unmapErr = syscall.Munmap(contents)
+		if mappedBytes != nil {
+			unmapErr = syscall.Munmap(mappedBytes)
 		}
 		return nil, errors.Join(mapErr, closeErr, unmapErr)
 	}
-	return contents, nil
+	return mappedBytes, nil
 }
 func (modelFiles *mappedModelFiles) Close() error {
-	for _, buffer := range modelFiles.buffers {
-		modelFiles.closeErr = errors.Join(modelFiles.closeErr, syscall.Munmap(buffer.contents))
+	for _, modelFile := range modelFiles.files {
+		modelFiles.closeErr = errors.Join(modelFiles.closeErr, syscall.Munmap(modelFile.mappedBytes))
 	}
-	modelFiles.buffers = nil
+	modelFiles.files = nil
 	return modelFiles.closeErr
 }

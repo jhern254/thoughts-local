@@ -17,14 +17,14 @@ import (
 )
 
 type fakeNativeTranscriber struct {
-	transcriptLines    [][]byte
+	transcriptLines    []string
 	transcribe         func() error
 	close              func() error
 	transcriptionCalls atomic.Int32
 	closeCalls         atomic.Int32
 }
 
-func (native *fakeNativeTranscriber) Transcribe(_ []float32, _ int) ([][]byte, error) {
+func (native *fakeNativeTranscriber) Transcribe(_ []float32, _ int) ([]string, error) {
 	native.transcriptionCalls.Add(1)
 	if native.transcribe != nil {
 		if err := native.transcribe(); err != nil {
@@ -57,7 +57,7 @@ func TestTranscriber_Transcribe(t *testing.T) {
 	} {
 		t.Run("rejects "+testCase.name+" before native work", func(t *testing.T) {
 			native := &fakeNativeTranscriber{}
-			transcriber := &Transcriber{nativeBackend: native}
+			transcriber := &Transcriber{state: &transcriberState{nativeBackend: native}}
 			_, err := transcriber.Transcribe(context.Background(), testCase.samples, testCase.sampleRateHz)
 			if !errors.Is(err, speech.ErrInvalidAudio) {
 				t.Fatalf("got %v, want invalid audio", err)
@@ -67,12 +67,19 @@ func TestTranscriber_Transcribe(t *testing.T) {
 			}
 		})
 	}
-	t.Run("copies borrowed text and joins nonempty lines", func(t *testing.T) {
-		text := []byte("hello")
-		native := &fakeNativeTranscriber{transcriptLines: [][]byte{text, nil, []byte("world")}, close: func() error { copy(text, "xxxxx"); return nil }}
-		transcriber := &Transcriber{nativeBackend: native}
+	t.Run("joins Go-owned lines and preserves results after later inference and closure", func(t *testing.T) {
+		native := &fakeNativeTranscriber{transcriptLines: []string{"hello", "", "world"}}
+		native.close = func() error {
+			native.transcriptLines[0] = "closed result"
+			return nil
+		}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: native}}
 		transcript, err := transcriber.Transcribe(context.Background(), []float32{-1, 0, 1}, 44100)
 		if err != nil {
+			t.Fatal(err)
+		}
+		native.transcriptLines[0] = "later result"
+		if _, err := transcriber.Transcribe(context.Background(), []float32{0}, 16000); err != nil {
 			t.Fatal(err)
 		}
 		if err := transcriber.Close(); err != nil {
@@ -83,7 +90,7 @@ func TestTranscriber_Transcribe(t *testing.T) {
 		}
 	})
 	t.Run("returns an empty transcript for no speech", func(t *testing.T) {
-		transcriber := &Transcriber{nativeBackend: &fakeNativeTranscriber{}}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: &fakeNativeTranscriber{}}}
 		transcript, err := transcriber.Transcribe(context.Background(), []float32{0}, 16000)
 		if err != nil || transcript.Text != "" {
 			t.Fatalf("got %+v, %v, want empty transcript", transcript, err)
@@ -91,7 +98,7 @@ func TestTranscriber_Transcribe(t *testing.T) {
 	})
 	t.Run("retains typed native status while exposing only safe error text", func(t *testing.T) {
 		nativeCause := &NativeStatusError{Code: -3}
-		transcriber := &Transcriber{nativeBackend: &fakeNativeTranscriber{transcribe: func() error { return nativeCause }}}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: &fakeNativeTranscriber{transcribe: func() error { return nativeCause }}}}
 		_, err := transcriber.Transcribe(context.Background(), []float32{0}, 16000)
 		var nativeStatus *NativeStatusError
 		if !errors.Is(err, speech.ErrTranscription) || !errors.As(err, &nativeStatus) || nativeStatus.Code != -3 {
@@ -107,7 +114,7 @@ func TestTranscriber_Cancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		native := &fakeNativeTranscriber{}
-		transcriber := &Transcriber{nativeBackend: native}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: native}}
 		_, err := transcriber.Transcribe(ctx, []float32{0}, 16000)
 		if !errors.Is(err, context.Canceled) || native.transcriptionCalls.Load() != 0 {
 			t.Fatalf("got %v and %d native calls", err, native.transcriptionCalls.Load())
@@ -117,7 +124,7 @@ func TestTranscriber_Cancellation(t *testing.T) {
 		ctx, cancel := context.WithDeadline(context.Background(), time.Time{})
 		defer cancel()
 		native := &fakeNativeTranscriber{}
-		transcriber := &Transcriber{nativeBackend: native}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: native}}
 		_, err := transcriber.Transcribe(ctx, []float32{0}, 16000)
 		if !errors.Is(err, context.DeadlineExceeded) || native.transcriptionCalls.Load() != 0 {
 			t.Fatalf("got %v and %d native calls", err, native.transcriptionCalls.Load())
@@ -126,7 +133,14 @@ func TestTranscriber_Cancellation(t *testing.T) {
 	t.Run("cancellation after native inference discards transcript", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		transcriber := &Transcriber{nativeBackend: &fakeNativeTranscriber{transcriptLines: [][]byte{[]byte("private text")}, transcribe: func() error { cancel(); return nil }}}
+		native := &fakeNativeTranscriber{
+			transcriptLines: []string{"private text"},
+			transcribe: func() error {
+				cancel()
+				return nil
+			},
+		}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: native}}
 		transcript, err := transcriber.Transcribe(ctx, []float32{0}, 16000)
 		if !errors.Is(err, context.Canceled) || transcript.Text != "" {
 			t.Fatalf("got %+v, %v, want canceled without transcript", transcript, err)
@@ -149,7 +163,7 @@ func TestTranscriber_Cancellation(t *testing.T) {
 				return nil
 			},
 		}
-		transcriber := &Transcriber{nativeBackend: native}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: native}}
 		go func() {
 			defer close(inferenceJoined)
 			_, err := transcriber.Transcribe(context.Background(), []float32{0}, 16000)
@@ -161,7 +175,7 @@ func TestTranscriber_Cancellation(t *testing.T) {
 		defer cancel()
 		waitingContext := &gateWaitingContext{Context: ctx, waiting: make(chan struct{})}
 		waitingNative := &fakeNativeTranscriber{}
-		waitingTranscriber := &Transcriber{nativeBackend: waitingNative}
+		waitingTranscriber := &Transcriber{state: &transcriberState{nativeBackend: waitingNative}}
 		waitingFinished := make(chan error, 1)
 		go func() {
 			_, err := waitingTranscriber.Transcribe(waitingContext, []float32{0}, 16000)
@@ -195,9 +209,42 @@ func TestTranscriber_Cancellation(t *testing.T) {
 	})
 }
 func TestTranscriber_Close(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		closeCause error
+	}{
+		{name: "successful cleanup"},
+		{name: "failed cleanup", closeCause: errors.New("private native cleanup detail")},
+	} {
+		t.Run("copies share lifecycle state after "+testCase.name, func(t *testing.T) {
+			native := &fakeNativeTranscriber{close: func() error { return testCase.closeCause }}
+			original := &Transcriber{state: &transcriberState{nativeBackend: native}}
+			copied := *original
+			firstCloseErr := original.Close()
+			for _, transcriber := range []*Transcriber{original, &copied} {
+				for range 2 {
+					if err := transcriber.Close(); err != firstCloseErr {
+						t.Fatalf("close got %v, want stored outcome %v", err, firstCloseErr)
+					}
+				}
+				if _, err := transcriber.Transcribe(context.Background(), []float32{0}, 16000); !errors.Is(err, speech.ErrClosed) {
+					t.Fatalf("transcription got %v, want closed", err)
+				}
+			}
+			if got := native.closeCalls.Load(); got != 1 {
+				t.Fatalf("native close calls got %d, want 1", got)
+			}
+			if testCase.closeCause != nil {
+				if !errors.Is(firstCloseErr, testCase.closeCause) || !errors.Is(firstCloseErr, speech.ErrRuntime) || firstCloseErr.Error() != speech.ErrRuntime.Error() {
+					t.Fatalf("got %v, want safe retained cleanup failure", firstCloseErr)
+				}
+			}
+		})
+	}
+
 	t.Run("releases resources exactly once and rejects use after close", func(t *testing.T) {
 		native := &fakeNativeTranscriber{}
-		transcriber := &Transcriber{nativeBackend: native}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: native}}
 		for range 2 {
 			if err := transcriber.Close(); err != nil {
 				t.Fatal(err)
@@ -213,7 +260,7 @@ func TestTranscriber_Close(t *testing.T) {
 	t.Run("preserves cleanup failures safely on repeated close", func(t *testing.T) {
 		cause := errors.New("private local path")
 		native := &fakeNativeTranscriber{close: func() error { return cause }}
-		transcriber := &Transcriber{nativeBackend: native}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: native}}
 		for range 2 {
 			err := transcriber.Close()
 			if !errors.Is(err, speech.ErrRuntime) || !errors.Is(err, cause) || strings.Contains(err.Error(), "private") {
@@ -286,7 +333,7 @@ func TestTranscriber_NativeInputLimits(t *testing.T) {
 		}
 		oversizedRate := int64(math.MaxInt32) + 1
 		native := &fakeNativeTranscriber{}
-		transcriber := &Transcriber{nativeBackend: native}
+		transcriber := &Transcriber{state: &transcriberState{nativeBackend: native}}
 		_, err := transcriber.Transcribe(context.Background(), []float32{0}, int(oversizedRate))
 		if !errors.Is(err, speech.ErrInvalidAudio) || native.transcriptionCalls.Load() != 0 {
 			t.Fatalf("got %v and %d native calls", err, native.transcriptionCalls.Load())

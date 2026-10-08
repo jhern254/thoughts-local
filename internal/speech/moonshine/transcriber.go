@@ -21,18 +21,21 @@ import (
 // its registry mutex. This gate protects all adapter calls, including loading,
 // freeing and copying borrowed results, across transcriber instances. Other
 // consumers must not call this shared library directly alongside the adapter.
-var nativeCallGate = make(chan struct{}, 1)
+var moonshineRuntimeGate = make(chan struct{}, 1)
 
 type nativeTranscriber interface {
-	// Returned text views remain borrowed until the next native call or Close.
-	Transcribe(audioSamples []float32, sampleRateHz int) ([][]byte, error)
+	Transcribe(audioSamples []float32, sampleRateHz int) ([]string, error)
 	Close() error
 }
 
 // Transcriber owns its native handle and model buffers. Calls are serialized;
-// callers must not mutate audioSamples until Transcribe returns. Do not copy a
-// Transcriber value. Construct it with Open and release it explicitly with Close.
+// callers must not mutate audioSamples until Transcribe returns. Copies share
+// lifecycle state. Construct it with Open and release it explicitly with Close.
 type Transcriber struct {
+	state *transcriberState
+}
+
+type transcriberState struct {
 	nativeBackend nativeTranscriber
 	closed        bool
 	closeErr      error
@@ -61,10 +64,10 @@ func openVerifiedTranscriber(
 	installation modelassets.Installation,
 	loadNative func(context.Context, *os.Root, modelassets.Installation) (nativeTranscriber, error),
 ) (*Transcriber, error) {
-	if err := acquireNativeCall(ctx); err != nil {
+	if err := acquireMoonshineRuntime(ctx); err != nil {
 		return nil, err
 	}
-	defer releaseNativeCall()
+	defer releaseMoonshineRuntime()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -78,7 +81,7 @@ func openVerifiedTranscriber(
 		}
 		return nil, lifecycleErr
 	}
-	return &Transcriber{nativeBackend: nativeBackend}, nil
+	return &Transcriber{state: &transcriberState{nativeBackend: nativeBackend}}, nil
 }
 
 func (transcriber *Transcriber) Transcribe(ctx context.Context, audioSamples []float32, sampleRateHz int) (speech.Transcript, error) {
@@ -88,17 +91,17 @@ func (transcriber *Transcriber) Transcribe(ctx context.Context, audioSamples []f
 	if err := validatePCM(ctx, audioSamples, sampleRateHz); err != nil {
 		return speech.Transcript{}, err
 	}
-	if err := acquireNativeCall(ctx); err != nil {
+	if err := acquireMoonshineRuntime(ctx); err != nil {
 		return speech.Transcript{}, err
 	}
-	defer releaseNativeCall()
+	defer releaseMoonshineRuntime()
 	if err := ctx.Err(); err != nil {
 		return speech.Transcript{}, err
 	}
-	if transcriber.closed || transcriber.nativeBackend == nil {
+	if transcriber.state == nil || transcriber.state.closed || transcriber.state.nativeBackend == nil {
 		return speech.Transcript{}, speech.ErrClosed
 	}
-	transcriptLines, nativeErr := transcriber.nativeBackend.Transcribe(audioSamples, sampleRateHz)
+	transcriptLines, nativeErr := transcriber.state.nativeBackend.Transcribe(audioSamples, sampleRateHz)
 	if err := ctx.Err(); err != nil {
 		return speech.Transcript{}, withErrorCategory(err, nativeErr)
 	}
@@ -113,7 +116,7 @@ func (transcriber *Transcriber) Transcribe(ctx context.Context, audioSamples []f
 		if transcriptText.Len() > 0 {
 			transcriptText.WriteByte(' ')
 		}
-		transcriptText.Write(lineText)
+		transcriptText.WriteString(lineText)
 	}
 	if err := ctx.Err(); err != nil {
 		return speech.Transcript{}, err
@@ -124,20 +127,25 @@ func (transcriber *Transcriber) Transcribe(ctx context.Context, audioSamples []f
 // Close waits for active native work and attempts all owned resource cleanup.
 // Repeated calls return the original outcome without releasing resources again.
 func (transcriber *Transcriber) Close() error {
-	nativeCallGate <- struct{}{}
-	defer releaseNativeCall()
-	if transcriber.closed {
-		return transcriber.closeErr
+	moonshineRuntimeGate <- struct{}{}
+	defer releaseMoonshineRuntime()
+	if transcriber.state == nil {
+		return nil
 	}
-	transcriber.closed = true
-	if transcriber.nativeBackend != nil {
-		if err := transcriber.nativeBackend.Close(); err != nil {
-			transcriber.closeErr = withErrorCategory(speech.ErrRuntime, err)
+	if transcriber.state.closed {
+		return transcriber.state.closeErr
+	}
+	transcriber.state.closed = true
+	if transcriber.state.nativeBackend != nil {
+		if err := transcriber.state.nativeBackend.Close(); err != nil {
+			transcriber.state.closeErr = withErrorCategory(speech.ErrRuntime, err)
 		}
-		transcriber.nativeBackend = nil
+		transcriber.state.nativeBackend = nil
 	}
-	return transcriber.closeErr
+	return transcriber.state.closeErr
 }
+
+const pcmValidationContextCheckInterval = 4096
 
 func validatePCM(ctx context.Context, audioSamples []float32, sampleRateHz int) error {
 	// The batch implementation narrows audio length to int32 before processing it.
@@ -148,7 +156,7 @@ func validatePCM(ctx context.Context, audioSamples []float32, sampleRateHz int) 
 		return speech.ErrInvalidAudio
 	}
 	for sampleIndex, sample := range audioSamples {
-		if sampleIndex%4096 == 0 {
+		if sampleIndex%pcmValidationContextCheckInterval == 0 {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -162,15 +170,15 @@ func validatePCM(ctx context.Context, audioSamples []float32, sampleRateHz int) 
 	}
 	return nil
 }
-func acquireNativeCall(ctx context.Context) error {
+func acquireMoonshineRuntime(ctx context.Context) error {
 	select {
-	case nativeCallGate <- struct{}{}:
+	case moonshineRuntimeGate <- struct{}{}:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
-func releaseNativeCall() { <-nativeCallGate }
+func releaseMoonshineRuntime() { <-moonshineRuntimeGate }
 
 // NativeStatusError preserves only the numeric upstream status for errors.As.
 // No native diagnostic strings, authored text or PCM are retained in this error.
