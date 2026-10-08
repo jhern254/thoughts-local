@@ -6,7 +6,10 @@ on:
       - 'internal/modelassets/**'
       - 'internal/speech/**'
       - 'cmd/moonshine-smoke/**'
+      - 'scripts/setup-moonshine-windows.ps1'
       - 'docs/moonshine.md'
+      - 'docs/platform-support.md'
+      - 'AGENTS.md'
       - '.github/workflows/modelassets.yml'
       - 'go.mod'
       - 'go.sum'
@@ -16,11 +19,11 @@ permissions:
 
 jobs:
   package:
-    name: Package (${{ matrix.os }})
+    name: Portable packages (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-15, macos-15-intel, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +31,147 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test -race -count=1 -v ./internal/modelassets ./internal/speech/... ./cmd/moonshine-smoke
+      - name: Normal builds without cgo or Moonshine
+        shell: bash
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          go test -count=1 ./internal/speech/... ./cmd/moonshine-smoke
+          go test -tags=moonshine -count=1 ./internal/speech/... ./cmd/moonshine-smoke
+          go build ./...
+
+      - name: iOS keeps the unavailable runtime boundary
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          test "$(GOOS=ios GOARCH=arm64 CGO_ENABLED=1 go list -tags=moonshine -f '{{len .CgoFiles}}' ./internal/speech/moonshine)" = 0
+          test "$(GOOS=ios GOARCH=arm64 CGO_ENABLED=1 go list -tags=moonshine -f '{{range .GoFiles}}{{if eq . "native_unavailable.go"}}unavailable{{end}}{{end}}' ./internal/speech/moonshine)" = unavailable
+
+  native:
+    name: Native transcription (${{ matrix.goos }}/${{ matrix.goarch }})
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            runner_arch: X64
+            archive: moonshine-voice-linux-x86_64.tar.gz
+            runtime_directory: moonshine-voice-linux-x86_64
+            download_url: https://github.com/moonshine-ai/moonshine/releases/download/v0.1.5/moonshine-voice-linux-x86_64.tar.gz
+            sha256: 9c3a87fea93ff2ad957938868f95a0a366dce9ff8ad86bde6cdcf5a4cadb51df
+          - os: macos-15
+            goos: darwin
+            goarch: arm64
+            runner_arch: ARM64
+            archive: Moonshine.xcframework.zip
+            runtime_directory: Moonshine.xcframework/macos-arm64_x86_64
+            download_url: https://github.com/moonshine-ai/moonshine-swift/releases/download/v0.1.5/Moonshine.xcframework.zip
+            sha256: 6bc7fb4b6d3a470a2ae2d681299975f3ba9d710753786d1cd7e8beabaad066e8
+          - os: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            runner_arch: X64
+            archive: Moonshine.xcframework.zip
+            runtime_directory: Moonshine.xcframework/macos-arm64_x86_64
+            download_url: https://github.com/moonshine-ai/moonshine-swift/releases/download/v0.1.5/Moonshine.xcframework.zip
+            sha256: 6bc7fb4b6d3a470a2ae2d681299975f3ba9d710753786d1cd7e8beabaad066e8
+          - os: windows-2022
+            goos: windows
+            goarch: amd64
+            runner_arch: X64
+            archive: moonshine-voice-windows-x86_64.tar.gz
+            runtime_directory: moonshine-voice-windows-x86_64
+            download_url: https://github.com/moonshine-ai/moonshine/releases/download/v0.1.5/moonshine-voice-windows-x86_64.tar.gz
+            sha256: 97c1987e8e1cd77bb5fe3b12ce5aad5172637107e1dfda112ea9b21bac8f4b65
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Assert native target and record runtime identity
+        shell: bash
+        run: |
+          test "$(go env GOOS)" = '${{ matrix.goos }}'
+          test "$(go env GOARCH)" = '${{ matrix.goarch }}'
+          test '${{ runner.arch }}' = '${{ matrix.runner_arch }}'
+          echo 'GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} runner_arch=${{ runner.arch }}'
+          echo 'Moonshine Voice v0.1.5 archive=${{ matrix.archive }}'
+      - name: Verify and extract Unix runtime
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtimeRoot="$RUNNER_TEMP/moonshine-runtime"
+          mkdir -p "$runtimeRoot"
+          curl --fail --location --retry 3 '${{ matrix.download_url }}' -o "$runtimeRoot/runtime.archive"
+          if [ '${{ matrix.goos }}' = darwin ]; then
+            actualSHA256=$(shasum -a 256 "$runtimeRoot/runtime.archive" | cut -d ' ' -f 1)
+          else
+            actualSHA256=$(sha256sum "$runtimeRoot/runtime.archive" | cut -d ' ' -f 1)
+          fi
+          test "$actualSHA256" = '${{ matrix.sha256 }}'
+          nativeLibraryDirectory="$runtimeRoot/${{ matrix.runtime_directory }}"
+          if [ '${{ matrix.goos }}' = darwin ]; then
+            # Extract only the desktop static library; no Swift or iOS code is used.
+            unzip -q "$runtimeRoot/runtime.archive" 'Moonshine.xcframework/macos-arm64_x86_64/*' -d "$runtimeRoot"
+            file "$nativeLibraryDirectory/libmoonshine.a"
+            echo "CGO_CFLAGS=-I$nativeLibraryDirectory/Headers" >> "$GITHUB_ENV"
+            echo "CGO_LDFLAGS=-L$nativeLibraryDirectory" >> "$GITHUB_ENV"
+          else
+            tar -xzf "$runtimeRoot/runtime.archive" -C "$runtimeRoot"
+            file "$nativeLibraryDirectory"/lib/*
+            echo "CGO_CFLAGS=-I$nativeLibraryDirectory/include" >> "$GITHUB_ENV"
+            echo "CGO_LDFLAGS=-L$nativeLibraryDirectory/lib" >> "$GITHUB_ENV"
+            echo "LD_LIBRARY_PATH=$nativeLibraryDirectory/lib" >> "$GITHUB_ENV"
+          fi
+          echo "THOUGHTS_MODELS_DIR=$RUNNER_TEMP/moonshine-models" >> "$GITHUB_ENV"
+      - name: Verify Windows runtime and build C ABI bridge
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtimeRoot = Join-Path $env:RUNNER_TEMP 'moonshine-runtime'
+          New-Item -ItemType Directory -Force $runtimeRoot | Out-Null
+          $runtimeArchivePath = Join-Path $runtimeRoot 'runtime.archive'
+          Invoke-WebRequest '${{ matrix.download_url }}' -OutFile $runtimeArchivePath
+          if ((Get-FileHash -Algorithm SHA256 $runtimeArchivePath).Hash.ToLowerInvariant() -ne '${{ matrix.sha256 }}') { throw 'Runtime checksum differs' }
+          $cgoCompiler = (Get-Command gcc.exe).Source
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $visualStudioDirectory = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $developerCommand = "`"$visualStudioDirectory\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 >nul && set"
+          $developerEnvironment = & $env:ComSpec /d /s /c $developerCommand
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC developer environment failed' }
+          foreach ($environmentLine in $developerEnvironment) {
+            if ($environmentLine -match '^([^=]+)=(.*)$') {
+              [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+            }
+          }
+          ./scripts/setup-moonshine-windows.ps1 -RuntimeArchivePath $runtimeArchivePath -OutputDirectory $runtimeRoot
+          $nativeLibraryDirectory = (Join-Path $runtimeRoot '${{ matrix.runtime_directory }}').Replace('\', '/')
+          "CC=$cgoCompiler" >> $env:GITHUB_ENV
+          "CGO_CFLAGS=-I$nativeLibraryDirectory/include" >> $env:GITHUB_ENV
+          "CGO_LDFLAGS=-L$nativeLibraryDirectory/bridge" >> $env:GITHUB_ENV
+          "THOUGHTS_MODELS_DIR=$env:RUNNER_TEMP/moonshine-models" >> $env:GITHUB_ENV
+          "$nativeLibraryDirectory/bridge" >> $env:GITHUB_PATH
+          & dumpbin.exe /headers "$nativeLibraryDirectory/bridge/thoughts-moonshine.dll" | Select-String 'machine'
+      - name: Explicitly install approved model through modelassets
+        run: go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
+        shell: bash
+      - name: Execute native speech, silence, ownership, and privacy integration
+        run: go test '-tags=moonshine,moonshine_integration' -race -count=1 -v ./internal/speech/moonshine
+      - name: Record executed integration target
+        shell: bash
+        run: echo 'Native transcription executed successfully on ${{ matrix.goos }}/${{ matrix.goarch }} (${{ runner.arch }}) using ${{ matrix.archive }}' >> "$GITHUB_STEP_SUMMARY"
 
   ci:
     name: Complete repository checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

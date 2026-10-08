@@ -1,9 +1,11 @@
-//go:build moonshine && cgo && linux && amd64
+//go:build moonshine && cgo && ((linux && amd64) || (darwin && !ios && (amd64 || arm64)) || (windows && amd64))
 
 package moonshine
 
 /*
-#cgo LDFLAGS: -lmoonshine
+#cgo linux LDFLAGS: -lmoonshine
+#cgo darwin LDFLAGS: -lmoonshine -lc++ -framework CoreFoundation -framework Foundation
+#cgo windows LDFLAGS: -lthoughts-moonshine
 #include <moonshine-c-api.h>
 #include <stdlib.h>
 #include <string.h>

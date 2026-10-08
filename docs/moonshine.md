@@ -82,8 +82,8 @@ come only from the application-owned catalog.
 |---|---|
 | `internal/modelassets` | Downloads only the approved manifest; checks size/hash and commits installation through its completion marker. |
 | `moonshine/transcriber.go` | Portable input validation, context checks, shared lifecycle state and fixed safe errors. Copies of a transcriber share this state. |
-| `moonshine/model_files_linux.go` | Opens verified files through `os.Root` and maps their bytes read-only. A mapping makes file contents accessible in memory without copying the whole file into a Go slice allocation. |
-| `moonshine/native_linux.go` | Uses cgo (Go's bridge to C) to create/use/free the native handle. Model mappings must stay alive because native sessions retain pointers to them. Native transcript pointers never cross this boundary; returned lines are copied into Go strings. |
+| `moonshine/model_files.go` and OS mapping helpers | Opens verified files through `os.Root` and maps their bytes read-only. A mapping makes file contents accessible in memory without copying the whole file into a Go slice allocation. |
+| `moonshine/native_desktop.go` | Uses cgo (Go's bridge to C) to create/use/free the native handle. Model mappings must stay alive because native sessions retain pointers to them. Native transcript pointers never cross this boundary; returned lines are copied into Go strings. |
 | `moonshineRuntimeGate` | Serializes all adapter instances, including loading, inference and cleanup, because Moonshine has process-wide state. Waiting for the gate is cancellable. |
 | `Transcriber.Close` | Frees the native handle before unmapping its model files. This order prevents native code from accessing released memory. Repeated closes, including closes on copies, return the stored outcome. |
 | `cmd/moonshine-smoke` | Developer-only file decoding, explicit installation and timing/output. The adapter neither reads audio files nor persists audio/transcripts. |
@@ -93,13 +93,15 @@ context. Cancellation prevents entry or discards its result after it finishes;
 it does not let Close free resources while inference still uses them. Returned
 Go strings remain valid across later inference and Close.
 
-The `moonshine && cgo && linux && amd64` build constraint isolates the native
-implementation. **amd64** means the x86-64 CPU architecture; it is unrelated to
+The `moonshine && cgo` build constraint, restricted to Linux amd64, macOS
+amd64/arm64, and Windows amd64, isolates the native implementation. Go also sets the `darwin` tag for iOS, so the desktop
+constraint explicitly excludes `ios`. **amd64** means the x86-64 CPU architecture; it is unrelated to
 Moonshine's **model architecture**, which identifies a neural model layout such
 as Small Streaming. Ordinary builds select the unavailable-runtime implementation
 and need no C headers or libraries. The portable package owns lifecycle policy;
-the tagged file owns C memory and calls. This split does not implement another
-platform or wire speech into the application.
+the tagged file owns C memory and calls. This split keeps platform mapping/linking separate from the shared C API
+implementation. It does not wire speech into the application. See
+[platform support](platform-support.md) for actual runtime evidence.
 
 ## Upstream contract
 
@@ -139,8 +141,8 @@ see [its attribution and checksums](../internal/speech/moonshine/testdata/README
 Native code requires Linux amd64, cgo, a C compiler, the `moonshine` build tag,
 the official header, `libmoonshine.so`, and the bundled `libonnxruntime.so.1`.
 The tag is deliberate: missing tagged dependencies can fail linking or dynamic
-loading before Go starts. Other platforms and untagged builds use the portable
-unavailable-runtime implementation. This does not implement iOS.
+loading before Go starts. Unsupported targets and untagged builds use the portable
+unavailable-runtime implementation. Desktop support does not implement iOS.
 
 Download and unpack only into a local directory outside Git. Do not use upstream's
 helper installer, which downloads additional models. Do not install globally or
@@ -168,6 +170,96 @@ settings; Go does not read it to download or dynamically locate a runtime.
 Preserve any additional flags your local build needs. Keep these exports scoped
 to your development shell, rather than changing the application's environment.
 
+## Local macOS setup (Apple Silicon and Intel)
+
+Use the **desktop static library** from the official `moonshine-swift` v0.1.5
+`Moonshine.xcframework.zip`. It contains complete arm64 and x86-64 C API code and
+ONNX Runtime in `macos-arm64_x86_64/libmoonshine.a`, with C header version 30000.
+This uses no Swift code and extracts no iOS library. The version and model pin
+remain unchanged. Use Xcode Command Line Tools, cgo, and the `moonshine` tag;
+the boundary links libc++, CoreFoundation, and Foundation. No separate ONNX
+dylib or global installation is needed.
+
+The main repository's `moonshine-voice-macos-arm64.tar.gz` appears universal,
+but its Intel slice lacks Moonshine C API definitions. Actual Intel CI linking
+caught this; architecture metadata alone does not prove a usable runtime. The
+[official v0.1.5 Swift package manifest](https://github.com/moonshine-ai/moonshine-swift/blob/v0.1.5/Package.swift)
+pins the complete XCFramework and its SHA-256. Only its desktop C library is used.
+
+```sh
+mkdir -p /tmp/thoughts-moonshine-runtime
+curl -fL https://github.com/moonshine-ai/moonshine-swift/releases/download/v0.1.5/Moonshine.xcframework.zip \
+  -o /tmp/thoughts-moonshine-runtime/Moonshine.xcframework.zip
+printf '%s  %s\n' \
+  6bc7fb4b6d3a470a2ae2d681299975f3ba9d710753786d1cd7e8beabaad066e8 \
+  /tmp/thoughts-moonshine-runtime/Moonshine.xcframework.zip | shasum -a 256 --check
+# Extract only after that checksum succeeds, selecting the desktop slice.
+unzip -q /tmp/thoughts-moonshine-runtime/Moonshine.xcframework.zip \
+  'Moonshine.xcframework/macos-arm64_x86_64/*' -d /tmp/thoughts-moonshine-runtime
+
+export THOUGHTS_MOONSHINE_RUNTIME=/tmp/thoughts-moonshine-runtime/Moonshine.xcframework/macos-arm64_x86_64
+export THOUGHTS_MODELS_DIR=/tmp/thoughts-moonshine-models
+export CGO_CFLAGS="-I${THOUGHTS_MOONSHINE_RUNTIME}/Headers"
+export CGO_LDFLAGS="-L${THOUGHTS_MOONSHINE_RUNTIME}"
+lipo -archs "$THOUGHTS_MOONSHINE_RUNTIME/libmoonshine.a"
+```
+
+## Local Windows x86-64 setup
+
+The official Windows bundle contains MSVC **static** libraries: `moonshine.lib`,
+`bin-tokenizer.lib`, `ort-utils.lib`, and `moonshine-utils.lib`. Its
+`onnxruntime.lib` is an import library for `onnxruntime.dll`. There is no upstream
+Moonshine DLL in this archive. MinGW cannot directly consume its C++ objects as
+if they were the Linux shared library: they depend on the MSVC C++ ABI and CRT.
+
+Use an x64 Visual Studio developer PowerShell with the C++ toolchain installed,
+plus x86-64 MinGW GCC and GNU `dlltool` on PATH. The explicit setup helper verifies
+the pinned archive **before extraction**, links its libraries into a local
+`thoughts-moonshine.dll` with MSVC `/MD`, and creates a MinGW import library.
+It also copies the bundled ONNX DLL under `thoughts-moonshine-onnxruntime.dll`
+and regenerates its import library. Windows searches System32 before PATH,
+so an ordinary `onnxruntime.dll` name could select an incompatible system runtime.
+See [Windows DLL search order](https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order).
+The helper checks that the bridge imports only the private ONNX name.
+This bridge exports the existing C API, not another inference implementation.
+The DLL and ONNX Runtime require the Microsoft Visual C++ x64 runtime. Use a
+machine where that prerequisite is already available; the helper performs no
+global installation. All generated files stay outside Git.
+
+```powershell
+$runtimeRoot = Join-Path $env:TEMP 'thoughts-moonshine-runtime'
+New-Item -ItemType Directory -Force $runtimeRoot | Out-Null
+$runtimeArchivePath = Join-Path $runtimeRoot 'windows.tar.gz'
+Invoke-WebRequest 'https://github.com/moonshine-ai/moonshine/releases/download/v0.1.5/moonshine-voice-windows-x86_64.tar.gz' -OutFile $runtimeArchivePath
+./scripts/setup-moonshine-windows.ps1 -RuntimeArchivePath $runtimeArchivePath -OutputDirectory $runtimeRoot
+
+$env:THOUGHTS_MOONSHINE_RUNTIME = (Join-Path $runtimeRoot 'moonshine-voice-windows-x86_64').Replace('\', '/')
+$env:THOUGHTS_MODELS_DIR = Join-Path $env:TEMP 'thoughts-moonshine-models'
+$env:CC = (Get-Command gcc.exe).Source
+$env:CGO_ENABLED = '1'
+$env:CGO_CFLAGS = "-I$env:THOUGHTS_MOONSHINE_RUNTIME/include"
+$env:CGO_LDFLAGS = "-L$env:THOUGHTS_MOONSHINE_RUNTIME/bridge"
+$env:PATH = "$env:THOUGHTS_MOONSHINE_RUNTIME/bridge;$env:PATH"
+
+go run ./cmd/moonshine-smoke install -models-dir $env:THOUGHTS_MODELS_DIR
+go test '-tags=moonshine,moonshine_integration' -race -count=1 -v ./internal/speech/moonshine
+```
+
+Keep the bridge DLL and its copied `thoughts-moonshine-onnxruntime.dll` together on this shell's
+PATH. Loading failures can occur before Go starts; a missing DLL is not always
+representable as a Go `speech.ErrRuntime`. Paths containing spaces need quoted
+include/library directory values inside `CGO_CFLAGS` and `CGO_LDFLAGS`.
+
+Windows model storage uses read-only `CreateFileMapping`/`MapViewOfFile`, not Go
+heap allocations. Each mapped file owns its view and mapping handle. Closing the
+native transcriber precedes unmapping views and closing those handles. Unix uses
+read-only `mmap`/`munmap` with the same lifetime contract.
+
+The [pinned upstream build configuration](https://github.com/moonshine-ai/moonshine/blob/v0.1.5/core/CMakeLists.txt)
+and [Windows example link settings](https://github.com/moonshine-ai/moonshine/blob/v0.1.5/examples/windows/cli-transcriber/cli-transcriber.vcxproj)
+explain these library/framework requirements. The downloaded archives themselves
+are authoritative for library form and architecture.
+
 ## Installation, inference and timing
 
 Installation is an explicit network operation through modelassets. Inference
@@ -176,7 +268,7 @@ never installs assets and fails if they are missing, incomplete or corrupt.
 ```sh
 go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
 
-go test -tags=moonshine,moonshine_integration -count=1 -v \
+go test '-tags=moonshine,moonshine_integration' -count=1 -v \
   ./internal/speech/moonshine -run TestMoonshineNative_PCM
 
 go run -tags=moonshine ./cmd/moonshine-smoke transcribe \
@@ -235,7 +327,7 @@ installation causes, and `errors.As` can retrieve a numeric `NativeStatusError`.
 Unwrapped causes may contain paths and must not be logged.
 
 Deferred: Tiny/Whisper and other models, automatic selection/hardware detection,
-iOS/Android and other native platforms, browser/microphone transport, AudioWorklet,
+iOS/Android and other unimplemented native targets, browser/microphone transport, AudioWorklet,
 PCM WebSockets, application/runtime wiring, resampling/VAD pipelines, partial UI,
 draft mutation and session fencing, SQLite speech state, recommendations,
 embeddings/LLMs/Python, automatic updates, and native runtime bundling/installers.

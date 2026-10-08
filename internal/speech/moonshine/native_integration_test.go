@@ -1,4 +1,4 @@
-//go:build moonshine && moonshine_integration && cgo && linux && amd64
+//go:build moonshine_integration && moonshine && cgo && ((linux && amd64) || (darwin && !ios && (amd64 || arm64)) || (windows && amd64))
 
 package moonshine
 
