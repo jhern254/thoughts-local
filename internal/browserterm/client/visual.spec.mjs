@@ -75,12 +75,104 @@ test('persists one image without resetting the terminal or its draft', async ({p
   await expect(page.locator('#background-image')).toBeHidden();
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
 });
+test('publishes a decoded odd-sized wallpaper before returning and moving entity selection', async ({page}, testInfo) => {
+  await page.addInitScript(() => {
+    // A staged image can decode before a separate visible element loads its URL.
+    // Hold that handoff across a paint so readiness doesn't depend on a warm cache.
+    const source = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      ...source,
+      set(value) {
+        if (this.id === 'background-image') {
+          setTimeout(() => source.set.call(this, value), 50);
+        } else {
+          source.set.call(this, value);
+        }
+      }
+    });
+    const decode = HTMLImageElement.prototype.decode;
+    const decodedImages = new WeakSet();
+    HTMLImageElement.prototype.decode = async function (...args) {
+      await decode.apply(this, args);
+      decodedImages.add(this);
+    };
+    // Inspect publication before a paint or later load event can hide an unready image.
+    window.backgroundPublications = [];
+    new MutationObserver(() => {
+      const surface = document.getElementById('background-surface');
+      const image = document.getElementById('background-image');
+      if (!surface || surface.hidden || !image || image.hidden) return;
+      window.backgroundPublications.push({
+        decoded: decodedImages.has(image),
+        naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight,
+        width: parseFloat(image.style.width), height: parseFloat(image.style.height),
+        left: parseFloat(image.style.left), top: parseFloat(image.style.top),
+        viewportWidth: innerWidth, viewportHeight: innerHeight
+      });
+    }).observe(document, {subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'src', 'style']});
+  });
+  let sockets = 0;
+  page.on('websocket', () => sockets++);
+  await page.goto('/');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await open(page);
+  await clickControl(page, 'Remove background');
+  await expect(screen(page)).not.toContainText('Background darkness:');
+  await page.keyboard.press('Tab');
+  await expect(screen(page)).toContainText('Tab/Q: events');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Background darkness:');
+  await expect(screen(page)).not.toContainText('Loading visual');
+  for (const size of [{width:91, height:4093}, {width:4093, height:91}]) {
+    const encoded = await page.evaluate(({width, height}) => {
+      const canvas = document.createElement('canvas'); canvas.width=width; canvas.height=height;
+      const context = canvas.getContext('2d');
+      context.fillStyle='#64a0d0'; context.fillRect(0, 0, width, height);
+      return canvas.toDataURL('image/png').split(',')[1];
+    }, size);
+    await chooseImage(page, {name:'odd-size.png', mimeType:'image/png', buffer:Buffer.from(encoded, 'base64')});
+    await darkness(page, 30);
+    await page.evaluate(() => { window.backgroundPublications = []; });
+    await clickControl(page, 'Apply');
+    await expect(screen(page)).not.toContainText('Background darkness:');
+    await expect(page.locator('#background-image')).toBeVisible();
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.locator('.xterm-bg-62').filter({hasText:/^Subjects$/})).toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.xterm-bg-62').filter({hasText:/^Options$/})).toBeVisible();
+    const publications = await page.evaluate(() => window.backgroundPublications);
+    expect(publications.length).toBeGreaterThan(0);
+    for (const frame of publications) {
+      expect(frame.naturalWidth).toBeGreaterThan(0);
+      expect(frame.naturalHeight).toBeGreaterThan(0);
+      expect(frame.width).toBeGreaterThan(0);
+      expect(frame.height).toBeGreaterThan(0);
+      expect(frame.left).toBeLessThanOrEqual(0);
+      expect(frame.top).toBeLessThanOrEqual(0);
+      expect(frame.left + frame.width).toBeGreaterThanOrEqual(frame.viewportWidth);
+      expect(frame.top + frame.height).toBeGreaterThanOrEqual(frame.viewportHeight);
+      expect(frame.decoded).toBe(true);
+    }
+    await expect(page.locator('#background-preview-wrap')).toBeHidden();
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+    await page.screenshot({path:`/tmp/upload-return-${testInfo.project.name}-${size.width}x${size.height}.png`});
+    await page.keyboard.press('Enter');
+    await expect(screen(page)).toContainText('Background darkness:');
+    await expect(screen(page)).not.toContainText('Loading visual');
+  }
+  await clickControl(page, 'Remove background');
+  await expect(screen(page)).not.toContainText('Background darkness:');
+  await expect(page.locator('#background-image')).toBeHidden();
+  expect(sockets).toBe(1);
+});
 test('failed replacement retains the active image', async ({page}) => {
   await page.goto('/');
   await expect(page.locator('#status')).toHaveText('Connected');
   await open(page);
   await chooseImage(page, await imageFixture(page));
   await clickControl(page, 'Apply');
+  await expect(screen(page)).not.toContainText('Background darkness:');
   await expect(page.locator('#background-image')).toBeVisible();
   const before = await page.request.get('/visual/background');
   await open(page);

@@ -26,7 +26,6 @@ class ThoughtsVisual {
         this.sendAction({action: 'open'});
       }
     }, true);
-    this.image.addEventListener('load', () => this.renderBackground());
     this.preview.addEventListener('load', () => this.queuePreview());
     this.previewFrameElement.addEventListener('pointerdown', event => this.startFramingDrag(event));
     this.previewFrameElement.addEventListener('pointermove', event => this.moveFramingDrag(event));
@@ -261,6 +260,7 @@ class ThoughtsVisual {
   }
   async activate(settings) {
     if (!Number.isInteger(settings.darkness) || settings.darkness < 0 || settings.darkness > 95) settings.darkness = 70;
+    settings.framing = safeBackgroundFraming(settings.framing);
     if (settings.background) {
       const response = await fetch('/visual/background', {cache: 'no-store'});
       if (!response.ok) throw new Error();
@@ -268,15 +268,21 @@ class ThoughtsVisual {
       const candidate = new Image();
       candidate.src = url;
       try { await candidate.decode(); } catch (error) { URL.revokeObjectURL(url); throw error; }
+      // Publish the decoded element with viewport geometry already prepared.
+      // Assigning its URL to another image reopens a load/size gap as the
+      // terminal becomes transparent, especially on the first odd-sized upload.
+      candidate.id = this.image.id;
+      candidate.alt = this.image.alt;
+      this.placeImage(candidate, window.innerWidth, window.innerHeight, settings.framing);
+      this.image.replaceWith(candidate);
+      this.image = candidate;
       if (this.activeURL) URL.revokeObjectURL(this.activeURL);
       this.activeURL = url;
-      this.image.src = url;
     } else {
       if (this.activeURL) URL.revokeObjectURL(this.activeURL);
       this.activeURL = undefined;
       this.image.removeAttribute('src');
     }
-    settings.framing = safeBackgroundFraming(settings.framing);
     this.saved = settings;
     this.surface.hidden = !settings.background;
     this.renderBackground();
