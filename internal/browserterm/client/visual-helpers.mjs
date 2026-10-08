@@ -24,8 +24,10 @@ export async function clickControl(page, label) {
 }
 export async function setDarkness(page, value) {
   await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
   await page.keyboard.press('Home');
-  for (let n = 0; n < value; n += 5) await page.keyboard.press('ArrowRight');
+  for (let n = 0; n < value; n++) await page.keyboard.press('ArrowRight');
   await expect(screen(page)).toContainText(`Background darkness: ${value}%`);
 }
 export async function chooseImage(page, image) {

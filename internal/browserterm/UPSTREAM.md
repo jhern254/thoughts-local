@@ -257,3 +257,11 @@ old text when metadata arrives ahead of terminal output. Cell geometry uses the
 pinned xterm screen element and its public row/column counts. No private xterm
 APIs or alternate-screen-incompatible marker decorations are used. Mouse mode
 is enabled only on Options. Native Options retains its browser-only explanation.
+
+### Background framing
+
+Migration 000013 adds bounded Fill/Fit, zoom, and normalized overflow positions
+without rewriting background assets. Bubble Tea owns draft settings and framing
+navigation. The browser owns pixel geometry and sends bounded, operation-scoped
+drag updates. One geometry calculation paints both the viewport and its scaled
+preview, including after resize; thumbnail dimensions do not determine the crop.

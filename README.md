@@ -115,6 +115,16 @@ slider dragging also work. The browser supplies the device picker and the real
 image inside the preview border. These controls affect browser presentation,
 not terminal drafts or stored Thoughts.
 
+Use **Image fit: Fill** to cover the browser window or **Fit** to show the whole
+image with dark margins. In Fill mode, **Adjust framing** opens a larger preview:
+drag or use arrow keys to move the image, and **+ / −** to zoom (100–300%).
+**Done** keeps your draft framing; **Apply** saves it. **Cancel/Esc** restores the
+framing from entry, and **Reset framing** centers it at 100% zoom. The preview
+matches the current browser window's proportions; resizing may reveal different
+edges. The original image is retained. Darkness changes one percentage point per
+Left/Right press; Home/End select its limits.
+
+
 Images must be non-animated, at most **16 MiB**, **8,192 pixels per side**, and
 **24 million pixels** total. SVG, GIF, animated PNG, and remote URLs are unsupported.
 The default darkness is 70%; the range is 0–95%.

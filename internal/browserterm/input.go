@@ -44,6 +44,10 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 			if msg.ID != 0 {
 				return nil, errInput
 			}
+		case "reframe":
+			if msg.ID == 0 || !msg.Framing.Valid() || msg.Framing.Fit != "fill" {
+				return nil, errInput
+			}
 		case "loaded", "selected", "cancelled", "saved", "warning", "failed":
 			if msg.ID == 0 {
 				return nil, errInput

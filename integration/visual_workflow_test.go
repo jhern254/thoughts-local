@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/application"
+	"github.com/jhern254/go-thoughts/internal/data"
 )
 
 func TestVisualWorkflow_SQLite(t *testing.T) {
@@ -78,7 +79,8 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		}
 		var body bytes.Buffer
 		_ = png.Encode(&body, image.NewRGBA(image.Rect(0, 0, 8, 6)))
-		first, warning, err := service.Import(t.Context(), bytes.NewReader(body.Bytes()), 42)
+		framing := data.BackgroundFraming{Fit: "fill", Zoom: 175, PositionX: 1200, PositionY: 9000}
+		first, warning, err := service.Import(t.Context(), bytes.NewReader(body.Bytes()), 42, framing)
 		if err != nil || warning {
 			t.Fatalf("import = %v, warning %v", err, warning)
 		}
@@ -101,7 +103,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		if got != first {
 			t.Fatalf("restored = %+v, want %+v", got, first)
 		}
-		if _, _, err = service.Import(t.Context(), bytes.NewReader([]byte("invalid replacement")), 10); err == nil {
+		if _, _, err = service.Import(t.Context(), bytes.NewReader([]byte("invalid replacement")), 10, data.DefaultBackgroundFraming()); err == nil {
 			t.Fatal("invalid replacement accepted")
 		}
 		file, _, err := service.OpenBackground(t.Context())

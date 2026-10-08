@@ -68,3 +68,20 @@ func TestInputMessages(t *testing.T) {
 		}
 	})
 }
+
+func TestInputMessages_Framing(t *testing.T) {
+	for _, body := range []string{
+		`o{"action":"reframe","id":1,"framing":{"fit":"fill","zoom":150,"positionX":0,"positionY":10000}}`,
+		`o{"action":"reframe","id":0,"framing":{"fit":"fill","zoom":150,"positionX":0,"positionY":10000}}`,
+		`o{"action":"reframe","id":1,"framing":{"fit":"fill","zoom":150,"positionX":0,"positionY":10001}}`,
+		`o{"action":"reframe","id":1,"framing":{"fit":"fit","zoom":150,"positionX":0,"positionY":10000}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			_, err := inputMessages([]byte(body))
+			valid := body == `o{"action":"reframe","id":1,"framing":{"fit":"fill","zoom":150,"positionX":0,"positionY":10000}}`
+			if (err == nil) != valid {
+				t.Fatalf("error = %v, want valid %v", err, valid)
+			}
+		})
+	}
+}

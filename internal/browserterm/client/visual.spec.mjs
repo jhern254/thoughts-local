@@ -196,3 +196,105 @@ test('returning to the entity picker repaints behind the closed preview', async 
   }
   expect(sockets).toBe(1);
 });
+
+test('frames a portrait, matches the viewport crop, and restores framing after reload', async ({page}, testInfo) => {
+  let sockets = 0;
+  page.on('websocket', () => sockets++);
+  await page.goto('/');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await open(page);
+  const portrait = await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width=600; canvas.height=1200;
+    const context=canvas.getContext('2d');
+    for (let row=0;row<6;row++) {
+      context.fillStyle=['#ff4444','#ee9900','#ffff66','#33bb88','#5599ff','#9944dd'][row];
+      context.fillRect(0,row*200,600,200);
+      context.fillStyle='#111';context.font='60px monospace';context.fillText(`Band ${row+1}`,160,row*200+110);
+    }
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await chooseImage(page,{name:'portrait.png',mimeType:'image/png',buffer:Buffer.from(portrait,'base64')});
+  await darkness(page,30);
+  if ((await screen(page).textContent()).includes('Image fit: Fit')) await clickControl(page,'Image fit: Fit');
+  await clickControl(page,'Adjust framing');
+  await expect(screen(page)).toContainText('Preview · Zoom: 100%');
+  const frame=page.locator('#background-preview-frame');
+  await expect(frame).toHaveAttribute('data-editing','true');
+  const bounds=await frame.boundingBox();
+  expect(Math.abs(bounds.width/bounds.height - 1200/850)).toBeLessThan(0.01);
+  await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2+70,{steps:5});
+  await page.mouse.up();
+  for(let i=0;i<10;i++) await page.keyboard.press('+');
+  await expect(screen(page)).toContainText('Zoom: 150%');
+  await page.screenshot({path:`/tmp/framing-${testInfo.project.name}-portrait.png`});
+  await clickControl(page,'Done');
+  await expect(screen(page)).toContainText('Background darkness:');
+  await expect(frame).toHaveAttribute('data-editing','false');
+  const crop=await frame.evaluate(el=>{
+    const image=el.querySelector('img');
+    return {left:parseFloat(image.style.left)/el.clientWidth,top:parseFloat(image.style.top)/el.clientHeight,
+      width:parseFloat(image.style.width)/el.clientWidth,height:parseFloat(image.style.height)/el.clientHeight};
+  });
+  await clickControl(page,'Apply');
+  await expect(screen(page)).not.toContainText('Background darkness:');
+  const saved=await (await page.request.get('/visual')).json();
+  expect(saved.framing.zoom).toBe(150);
+  expect(saved.framing.positionY).toBeLessThan(5000);
+  const actual=await page.locator('#background-image').evaluate(image=>({
+    left:parseFloat(image.style.left)/innerWidth,top:parseFloat(image.style.top)/innerHeight,
+    width:parseFloat(image.style.width)/innerWidth,height:parseFloat(image.style.height)/innerHeight}));
+  for(const key of Object.keys(crop)) expect(Math.abs(crop[key]-actual[key])).toBeLessThan(0.02);
+  expect(sockets).toBe(1);
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await open(page);await clickControl(page,'Adjust framing');
+  await expect(screen(page)).toContainText('Zoom: 150%');
+  await page.keyboard.press('+');
+  await page.keyboard.press('Escape');
+  await expect(screen(page)).toContainText('Background darkness:');
+  await clickControl(page,'Adjust framing');
+  await expect(screen(page)).toContainText('Zoom: 150%');
+  await clickControl(page,'Reset framing');
+  await expect(screen(page)).toContainText('Zoom: 100%');
+  await clickControl(page,'Done');
+  await expect(screen(page)).toContainText('Background darkness:');
+  await clickControl(page,'Image fit: Fill');
+  await expect(screen(page)).toContainText('Image fit: Fit');
+  await page.screenshot({path:`/tmp/framing-${testInfo.project.name}-fit.png`});
+  await clickControl(page,'Apply');
+  await expect(screen(page)).not.toContainText('Background darkness:');
+  for (const size of [{width:1200,height:850},{width:375,height:600}]) {
+    await page.setViewportSize(size);
+    await expect.poll(()=>page.locator('#background-image').evaluate(image=>{
+      const box=image.getBoundingClientRect();
+      return box.left>=-0.01 && box.top>=-0.01 && box.right<=innerWidth+0.01 && box.bottom<=innerHeight+0.01;
+    })).toBe(true);
+    await page.screenshot({path:`/tmp/framing-${testInfo.project.name}-fit-${size.width}.png`});
+  }
+});
+
+test('Fill preserves the viewport composition for square, panoramic and thin source images', async ({page},testInfo) => {
+  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+  for (const [width,height] of [[500,500],[4096,256],[8,4096]]) {
+    await open(page);
+    const encoded=await page.evaluate(([width,height])=>{
+      const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+      const context=canvas.getContext('2d');
+      context.fillStyle='#3388aa';context.fillRect(0,0,width,height);
+      context.fillStyle='#ddbb44';context.fillRect(0,0,width/2,height/2);
+      return canvas.toDataURL('image/png').split(',')[1];
+    },[width,height]);
+    await chooseImage(page,{name:'shape.png',mimeType:'image/png',buffer:Buffer.from(encoded,'base64')});
+    if ((await screen(page).textContent()).includes('Image fit: Fit')) await clickControl(page,'Image fit: Fit');
+    await clickControl(page,'Adjust framing');
+    await expect(screen(page)).toContainText('Preview · Zoom: 100%');
+    await expect(page.locator('#background-preview-frame')).toHaveAttribute('data-editing','true');
+    await expect.poll(()=>page.locator('#background-preview').evaluate(image=>parseFloat(image.style.width)/parseFloat(image.style.height))).toBeCloseTo(width/height,3);
+    await page.screenshot({path:`/tmp/framing-${testInfo.project.name}-${width}x${height}.png`});
+    await clickControl(page,'Done');await expect(screen(page)).toContainText('Background darkness:');
+    await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
+    expect(await (await page.request.get('/visual/background')).body()).toEqual(Buffer.from(encoded,'base64'));
+  }
+});

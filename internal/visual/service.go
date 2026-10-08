@@ -14,6 +14,8 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 )
 
+var ErrFraming = errors.New("invalid background framing")
+
 type Store interface {
 	Load(context.Context, string) (data.Visual, error)
 	Save(context.Context, string, data.Visual) error
@@ -40,6 +42,9 @@ func (s *Service) Load(ctx context.Context) (data.Visual, error) {
 	if settings.Darkness < 0 || settings.Darkness > 95 {
 		settings.Darkness = data.DefaultBackgroundDarkness
 	}
+	if !settings.Framing.Valid() {
+		settings.Framing = data.DefaultBackgroundFraming()
+	}
 	if settings.BackgroundAsset != "" && !validAsset(settings.BackgroundAsset) {
 		return data.Visual{}, errors.New("invalid background selection")
 	}
@@ -61,13 +66,16 @@ func (s *Service) root() (*os.Root, error) {
 	return os.OpenRoot(s.directory)
 }
 
-func (s *Service) Import(ctx context.Context, input io.Reader, darkness int) (data.Visual, bool, error) {
+func (s *Service) Import(ctx context.Context, input io.Reader, darkness int, framing data.BackgroundFraming) (data.Visual, bool, error) {
 	if !s.tryAcquire() {
 		return data.Visual{}, false, ErrBusy
 	}
 	defer s.release()
 	if darkness < 0 || darkness > 95 {
 		return data.Visual{}, false, ErrDarkness
+	}
+	if !framing.Valid() {
+		return data.Visual{}, false, ErrFraming
 	}
 	previous, err := s.Load(ctx)
 	if err != nil {
@@ -92,7 +100,11 @@ func (s *Service) Import(ctx context.Context, input io.Reader, darkness int) (da
 	if _, err = rand.Read(id); err != nil {
 		return data.Visual{}, false, err
 	}
-	settings := data.Visual{BackgroundAsset: hex.EncodeToString(id) + extension, Darkness: darkness}
+	settings := data.Visual{
+		BackgroundAsset: hex.EncodeToString(id) + extension,
+		Darkness:        darkness,
+		Framing:         framing,
+	}
 	root, err := s.root()
 	if err != nil {
 		return data.Visual{}, false, err
@@ -123,7 +135,7 @@ func removeAsset(root *os.Root, name string) bool {
 	return err != nil && !errors.Is(err, os.ErrNotExist)
 }
 
-func (s *Service) SetDarkness(ctx context.Context, darkness int) (data.Visual, error) {
+func (s *Service) UpdateSettings(ctx context.Context, darkness int, framing data.BackgroundFraming) (data.Visual, error) {
 	if !s.tryAcquire() {
 		return data.Visual{}, ErrBusy
 	}
@@ -135,7 +147,11 @@ func (s *Service) SetDarkness(ctx context.Context, darkness int) (data.Visual, e
 	if err != nil {
 		return settings, err
 	}
+	if !framing.Valid() {
+		return data.Visual{}, ErrFraming
+	}
 	settings.Darkness = darkness
+	settings.Framing = framing
 	return settings, s.store.Save(ctx, s.userID, settings)
 }
 

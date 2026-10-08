@@ -57,6 +57,7 @@ func visualRequest(t *testing.T, format string) (*http.Request, []byte) {
 	}
 	_, _ = part.Write(imageBytes.Bytes())
 	_ = writer.WriteField("darkness", "35")
+	_ = writer.WriteField("framing", `{"fit":"fill","zoom":100,"positionX":5000,"positionY":5000}`)
 	_ = writer.Close()
 	request := httptest.NewRequest("POST", "http://127.0.0.1:7777/visual/background", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
@@ -242,4 +243,35 @@ func TestVisual_MutationOrigins(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestVisual_FramingSettings(t *testing.T) {
+	t.Run("persists settings together and safely rejects invalid framing", func(t *testing.T) {
+		store := &visualStore{settings: data.Visual{Darkness: 70, Framing: data.DefaultBackgroundFraming()}}
+		server := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
+		for _, body := range []string{
+			`{"darkness":69,"framing":{"fit":"fill","zoom":150,"positionX":1200,"positionY":8500}}`,
+			`{"darkness":30,"framing":{"fit":"PRIVATE","zoom":150,"positionX":1200,"positionY":8500}}`,
+			`{"darkness":30,"framing":{"fit":"fit","zoom":301,"positionX":0,"positionY":0}}`,
+			`{"darkness":30,"framing":{"fit":"fill","zoom":150,"positionX":-1,"positionY":0}}`,
+		} {
+			req := httptest.NewRequest("PUT", "http://127.0.0.1:7777/visual/settings", strings.NewReader(body))
+			req.Header.Set("Origin", "http://127.0.0.1:7777")
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, req)
+			want := 400
+			if strings.Contains(body, `"darkness":69`) {
+				want = 200
+			}
+			if response.Code != want {
+				t.Fatalf("status = %d, want %d", response.Code, want)
+			}
+			if store.settings.Darkness != 69 || store.settings.Framing.Zoom != 150 || store.settings.Framing.PositionY != 8500 {
+				t.Fatalf("saved settings = %+v", store.settings)
+			}
+			if strings.Contains(response.Body.String(), "PRIVATE") {
+				t.Fatal("unsafe diagnostic")
+			}
+		}
+	})
 }

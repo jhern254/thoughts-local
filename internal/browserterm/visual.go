@@ -16,14 +16,16 @@ const maxVisualRequestBytes = visual.MaxImageBytes + (64 << 10)
 const maxVisualSettingsBytes = 1024
 
 type visualResponse struct {
-	Background     bool `json:"background"`
-	Darkness       int  `json:"darkness"`
-	CleanupWarning bool `json:"cleanupWarning,omitempty"`
+	Framing        data.BackgroundFraming `json:"framing"`
+	Background     bool                   `json:"background"`
+	Darkness       int                    `json:"darkness"`
+	CleanupWarning bool                   `json:"cleanupWarning,omitempty"`
 }
 
 func writeVisual(w http.ResponseWriter, settings data.Visual, warning bool) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(visualResponse{
+		Framing:        settings.Framing,
 		Background:     settings.BackgroundAsset != "",
 		Darkness:       settings.Darkness,
 		CleanupWarning: warning,
@@ -41,6 +43,9 @@ func visualError(w http.ResponseWriter, err error) {
 	case errors.Is(err, visual.ErrDarkness):
 		status = http.StatusBadRequest
 		message = "Background darkness must be between 0 and 95."
+	case errors.Is(err, visual.ErrFraming):
+		status = http.StatusBadRequest
+		message = "Invalid background framing."
 	case errors.Is(err, visual.ErrBusy):
 		status = http.StatusConflict
 		message = "A visual change is already in progress."
@@ -142,7 +147,8 @@ func (s *server) removeVisualBackground(w http.ResponseWriter, r *http.Request) 
 func (s *server) updateVisualSettings(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxVisualSettingsBytes)
 	var input struct {
-		Darkness *int `json:"darkness"`
+		Darkness *int                   `json:"darkness"`
+		Framing  data.BackgroundFraming `json:"framing"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -154,7 +160,7 @@ func (s *server) updateVisualSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid visual settings.", http.StatusBadRequest)
 		return
 	}
-	settings, err := s.visual.SetDarkness(r.Context(), *input.Darkness)
+	settings, err := s.visual.UpdateSettings(r.Context(), *input.Darkness, input.Framing)
 	if err != nil {
 		visualError(w, err)
 		return
@@ -180,7 +186,7 @@ func (s *server) importVisualBackground(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer r.MultipartForm.RemoveAll()
-	if len(r.MultipartForm.File) != 1 || len(r.MultipartForm.File["image"]) != 1 || len(r.MultipartForm.Value) != 1 || len(r.MultipartForm.Value["darkness"]) != 1 {
+	if len(r.MultipartForm.File) != 1 || len(r.MultipartForm.File["image"]) != 1 || len(r.MultipartForm.Value) != 2 || len(r.MultipartForm.Value["darkness"]) != 1 || len(r.MultipartForm.Value["framing"]) != 1 {
 		http.Error(w, "Choose one image and a darkness value.", http.StatusBadRequest)
 		return
 	}
@@ -189,13 +195,18 @@ func (s *server) importVisualBackground(w http.ResponseWriter, r *http.Request) 
 		visualError(w, visual.ErrDarkness)
 		return
 	}
+	var framing data.BackgroundFraming
+	if json.Unmarshal([]byte(r.MultipartForm.Value["framing"][0]), &framing) != nil || !framing.Valid() {
+		visualError(w, visual.ErrFraming)
+		return
+	}
 	file, err := r.MultipartForm.File["image"][0].Open()
 	if err != nil {
 		visualError(w, err)
 		return
 	}
 	defer file.Close()
-	settings, warning, err := s.visual.Import(r.Context(), file, darkness)
+	settings, warning, err := s.visual.Import(r.Context(), file, darkness, framing)
 	if err != nil {
 		visualError(w, err)
 		return
