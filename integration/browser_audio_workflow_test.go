@@ -5,7 +5,6 @@ package integration_test
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -147,22 +146,13 @@ func TestBrowserAudioWorkflow_SQLite(t *testing.T) {
 		defer audioConnection.CloseNow()
 		// The integration exercises the documented wire contract independently
 		// of the private protocol decoder used by production.
-		handshake := make([]byte, 76)
+		handshake := make([]byte, 36)
 		copy(handshake, []byte{'T', 'A', 1, 1})
-		sessionBytes, err := hex.DecodeString(recordingGrant.SessionID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		copy(handshake[4:20], sessionBytes)
-		binary.LittleEndian.PutUint64(handshake[20:28], recordingGrant.DraftID)
-		binary.LittleEndian.PutUint64(handshake[28:36], recordingGrant.RecordingID)
 		capabilityBytes, err := hex.DecodeString(recordingGrant.AudioCapability)
 		if err != nil {
 			t.Fatal(err)
 		}
-		copy(handshake[36:68], capabilityBytes)
-		binary.LittleEndian.PutUint32(handshake[68:72], 16000)
-		handshake[72], handshake[73] = 1, 1
+		copy(handshake[4:], capabilityBytes)
 		if err := audioConnection.Write(ctx, websocket.MessageBinary, handshake); err != nil {
 			t.Fatal(err)
 		}
@@ -173,10 +163,8 @@ func TestBrowserAudioWorkflow_SQLite(t *testing.T) {
 		if !bytes.Equal(status, []byte{'T', 'A', 1, 3, 0}) {
 			t.Fatalf("authorization status got %v, want Ready", status)
 		}
-		pcmFrame := make([]byte, 12+3200)
-		copy(pcmFrame, []byte{'T', 'A', 1, 2})
-		binary.LittleEndian.PutUint32(pcmFrame[8:12], 1600)
-		copy(pcmFrame[12:], "PRIVATE-PCM")
+		pcmFrame := make([]byte, 3200)
+		copy(pcmFrame, "PRIVATE-PCM")
 		if err := audioConnection.Write(ctx, websocket.MessageBinary, pcmFrame); err != nil {
 			t.Fatal(err)
 		}

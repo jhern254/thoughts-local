@@ -2,7 +2,6 @@ package browserterm
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"net"
@@ -105,21 +104,11 @@ func handshakeForGrant(t *testing.T, grant recordingGrant) []byte {
 	t.Helper()
 	frame := make([]byte, audioHandshakeBytes)
 	copy(frame, []byte{'T', 'A', 1, audioFrameHandshake})
-	sessionIdentity, err := hex.DecodeString(grant.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	copy(frame[4:20], sessionIdentity)
-	binary.LittleEndian.PutUint64(frame[20:28], grant.DraftID)
-	binary.LittleEndian.PutUint64(frame[28:36], grant.RecordingID)
 	capability, err := hex.DecodeString(grant.AudioCapability)
 	if err != nil {
 		t.Fatal(err)
 	}
-	copy(frame[36:68], capability)
-	binary.LittleEndian.PutUint32(frame[68:72], audioSampleRateHz)
-	frame[72] = 1
-	frame[73] = 1
+	copy(frame[4:], capability)
 	return frame
 }
 
@@ -152,13 +141,7 @@ func writeAudioFrame(t *testing.T, audioConnection *websocket.Conn, frame []byte
 		t.Fatal(err)
 	}
 }
-func pcmFrame(sequence uint32, samples int) []byte {
-	frame := make([]byte, audioPCMHeaderBytes+samples*2)
-	copy(frame, []byte{'T', 'A', 1, audioFramePCM})
-	binary.LittleEndian.PutUint32(frame[4:8], sequence)
-	binary.LittleEndian.PutUint32(frame[8:12], uint32(samples))
-	return frame
-}
+func pcmFrame() []byte { return make([]byte, pcmFrameBytes) }
 
 func TestAudioTransport(t *testing.T) {
 	t.Run("authorized binary PCM reaches only the consumer and Stop joins it", func(t *testing.T) {
@@ -183,42 +166,29 @@ func TestAudioTransport(t *testing.T) {
 		if status := readAudioStatus(t, audioConnection); status != audioStatusReady {
 			t.Fatalf("got %d, want Ready", status)
 		}
-		writeAudioFrame(t, audioConnection, pcmFrame(0, 1600))
+		writeAudioFrame(t, audioConnection, pcmFrame())
 		<-entered
 		writeFrame(t, terminal, `v{"action":"stop","draftID":1,"recordingID":1}`)
 		readRecordingGrant(t, terminal, func(grant recordingGrant) bool { return grant.RecordingStatus == "idle" })
 		<-canceled
 	})
-	for _, scenario := range []struct {
-		name   string
-		mutate func([]byte)
-	}{
-		{"wrong session", func(frame []byte) { frame[4] ^= 1 }},
-		{"wrong draft", func(frame []byte) { frame[20] ^= 1 }},
-		{"wrong recording", func(frame []byte) { frame[28] ^= 1 }},
-		{"unknown capability", func(frame []byte) { frame[36] ^= 1 }},
-		{"wrong sample rate", func(frame []byte) { binary.LittleEndian.PutUint32(frame[68:], 48000) }},
-		{"wrong channels", func(frame []byte) { frame[72] = 2 }},
-		{"wrong encoding", func(frame []byte) { frame[73] = 2 }},
-	} {
-		t.Run("rejects "+scenario.name, func(t *testing.T) {
-			address, stopServer := newAudioTestServer(t, func(context.Context, voice.RecordingKey, []int16, func(voice.TranscriptUpdate) bool) error {
-				t.Error("unauthorized consumer invoked")
-				return nil
-			})
-			defer stopServer()
-			terminal, grant := startAudioDraft(t, address)
-			defer terminal.CloseNow()
-			audioConnection := dialAudio(t, address)
-			defer audioConnection.CloseNow()
-			frame := handshakeForGrant(t, grant)
-			scenario.mutate(frame)
-			writeAudioFrame(t, audioConnection, frame)
-			if status := readAudioStatus(t, audioConnection); status != audioStatusDenied && status != audioStatusInvalid {
-				t.Fatalf("got %d, want rejection", status)
-			}
+	t.Run("rejects an unknown capability without invoking the consumer", func(t *testing.T) {
+		address, stopServer := newAudioTestServer(t, func(context.Context, voice.RecordingKey, []int16, func(voice.TranscriptUpdate) bool) error {
+			t.Error("unauthorized consumer invoked")
+			return nil
 		})
-	}
+		defer stopServer()
+		terminal, grant := startAudioDraft(t, address)
+		defer terminal.CloseNow()
+		audioConnection := dialAudio(t, address)
+		defer audioConnection.CloseNow()
+		frame := handshakeForGrant(t, grant)
+		frame[4] ^= 1
+		writeAudioFrame(t, audioConnection, frame)
+		if got := readAudioStatus(t, audioConnection); got != audioStatusDenied {
+			t.Fatalf("got %d, want Denied", got)
+		}
+	})
 	t.Run("audio endpoint rejects terminal and text handshake", func(t *testing.T) {
 		for _, kind := range []websocket.MessageType{websocket.MessageBinary, websocket.MessageText} {
 			address, stopServer := newAudioTestServer(t, discardPCM)
@@ -236,7 +206,7 @@ func TestAudioTransport(t *testing.T) {
 		}
 	})
 	t.Run("terminal rejects audio protocol and unknown voice payload fields", func(t *testing.T) {
-		for _, frame := range [][]byte{pcmFrame(0, 10), []byte(`v{"action":"start","draftID":1,"audio":"PRIVATE-PCM"}`)} {
+		for _, frame := range [][]byte{append([]byte{'T', 'A', 1, 1}, make([]byte, 32)...), pcmFrame(), []byte(`v{"action":"start","draftID":1,"audio":"PRIVATE-PCM"}`)} {
 			address, stopServer := newAudioTestServer(t, discardPCM)
 			terminal, _ := startAudioDraft(t, address)
 			writeAudioFrame(t, terminal, frame)

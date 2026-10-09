@@ -11,22 +11,15 @@ import (
 
 func TestAudioRecording_Bounds(t *testing.T) {
 	for _, scenario := range []struct {
-		name         string
-		configure    func(*audioSettings)
-		firstSamples int
-		nextSamples  int
-		nextSequence uint32
-		advance      time.Duration
-		want         byte
+		name      string
+		configure func(*audioSettings)
+		advance   time.Duration
 	}{
-		{name: "aggregate bytes", configure: func(settings *audioSettings) { settings.maximumBytes = 8 }, firstSamples: 4, nextSamples: 1, nextSequence: 1, want: audioStatusLimit},
-		{name: "aggregate samples", configure: func(settings *audioSettings) { settings.maximumSamples = 4 }, firstSamples: 4, nextSamples: 1, nextSequence: 1, want: audioStatusLimit},
-		{name: "elapsed duration", firstSamples: 1, nextSamples: 1, nextSequence: 1, advance: maximumRecordingDuration, want: audioStatusLimit},
-		{name: "out of sequence", firstSamples: 1, nextSamples: 1, nextSequence: 2, want: audioStatusInvalid},
-		{name: "oversized chunk", firstSamples: 1, nextSamples: maximumPCMChunkSamples + 1, nextSequence: 1, want: audioStatusInvalid},
+		{name: "aggregate samples", configure: func(settings *audioSettings) { settings.maximumSamples = pcmFrameSamples }},
+		{name: "elapsed duration", advance: maximumRecordingDuration},
 	} {
 		t.Run("rejects "+scenario.name, func(t *testing.T) {
-			consumed := make(chan struct{}, 2)
+			consumed := make(chan struct{}, 1)
 			session := newAudioSession(t.Context(), func(context.Context, voice.RecordingKey, []int16, func(voice.TranscriptUpdate) bool) error {
 				consumed <- struct{}{}
 				return nil
@@ -39,86 +32,31 @@ func TestAudioRecording_Bounds(t *testing.T) {
 			authority := voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: session.sessionID, DraftID: 1, RecordingID: 1})
 			recording := newAudioRecording(session, authority)
 			t.Cleanup(func() { recording.stopRecording(audioStatusStopped); <-recording.done })
-			if status := recording.authorizeAudioConnection(audioHandshake{recording: authority.Recording(), capability: recording.capability}, nil); status != audioStatusReady {
+			if got := recording.authorizeAudioConnection(recording.recordingCapability, nil); got != audioStatusReady {
 				t.Fatal("attach failed")
 			}
-			if status := recording.enqueuePCMChunk(0, make([]int16, scenario.firstSamples)); status != audioStatusReady {
-				t.Fatal("initial chunk rejected")
+			if got := recording.enqueuePCMChunk(make([]int16, pcmFrameSamples)); got != audioStatusReady {
+				t.Fatal("initial frame rejected")
 			}
 			<-consumed
 			now = now.Add(scenario.advance)
-			rejected := make([]int16, scenario.nextSamples)
+			rejected := make([]int16, pcmFrameSamples)
 			rejected[0] = 123
-			if got := recording.enqueuePCMChunk(scenario.nextSequence, rejected); got != scenario.want {
-				t.Fatalf("got %d, want %d", got, scenario.want)
+			if got := recording.enqueuePCMChunk(rejected); got != audioStatusLimit {
+				t.Fatalf("got %d, want Limit", got)
+			}
+			recording.stopRecording(audioStatusLimit)
+			<-recording.done
+			if authority.Active() || len(recording.pendingAudio) != 0 {
+				t.Fatal("limit retained recording authority or audio")
 			}
 			for _, sample := range rejected {
 				if sample != 0 {
-					t.Fatal("rejected audio retained")
+					t.Fatal("rejected PCM retained")
 				}
 			}
 		})
 	}
-	for _, scenario := range []struct {
-		name     string
-		samples  int
-		accepted int
-	}{
-		{"message rate", 1, 20}, {"sample ingress rate", 3200, 10},
-	} {
-		t.Run("limits "+scenario.name+" independently of consumer speed", func(t *testing.T) {
-			consumed := make(chan struct{}, 1)
-			session := newAudioSession(t.Context(), func(context.Context, voice.RecordingKey, []int16, func(voice.TranscriptUpdate) bool) error {
-				consumed <- struct{}{}
-				return nil
-			})
-			now := time.Now()
-			session.settings.now = func() time.Time { return now }
-			authority := voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: session.sessionID, DraftID: 1, RecordingID: 1})
-			recording := newAudioRecording(session, authority)
-			t.Cleanup(func() { recording.stopRecording(audioStatusStopped); <-recording.done })
-			recording.authorizeAudioConnection(audioHandshake{recording: authority.Recording(), capability: recording.capability}, nil)
-			for sequence := 0; sequence < scenario.accepted; sequence++ {
-				if got := recording.enqueuePCMChunk(uint32(sequence), make([]int16, scenario.samples)); got != audioStatusReady {
-					t.Fatalf("chunk %d got %d", sequence, got)
-				}
-				<-consumed
-			}
-			if got := recording.enqueuePCMChunk(uint32(scenario.accepted), make([]int16, scenario.samples)); got != audioStatusLimit {
-				t.Fatalf("got %d, want rate limit", got)
-			}
-			now = now.Add(time.Second)
-			if got := recording.enqueuePCMChunk(uint32(scenario.accepted), make([]int16, scenario.samples)); got != audioStatusReady {
-				t.Fatalf("got %d after replenishment, want Ready", got)
-			}
-		})
-	}
-	t.Run("tiny frames cannot exceed queue depth", func(t *testing.T) {
-		entered := make(chan struct{})
-		session := newAudioSession(t.Context(), func(ctx context.Context, _ voice.RecordingKey, _ []int16, _ func(voice.TranscriptUpdate) bool) error {
-			close(entered)
-			<-ctx.Done()
-			return ctx.Err()
-		})
-		now := time.Now()
-		session.settings.now = func() time.Time { return now }
-		authority := voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: session.sessionID, DraftID: 1, RecordingID: 1})
-		recording := newAudioRecording(session, authority)
-		t.Cleanup(func() { recording.stopRecording(audioStatusStopped); <-recording.done })
-		recording.authorizeAudioConnection(audioHandshake{recording: authority.Recording(), capability: recording.capability}, nil)
-		recording.enqueuePCMChunk(0, []int16{1})
-		<-entered
-		for sequence := uint32(1); sequence <= maximumPendingAudioChunks; sequence++ {
-			now = now.Add(time.Second)
-			if got := recording.enqueuePCMChunk(sequence, []int16{1}); got != audioStatusReady {
-				t.Fatalf("got %d before queue full", got)
-			}
-		}
-		now = now.Add(time.Second)
-		if got := recording.enqueuePCMChunk(21, []int16{1}); got != audioStatusLimit {
-			t.Fatalf("got %d, want bounded queue", got)
-		}
-	})
 }
 
 func TestAudioRecording_AuthorizationAndDeadlines(t *testing.T) {
@@ -129,9 +67,9 @@ func TestAudioRecording_AuthorizationAndDeadlines(t *testing.T) {
 		authority := voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: session.sessionID, DraftID: 1, RecordingID: 1})
 		recording := newAudioRecording(session, authority)
 		t.Cleanup(func() { recording.stopRecording(audioStatusStopped); <-recording.done })
-		handshake := audioHandshake{recording: authority.Recording(), capability: recording.capability}
+		handshake := recording.recordingCapability
 		wrong := handshake
-		wrong.capability[0] ^= 1
+		wrong[0] ^= 1
 		if recording.authorizeAudioConnection(wrong, nil) != audioStatusDenied || !authority.Active() {
 			t.Fatal("unknown token granted access or disrupted recording")
 		}
@@ -198,9 +136,10 @@ func TestAudioRecording_ConsumerFailure(t *testing.T) {
 			session := newAudioSession(t.Context(), consumer.consumePCM)
 			authority := voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: session.sessionID, DraftID: 1, RecordingID: 1})
 			recording := newAudioRecording(session, authority)
-			recording.authorizeAudioConnection(audioHandshake{recording: authority.Recording(), capability: recording.capability}, nil)
-			pcmSamples := []int16{1234}
-			recording.enqueuePCMChunk(0, pcmSamples)
+			recording.authorizeAudioConnection(recording.recordingCapability, nil)
+			pcmSamples := make([]int16, pcmFrameSamples)
+			pcmSamples[0] = 1234
+			recording.enqueuePCMChunk(pcmSamples)
 			<-recording.done
 			if authority.Active() || pcmSamples[0] != 0 {
 				t.Fatal("consumer failure retained audio or authority")

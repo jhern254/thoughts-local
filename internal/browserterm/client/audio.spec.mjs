@@ -18,7 +18,7 @@ async function prepareAudioDraft(page) {
         }
       }
       send(frame) {
-        if (frame instanceof Uint8Array && frame[0] === 84 && frame[1] === 65 && frame[3] === 2) {
+        if (frame instanceof Uint8Array && frame.byteLength === 3200) {
           if (this.audioPath) window.audioProbe.audioFrames++;
           else window.audioProbe.terminalAudioFrames++;
         }

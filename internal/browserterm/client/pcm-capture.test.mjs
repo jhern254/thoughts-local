@@ -47,11 +47,11 @@ async function startRecording(fixture) {
 test('capability is binary handshake metadata and PCM uses only dedicated socket', async () => {
   const fixture = setup(); const socket = await startRecording(fixture);
   assert.equal(socket.address, 'ws://127.0.0.1:7777/voice/audio');
-  assert.equal(socket.sent[0].byteLength, 76);
+  assert.equal(socket.sent[0].byteLength, 36);
   const pcm = new ArrayBuffer(3200);
   fixture.processors[0].port.onmessage({data: {pcm}});
-  assert.equal(socket.sent[1].byteLength, 3212);
-  assert.equal(new DataView(socket.sent[1].buffer).getUint32(8, true), 1600);
+  assert.equal(socket.sent[1].byteLength, 3200);
+  assert.deepEqual(socket.sent[0].slice(4), new Uint8Array(32).fill(34));
   assert.ok(new Uint8Array(pcm).every(byte => byte === 0));
   fixture.capture.stop();
   assert.deepEqual(fixture.events.map(event => event.status), ['recording', 'stop', 'stopped']);
@@ -89,13 +89,13 @@ test('accepted Start preserves the AudioContext activated by the trusted key eve
   fixture.capture.stop();
   assert.equal(fixture.closed(), 1);
 });
-test('failed socket writes clear both PCM and the encoded frame', async () => {
+test('failed socket writes clear PCM before releasing capture', async () => {
   const fixture = setup(); const socket = await startRecording(fixture);
-  let encodedFrame;
-  socket.send = frame => { encodedFrame = frame; throw new Error('PRIVATE-WRITE-ERROR'); };
+  let sentPCM;
+  socket.send = frame => { sentPCM = frame; throw new Error('PRIVATE-WRITE-ERROR'); };
   const pcm = new ArrayBuffer(3200); new Uint8Array(pcm).fill(85);
   fixture.processors[0].port.onmessage({data: {pcm}});
-  assert.ok(encodedFrame.every(byte => byte === 0));
+  assert.ok(sentPCM.every(byte => byte === 0));
   assert.ok(new Uint8Array(pcm).every(byte => byte === 0));
   assert.equal(fixture.events.at(-1).status, 'failed');
   assert.equal(fixture.stopped(), 1);
@@ -112,5 +112,15 @@ test('handshake failure emits fixed state and clears the capability frame', asyn
   await started;
   assert.ok(handshake.every(byte => byte === 0));
   assert.deepEqual(fixture.events.map(event => event.status), ['failed']);
+  assert.equal(fixture.stopped(), 1);
+});
+
+test('a non fixed worklet frame stops capture before sending audio', async () => {
+  const fixture = setup(); const socket = await startRecording(fixture);
+  const pcm = new ArrayBuffer(3198); new Uint8Array(pcm).fill(85);
+  fixture.processors[0].port.onmessage({data: {pcm}});
+  assert.equal(socket.sent.length, 1);
+  assert.ok(new Uint8Array(pcm).every(byte => byte === 0));
+  assert.equal(fixture.events.at(-1).status, 'failed');
   assert.equal(fixture.stopped(), 1);
 });

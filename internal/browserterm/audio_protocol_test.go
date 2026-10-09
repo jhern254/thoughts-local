@@ -1,38 +1,45 @@
 package browserterm
 
 import (
-	"encoding/binary"
+	"bytes"
 	"testing"
 )
 
 func TestAudioProtocol(t *testing.T) {
-	t.Run("decodes signed little endian samples", func(t *testing.T) {
-		frame := []byte{'T', 'A', 1, audioFramePCM, 0, 0, 0, 0, 2, 0, 0, 0, 0, 128, 255, 127}
-		sequence, samples, err := decodePCMFrame(frame)
+	t.Run("handshake contains only the one use capability", func(t *testing.T) {
+		frame := append([]byte{'T', 'A', 1, audioFrameHandshake}, bytes.Repeat([]byte{85}, 32)...)
+		handshake, err := decodeAudioHandshake(frame)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if sequence != 0 || len(samples) != 2 || samples[0] != -32768 || samples[1] != 32767 {
-			t.Fatalf("unexpected PCM: %v", samples)
+		if !bytes.Equal(handshake[:], frame[4:]) {
+			t.Fatal("capability bytes changed")
 		}
 	})
-	t.Run("rejects malformed and non audio frames", func(t *testing.T) {
-		for _, frame := range [][]byte{
-			[]byte(`v{"action":"start"}`), []byte("0terminal"), {'T', 'A', 2, 2},
-			{'T', 'A', 1, 2, 0, 0, 0, 0, 1, 0, 0, 0, 1},
-			{'T', 'A', 1, 2, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0},
-			make([]byte, maximumAudioMessageBytes+1),
-		} {
-			if _, _, err := decodePCMFrame(frame); err == nil {
-				t.Fatal("accepted malformed frame")
+	t.Run("decodes one fixed frame of signed little endian samples", func(t *testing.T) {
+		frame := make([]byte, 3200)
+		copy(frame, []byte{0, 128, 255, 127})
+		samples, err := decodePCMFrame(frame)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(samples) != 1600 || samples[0] != -32768 || samples[1] != 32767 {
+			t.Fatal("incorrect PCM conversion")
+		}
+	})
+	t.Run("rejects every other frame length before allocating samples", func(t *testing.T) {
+		for _, sizeBytes := range []int{0, 1, 3199, 3201, 6400, 8193} {
+			samples, err := decodePCMFrame(make([]byte, sizeBytes))
+			if err == nil || samples != nil {
+				t.Fatalf("accepted frame length %d", sizeBytes)
 			}
 		}
 	})
-	t.Run("rejects excessive sample count before allocation", func(t *testing.T) {
-		frame := []byte{'T', 'A', 1, audioFramePCM, 0, 0, 0, 0, 0, 0, 0, 0}
-		binary.LittleEndian.PutUint32(frame[8:], ^uint32(0))
-		if _, _, err := decodePCMFrame(frame); err == nil {
-			t.Fatal("accepted excessive count")
+	t.Run("rejects terminal control and malformed handshakes", func(t *testing.T) {
+		for _, frame := range [][]byte{[]byte(`v{"action":"start"}`), []byte("0terminal"), make([]byte, 36), {'T', 'A', 2, 1}, {'T', 'A', 1, 3}} {
+			if _, err := decodeAudioHandshake(frame); err == nil {
+				t.Fatal("accepted malformed handshake")
+			}
 		}
 	})
 }

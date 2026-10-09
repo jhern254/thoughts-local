@@ -24,7 +24,7 @@
     async start(grant) {
       if (this.current) return;
       const recording = {sessionID: grant.sessionID, draftID: grant.draftID, recordingID: grant.recordingID};
-      const run = {recording, audioContext: this.preparedContext, sequence: 0, stopping: false};
+      const run = {recording, audioContext: this.preparedContext, stopping: false};
       this.preparedContext = undefined;
       this.current = run;
       run.deadline = setTimeout(() => this.stop(), maximumRecordingMilliseconds);
@@ -69,16 +69,10 @@
         audioSocket.binaryType = 'arraybuffer';
         audioSocket.onopen = () => {
           if (this.current !== run) { audioSocket.close(); return; }
-          const handshake = new Uint8Array(76);
+          const handshake = new Uint8Array(36);
           try {
             handshake.set([84, 65, 1, 1]);
-            for (let index = 0; index < 16; index++) handshake[4 + index] = parseInt(grant.sessionID.slice(index * 2, index * 2 + 2), 16);
-            const header = new DataView(handshake.buffer);
-            header.setBigUint64(20, BigInt(grant.draftID), true);
-            header.setBigUint64(28, BigInt(grant.recordingID), true);
-            for (let index = 0; index < 32; index++) handshake[36 + index] = parseInt(grant.audioCapability.slice(index * 2, index * 2 + 2), 16);
-            header.setUint32(68, 16000, true);
-            handshake[72] = 1; handshake[73] = 1;
+            for (let index = 0; index < 32; index++) handshake[4 + index] = parseInt(grant.audioCapability.slice(index * 2, index * 2 + 2), 16);
             audioSocket.send(handshake);
           } catch {
             reject(new Error('Audio unavailable'));
@@ -108,23 +102,16 @@
     sendPCM(run, message) {
       if (!message.pcm) { if (message.status === 'failed') this.finish(run, 'failed'); return; }
       const pcmBytes = new Uint8Array(message.pcm);
-      let audioFrame;
       try {
         if (this.current !== run || run.stopping) return;
-        if (!run.ready || pcmBytes.length !== 3200 || run.audioSocket.readyState !== WebSocket.OPEN || run.sequence >= 0xffffffff) {
+        if (!run.ready || pcmBytes.length !== 3200 || run.audioSocket.readyState !== WebSocket.OPEN) {
           this.finish(run, 'failed'); return;
         }
-        audioFrame = new Uint8Array(12 + pcmBytes.length);
-        if (run.audioSocket.bufferedAmount + audioFrame.length > maximumOutboundBytes) { this.finish(run, 'failed'); return; }
-        audioFrame.set([84, 65, 1, 2]);
-        const header = new DataView(audioFrame.buffer);
-        header.setUint32(4, run.sequence++, true);
-        header.setUint32(8, pcmBytes.length / 2, true);
-        audioFrame.set(pcmBytes, 12);
-        run.audioSocket.send(audioFrame);
+        if (run.audioSocket.bufferedAmount + pcmBytes.length > maximumOutboundBytes) { this.finish(run, 'failed'); return; }
+        run.audioSocket.send(pcmBytes);
         run.processor.port.postMessage({credit: 1});
       } catch { this.finish(run, 'failed'); }
-      finally { audioFrame?.fill(0); pcmBytes.fill(0); }
+      finally { pcmBytes.fill(0); }
     }
     release(run) {
       clearTimeout(run.deadline);

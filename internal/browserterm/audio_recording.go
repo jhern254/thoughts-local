@@ -14,26 +14,20 @@ import (
 )
 
 type audioRecording struct {
-	session            *audioSession
-	authority          *voice.TranscriptAuthority
-	ctx                context.Context
-	cancel             context.CancelFunc
-	mu                 sync.Mutex
-	capability         [32]byte
-	created            time.Time
-	attached           bool
-	attachedSignal     chan struct{}
-	audioConnection    *websocket.Conn
-	pendingAudio       chan []int16
-	outstandingSamples int
-	totalBytes         uint64
-	totalSamples       uint64
-	expectedSequence   uint32
-	sampleCredit       float64
-	messageCredit      float64
-	lastIngress        time.Time
-	endStatus          byte
-	done               chan struct{}
+	session             *audioSession
+	authority           *voice.TranscriptAuthority
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	mu                  sync.Mutex
+	recordingCapability [32]byte
+	created             time.Time
+	attached            bool
+	attachedSignal      chan struct{}
+	audioConnection     *websocket.Conn
+	pendingAudio        chan []int16
+	totalSamples        uint64
+	endStatus           byte
+	done                chan struct{}
 }
 
 func newAudioRecording(session *audioSession, authority *voice.TranscriptAuthority) *audioRecording {
@@ -47,22 +41,19 @@ func newAudioRecording(session *audioSession, authority *voice.TranscriptAuthori
 		created:        created,
 		attachedSignal: make(chan struct{}),
 		pendingAudio:   make(chan []int16, maximumPendingAudioChunks),
-		sampleCredit:   maximumPendingAudioSamples,
-		messageCredit:  maximumAudioMessageBurst,
-		lastIngress:    created,
 		endStatus:      audioStatusStopped,
 		done:           make(chan struct{}),
 	}
-	rand.Read(recording.capability[:])
+	rand.Read(recording.recordingCapability[:])
 	session.recordings.Add(1)
 	go recording.runRecording()
 	return recording
 }
 
-func (recording *audioRecording) authorizeAudioConnection(handshake audioHandshake, audioConnection *websocket.Conn) byte {
+func (recording *audioRecording) authorizeAudioConnection(recordingCapability [32]byte, audioConnection *websocket.Conn) byte {
 	recording.mu.Lock()
 	defer recording.mu.Unlock()
-	if handshake.recording != recording.authority.Recording() || recording.ctx.Err() != nil || !recording.authority.Active() {
+	if recording.ctx.Err() != nil || !recording.authority.Active() {
 		return audioStatusDenied
 	}
 	if recording.attached {
@@ -71,19 +62,18 @@ func (recording *audioRecording) authorizeAudioConnection(handshake audioHandsha
 	if recording.session.settings.now().Sub(recording.created) >= recording.session.settings.capabilityLifetime {
 		return audioStatusDenied
 	}
-	if subtle.ConstantTimeCompare(handshake.capability[:], recording.capability[:]) != 1 {
+	if subtle.ConstantTimeCompare(recordingCapability[:], recording.recordingCapability[:]) != 1 {
 		return audioStatusDenied
 	}
 	recording.attached = true
-	clear(recording.capability[:])
+	clear(recording.recordingCapability[:])
 	recording.audioConnection = audioConnection
 	close(recording.attachedSignal)
 	return audioStatusReady
 }
 
-// enqueue takes ownership even when rejecting a chunk. Independent server
-// counters prevent a fast client or tiny frames from bypassing queue bounds.
-func (recording *audioRecording) enqueuePCMChunk(sequence uint32, pcmSamples []int16) byte {
+// Rejected chunks are cleared too; the caller stops the recording on rejection.
+func (recording *audioRecording) enqueuePCMChunk(pcmSamples []int16) byte {
 	recording.mu.Lock()
 	defer recording.mu.Unlock()
 	reject := func(status byte) byte {
@@ -93,42 +83,18 @@ func (recording *audioRecording) enqueuePCMChunk(sequence uint32, pcmSamples []i
 	if recording.ctx.Err() != nil || !recording.authority.Active() || !recording.attached {
 		return reject(audioStatusDenied)
 	}
-	if sequence != recording.expectedSequence || len(pcmSamples) == 0 || len(pcmSamples) > maximumPCMChunkSamples {
+	if len(pcmSamples) != pcmFrameSamples {
 		return reject(audioStatusInvalid)
 	}
-	now := recording.session.settings.now()
-	if now.Sub(recording.created) >= recording.session.settings.maximumDuration {
+	if recording.session.settings.now().Sub(recording.created) >= recording.session.settings.maximumDuration {
 		return reject(audioStatusLimit)
 	}
-	elapsed := now.Sub(recording.lastIngress).Seconds()
-	if elapsed < 0 {
-		return reject(audioStatusLimit)
-	}
-	recording.sampleCredit = min(float64(maximumPendingAudioSamples), recording.sampleCredit+elapsed*audioSampleRateHz)
-	recording.messageCredit = min(float64(maximumAudioMessageBurst), recording.messageCredit+elapsed*maximumAudioMessagesPerSecond)
-	recording.lastIngress = now
-	sampleCount := uint64(len(pcmSamples))
-	byteCount := sampleCount * 2
-	if byteCount > recording.session.settings.maximumBytes-recording.totalBytes {
-		return reject(audioStatusLimit)
-	}
-	if sampleCount > recording.session.settings.maximumSamples-recording.totalSamples {
-		return reject(audioStatusLimit)
-	}
-	if float64(sampleCount) > recording.sampleCredit || recording.messageCredit < 1 {
-		return reject(audioStatusLimit)
-	}
-	if recording.outstandingSamples+len(pcmSamples) > maximumPendingAudioSamples {
+	if uint64(len(pcmSamples)) > recording.session.settings.maximumSamples-recording.totalSamples {
 		return reject(audioStatusLimit)
 	}
 	select {
 	case recording.pendingAudio <- pcmSamples:
-		recording.outstandingSamples += len(pcmSamples)
-		recording.totalBytes += byteCount
-		recording.totalSamples += sampleCount
-		recording.expectedSequence++
-		recording.sampleCredit -= float64(sampleCount)
-		recording.messageCredit--
+		recording.totalSamples += uint64(len(pcmSamples))
 		return audioStatusReady
 	default:
 		return reject(audioStatusLimit)
@@ -170,7 +136,7 @@ func (recording *audioRecording) stopRecording(status byte) {
 	if recording.ctx.Err() == nil {
 		recording.endStatus = status
 	}
-	clear(recording.capability[:])
+	clear(recording.recordingCapability[:])
 	recording.cancel()
 	recording.discardPendingAudio()
 	recording.mu.Unlock()
@@ -180,7 +146,6 @@ func (recording *audioRecording) discardPendingAudio() {
 	for {
 		select {
 		case samples := <-recording.pendingAudio:
-			recording.outstandingSamples -= len(samples)
 			clear(samples)
 		default:
 			return
@@ -191,9 +156,6 @@ func (recording *audioRecording) discardPendingAudio() {
 func (recording *audioRecording) consumePCMChunk(samples []int16) (consumeErr error) {
 	defer func() {
 		clear(samples)
-		recording.mu.Lock()
-		recording.outstandingSamples -= len(samples)
-		recording.mu.Unlock()
 		if recover() != nil {
 			consumeErr = errors.New("audio consumer failed")
 		}
@@ -229,35 +191,30 @@ func (recording *audioRecording) runRecording() {
 		recording.stopRecording(audioStatusDenied)
 	}
 	cancelCapability()
+	var consumerDone chan struct{}
 	if recording.ctx.Err() == nil {
-		consumerDone := make(chan struct{})
+		consumerDone = make(chan struct{})
+		// The owner must revoke authority and close transport at the deadline
+		// even while a consumer is returning from cancellation. Completion
+		// still waits for that consumer; no work is detached.
 		go func() { defer close(consumerDone); recording.consumePendingAudio() }()
 		<-recording.ctx.Done()
-		recording.authority.Revoke()
-		recording.mu.Lock()
-		audioConnection := recording.audioConnection
-		status := recording.endStatus
-		if errors.Is(recording.ctx.Err(), context.DeadlineExceeded) {
-			status = audioStatusLimit
-			recording.endStatus = status
-		}
-		recording.mu.Unlock()
-		if audioConnection != nil {
-			writeAudioStatus(recording.session.ctx, audioConnection, status)
-			audioConnection.CloseNow()
-		}
-		<-consumerDone
 	}
 	recording.mu.Lock()
-	endStatus := recording.endStatus
-	recording.mu.Unlock()
-	recording.stopRecording(endStatus)
-	recording.mu.Lock()
-	audioConnection := recording.audioConnection
 	status := recording.endStatus
+	if errors.Is(recording.ctx.Err(), context.DeadlineExceeded) {
+		status = audioStatusLimit
+		recording.endStatus = status
+	}
+	audioConnection := recording.audioConnection
 	recording.mu.Unlock()
+	recording.stopRecording(status)
 	if audioConnection != nil {
+		writeAudioStatus(recording.session.ctx, audioConnection, status)
 		audioConnection.CloseNow()
+	}
+	if consumerDone != nil {
+		<-consumerDone
 	}
 	recording.session.mu.Lock()
 	if recording.session.activeRecording == recording {

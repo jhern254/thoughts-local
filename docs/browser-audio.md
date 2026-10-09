@@ -68,35 +68,27 @@ MediaRecorder discard helper remains separate and is not started by this path.
 
 ## Binary protocol version 1
 
-All audio WebSocket messages are binary, uncompressed, and start with four bytes:
-`54 41 01 <type>` (`TA`, version 1, frame type). Multi-byte integers below are
-unsigned little-endian. No authored text is accepted on this uplink.
+All audio WebSocket messages are binary and uncompressed. Only the handshake
+and server statuses have a four-byte header: `54 41 01 <type>` (`TA`, version 1,
+frame type). No authored text is accepted on this uplink.
 
-### Initial handshake: type 1, exactly 76 bytes
-
-| Offset | Bytes | Meaning |
-| --- | ---: | --- |
-| 0 | 4 | Common header |
-| 4 | 16 | Raw session identity (hex in control metadata) |
-| 20 | 8 | Draft ID |
-| 28 | 8 | Recording ID |
-| 36 | 32 | Raw one-use capability (hex in control metadata) |
-| 68 | 4 | Sample rate, exactly 16,000 |
-| 72 | 1 | Channels, exactly 1 |
-| 73 | 1 | Encoding, 1 = signed PCM16LE |
-| 74 | 2 | Reserved, both zero |
-
-Wait for Ready before sending PCM. IDs supplied to the browser stay within
-JavaScript's exact integer range; the wire uses uint64.
-
-### PCM: type 2, 12-byte header followed by actual sample bytes
+### Initial handshake: type 1, exactly 36 bytes
 
 | Offset | Bytes | Meaning |
 | --- | ---: | --- |
-| 0 | 4 | Common header |
-| 4 | 4 | Sequence, starts at zero and increases by one |
-| 8 | 4 | Declared sample count, must match actual bytes |
-| 12 | count × 2 | PCM16LE |
+| 0 | 4 | Header |
+| 4 | 32 | Raw one-use capability (hex in control metadata) |
+
+The server binds the capability to its current recording. The audio socket does
+not resend session/draft/recording IDs or negotiate a format. Wait for Ready
+before sending PCM.
+
+### PCM: exactly 3,200 bytes
+
+Each subsequent message contains only 1,600 signed PCM16LE samples: exactly
+100 ms at 16 kHz. Any other length or a text message ends the recording. There
+is no frame header, sequence number, or declared sample count; WebSocket provides
+reliable ordered delivery.
 
 ### Server status: type 3, exactly 5 bytes
 
@@ -106,33 +98,31 @@ On failure the connection closes; a status is best effort when a peer/read has
 already failed. Stop is a control action on `/ws`, not an audio frame. Closing
 the audio connection also revokes the recording.
 
-## Independent limits
+## Bounded recording
 
 | Boundary | Server limit |
 | --- | --- |
-| Whole WebSocket message, including header | 8,192 bytes |
-| PCM chunk | 3,200 samples / 6,400 bytes / 200 ms |
-| Total audio bytes | 38,400,000 |
-| Total samples | 19,200,000 |
+| PCM / maximum WebSocket message | 3,200 bytes / 100 ms |
+| Total samples | 19,200,000 (38,400,000 PCM bytes) |
 | Wall time since accepted Start | 20 minutes |
-| Outstanding audio, including consumer's current chunk | 32,000 samples / 2 seconds |
-| Pending chunks | 20 |
-| Sample ingress token bucket | 16,000/s, 32,000 burst |
-| Message ingress token bucket | 50/s, 20 burst |
+| Pending PCM frames | 20 / 2 seconds |
 | Initial audio handshake | 5 seconds |
 | Authorized read inactivity | 10 seconds |
 | Capability attachment | 60 seconds |
-| Active recording / pending handshake per session | 1 / 1 |
+| Active recording / authorized audio connection per session | 1 / 1 |
 
-A fixed 8,193-byte read buffer bounds fragmented messages too. Sample count and
-byte checks precede PCM allocation. The total recording allowance is a counter,
-not a preallocated buffer. Tiny frames cannot evade queue or message-rate limits;
-a fast consumer cannot evade ingress-rate limits. Overflow stops the recording
-rather than dropping PCM, spilling to disk, or waiting indefinitely.
+The 20-frame channel is the queue bound. The consumer borrows at most one
+additional frame until it returns. A fixed 3,201-byte receive buffer bounds
+fragmented messages; exact-length validation precedes PCM allocation. Total
+samples are counted when a frame enters the queue, so a fast consumer cannot
+evade the aggregate limit. Twenty minutes of samples is a counter, not an
+allocation. Queue overflow stops recording instead of dropping PCM or spilling
+to disk. No token bucket or ingress-rate negotiation is needed for this loopback
+endpoint: queue capacity, aggregate samples, and wall time bound recording work.
 
-Browser limits are separate: four outstanding worklet transfers, 100 ms chunks,
-and at most 48,000 buffered socket bytes. Exceeding either bound stops capture.
-The server trusts neither those limits nor client-declared lengths.
+Browser limits are separate: four outstanding worklet transfers and at most
+48,000 buffered socket bytes. Exceeding either bound stops capture. The server
+enforces its own frame, queue, sample, and time limits independently.
 
 ## Authority, ownership, and privacy
 
@@ -153,8 +143,11 @@ coalesced or dropped. Old results remain inert across Stop/restart, cancel,
 draft replacement, disconnect, and a new session.
 
 The session owns delivery; each recording owns its deadline, consumer, queue,
-and connection. `PCMConsumer` borrows samples only until returning, must honor
-context, and must retain none. Consumer errors and panic values are discarded;
+and connection. The lifecycle owner revokes authority and closes transport when
+the deadline ends, even if the consumer is still returning from cancellation;
+`RecordingEnded` waits for that worker to join. `PCMConsumer` borrows samples only
+until returning, must honor context, and must retain none. Consumer errors and
+panic values are discarded;
 only fixed status codes escape. Shutdown joins recording and session work before
 shared application resources close. A consumer that ignores cancellation can
 block shutdown; detached work is not permitted by this injection contract.

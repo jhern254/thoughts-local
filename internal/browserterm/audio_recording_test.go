@@ -19,28 +19,28 @@ func TestAudioRecording_Lifecycle(t *testing.T) {
 		})
 		authority := voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: session.sessionID, DraftID: 1, RecordingID: 1})
 		recording := newAudioRecording(session, authority)
-		handshake := audioHandshake{recording: authority.Recording(), capability: recording.capability}
+		handshake := recording.recordingCapability
 		if status := recording.authorizeAudioConnection(handshake, nil); status != audioStatusReady {
 			t.Fatalf("attach got %d", status)
 		}
-		first := make([]int16, maximumPCMChunkSamples)
+		first := make([]int16, pcmFrameSamples)
 		first[0] = 12345
-		if status := recording.enqueuePCMChunk(0, first); status != audioStatusReady {
+		if status := recording.enqueuePCMChunk(first); status != audioStatusReady {
 			t.Fatalf("enqueue got %d", status)
 		}
 		<-entered
 		queued := make([][]int16, 0)
-		for sequence := uint32(1); sequence < 10; sequence++ {
-			samples := make([]int16, maximumPCMChunkSamples)
+		for frameIndex := 0; frameIndex < maximumPendingAudioChunks; frameIndex++ {
+			samples := make([]int16, pcmFrameSamples)
 			samples[0] = 12345
 			queued = append(queued, samples)
-			if status := recording.enqueuePCMChunk(sequence, samples); status != audioStatusReady {
+			if status := recording.enqueuePCMChunk(samples); status != audioStatusReady {
 				t.Fatalf("enqueue got %d", status)
 			}
 		}
-		overflow := make([]int16, maximumPCMChunkSamples)
+		overflow := make([]int16, pcmFrameSamples)
 		overflow[0] = 12345
-		if status := recording.enqueuePCMChunk(10, overflow); status != audioStatusLimit {
+		if status := recording.enqueuePCMChunk(overflow); status != audioStatusLimit {
 			t.Fatalf("overflow got %d, want limit", status)
 		}
 		recording.stopRecording(audioStatusLimit)
@@ -85,8 +85,8 @@ func TestAudioSession_DraftReplacement(t *testing.T) {
 		previousAuthority := voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: session.sessionID, DraftID: 1, RecordingID: 1})
 		session.synchronizeRecording(thoughts.VoiceState{TranscriptAuthority: previousAuthority, RecordingStatus: "requesting"})
 		previous := session.activeRecording
-		previous.authorizeAudioConnection(audioHandshake{recording: previousAuthority.Recording(), capability: previous.capability}, nil)
-		previous.enqueuePCMChunk(0, []int16{1})
+		previous.authorizeAudioConnection(previous.recordingCapability, nil)
+		previous.enqueuePCMChunk(make([]int16, pcmFrameSamples))
 		<-entered
 		currentAuthority := voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: session.sessionID, DraftID: 2, RecordingID: 1})
 		capability, rejected := session.synchronizeRecording(thoughts.VoiceState{TranscriptAuthority: currentAuthority, RecordingStatus: "requesting"})

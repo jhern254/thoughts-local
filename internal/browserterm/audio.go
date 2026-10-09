@@ -40,30 +40,16 @@ func (server *server) connectAudio(response http.ResponseWriter, request *http.R
 		return
 	}
 	session.mu.Lock()
-	if session.closing || session.handshakePending || session.activeRecording == nil {
+	if session.closing || session.activeRecording == nil {
 		session.mu.Unlock()
 		server.mu.Unlock()
 		http.Error(response, "Audio unavailable", http.StatusForbidden)
 		return
 	}
-	session.handshakePending = true
 	server.sessions.Add(1)
 	session.mu.Unlock()
 	server.mu.Unlock()
 	defer server.sessions.Done()
-	handshakeHeld := true
-	defer func() {
-		if handshakeHeld {
-			session.mu.Lock()
-			session.handshakePending = false
-			session.mu.Unlock()
-		}
-	}()
-	// Recover without formatting a value: a parser/consumer failure must not
-	// create an authored diagnostic or a net/http panic report containing PCM.
-	defer func() {
-		_ = recover()
-	}()
 	audioConnection, err := websocket.Accept(&handshakeWriter{ResponseWriter: response}, request, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
 		return
@@ -79,7 +65,7 @@ func (server *server) connectAudio(response http.ResponseWriter, request *http.R
 		writeAudioStatus(session.ctx, audioConnection, audioStatusInvalid)
 		return
 	}
-	handshake, err := decodeAudioHandshake(frame)
+	recordingCapability, err := decodeAudioHandshake(frame)
 	clear(storage[:])
 	if err != nil {
 		writeAudioStatus(session.ctx, audioConnection, audioStatusInvalid)
@@ -92,8 +78,8 @@ func (server *server) connectAudio(response http.ResponseWriter, request *http.R
 		writeAudioStatus(session.ctx, audioConnection, audioStatusDenied)
 		return
 	}
-	status := recording.authorizeAudioConnection(handshake, audioConnection)
-	clear(handshake.capability[:])
+	status := recording.authorizeAudioConnection(recordingCapability, audioConnection)
+	clear(recordingCapability[:])
 	if status == audioStatusReady {
 		defer func() { recording.stopRecording(audioStatusFailed); <-recording.done }()
 	}
@@ -101,10 +87,6 @@ func (server *server) connectAudio(response http.ResponseWriter, request *http.R
 	if status != audioStatusReady {
 		return
 	}
-	session.mu.Lock()
-	session.handshakePending = false
-	handshakeHeld = false
-	session.mu.Unlock()
 	for {
 		readCtx, cancelRead := session.settings.withTimeout(recording.ctx, audioInactivityTimeout)
 		frame, err = readAudioMessage(readCtx, audioConnection, storage[:])
@@ -112,13 +94,13 @@ func (server *server) connectAudio(response http.ResponseWriter, request *http.R
 		if err != nil {
 			return
 		}
-		sequence, samples, decodeErr := decodePCMFrame(frame)
+		samples, decodeErr := decodePCMFrame(frame)
 		clear(storage[:])
 		if decodeErr != nil {
 			recording.stopRecording(audioStatusInvalid)
 			return
 		}
-		if status = recording.enqueuePCMChunk(sequence, samples); status != audioStatusReady {
+		if status = recording.enqueuePCMChunk(samples); status != audioStatusReady {
 			recording.stopRecording(status)
 			return
 		}

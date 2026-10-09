@@ -24,7 +24,6 @@ func discardPCM(context.Context, voice.RecordingKey, []int16, func(voice.Transcr
 type audioSettings struct {
 	now                func() time.Time
 	withTimeout        func(context.Context, time.Duration) (context.Context, context.CancelFunc)
-	maximumBytes       uint64
 	maximumSamples     uint64
 	maximumDuration    time.Duration
 	capabilityLifetime time.Duration
@@ -34,7 +33,6 @@ func defaultAudioSettings() audioSettings {
 	return audioSettings{
 		now:                time.Now,
 		withTimeout:        context.WithTimeout,
-		maximumBytes:       maximumRecordingAudioBytes,
 		maximumSamples:     maximumRecordingSamples,
 		maximumDuration:    maximumRecordingDuration,
 		capabilityLifetime: audioCapabilityLifetime,
@@ -49,7 +47,6 @@ type audioSession struct {
 	settings          audioSettings
 	mu                sync.Mutex
 	activeRecording   *audioRecording
-	handshakePending  bool
 	closing           bool
 	publishMu         sync.Mutex
 	pendingTranscript chan voice.TranscriptUpdate
@@ -119,7 +116,7 @@ func (session *audioSession) synchronizeRecording(voiceState thoughts.VoiceState
 	if recording.attached || recording.ctx.Err() != nil {
 		return "", nil
 	}
-	return hex.EncodeToString(recording.capability[:]), nil
+	return hex.EncodeToString(recording.recordingCapability[:]), nil
 }
 
 func (session *audioSession) revokeRecording() {
