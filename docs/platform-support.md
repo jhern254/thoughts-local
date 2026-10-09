@@ -8,11 +8,14 @@ setup and model installation; ordinary builds contain no native runtime.
 
 | Platform | Core app | Browser TUI | Moonshine STT | Native STT integration test | Notes |
 |---|---|---|---|---|---|
-| Linux amd64 | Verified | Verified | Verified | Verified locally and in CI | ThinkPad T480s and [Linux runner](https://github.com/jhern254/thoughts-local/actions/runs/37766066639/job/113273923131). |
-| macOS arm64 | Build-only | Build-only | Verified | Verified in CI | [Apple Silicon execution](https://github.com/jhern254/thoughts-local/actions/runs/37766066639/job/113273923238). |
-| macOS amd64 | Build-only | Build-only | Verified | Verified in CI | [Intel execution](https://github.com/jhern254/thoughts-local/actions/runs/37766066639/job/113273923251). |
-| Windows amd64 | Build-only | Build-only | Verified | Verified in CI | [Windows execution](https://github.com/jhern254/thoughts-local/actions/runs/37766066639/job/113273923071); private ONNX DLL prevents system-runtime collisions. |
+| Linux amd64 | Verified | Verified | Verified | Verified locally and in CI | ThinkPad T480s and [Linux runner](https://github.com/jhern254/thoughts-local/pull/69/checks). |
+| macOS arm64 | Build-only | Build-only | Verified | Verified in CI | [Apple Silicon execution](https://github.com/jhern254/thoughts-local/pull/69/checks). |
+| macOS amd64 | Build-only | Build-only | Verified | Verified in CI | [Intel execution](https://github.com/jhern254/thoughts-local/pull/69/checks). |
+| Windows amd64 | Build-only | Build-only | Verified | Verified in CI | [Windows execution](https://github.com/jhern254/thoughts-local/pull/69/checks); private ONNX DLL prevents system-runtime collisions. |
 | iOS arm64 | Planned | Planned | Planned | Not implemented | Desktop cgo support does not imply iOS support. |
+
+CI evidence links follow this PR's current head; inspect the matching
+`Native transcription (<GOOS>/<GOARCH>)` job for each platform.
 
 Core app and Browser TUI statuses describe running/hosting the Go application,
 not accessing a Linux-hosted browser TUI from another device. Desktop builds

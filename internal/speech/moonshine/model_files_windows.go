@@ -5,7 +5,6 @@ package moonshine
 import (
 	"errors"
 	"os"
-	"reflect"
 	"syscall"
 	"unsafe"
 )
@@ -36,14 +35,9 @@ func mapModelFile(modelRoot *os.Root, relativePath string) (*mappedModelFile, er
 	if err != nil {
 		return nil, errors.Join(err, syscall.CloseHandle(windowsMappingHandle))
 	}
-	// Windows returns an integer address for OS-owned pages. This header belongs
-	// to an actual slice, not a standalone SliceHeader allocation. The mapping
-	// handle and view retain stable read-only storage until native destruction.
-	var mappedBytes []byte
-	mappedSliceHeader := (*reflect.SliceHeader)(unsafe.Pointer(&mappedBytes))
-	mappedSliceHeader.Data = mappedAddress
-	mappedSliceHeader.Len = sizeBytes
-	mappedSliceHeader.Cap = sizeBytes
+	// The mapping handle and view retain stable read-only OS-owned storage
+	// until native transcriber destruction. This slice does not own Go heap memory.
+	mappedBytes := unsafe.Slice((*byte)(unsafe.Pointer(mappedAddress)), sizeBytes)
 	return &mappedModelFile{
 		mappedBytes:          mappedBytes,
 		windowsMappingHandle: windowsMappingHandle,
