@@ -197,4 +197,8 @@ PCM cases use its synthetic microphone device (configured only in Playwright);
 its permission/control cases retain silent generated tracks. Explicit permission
 replies and the real worklet/socket path are exercised in both browsers. It proves
 transport/lifecycle, not recognition accuracy or physical-microphone behavior.
+Headless Linux runners also need a working audio backend for Firefox's Web Audio
+clock. The workflow starts PulseAudio with a null output sink; it stores no audio
+and requires no physical device. Desktop developer sessions can use their existing
+PulseAudio-compatible backend.
 No macOS/Windows microphone interaction or iOS support is claimed here.

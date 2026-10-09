@@ -26,6 +26,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        # Golden fixtures compare repository bytes; Windows checkout must not
+        # translate LF into CRLF. This override affects checkout only.
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -49,6 +55,15 @@ jobs:
         working-directory: internal/browserterm/client
       - run: npx playwright install --with-deps chromium firefox
         working-directory: internal/browserterm/client
+      - name: Start synthetic audio backend
+        # Firefox still needs an output clock for Web Audio on a headless runner.
+        # A null sink provides it without physical devices or audio files.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=thoughts_test_audio rate=48000
+          pactl set-default-sink thoughts_test_audio
       - name: PCM conversion and capture unit tests
         run: node --test internal/browserterm/client/microphone.test.mjs internal/browserterm/client/pcm*.test.mjs
       - name: Real worklets and sockets with injected fake consumer
