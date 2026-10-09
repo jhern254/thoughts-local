@@ -19,6 +19,7 @@ The core philosophy is:
 * Every async operation must answer: who owns this work, and what context ends it? Pass the owner’s context through blocking calls and make waits cancellation-aware. Cancellation does not replace stale-result checks or joining started work before shared resources close.
 * Return errors clearly; do not hide failures.
 * Do not introduce global state unless there is a strong reason. Justify that reason before adding.
+* When changing platform-specific behavior, build tags, native dependencies, or architectures, update `docs/platform-support.md` in the same PR. Require runtime evidence for Verified status; distinguish Verified, Build-only, Upstream-supported, and Planned.
 
 ### Readability and self-documenting code
 
