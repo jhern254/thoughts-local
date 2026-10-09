@@ -33,20 +33,28 @@ const (
 )
 
 type server struct {
-	newModel  func(context.Context) tea.Model
-	logger    logging.Logger
-	authority string
-	ctx       context.Context
-	mu        sync.Mutex
-	closing   bool
-	active    bool
-	sessions  sync.WaitGroup
+	audioSession  *audioSession
+	audioConsumer PCMConsumer
+	newModel      func(context.Context) tea.Model
+	logger        logging.Logger
+	authority     string
+	ctx           context.Context
+	mu            sync.Mutex
+	closing       bool
+	active        bool
+	sessions      sync.WaitGroup
 }
 
 // Serve owns a previously bound IPv4 loopback listener. It returns after HTTP
 // handlers, the active program, and its started commands have stopped. Factories
 // must give all service operations the supplied session context.
 func Serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger) error {
+	return ServeWithAudioConsumer(ctx, listener, newModel, logger, discardPCM)
+}
+
+// ServeWithAudioConsumer injects a recording-owned test consumer. Normal Serve
+// discards audio and never invents transcripts; neither path loads a recognizer.
+func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumer PCMConsumer) error {
 	defer listener.Close()
 	// Bubble Tea reads this directly from the process environment, independent
 	// of WithEnvironment, and records terminal traffic. Refuse it in browser mode.
@@ -59,7 +67,7 @@ func Serve(ctx context.Context, listener net.Listener, newModel func(context.Con
 	}
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s := &server{newModel: newModel, logger: logger, authority: listener.Addr().String(), ctx: sessionCtx}
+	s := &server{audioConsumer: consumer, newModel: newModel, logger: logger, authority: listener.Addr().String(), ctx: sessionCtx}
 	httpServer := &http.Server{
 		Handler:           s,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -100,7 +108,7 @@ func Serve(ctx context.Context, listener net.Listener, newModel func(context.Con
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Permissions-Policy", "microphone=(self), camera=()")
 	w.Header().Set("X-Frame-Options", "DENY")
@@ -114,12 +122,20 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.URL.Path == "/ws" {
+	if r.URL.Path == "/ws" || r.URL.Path == "/voice/audio" {
 		if len(r.Header.Values("Origin")) != 1 || r.Header.Get("Origin") != "http://"+s.authority {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
-		s.connect(w, r)
+		if r.URL.Path == "/voice/audio" {
+			if r.URL.RawQuery != "" {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			s.connectAudio(w, r)
+		} else {
+			s.connect(w, r)
+		}
 		return
 	}
 	name := r.URL.Path
@@ -190,21 +206,26 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	size := messages[0].(tea.WindowSizeMsg)
+	audioSession := newAudioSession(ctx, s.audioConsumer)
+	s.mu.Lock()
+	s.audioSession = audioSession
+	s.mu.Unlock()
 	writer := &terminalWriter{ctx: ctx, conn: conn, cancel: cancel}
 	guard := tui.NewSession(ctx, cancel, func(ctx context.Context) tea.Model {
 		model := s.newModel(ctx)
 		if _, ok := model.(interface{ VoiceState() thoughts.VoiceState }); ok {
-			return voiceBridgeModel{Model: model, writer: writer}
+			return voiceBridgeModel{Model: model, writer: writer, audioSession: audioSession}
 		}
 		return model
 	})
 	program := newProgram(ctx, guard, writer, size)
+	audioSession.startDelivery(program.Send)
 	readCtx, stopReading := context.WithCancel(s.ctx)
 	defer stopReading()
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)
-		defer cancel()
+		defer func() { audioSession.revokeRecording(); cancel() }()
 		for {
 			kind, frame, err := conn.Read(readCtx)
 			if err != nil {
@@ -224,6 +245,12 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 	wasCancelled := ctx.Err() != nil
 	cancel()
 	guard.Stop()
+	audioSession.close()
+	s.mu.Lock()
+	if s.audioSession == audioSession {
+		s.audioSession = nil
+	}
+	s.mu.Unlock()
 	// Editing has stopped. Release admission before announcing quit so a client
 	// that immediately reconnects cannot race the old socket's close handshake.
 	releaseSlot()

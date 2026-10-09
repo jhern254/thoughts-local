@@ -13,9 +13,9 @@
   let resizeRetry;
   let voiceState = {};
   let captureIdentity;
-  const microphone = new ThoughtsMicrophone(action => {
-    if (!captureIdentity || !connected) return;
-    sendVoice({action, ...captureIdentity});
+  const microphone = new ThoughtsPCMRecording((action, recording) => {
+    if (!captureIdentity || !connected || captureIdentity.sessionID !== recording.sessionID || captureIdentity.draftID !== recording.draftID || captureIdentity.recordingID !== recording.recordingID) return;
+    sendVoice({action, draftID: recording.draftID, recordingID: recording.recordingID});
   });
   function sendVoice(action) {
     if (send('v', encoder.encode(JSON.stringify(action)))) return true;
@@ -32,18 +32,25 @@
   }
   function receiveVoice(state) {
     const restoreFocus = state.draftID && (voiceState.draftID !== state.draftID || (voiceState.recordingStatus !== "idle" && state.recordingStatus === "idle"));
-    const identity = {draftID: state.draftID, recordingID: state.recordingID};
-    if (!captureIdentity || captureIdentity.draftID !== identity.draftID || captureIdentity.recordingID !== identity.recordingID) {
-      microphone.cancel();
+    const identity = {sessionID: state.sessionID, draftID: state.draftID, recordingID: state.recordingID};
+    if (!captureIdentity || captureIdentity.sessionID !== identity.sessionID || captureIdentity.draftID !== identity.draftID || captureIdentity.recordingID !== identity.recordingID) {
+      const acceptedStart = state.recordingStatus === 'requesting' && voiceState.sessionID === state.sessionID && voiceState.draftID === state.draftID;
+      microphone.cancel(acceptedStart);
       captureIdentity = identity.draftID ? identity : undefined;
     }
     voiceState = state;
-    if (state.recordingStatus === 'requesting') microphone.start();
+    if (state.recordingStatus === 'requesting' && state.audioCapability) microphone.start(state);
     else if (state.recordingStatus === 'stopping') microphone.stop();
     else if (state.recordingStatus === 'idle' || !state.draftID) microphone.cancel();
+    if (connected && !ended) {
+      status.textContent = ({requesting: 'Requesting microphone…', recording: 'Recording audio (recognizer not connected)', stopping: 'Stopping audio…'})[state.recordingStatus] || 'Connected';
+    }
     if (restoreFocus) term.focus();
   }
   window.addEventListener('pagehide', clearVoice);
+  container.addEventListener('keydown', event => {
+    if (event.key === 'F8' && connected && voiceState.draftID && voiceState.recordingStatus === 'idle') microphone.prepare();
+  }, true);
 
   // Use xterm's supported logger seam. Never forward terminal data or errors.
   const quiet = () => {};

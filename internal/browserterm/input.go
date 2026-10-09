@@ -1,8 +1,10 @@
 package browserterm
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
@@ -36,7 +38,12 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 		// Voice frames contain only small control metadata, so cap JSON at 256 bytes.
 		// 9007199254740991 is JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1):
 		// larger IDs can round in the browser and break draft/recording ownership.
-		if len(body) > 256 || json.Unmarshal(body, &action) != nil || action.DraftID > 9007199254740991 || action.RecordingID > 9007199254740991 {
+		if len(body) > 256 {
+			return nil, errInput
+		}
+		decoder := json.NewDecoder(bytes.NewReader(body))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&action) != nil || decoder.Decode(new(any)) != io.EOF || action.DraftID > 9007199254740991 || action.RecordingID > 9007199254740991 {
 			return nil, errInput
 		}
 		// Open has no existing draft; later controls must identify one. The model

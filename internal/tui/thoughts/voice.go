@@ -11,12 +11,13 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 // BrowserRecordingEnabledMsg enables recording controls for a browser session.
 // Only the browser adapter sends it. Microphone support and permission are
 // checked on Record, not when the adapter enables these controls.
-type BrowserRecordingEnabledMsg struct{}
+type BrowserRecordingEnabledMsg struct{ SessionID string }
 
 // VoiceAction contains control metadata only, never audio or transcript text.
 type VoiceAction struct {
@@ -27,6 +28,10 @@ type VoiceAction struct {
 
 // VoiceState reports browser recording controls and the current draft's status.
 type VoiceState struct {
+	SessionID string `json:"sessionID"`
+	// This Go-only authority carries no PCM or capability. The browser bridge
+	// uses the same revocation boundary as the draft mutation.
+	TranscriptAuthority *voice.TranscriptAuthority `json:"-"`
 	// BrowserRecordingEnabled means this session uses the browser adapter.
 	// It does not imply microphone permission, API support, or a working device.
 	BrowserRecordingEnabled bool `json:"browserRecordingEnabled"`
@@ -60,6 +65,8 @@ type voiceSubjectsLoaded struct {
 	err               error
 }
 type voiceDraft struct {
+	transcriptAuthority            *voice.TranscriptAuthority
+	recordingBaseText              string
 	ctx                            context.Context
 	cancel                         context.CancelFunc
 	cancelRead                     context.CancelFunc
@@ -75,6 +82,9 @@ type voiceDraft struct {
 }
 
 func (m *Model) stopVoice() {
+	if m.voice.transcriptAuthority != nil {
+		m.voice.transcriptAuthority.Revoke()
+	}
 	if m.voice.cancel != nil {
 		m.voice.cancel()
 	}
@@ -113,9 +123,11 @@ func (m *Model) EnableVoice(draftID uint64, reader VoiceSubjectReader, subjectNa
 }
 func (m Model) VoiceState() VoiceState {
 	state := VoiceState{
-		DraftID:         m.voice.draftID,
-		RecordingID:     m.voice.recordingID,
-		RecordingStatus: m.voice.recordingStatus,
+		SessionID:           m.browserSessionID,
+		TranscriptAuthority: m.voice.transcriptAuthority,
+		DraftID:             m.voice.draftID,
+		RecordingID:         m.voice.recordingID,
+		RecordingStatus:     m.voice.recordingStatus,
 	}
 	if m.voice.suspended || m.screen != create || m.loading {
 		state.DraftID = 0
@@ -167,7 +179,14 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 		}
 		m.stopClipboard()
 		m.request++
+		if m.voice.recordingID == 9007199254740991 {
+			return m, nil
+		}
 		m.voice.recordingID++
+		m.voice.recordingBaseText = m.input.Value()
+		if m.browserSessionID != "" {
+			m.voice.transcriptAuthority = voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: m.browserSessionID, DraftID: m.voice.draftID, RecordingID: m.voice.recordingID})
+		}
 		m.voice.recordingStatus = "requesting"
 		m.voice.message = ""
 		m.input.Blur()
@@ -177,10 +196,19 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 			m.voice.recordingStatus = "recording"
 		}
 	case "stop":
+		if m.voice.transcriptAuthority != nil {
+			m.voice.transcriptAuthority.Revoke()
+		}
 		if m.voice.recordingStatus == "requesting" || m.voice.recordingStatus == "recording" {
 			m.voice.recordingStatus = "stopping"
 		}
 	case "stopped", "denied", "unavailable", "failed":
+		if m.voice.transcriptAuthority != nil && m.voiceLocked() {
+			m.voice.transcriptAuthority.Revoke()
+			m.voice.recordingStatus = "stopping"
+			m.voice.message = map[string]string{"denied": "Microphone permission was denied. Draft unchanged.", "unavailable": "Microphone unavailable. Draft preserved.", "failed": "Microphone capture failed. Draft preserved."}[action.Action]
+			return m, nil
+		}
 		if !m.voiceLocked() {
 			return m, nil
 		}
@@ -301,4 +329,51 @@ func (m Model) acceptVoiceSubjects(reply voiceSubjectsLoaded) (Model, tea.Cmd) {
 		m.voice.items = reply.items
 	}
 	return m, nil
+}
+
+func (m Model) applyTranscriptUpdate(update voice.TranscriptUpdate) (Model, tea.Cmd) {
+	if m.voice.transcriptAuthority == nil || m.voice.suspended || m.screen != create || m.loading || (m.voice.recordingStatus != "recording" && m.voice.recordingStatus != "requesting") {
+		return m, nil
+	}
+	current := voice.RecordingKey{SessionID: m.browserSessionID, DraftID: m.voice.draftID, RecordingID: m.voice.recordingID}
+	if update.Recording != current {
+		return m, nil
+	}
+	m.voice.transcriptAuthority.ApplyTranscriptUpdate(update, func(transcriptText string) bool {
+		draftText := m.voice.recordingBaseText
+		if transcriptText != "" {
+			if draftText != "" && !strings.HasSuffix(draftText, "\n") {
+				draftText += "\n"
+			}
+			draftText += transcriptText
+		}
+		if !utf8.ValidString(draftText) || strings.Count(draftText, "\n") >= textareaMaxLines {
+			return false
+		}
+		for _, character := range draftText {
+			if character == utf8.RuneError || (character != '\n' && unicode.IsControl(character)) {
+				return false
+			}
+		}
+		m.input.SetValue(draftText)
+		m.input.CursorEnd()
+		return true
+	})
+	return m, nil
+}
+
+func (m Model) recordingEnded(ended voice.RecordingEnded) (Model, tea.Cmd) {
+	if m.voice.transcriptAuthority == nil || ended.Recording != m.voice.transcriptAuthority.Recording() || m.voice.draftID == 0 {
+		return m, nil
+	}
+	m.voice.transcriptAuthority.Revoke()
+	m.voice.transcriptAuthority = nil
+	m.voice.recordingBaseText = ""
+	m.voice.recordingStatus = "idle"
+	if ended.Failed && m.voice.message == "" {
+		m.voice.message = "Audio capture stopped. Draft preserved."
+	}
+	m.voice.subjectFocused = false
+	m.resizeVoice(m.voice.width, m.voice.height)
+	return m, m.input.Focus()
 }

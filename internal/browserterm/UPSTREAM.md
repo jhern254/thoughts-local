@@ -142,6 +142,9 @@ npx playwright install chromium firefox
 npm test
 ```
 
+For the complete synthetic PCM/fake-transcript path, use the opt-in Go browser
+host described in [browser-audio.md](../../docs/browser-audio.md).
+
 Set `THOUGHTS_BROWSER_URL` for a different port. These development tests use
 synthetic clipboard contents. Inspect normal/narrow screenshots as well as test
 results. Run `make quick` before commits and `make ci` for full Go verification
@@ -151,10 +154,13 @@ not establish Windows/macOS support or Safari/iPhone acceptance.
 
 ## Microphone capture
 
-The Thoughts-owned `microphone.js` uses browser microphone permission and
-MediaRecorder, requests roughly one-second chunks, and immediately discards them.
-A separate elapsed-time deadline stops capture at twenty minutes. No audio
-bytes are sent to Go, persisted, or made playable in this stage.
+The browser now uses `pcm-capture.js` and `pcm-worklet.js` to send bounded,
+mono PCM16LE at 16 kHz to the dedicated `/voice/audio` socket. The standard
+consumer discards PCM; real recognition is intentionally not connected.
+[`docs/browser-audio.md`](../../docs/browser-audio.md) documents the versioned
+protocol, capability authorization, independent limits, privacy, and cleanup.
+The older `microphone.js` MediaRecorder discard helper remains separate for its
+existing focused tests; the client does not start both capture paths.
 
 `BrowserRecordingEnabledMsg` tells the root TUI that this session uses browser
 recording controls. `VoiceState.BrowserRecordingEnabled` reports that capability;
@@ -170,11 +176,11 @@ Recording is controlled by the shared Thoughts editor, using F8 for now:
 
 1. The TUI key changes the draft's recording state through `updateVoiceAction`.
 2. `voiceBridgeModel` sends a `VoiceState` snapshot to `client.js`, which starts
-   or stops `ThoughtsMicrophone` on the browser's device.
+   or stops `ThoughtsPCMRecording` on the browser's device.
 3. Browser callbacks send control acknowledgements through `inputMessages`
-   back to the TUI. Editing and saving stay locked until capture stops.
+   back to the TUI. Editing and saving stay locked until recording-owned server work joins.
 
-Binary `v` frames carry bounded recording controls and state only. `inputMessages`
+Binary `v` frames carry bounded recording controls/state and the one-use audio capability; never PCM or transcript uploads. `inputMessages`
 validates controls; the Thoughts draft checks its draft/recording identities.
 `voiceBridgeModel` publishes authoritative state after model updates through the
 same bounded socket-write path as terminal output. Native programs do not enable
@@ -187,12 +193,8 @@ No audio, authored text, or raw microphone errors enter operational diagnostics.
 
 ## Future voice/media boundary
 
-Later transcription will deliver audio incrementally from the browser capture
-control to an explicit native endpoint, separate from terminal input. That work must define
-session/draft ownership, limits, and the existing origin checks for the endpoint.
-Live native transcription should update the recording draft through validated
-draft operations; editing and explicit subject confirmation follow Stop. Audio bytes and transcripts must not be encoded
-as terminal keystrokes or submitted by synthesizing Enter. Browser recording uses
-the browser device's microphone; no offline claim is made for browser speech APIs.
-Browser playback can supplement the terminal later. No speculative endpoints or
-media interfaces are included here.
+Real Moonshine streaming inference remains separate work. It must consume this
+recording-owned queue and publish identity-fenced Go updates, without automatic
+model downloads or audio persistence. Browser PCM never belongs in terminal
+input. Finish/finalize behavior, VAD, live partial transcript UI, and product
+speech wiring are intentionally deferred.

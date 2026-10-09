@@ -18,6 +18,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
+	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 type Service interface {
@@ -40,10 +41,11 @@ const (
 )
 
 type Model struct {
-	ctx     context.Context
-	userID  string
-	service Service
-	logger  logging.Logger
+	browserSessionID string
+	ctx              context.Context
+	userID           string
+	service          Service
+	logger           logging.Logger
 
 	// owner separates model instances. request owns list/get/create and cursor
 	// replies; statsRequest lets a full-scope statistics refresh independently.
@@ -296,6 +298,15 @@ func (m *Model) createThought(body string) tea.Cmd {
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if m.ctx.Err() != nil {
 		return m, nil
+	}
+	switch message := msg.(type) {
+	case BrowserRecordingEnabledMsg:
+		m.browserSessionID = message.SessionID
+		return m, nil
+	case voice.TranscriptUpdate:
+		return m.applyTranscriptUpdate(message)
+	case voice.RecordingEnded:
+		return m.recordingEnded(message)
 	}
 	if action, ok := msg.(VoiceAction); ok {
 		return m.updateVoiceAction(action)
