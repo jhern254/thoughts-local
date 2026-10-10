@@ -276,6 +276,7 @@ func TestModel_EventsHome(t *testing.T) {
 				t.Fatalf("key %q did not move entity selection", key)
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
 			if m.entityStrip() != before {
 				t.Fatal("entity navigation did not wrap")
 			}
@@ -467,7 +468,7 @@ func TestModel_EventsHome(t *testing.T) {
 				m, _ := newHome(t)
 				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 				if entity == entityThoughts {
-					m, _ = rootUpdate(m, runeKey('l'))
+					m, _ = rootUpdate(m, runeKey('h'))
 				}
 				m, cmd := rootUpdate(m, enterKey())
 				m = runHomeData(t, m, cmd)

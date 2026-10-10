@@ -22,6 +22,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
+	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
 //go:embed static/*
@@ -36,25 +37,30 @@ type server struct {
 	audioSession  *audioSession
 	audioConsumer PCMConsumer
 	newModel      func(context.Context) tea.Model
+	visual        *visual.Service
 	logger        logging.Logger
 	authority     string
 	ctx           context.Context
 	mu            sync.Mutex
-	closing       bool
-	active        bool
-	sessions      sync.WaitGroup
+	// importMu admits one image import at a time to bound parsing/decoding memory;
+	// handlers use TryLock to reject concurrent imports rather than queue them.
+	importMu sync.Mutex
+	closing  bool
+	active   bool
+	sessions sync.WaitGroup
+	requests sync.WaitGroup
 }
 
 // Serve owns a previously bound IPv4 loopback listener. It returns after HTTP
 // handlers, the active program, and its started commands have stopped. Factories
 // must give all service operations the supplied session context.
-func Serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger) error {
-	return ServeWithAudioConsumer(ctx, listener, newModel, logger, discardPCM)
+func Serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, visual *visual.Service) error {
+	return ServeWithAudioConsumer(ctx, listener, newModel, logger, discardPCM, visual)
 }
 
 // ServeWithAudioConsumer injects a recording-owned test consumer. Normal Serve
 // discards audio and never invents transcripts; neither path loads a recognizer.
-func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumer PCMConsumer) error {
+func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumer PCMConsumer, visual *visual.Service) error {
 	defer listener.Close()
 	// Bubble Tea reads this directly from the process environment, independent
 	// of WithEnvironment, and records terminal traffic. Refuse it in browser mode.
@@ -67,7 +73,14 @@ func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel
 	}
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s := &server{audioConsumer: consumer, newModel: newModel, logger: logger, authority: listener.Addr().String(), ctx: sessionCtx}
+	s := &server{
+		audioConsumer: consumer,
+		newModel:      newModel,
+		visual:        visual,
+		logger:        logger,
+		authority:     listener.Addr().String(),
+		ctx:           sessionCtx,
+	}
 	httpServer := &http.Server{
 		Handler:           s,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -98,6 +111,7 @@ func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel
 		_ = httpServer.Close()
 	}
 	s.sessions.Wait()
+	s.requests.Wait()
 	if serveErr == nil {
 		serveErr = <-done
 	}
@@ -108,7 +122,7 @@ func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Permissions-Policy", "microphone=(self), camera=()")
 	w.Header().Set("X-Frame-Options", "DENY")
@@ -116,6 +130,19 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Host != s.authority || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != "http://"+s.authority) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if r.URL.Path == "/visual" || r.URL.Path == "/visual/background" || r.URL.Path == "/visual/settings" {
+		s.mu.Lock()
+		if s.closing {
+			s.mu.Unlock()
+			http.Error(w, "Server stopping", http.StatusServiceUnavailable)
+			return
+		}
+		s.requests.Add(1)
+		s.mu.Unlock()
+		defer s.requests.Done()
+		s.serveVisual(w, r)
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -214,9 +241,9 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 	guard := tui.NewSession(ctx, cancel, func(ctx context.Context) tea.Model {
 		model := s.newModel(ctx)
 		if _, ok := model.(interface{ VoiceState() thoughts.VoiceState }); ok {
-			return voiceBridgeModel{Model: model, writer: writer, audioSession: audioSession}
+			model = voiceBridgeModel{Model: model, writer: writer, audioSession: audioSession}
 		}
-		return model
+		return optionsBridgeModel{Model: model, writer: writer}
 	})
 	program := newProgram(ctx, guard, writer, size)
 	audioSession.startDelivery(program.Send)

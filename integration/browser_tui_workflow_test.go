@@ -64,7 +64,7 @@ func TestBrowserTUIWorkflow_SQLite(t *testing.T) {
 				views := make(chan string, 100)
 				instances <- views
 				return browserObservedModel{Model: tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop()), views: views}
-			}, logging.Nop())
+			}, logging.Nop(), nil)
 		}()
 		defer func() {
 			cancel()

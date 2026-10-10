@@ -219,3 +219,58 @@ recording-owned queue and publish identity-fenced Go updates, without automatic
 model downloads or audio persistence. Browser PCM never belongs in terminal
 input. Finish/finalize behavior, VAD, live partial transcript UI, and product
 speech wiring are intentionally deferred.
+
+## Visual settings and local backgrounds
+
+The `visual` service keeps background settings in SQLite's `visual` table and
+image files beside that database in `.assets/appearance/`. Migration 000012
+creates `visual` directly; migration 000013 adds framing settings.
+
+Replacing a background must not destroy the working selection if the new image
+cannot be saved. The service validates the JPEG/PNG within its size limits,
+writes a new file, saves the new selection, then deletes the previous image.
+Saving settings and deleting a file are separate operations: an interruption
+or failed deletion can leave an unused image. Cleanup failures after a saved
+change return a warning. Recovery of unused files is separate follow-up work;
+this revision has no automatic cleanup worker.
+
+The browser changes only the image layer, black overlay, and xterm theme
+background. `allowTransparency` must be set before `Terminal.open`; the
+application CSS also clears the outer viewport's black fallback. Terminal
+foreground opacity, input transport, and microphone ownership remain unchanged.
+The image layer can later be replaced with a video element without changing
+the overlay or terminal layers; no playback infrastructure is implemented.
+
+The browser can request the selected image through specific visual routes;
+it cannot browse the image directory. Importing or removing a background, or
+saving its darkness and framing, requires the same exact local Host and Origin
+as the terminal connection. This prevents another website from changing the
+local application's settings.
+
+Public errors use fixed messages. Operational diagnostics must use safe failure
+categories rather than image contents, filenames, paths, or raw decoder errors.
+That restriction protects private input; it does not prohibit useful diagnostic
+categories or require silently ignoring failures.
+
+The root entity strip includes Options. Bubble Tea renders browser Options as
+an overlay without replacing the underlying screen or draft. Ctrl+, / Cmd+,
+opens the same page during a draft or recording. Its bridge carries bounded
+`o` control/result frames and a terminal-cell preview rectangle; image bytes
+remain on HTTP. Operation IDs reject stale replies, including across page
+close/reopen. The browser also guards results across connection changes.
+
+The browser draws only the image inside that rectangle and retains the device
+file picker. Before displaying it, public xterm buffer reads verify that the
+reserved border and blank cells have actually rendered; this avoids covering
+old text when metadata arrives ahead of terminal output. Cell geometry uses the
+pinned xterm screen element and its public row/column counts. No private xterm
+APIs or alternate-screen-incompatible marker decorations are used. Mouse mode
+is enabled only on Options. Native Options retains its browser-only explanation.
+
+### Background framing
+
+Migration 000013 adds bounded Fill/Fit, zoom, and normalized overflow positions
+without rewriting background assets. Bubble Tea owns draft settings and framing
+navigation. The browser owns pixel geometry and sends bounded, operation-scoped
+drag updates. One geometry calculation paints both the viewport and its scaled
+preview, including after resize; thumbnail dimensions do not determine the crop.

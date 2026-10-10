@@ -39,6 +39,10 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer runtime.Close()
+	visualService, err := runtime.BrowserVisual(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +67,7 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 	go func() {
 		serverDone <- browserterm.ServeWithAudioConsumer(ctx, listener, func(session context.Context) tea.Model {
 			return tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
-		}, logging.Nop(), consumer)
+		}, logging.Nop(), consumer, visualService)
 	}()
 	defer func() {
 		cancel()

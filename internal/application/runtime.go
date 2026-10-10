@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
 	"strings"
 
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -16,6 +17,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/user"
+	"github.com/jhern254/go-thoughts/internal/visual"
 	_ "modernc.org/sqlite"
 )
 
@@ -146,4 +148,32 @@ func sqliteDSNWithForeignKeys(dsn string) string {
 		separator = "&"
 	}
 	return dsn + separator + "_pragma=foreign_keys(1)"
+}
+
+// BrowserVisual constructs browser-only persistence without changing native
+// entity services. SQLite supplies the actual filename, including URI DSNs.
+func (runtime *Runtime) BrowserVisual(ctx context.Context) (*visual.Service, error) {
+	rows, err := runtime.db.QueryContext(ctx, "PRAGMA database_list")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var filename string
+	for rows.Next() {
+		var seq int
+		var name, path string
+		if err := rows.Scan(&seq, &name, &path); err != nil {
+			return nil, err
+		}
+		if name == "main" {
+			filename = path
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if filename == "" {
+		return nil, nil
+	}
+	return visual.NewService(data.NewSQLiteVisualStore(runtime.db), runtime.localUser.UserID, filepath.Join(filename+".assets", "appearance")), nil
 }

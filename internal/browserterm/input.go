@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
@@ -33,6 +34,28 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 	}
 	body := frame[1:]
 	switch frame[0] {
+	case 'o':
+		var msg tui.BrowserOptionsMsg
+		if len(body) > 256 || json.Unmarshal(body, &msg) != nil || msg.ID > 9007199254740991 || msg.Darkness < 0 || msg.Darkness > 95 {
+			return nil, errInput
+		}
+		switch msg.Action {
+		case "open":
+			if msg.ID != 0 {
+				return nil, errInput
+			}
+		case "reframe":
+			if msg.ID == 0 || !msg.Framing.Valid() || msg.Framing.Fit != "fill" {
+				return nil, errInput
+			}
+		case "loaded", "selected", "cancelled", "saved", "warning", "failed":
+			if msg.ID == 0 {
+				return nil, errInput
+			}
+		default:
+			return nil, errInput
+		}
+		return []tea.Msg{msg}, nil
 	case 'v':
 		var action thoughts.VoiceAction
 		// Voice frames contain only small control metadata, so cap JSON at 256 bytes.

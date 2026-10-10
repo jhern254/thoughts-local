@@ -53,7 +53,7 @@ func newAudioTestServer(t *testing.T, consumer PCMConsumer) (string, func()) {
 			draft := thoughts.New(sessionCtx, "test-user", thought.NewService(testutils.NewFakeThoughtStore()), logging.Nop())
 			draft.OpenVoice(1, audioSubjectReader{})
 			return audioDraftModel{draft: draft}
-		}, logging.Nop(), consumer)
+		}, logging.Nop(), consumer, nil)
 	}()
 	return "http://" + listener.Addr().String(), func() {
 		cancel()
