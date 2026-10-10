@@ -142,8 +142,27 @@ npx playwright install chromium firefox
 npm test
 ```
 
-For the complete synthetic PCM/fake-transcript path, use the opt-in Go browser
-host described in [browser-audio.md](../../docs/browser-audio.md).
+For the complete synthetic PCM/fake-transcript path, run from the repository
+root after installing the dependencies above. The opt-in Go host owns a
+disposable migrated, seeded app and fake consumer:
+
+```sh
+node --test internal/browserterm/client/microphone.test.mjs internal/browserterm/client/pcm*.test.mjs
+THOUGHTS_BROWSER_AUDIO_TEST=1 go test -tags=integration -count=1 -timeout 12m -run '^TestBrowserAudioWorkflow_Playwright$' ./integration
+```
+
+Optional `THOUGHTS_BROWSER_TEST_FILTER` selects Playwright test names;
+`THOUGHTS_BROWSER_ARTIFACTS=/tmp/thoughts-browser-review` retains synthetic
+screenshots and test artifacts outside the source tree. Ordinary Go checks skip
+this browser host. `npm test` against a running normal demo skips cases requiring
+the injected fake.
+
+Chromium uses generated tones; Firefox's PCM cases use its synthetic microphone
+device. These tests exercise the real worklet/socket path, not physical
+microphones or recognition accuracy. Headless Linux needs a PulseAudio-compatible
+backend for Firefox's Web Audio clock; CI starts a null output sink without
+physical hardware or audio storage. Desktop sessions can use their existing
+backend. No macOS/Windows microphone interaction or iOS support is claimed.
 
 Set `THOUGHTS_BROWSER_URL` for a different port. These development tests use
 synthetic clipboard contents. Inspect normal/narrow screenshots as well as test
@@ -157,8 +176,10 @@ not establish Windows/macOS support or Safari/iPhone acceptance.
 The browser now uses `pcm-capture.js` and `pcm-worklet.js` to send bounded,
 mono PCM16LE at 16 kHz to the dedicated `/voice/audio` socket. The standard
 consumer discards PCM; real recognition is intentionally not connected.
-[`docs/browser-audio.md`](../../docs/browser-audio.md) documents the versioned
-protocol, capability authorization, independent limits, privacy, and cleanup.
+[`docs/browser-audio.md`](../../docs/browser-audio.md) explains how recording fits
+the draft, why sound has its own connection, and how Stop prevents late results
+from changing text. The exact wire contract lives in
+[`audio_protocol.go`](audio_protocol.go).
 The older `microphone.js` MediaRecorder discard helper remains separate for its
 existing focused tests; the client does not start both capture paths.
 

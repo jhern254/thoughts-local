@@ -1,4 +1,4 @@
-/* PCM16LE wire format and ownership are described in docs/browser-audio.md. */
+/* Browser recording architecture: docs/browser-audio.md. */
 class ThoughtsPCMProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
