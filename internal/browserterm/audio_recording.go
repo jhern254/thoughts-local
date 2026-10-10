@@ -153,7 +153,7 @@ func (recording *audioRecording) discardPendingAudio() {
 	}
 }
 
-func (recording *audioRecording) consumePCMChunk(samples []int16) (consumeErr error) {
+func (recording *audioRecording) consumePCMChunk(consumer RecordingPCMConsumer, samples []int16) (consumeErr error) {
 	defer func() {
 		clear(samples)
 		if recover() != nil {
@@ -163,16 +163,23 @@ func (recording *audioRecording) consumePCMChunk(samples []int16) (consumeErr er
 	if recording.ctx.Err() != nil {
 		return recording.ctx.Err()
 	}
-	return recording.session.consumer(recording.ctx, recording.authority.Recording(), samples, recording.publishTranscriptUpdate)
+	return consumer.ConsumePCM(recording.ctx, samples)
 }
 
-func (recording *audioRecording) consumePendingAudio() {
+func (recording *audioRecording) consumePendingAudio() (cleanupErr error) {
+	consumer, err := recording.createConsumer()
+	if err != nil {
+		recording.stopRecording(audioStatusFailed)
+		return nil
+	}
+	defer func() { cleanupErr = closeRecordingConsumer(consumer) }()
+
 	for {
 		select {
 		case <-recording.ctx.Done():
 			return
 		case samples := <-recording.pendingAudio:
-			if err := recording.consumePCMChunk(samples); err != nil {
+			if err := recording.consumePCMChunk(consumer, samples); err != nil {
 				recording.stopRecording(audioStatusFailed)
 				return
 			}
@@ -191,13 +198,13 @@ func (recording *audioRecording) runRecording() {
 		recording.stopRecording(audioStatusDenied)
 	}
 	cancelCapability()
-	var consumerDone chan struct{}
+	var consumerDone chan error
 	if recording.ctx.Err() == nil {
-		consumerDone = make(chan struct{})
+		consumerDone = make(chan error, 1)
 		// The owner must revoke authority and close transport at the deadline
 		// even while a consumer is returning from cancellation. Completion
 		// still waits for that consumer; no work is detached.
-		go func() { defer close(consumerDone); recording.consumePendingAudio() }()
+		go func() { consumerDone <- recording.consumePendingAudio() }()
 		<-recording.ctx.Done()
 	}
 	recording.mu.Lock()
@@ -214,8 +221,11 @@ func (recording *audioRecording) runRecording() {
 		audioConnection.CloseNow()
 	}
 	if consumerDone != nil {
-		<-consumerDone
+		if cleanupErr := <-consumerDone; cleanupErr != nil {
+			status = audioStatusFailed
+		}
 	}
+
 	recording.session.mu.Lock()
 	if recording.session.activeRecording == recording {
 		recording.session.activeRecording = nil
@@ -226,4 +236,21 @@ func (recording *audioRecording) runRecording() {
 	case recording.session.ended <- ended:
 	case <-recording.session.ctx.Done():
 	}
+}
+
+func (recording *audioRecording) createConsumer() (consumer RecordingPCMConsumer, creationErr error) {
+	defer func() {
+		if recover() != nil {
+			creationErr = errors.New("audio consumer failed")
+		}
+	}()
+	return recording.session.consumerFactory(recording.ctx, recording.authority.Recording(), recording.publishTranscriptUpdate)
+}
+func closeRecordingConsumer(consumer RecordingPCMConsumer) (closeErr error) {
+	defer func() {
+		if recover() != nil {
+			closeErr = errors.New("audio consumer failed")
+		}
+	}()
+	return consumer.Close()
 }

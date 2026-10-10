@@ -34,14 +34,14 @@ const (
 )
 
 type server struct {
-	audioSession  *audioSession
-	audioConsumer PCMConsumer
-	newModel      func(context.Context) tea.Model
-	visual        *visual.Service
-	logger        logging.Logger
-	authority     string
-	ctx           context.Context
-	mu            sync.Mutex
+	audioSession         *audioSession
+	audioConsumerFactory PCMConsumerFactory
+	newModel             func(context.Context) tea.Model
+	visual               *visual.Service
+	logger               logging.Logger
+	authority            string
+	ctx                  context.Context
+	mu                   sync.Mutex
 	// importMu admits one image import at a time to bound parsing/decoding memory;
 	// handlers use TryLock to reject concurrent imports rather than queue them.
 	importMu sync.Mutex
@@ -55,12 +55,17 @@ type server struct {
 // handlers, the active program, and its started commands have stopped. Factories
 // must give all service operations the supplied session context.
 func Serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, visual *visual.Service) error {
-	return ServeWithAudioConsumer(ctx, listener, newModel, logger, discardPCM, visual)
+	return ServeWithAudioConsumerFactory(ctx, listener, newModel, logger, nil, visual)
 }
 
-// ServeWithAudioConsumer injects a recording-owned test consumer. Normal Serve
-// discards audio and never invents transcripts; neither path loads a recognizer.
+// ServeWithAudioConsumer adapts a stateless consumer for transport tests.
 func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumer PCMConsumer, visual *visual.Service) error {
+	return ServeWithAudioConsumerFactory(ctx, listener, newModel, logger, callbackConsumerFactory(consumer), visual)
+}
+
+// ServeWithAudioConsumerFactory owns recording-scoped consumers and joins them
+// before returning. A nil factory leaves speech unavailable without capturing audio.
+func ServeWithAudioConsumerFactory(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumerFactory PCMConsumerFactory, visual *visual.Service) error {
 	defer listener.Close()
 	// Bubble Tea reads this directly from the process environment, independent
 	// of WithEnvironment, and records terminal traffic. Refuse it in browser mode.
@@ -74,12 +79,12 @@ func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s := &server{
-		audioConsumer: consumer,
-		newModel:      newModel,
-		visual:        visual,
-		logger:        logger,
-		authority:     listener.Addr().String(),
-		ctx:           sessionCtx,
+		audioConsumerFactory: consumerFactory,
+		newModel:             newModel,
+		visual:               visual,
+		logger:               logger,
+		authority:            listener.Addr().String(),
+		ctx:                  sessionCtx,
 	}
 	httpServer := &http.Server{
 		Handler:           s,
@@ -233,7 +238,7 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	size := messages[0].(tea.WindowSizeMsg)
-	audioSession := newAudioSession(ctx, s.audioConsumer)
+	audioSession := newAudioSessionWithFactory(ctx, s.audioConsumerFactory)
 	s.mu.Lock()
 	s.audioSession = audioSession
 	s.mu.Unlock()

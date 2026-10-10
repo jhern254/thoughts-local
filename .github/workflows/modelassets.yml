@@ -6,6 +6,7 @@ on:
       - 'internal/modelassets/**'
       - 'internal/speech/**'
       - 'cmd/moonshine-smoke/**'
+      - 'cmd/thoughts-tui/**'
       - 'scripts/setup-moonshine-windows.ps1'
       - 'docs/moonshine.md'
       - 'docs/platform-support.md'
@@ -30,14 +31,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test -race -count=1 -v ./internal/modelassets ./internal/speech/... ./cmd/moonshine-smoke
+      - run: go test -race -count=1 -v ./internal/modelassets ./internal/speech/... ./cmd/moonshine-smoke ./cmd/thoughts-tui
       - name: Normal builds without cgo or Moonshine
         shell: bash
         env:
           CGO_ENABLED: '0'
         run: |
-          go test -count=1 ./internal/speech/... ./cmd/moonshine-smoke
-          go test -tags=moonshine -count=1 ./internal/speech/... ./cmd/moonshine-smoke
+          go test -count=1 ./internal/speech/... ./cmd/moonshine-smoke ./cmd/thoughts-tui
+          go test -tags=moonshine -count=1 ./internal/speech/... ./cmd/moonshine-smoke ./cmd/thoughts-tui
           go build ./...
 
       - name: iOS keeps the unavailable runtime boundary
@@ -163,7 +164,7 @@ jobs:
       - name: Explicitly install approved model through modelassets
         run: go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
         shell: bash
-      - name: Execute native speech, silence, ownership, and privacy integration
+      - name: Execute native batch and streaming speech, ownership, and privacy integration
         run: go test '-tags=moonshine,moonshine_integration' -race -count=1 -v ./internal/speech/moonshine
       - name: Record executed integration target
         shell: bash

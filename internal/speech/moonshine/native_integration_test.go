@@ -139,4 +139,78 @@ func TestMoonshineNative_PCM(t *testing.T) {
 		audioDurationSeconds := float64(len(audioSamples)) / 16000
 		t.Logf("verified_model_open_seconds=%.6f audio_duration_seconds=%.6f transcription_seconds=%.6f real_time_factor=%.6f", loadElapsed.Seconds(), audioDurationSeconds, transcriptionElapsed.Seconds(), transcriptionElapsed.Seconds()/audioDurationSeconds)
 	})
+	t.Run("streams 100 ms chunks and reuses the loaded model without final drain", func(t *testing.T) {
+		workingDirectory := t.TempDir()
+		t.Chdir(workingDirectory)
+		transcriber, err := Open(ctx, modelRoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := transcriber.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		stream, err := transcriber.StartStream(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		frame := make([]float32, 1600)
+		var transcriptText string
+		for offset := 0; offset < len(audioSamples); offset += len(frame) {
+			clear(frame)
+			copy(frame, audioSamples[offset:min(offset+len(frame), len(audioSamples))])
+			transcript, err := stream.AddAudio(ctx, frame, 16000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			transcriptText = transcript.Text
+		}
+		// Silence arrives while the recording is active, allowing the engine to
+		// complete the spoken phrase without changing Thoughts' hard Stop boundary.
+		clear(frame)
+		for range 20 {
+			transcript, err := stream.AddAudio(ctx, frame, 16000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			transcriptText = transcript.Text
+		}
+		normalizedText := strings.ToLower(strings.Join(strings.FieldsFunc(transcriptText, func(character rune) bool { return !unicode.IsLetter(character) }), " "))
+		if !strings.Contains(normalizedText, "middle classes") || !strings.Contains(normalizedText, "gospel") {
+			t.Fatal("streaming recognition did not contain reference phrases")
+		}
+		originalText := strings.Clone(transcriptText)
+		if err := stream.Close(); err != nil {
+			t.Fatal(err)
+		}
+		nextStream, err := transcriber.StartStream(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		silence, err := nextStream.AddAudio(ctx, frame, 16000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if silence.Text != "" {
+			t.Fatal("new silent recording inherited previous transcript")
+		}
+		if err := transcriber.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if transcriptText != originalText {
+			t.Fatal("later inference or closure mutated Go-owned text")
+		}
+		if err := nextStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+		createdFiles, err := os.ReadDir(workingDirectory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(createdFiles) != 0 {
+			t.Fatal("streaming inference wrote unexpected files")
+		}
+	})
+
 }

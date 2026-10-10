@@ -4,10 +4,14 @@ Speech should be another way to fill in a thought draft. The user should be able
 to record, stop, review the words, and save through the same editor they already
 use for typing.
 
-**Today, F8 captures and sends sound, but the app discards it. Speech recognition
-is not connected yet.** Tests use a fake recognizer to check how returned text
-would reach the draft. This guide explains the recording boundary that a real
-recognizer will use later.
+With the approved model installed and the native runtime configured, browser
+recording uses local Moonshine speech recognition. On the Events timeline, F8
+opens a thought draft; inside the draft, F8 starts or stops recording. Review
+and edit the words before saving.
+
+Without speech configured, Thoughts still starts and supports typed drafts.
+Trying to record explains that speech is unavailable without requesting the
+microphone. See [Moonshine setup](moonshine.md#browser-speech) to enable it.
 
 ## Keep recording part of the existing draft
 
@@ -26,9 +30,11 @@ Browser captures sound
     → the editor updates the unsaved draft
 ```
 
-The consumer is the replaceable part that processes sound. The app currently
-uses a consumer that discards it; tests supply one that returns known text.
-Capture and draft ownership can therefore be checked without a speech engine.
+The browser process loads the model once. Each recording gets its own Moonshine
+stream, so sound can arrive a small piece at a time without keeping the whole
+recording in Go memory. Returned words replace that recording's contribution to
+the unsaved draft as recognition improves. Tests can still use a fake consumer
+to check capture and draft ownership independently of the speech engine.
 
 ## Give sound its own connection
 
@@ -43,7 +49,7 @@ out of URLs, logs, and the database.
 
 Browsers capture sound at different rates. The capture code converts it to one
 agreed format and sends small, uniform chunks. This keeps those device
-differences out of the server and the eventual recognizer.
+differences out of the server and recognizer.
 
 ## Stop a backlog before it grows
 
@@ -85,7 +91,8 @@ explicit Thought save.
 
 ## Working on this boundary
 
-Run `make tui/browser` to try capture and Stop with the discard consumer.
+Run `make tui/browser` for typed drafts, or enable speech using the
+[explicit native setup](moonshine.md#browser-speech).
 The [browser maintenance guide](../internal/browserterm/UPSTREAM.md#browser-acceptance)
 has developer test commands. Chromium and Firefox tests use synthetic sound;
 they check capture and recording behavior, not physical microphones or

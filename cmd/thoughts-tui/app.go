@@ -44,7 +44,7 @@ type application struct {
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
-	runBrowser  func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger, *visual.Service) error
+	runBrowser  func(context.Context, int, bool, string, func(context.Context) tea.Model, io.Writer, logging.Logger, *visual.Service) error
 }
 
 func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) *application {
@@ -67,6 +67,7 @@ func newTUI(app *application) *cli.Command {
 		Usage:  "capture and organize thoughts",
 		Writer: app.out,
 		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "models-dir", Usage: "verified model root for optional browser speech", Sources: cli.EnvVars("THOUGHTS_MODELS_DIR")},
 			&cli.BoolFlag{Name: "browser", Usage: "serve the TUI in a local browser"},
 			&cli.BoolFlag{Name: "browser-open", Usage: "open the default browser when serving", Value: true, Sources: cli.EnvVars("THOUGHTS_BROWSER_OPEN")},
 			&cli.IntFlag{Name: "browser-port", Usage: "loopback browser port", Value: 7777, Sources: cli.EnvVars("THOUGHTS_BROWSER_PORT")},
@@ -111,7 +112,7 @@ func newTUI(app *application) *cli.Command {
 					app.failureMessage = "Could not load browser visual."
 					return err
 				}
-				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), newModel, app.out, app.logger, backgrounds)
+				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), cmd.String("models-dir"), newModel, app.out, app.logger, backgrounds)
 			} else {
 				sessionCtx, cancel := context.WithCancel(ctx)
 				session := tui.NewSession(sessionCtx, cancel, newModel)
@@ -126,6 +127,9 @@ func newTUI(app *application) *cli.Command {
 				app.failureMessage = "Could not run the terminal interface."
 				if cmd.Bool("browser") {
 					app.failureMessage = "Could not run the browser interface."
+					if errors.Is(err, errBrowserSpeechSetup) {
+						app.failureMessage = errBrowserSpeechSetup.Error()
+					}
 				}
 				if category, emit := failure.Classify(logging.TUIRun, err); emit {
 					app.logger.Failure(logging.TUIRun, category)

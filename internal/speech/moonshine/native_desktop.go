@@ -136,6 +136,12 @@ func (nativeBackend *nativeModelTranscriber) Transcribe(audioSamples []float32, 
 	if nativeStatus != 0 {
 		return nil, &NativeStatusError{Code: int32(nativeStatus)}
 	}
+	return copyNativeTranscript(nativeTranscript)
+}
+
+// Moonshine owns this memory until the next call. Copying under the runtime
+// gate keeps borrowed C text inside this boundary for batch and streaming calls.
+func copyNativeTranscript(nativeTranscript *C.struct_transcript_t) ([]string, error) {
 	if nativeTranscript == nil || uint64(nativeTranscript.line_count) > uint64(math.MaxInt) {
 		return nil, &NativeStatusError{Code: C.MOONSHINE_ERROR_UNKNOWN}
 	}
@@ -164,4 +170,48 @@ func (nativeBackend *nativeModelTranscriber) Close() error {
 	// Session destruction must precede unmapping: ONNX holds these buffer pointers.
 	C.moonshine_free_transcriber(nativeBackend.transcriberHandle)
 	return nativeBackend.modelFiles.Close()
+}
+
+type nativeModelStream struct {
+	transcriberHandle C.int32_t
+	streamHandle      C.int32_t
+}
+
+func (nativeBackend *nativeModelTranscriber) StartStream() (nativeStream, error) {
+	streamHandle := C.moonshine_create_stream(nativeBackend.transcriberHandle, 0)
+	if streamHandle < 0 {
+		return nil, &NativeStatusError{Code: int32(streamHandle)}
+	}
+	nativeStream := &nativeModelStream{transcriberHandle: nativeBackend.transcriberHandle, streamHandle: streamHandle}
+	if nativeStatus := C.moonshine_start_stream(nativeBackend.transcriberHandle, streamHandle); nativeStatus != 0 {
+		freeStatus := C.moonshine_free_stream(nativeBackend.transcriberHandle, streamHandle)
+		return nil, errors.Join(nativeStatusError(nativeStatus), nativeStatusError(freeStatus))
+	}
+	return nativeStream, nil
+}
+func (stream *nativeModelStream) AddAudio(audioSamples []float32, sampleRateHz int) error {
+	nativeStatus := C.moonshine_transcribe_add_audio_to_stream(stream.transcriberHandle, stream.streamHandle,
+		(*C.float)(unsafe.Pointer(&audioSamples[0])), C.uint64_t(len(audioSamples)), C.int32_t(sampleRateHz), 0)
+	// Upstream copies PCM into its stream buffer; no Go pointer survives this call.
+	runtime.KeepAlive(audioSamples)
+	return nativeStatusError(nativeStatus)
+}
+func (stream *nativeModelStream) Transcribe() ([]string, error) {
+	var nativeTranscript *C.struct_transcript_t
+	nativeStatus := C.moonshine_transcribe_stream(stream.transcriberHandle, stream.streamHandle, 0, &nativeTranscript)
+	if err := nativeStatusError(nativeStatus); err != nil {
+		return nil, err
+	}
+	return copyNativeTranscript(nativeTranscript)
+}
+func (stream *nativeModelStream) Close() error {
+	stopStatus := C.moonshine_stop_stream(stream.transcriberHandle, stream.streamHandle)
+	freeStatus := C.moonshine_free_stream(stream.transcriberHandle, stream.streamHandle)
+	return errors.Join(nativeStatusError(stopStatus), nativeStatusError(freeStatus))
+}
+func nativeStatusError(nativeStatus C.int32_t) error {
+	if nativeStatus == 0 {
+		return nil
+	}
+	return &NativeStatusError{Code: int32(nativeStatus)}
 }

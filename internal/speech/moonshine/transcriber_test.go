@@ -33,6 +33,9 @@ func (native *fakeNativeTranscriber) Transcribe(_ []float32, _ int) ([]string, e
 	}
 	return native.transcriptLines, nil
 }
+func (native *fakeNativeTranscriber) StartStream() (nativeStream, error) {
+	return nil, speech.ErrRuntime
+}
 func (native *fakeNativeTranscriber) Close() error {
 	native.closeCalls.Add(1)
 	if native.close != nil {
