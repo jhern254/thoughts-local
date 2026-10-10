@@ -42,6 +42,8 @@ type server struct {
 	authority     string
 	ctx           context.Context
 	mu            sync.Mutex
+	// importMu admits one image import at a time to bound parsing/decoding memory;
+	// handlers use TryLock to reject concurrent imports rather than queue them.
 	importMu      sync.Mutex
 	closing       bool
 	active        bool
