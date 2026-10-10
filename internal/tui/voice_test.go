@@ -23,7 +23,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 		if state := m.VoiceState(); state.BrowserRecordingEnabled || state.CanOpenThoughtDraft {
 			t.Fatalf("native state got %+v, want browser controls disabled", state)
 		}
-		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{SpeechRecognitionAvailable: true})
+		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{SpeechRecognitionAvailable: true})
 		if state := m.VoiceState(); !state.BrowserRecordingEnabled || !state.CanOpenThoughtDraft {
 			t.Fatalf("browser home got %+v, want controls enabled and quick entry allowed", state)
 		}
@@ -41,7 +41,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 
 	t.Run("t opens the same titled editor as regular browser creation", func(t *testing.T) {
 		m := newRootTestModel()
-		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
+		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 't', Text: "t"}))
 		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
 		if !m.thoughts.Creating() || !strings.HasPrefix(m.View().Content, heading+"\nCreate thought\n") || strings.Contains(m.View().Content, "Voice thought") {
@@ -49,7 +49,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 		}
 		quick := m.View().Content
 		m = newRootTestModel()
-		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
+		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
 		m.entityFocused = true
 		m.selectedEntity = entityThoughts
 		m = runModelCommand(t, m, enterKey())
@@ -68,7 +68,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 		m.subjects.service = &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }, create: func(_ context.Context, user, name string) (*data.Subject, error) {
 			return &data.Subject{SubjectID: 42, UserID: user, SubjectName: name}, nil
 		}}
-		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
+		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
 		m, cmd := rootUpdate(m, thoughts.VoiceAction{Action: "open"})
 		original := &data.Subject{SubjectID: 7, SubjectName: "Original"}
 		m.subjects.selected = original
@@ -98,7 +98,7 @@ func TestModel_BrowserF8(t *testing.T) {
 		for _, screen := range []screen{screenEvents, screenSubjectList, screenBrowseThoughts} {
 			m := newRootTestModel()
 			m.screen = screen
-			m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
+			m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyF8}))
 			if got, want := m.thoughts.VoiceOpen(), screen == screenEvents; got != want {
 				t.Fatalf("screen=%v draft=%v, want %v", screen, got, want)
@@ -114,7 +114,7 @@ func TestModel_BrowserF8(t *testing.T) {
 		m.events.SetFocused(true)
 		m = startHomeData(t, m, m.events.Open())
 		defer func() { m.events.Close() }()
-		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
+		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
 		if m.events.CanLeave() {
 			t.Fatal("event form did not open")
@@ -127,7 +127,7 @@ func TestModel_BrowserF8(t *testing.T) {
 
 	t.Run("unconfigured speech preserves typing without creating recording authority", func(t *testing.T) {
 		m := newRootTestModel()
-		m, _ = rootUpdate(m, thoughts.BrowserRecordingEnabledMsg{})
+		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyF8}))
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: "typed draft"})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyF8}))

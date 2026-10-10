@@ -170,7 +170,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case BrowserOptionsEnabledMsg:
 		m.browserOptionsEnabled = true
 		return m, nil
-	case thoughts.BrowserRecordingEnabledMsg:
+	case thoughts.BrowserVoiceSessionMsg:
 		m.browserRecordingEnabled = true
 		m.thoughts, _ = m.thoughts.Update(message)
 		return m, nil

@@ -183,7 +183,7 @@ from changing text. The exact wire contract lives in
 The older `microphone.js` MediaRecorder discard helper remains separate for its
 existing focused tests; the client does not start both capture paths.
 
-`BrowserRecordingEnabledMsg` tells the root TUI that this session uses browser
+`BrowserVoiceSessionMsg` tells the root TUI that this session uses browser
 recording controls. `VoiceState.BrowserRecordingEnabled` reports that capability;
 it does not mean microphone permission was granted or a device is available.
 `CanOpenThoughtDraft` separately reports whether the current screen permits quick

@@ -38,9 +38,11 @@ type Transcriber struct {
 
 type transcriberState struct {
 	nativeBackend nativeTranscriber
-	activeStream  *streamState
-	closed        bool
-	closeErr      error
+	// The adapter owns one recording stream at a time so parent Close can
+	// release its native speech state before freeing the model.
+	activeStream *streamState
+	closed       bool
+	closeErr     error
 }
 
 // Open fully verifies the approved installation before loading it. Keep the
