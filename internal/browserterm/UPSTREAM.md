@@ -222,14 +222,17 @@ speech wiring are intentionally deferred.
 
 ## Visual settings and local backgrounds
 
-The `browser_appearance` table and `.assets/appearance/` directory retain their
-original names so existing background selections remain usable.
+The `visual` service keeps background settings in SQLite's `visual` table and
+image files beside that database in `.assets/appearance/`. Migration 000012
+creates `visual` directly; migration 000013 adds framing settings.
 
-Visual metadata belongs to SQLite; the concrete visual service owns
-immutable image files beside that database. Import validates bounded JPEG/PNG
-content before writing. It commits the selection before deleting the old asset;
-failure before that commit preserves the working selection. A crash or failed
-cleanup may leave an unreferenced file; there is no background cleanup worker.
+Replacing a background must not destroy the working selection if the new image
+cannot be saved. The service validates the JPEG/PNG within its size limits,
+writes a new file, saves the new selection, then deletes the previous image.
+Saving settings and deleting a file are separate operations: an interruption
+or failed deletion can leave an unused image. Cleanup failures after a saved
+change return a warning. Recovery of unused files is separate follow-up work;
+this revision has no automatic cleanup worker.
 
 The browser changes only the image layer, black overlay, and xterm theme
 background. `allowTransparency` must be set before `Terminal.open`; the
@@ -238,10 +241,16 @@ foreground opacity, input transport, and microphone ownership remain unchanged.
 The image layer can later be replaced with a video element without changing
 the overlay or terminal layers; no playback infrastructure is implemented.
 
-Only exact visual routes access native images. Mutations require the same
-exact local Host and Origin as the terminal boundary; no directory is served.
-Imported bytes, filenames, paths, and decoder errors must never enter logs or
-public diagnostics.
+The browser can request the selected image through specific visual routes;
+it cannot browse the image directory. Importing or removing a background, or
+saving its darkness and framing, requires the same exact local Host and Origin
+as the terminal connection. This prevents another website from changing the
+local application's settings.
+
+Public errors use fixed messages. Operational diagnostics must use safe failure
+categories rather than image contents, filenames, paths, or raw decoder errors.
+That restriction protects private input; it does not prohibit useful diagnostic
+categories or require silently ignoring failures.
 
 The root entity strip includes Options. Bubble Tea renders browser Options as
 an overlay without replacing the underlying screen or draft. Ctrl+, / Cmd+,

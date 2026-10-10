@@ -37,34 +37,30 @@ type server struct {
 	audioSession  *audioSession
 	audioConsumer PCMConsumer
 	newModel      func(context.Context) tea.Model
-	visual    *visual.Service
+	visual        *visual.Service
 	logger        logging.Logger
 	authority     string
 	ctx           context.Context
 	mu            sync.Mutex
 	// importMu admits one image import at a time to bound parsing/decoding memory;
 	// handlers use TryLock to reject concurrent imports rather than queue them.
-	importMu      sync.Mutex
-	closing       bool
-	active        bool
-	sessions      sync.WaitGroup
-	requests      sync.WaitGroup
+	importMu sync.Mutex
+	closing  bool
+	active   bool
+	sessions sync.WaitGroup
+	requests sync.WaitGroup
 }
 
 // Serve owns a previously bound IPv4 loopback listener. It returns after HTTP
 // handlers, the active program, and its started commands have stopped. Factories
 // must give all service operations the supplied session context.
 func Serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, visual *visual.Service) error {
-	return serve(ctx, listener, newModel, logger, discardPCM, visual)
+	return ServeWithAudioConsumer(ctx, listener, newModel, logger, discardPCM, visual)
 }
 
 // ServeWithAudioConsumer injects a recording-owned test consumer. Normal Serve
 // discards audio and never invents transcripts; neither path loads a recognizer.
-func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumer PCMConsumer) error {
-	return serve(ctx, listener, newModel, logger, consumer, nil)
-}
-
-func serve(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumer PCMConsumer, visual *visual.Service) error {
+func ServeWithAudioConsumer(ctx context.Context, listener net.Listener, newModel func(context.Context) tea.Model, logger logging.Logger, consumer PCMConsumer, visual *visual.Service) error {
 	defer listener.Close()
 	// Bubble Tea reads this directly from the process environment, independent
 	// of WithEnvironment, and records terminal traffic. Refuse it in browser mode.
@@ -80,7 +76,7 @@ func serve(ctx context.Context, listener net.Listener, newModel func(context.Con
 	s := &server{
 		audioConsumer: consumer,
 		newModel:      newModel,
-		visual:    visual,
+		visual:        visual,
 		logger:        logger,
 		authority:     listener.Addr().String(),
 		ctx:           sessionCtx,

@@ -1,4 +1,4 @@
-CREATE TABLE browser_appearance (
+CREATE TABLE visual (
     user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(user_id),
     background_asset TEXT,
     darkness INTEGER NOT NULL DEFAULT 70 CHECK (typeof(darkness) = 'integer' AND darkness BETWEEN 0 AND 95),

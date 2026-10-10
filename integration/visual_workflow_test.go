@@ -16,7 +16,7 @@ import (
 )
 
 func TestVisualWorkflow_SQLite(t *testing.T) {
-	t.Run("loads backgrounds from the existing appearance table and asset directory", func(t *testing.T) {
+	t.Run("opens the selected image from the application asset directory", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		runtime, err := application.Open(t.Context(), dsn)
 		if err != nil {
@@ -39,7 +39,9 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(directory, asset), body.Bytes(), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec("INSERT INTO browser_appearance(user_id, background_asset, darkness) VALUES (?, ?, ?)", runtime.LocalUser().UserID, asset, 42); err != nil {
+		if _, err := db.Exec(`INSERT INTO visual
+ (user_id, background_asset, darkness, fit, zoom, position_x, position_y)
+ VALUES (?, ?, 42, 'fit', 175, 1200, 9000)`, runtime.LocalUser().UserID, asset); err != nil {
 			t.Fatal(err)
 		}
 		service, err := runtime.BrowserVisual(t.Context())
@@ -50,8 +52,18 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if settings.BackgroundAsset != asset || settings.Darkness != 42 {
-			t.Fatalf("settings = %+v, want existing asset and darkness 42", settings)
+		wantSettings := data.Visual{
+			BackgroundAsset: asset,
+			Darkness:        42,
+			Framing: data.BackgroundFraming{
+				Fit:       "fit",
+				Zoom:      175,
+				PositionX: 1200,
+				PositionY: 9000,
+			},
+		}
+		if settings != wantSettings {
+			t.Fatalf("settings = %+v, want %+v", settings, wantSettings)
 		}
 		file, _, err := service.OpenBackground(t.Context())
 		if err != nil {
