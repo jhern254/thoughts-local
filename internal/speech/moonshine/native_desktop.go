@@ -205,6 +205,9 @@ func (stream *nativeModelStream) Transcribe() ([]string, error) {
 	return copyNativeTranscript(nativeTranscript)
 }
 func (stream *nativeModelStream) Close() error {
+	// Thoughts revokes transcript authority on recording Stop. Intentionally
+	// follow moonshine_stop_stream with moonshine_free_stream, without a final
+	// moonshine_transcribe_stream, so cleanup does not produce text after Stop.
 	stopStatus := C.moonshine_stop_stream(stream.transcriberHandle, stream.streamHandle)
 	freeStatus := C.moonshine_free_stream(stream.transcriberHandle, stream.streamHandle)
 	return errors.Join(nativeStatusError(stopStatus), nativeStatusError(freeStatus))

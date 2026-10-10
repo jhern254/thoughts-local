@@ -14,9 +14,9 @@ import (
 	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
-// BrowserRecordingEnabledMsg enables browser draft controls. Speech availability
-// comes from startup configuration; microphone permission is checked on Record.
-type BrowserRecordingEnabledMsg struct {
+// BrowserVoiceSessionMsg identifies the browser session and its speech availability.
+// Availability comes from startup configuration; microphone permission is checked on Record.
+type BrowserVoiceSessionMsg struct {
 	SessionID                  string
 	SpeechRecognitionAvailable bool
 }

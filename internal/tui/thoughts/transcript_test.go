@@ -9,7 +9,7 @@ import (
 func TestModel_TranscriptUpdate(t *testing.T) {
 	t.Run("replaces only current recording contribution and Stop freezes it", func(t *testing.T) {
 		model := voiceModel(t)
-		model, _ = model.Update(BrowserRecordingEnabledMsg{SessionID: "session", SpeechRecognitionAvailable: true})
+		model, _ = model.Update(BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
 		model, _ = model.Update(tea.PasteMsg{Content: "typed 界"})
 		model, _ = model.Update(VoiceAction{Action: "start", DraftID: 1})
 		authority := model.VoiceState().TranscriptAuthority
@@ -40,7 +40,7 @@ func TestModel_TranscriptUpdate(t *testing.T) {
 	})
 	t.Run("rejects stale identity revision and unrepresentable text", func(t *testing.T) {
 		model := voiceModel(t)
-		model, _ = model.Update(BrowserRecordingEnabledMsg{SessionID: "session", SpeechRecognitionAvailable: true})
+		model, _ = model.Update(BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
 		model, _ = model.Update(VoiceAction{Action: "start", DraftID: 1})
 		recording := model.VoiceState().TranscriptAuthority.Recording()
 		model, _ = model.Update(VoiceAction{Action: "recording", DraftID: 1, RecordingID: 1})
