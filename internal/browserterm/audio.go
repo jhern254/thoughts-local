@@ -88,7 +88,9 @@ func (server *server) connectAudio(response http.ResponseWriter, request *http.R
 		return
 	}
 	for {
-		readCtx, cancelRead := session.settings.withTimeout(recording.ctx, audioInactivityTimeout)
+		// Canceling a WebSocket read closes its connection. The recording owner
+		// must revoke transcript authority before closing it on Stop or expiry.
+		readCtx, cancelRead := session.settings.withTimeout(session.ctx, audioInactivityTimeout)
 		frame, err = readAudioMessage(readCtx, audioConnection, storage[:])
 		cancelRead()
 		if err != nil {
