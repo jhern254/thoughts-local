@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test microphone.test.mjs && playwright test"
+    "test": "node --test microphone.test.mjs pcm.test.mjs pcm-capture.test.mjs && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

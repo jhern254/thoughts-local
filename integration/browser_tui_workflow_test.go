@@ -113,7 +113,8 @@ func TestBrowserTUIWorkflow_SQLite(t *testing.T) {
 			for {
 				select {
 				case last = <-views:
-					if strings.Contains(last, text) && !strings.Contains(last, "Loading…") {
+					// Placeholder rows are visible before subject reads finish.
+					if strings.Contains(last, text) && !strings.Contains(last, "Loading…") && !strings.Contains(last, "Loading subjects…") {
 						return
 					}
 				case <-timer.C:

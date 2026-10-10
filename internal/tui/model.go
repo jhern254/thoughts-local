@@ -13,6 +13,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
+	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 const (
@@ -150,7 +151,12 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case thoughts.BrowserRecordingEnabledMsg:
 		m.browserRecordingEnabled = true
+		m.thoughts, _ = m.thoughts.Update(message)
 		return m, nil
+	case voice.TranscriptUpdate, voice.RecordingEnded:
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		return m, cmd
 	case thoughts.VoiceAction:
 		if message.Action == "open" {
 			if !m.VoiceState().CanOpenThoughtDraft {

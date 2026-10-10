@@ -1,21 +1,6 @@
+import {fakeMicrophone} from './capture-fixture.mjs';
 import {test, expect} from '@playwright/test';
 const screen = page => page.locator('.xterm-rows');
-async function fakeMicrophone(page) {
-  await page.addInitScript(() => {
-    window.voiceProbe = {requests: 0, tracksStopped: 0, recorders: [], permissions: []};
-    Object.defineProperty(navigator, 'mediaDevices', {value: {getUserMedia: () => {
-      window.voiceProbe.requests++;
-      return new Promise((resolve, reject) => window.voiceProbe.permissions.push({resolve, reject}));
-    }}});
-    window.voiceProbe.grant = index => window.voiceProbe.permissions[index].resolve({getTracks: () => [{stop: () => { window.voiceProbe.tracksStopped++; }}]});
-    window.MediaRecorder = class {
-      static isTypeSupported() { return true; }
-      constructor() { this.state = 'inactive'; window.voiceProbe.recorders.push(this); }
-      start(interval) { this.state = 'recording'; this.interval = interval; }
-      stop() { this.state = 'inactive'; queueMicrotask(() => this.onstop?.()); }
-    };
-  });
-}
 async function ready(page) {
   await page.goto('/');
   await expect(page.locator('#status')).toHaveText('Connected');
@@ -44,6 +29,7 @@ test('voice capture locks editing and save; Stop and restart preserve edited dra
   await expect(screen(page)).toContainText('F8: Stop');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   await page.evaluate(() => window.voiceProbe.grant(0));
+  await expect(page.locator('#status')).toHaveText('Recording audio (recognizer not connected)');
   await expect(screen(page)).toContainText('F8: Stop');
   await paste(page, 'PRIVATE-MUTATION');
   await page.locator('.xterm-helper-textarea').focus();
@@ -58,6 +44,7 @@ test('voice capture locks editing and save; Stop and restart preserve edited dra
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(2);
   await page.evaluate(() => window.voiceProbe.grant(1));
+  await expect(page.locator('#status')).toHaveText('Recording audio (recognizer not connected)');
   await expect(screen(page)).toContainText('F8: Stop');
   await page.reload(); await expect(page.locator('#status')).toHaveText('Connected');
   await expect(screen(page)).toContainText('Events'); await expect(screen(page)).not.toContainText(draft);
@@ -76,7 +63,8 @@ test('twenty-minute deadline stops capture without counting chunks', async ({pag
   await fakeMicrophone(page); await page.clock.install(); await ready(page);
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
-  await page.evaluate(() => window.voiceProbe.grant(0)); await expect(screen(page)).toContainText('F8: Stop');
+  await page.evaluate(() => window.voiceProbe.grant(0));
+  await expect(page.locator('#status')).toHaveText('Recording audio (recognizer not connected)'); await expect(screen(page)).toContainText('F8: Stop');
   await page.clock.fastForward(3 * 60 * 1000);
   await expect(screen(page)).toContainText('F8: Stop');
   await page.clock.fastForward(17 * 60 * 1000);
@@ -117,6 +105,7 @@ test('regular thought creation uses the same form and recording action', async (
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   await page.evaluate(() => window.voiceProbe.grant(0));
+  await expect(page.locator('#status')).toHaveText('Recording audio (recognizer not connected)');
   await expect(screen(page)).toContainText('F8: Stop');
   await expect(screen(page)).not.toContainText('F8: Record');
   await page.keyboard.press('F8');

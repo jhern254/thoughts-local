@@ -1,0 +1,96 @@
+name: Ephemeral browser audio
+
+on:
+  pull_request:
+    paths:
+      - 'internal/browserterm/audio*'
+      - 'internal/browserterm/voice*'
+      - 'internal/browserterm/server*'
+      - 'internal/browserterm/input*'
+      - 'internal/browserterm/static/pcm*'
+      - 'internal/browserterm/static/client.js'
+      - 'internal/browserterm/static/index.html'
+      - 'internal/browserterm/client/*audio*'
+      - 'internal/browserterm/client/*pcm*'
+      - 'internal/browserterm/client/capture-fixture.mjs'
+      - 'internal/browserterm/client/voice.spec.mjs'
+      - 'internal/browserterm/client/playwright.config.mjs'
+      - 'internal/browserterm/client/package*.json'
+      - 'internal/voice/**'
+      - 'internal/tui/model.go'
+      - 'internal/tui/thoughts/voice.go'
+      - 'internal/tui/thoughts/model.go'
+      - 'internal/tui/thoughts/transcript_test.go'
+      - 'integration/browser_audio*'
+      - 'docs/browser-audio.md'
+      - '.github/workflows/browser-audio.yml'
+      - 'go.mod'
+      - 'go.sum'
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    name: Portable transport (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        # Golden fixtures compare repository bytes; Windows checkout must not
+        # translate LF into CRLF. This override affects checkout only.
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -race -count=1 ./internal/browserterm ./internal/voice ./internal/tui/...
+
+  browser:
+    name: Chromium and Firefox synthetic PCM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: internal/browserterm/client/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: internal/browserterm/client
+      - run: npx playwright install --with-deps chromium firefox
+        working-directory: internal/browserterm/client
+      - name: Start synthetic audio backend
+        # Firefox still needs an output clock for Web Audio on a headless runner.
+        # A null sink provides it without physical devices or audio files.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=thoughts_test_audio rate=48000
+          pactl set-default-sink thoughts_test_audio
+      - name: PCM conversion and capture unit tests
+        run: node --test internal/browserterm/client/microphone.test.mjs internal/browserterm/client/pcm*.test.mjs
+      - name: Real worklets and sockets with injected fake consumer
+        env:
+          THOUGHTS_BROWSER_AUDIO_TEST: '1'
+        run: go test -tags=integration -count=1 -v -timeout 12m -run '^TestBrowserAudioWorkflow_Playwright$' ./integration
+
+  ci:
+    name: Complete repository checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make ci
