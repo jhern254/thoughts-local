@@ -187,7 +187,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		t.Setenv("THOUGHTS_BROWSER_PORT", "")
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) { return &runtimeStub{}, nil }
-		app.runBrowser = func(_ context.Context, port int, autoOpen bool, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger) error {
+		app.runBrowser = func(_ context.Context, port int, autoOpen bool, _ string, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger) error {
 			if !autoOpen {
 				t.Fatal("default browser opening was disabled")
 			}
@@ -211,7 +211,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 			t.Fatal("native program launched")
 			return nil
 		}
-		app.runBrowser = func(ctx context.Context, port int, autoOpen bool, factory func(context.Context) tea.Model, out io.Writer, logger logging.Logger) error {
+		app.runBrowser = func(ctx context.Context, port int, autoOpen bool, _ string, factory func(context.Context) tea.Model, out io.Writer, logger logging.Logger) error {
 			if !autoOpen {
 				t.Fatal("default browser opening was disabled")
 			}
@@ -241,7 +241,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		t.Setenv("THOUGHTS_BROWSER_OPEN", "true")
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) { return &runtimeStub{}, nil }
-		app.runBrowser = func(_ context.Context, _ int, autoOpen bool, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger) error {
+		app.runBrowser = func(_ context.Context, _ int, autoOpen bool, _ string, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger) error {
 			if autoOpen {
 				t.Fatal("opened browser despite explicit suppression")
 			}
@@ -265,7 +265,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		want := errors.New("runtime failure")
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) { return nil, want }
-		app.runBrowser = func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger) error {
+		app.runBrowser = func(context.Context, int, bool, string, func(context.Context) tea.Model, io.Writer, logging.Logger) error {
 			t.Fatal("served after runtime failure")
 			return nil
 		}
@@ -280,7 +280,7 @@ func TestTUI_BrowserMode(t *testing.T) {
 		app.openRuntime = func(context.Context, string) (runtime, error) {
 			return &runtimeStub{close: func() error { closed = true; return nil }}, nil
 		}
-		app.runBrowser = func(context.Context, int, bool, func(context.Context) tea.Model, io.Writer, logging.Logger) error {
+		app.runBrowser = func(context.Context, int, bool, string, func(context.Context) tea.Model, io.Writer, logging.Logger) error {
 			return want
 		}
 		err := newTUI(app).Run(context.Background(), []string{"thoughts-tui", "--browser"})
@@ -387,6 +387,34 @@ func TestTUI_NativeSessionCleanup(t *testing.T) {
 		case <-closed:
 		default:
 			t.Fatal("Runtime remained open after joined work")
+		}
+	})
+}
+
+func TestTUI_SpeechConfiguration(t *testing.T) {
+	t.Run("passes model directory flag over environment to browser composition", func(t *testing.T) {
+		t.Setenv("THOUGHTS_MODELS_DIR", "environment-models")
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
+		app.openRuntime = func(context.Context, string) (runtime, error) { return &runtimeStub{}, nil }
+		app.runBrowser = func(_ context.Context, _ int, _ bool, modelDirectory string, _ func(context.Context) tea.Model, _ io.Writer, _ logging.Logger) error {
+			if modelDirectory != "flag-models" {
+				t.Fatalf("got %q, want flag-models", modelDirectory)
+			}
+			return nil
+		}
+		if err := newTUI(app).Run(t.Context(), []string{"thoughts-tui", "--browser", "--models-dir", "flag-models"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("explicit speech failure preserves safe startup feedback", func(t *testing.T) {
+		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
+		app.openRuntime = func(context.Context, string) (runtime, error) { return &runtimeStub{}, nil }
+		app.runBrowser = func(context.Context, int, bool, string, func(context.Context) tea.Model, io.Writer, logging.Logger) error {
+			return &browserSpeechError{category: errBrowserSpeechSetup, cause: errors.New("private path")}
+		}
+		err := newTUI(app).Run(t.Context(), []string{"thoughts-tui", "--browser", "--models-dir", "explicit"})
+		if !errors.Is(err, errBrowserSpeechSetup) || app.failureMessage != errBrowserSpeechSetup.Error() {
+			t.Fatalf("got %v, feedback %q", err, app.failureMessage)
 		}
 	})
 }

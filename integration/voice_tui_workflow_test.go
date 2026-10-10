@@ -19,6 +19,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
+	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 func TestVoiceTUIWorkflow_SQLite(t *testing.T) {
@@ -43,9 +44,11 @@ func TestVoiceTUIWorkflow_SQLite(t *testing.T) {
 			views := make(chan string, 100)
 			done := make(chan error, 1)
 			go func() {
-				done <- browserterm.Serve(ctx, listener, func(session context.Context) tea.Model {
+				done <- browserterm.ServeWithAudioConsumer(ctx, listener, func(session context.Context) tea.Model {
 					return browserObservedModel{Model: tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop()), views: views}
-				}, logging.Nop())
+				}, logging.Nop(), func(context.Context, voice.RecordingKey, []int16, func(voice.TranscriptUpdate) bool) error {
+					return nil
+				})
 			}()
 			defer func() {
 				cancel()

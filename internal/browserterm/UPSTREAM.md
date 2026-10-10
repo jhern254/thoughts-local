@@ -139,7 +139,7 @@ can own the single browser session, then in `client/`:
 ```sh
 npm ci --ignore-scripts
 npx playwright install chromium firefox
-npm test
+npx playwright test browser.spec.mjs
 ```
 
 For the complete synthetic PCM/fake-transcript path, run from the repository
@@ -154,8 +154,8 @@ THOUGHTS_BROWSER_AUDIO_TEST=1 go test -tags=integration -count=1 -timeout 12m -r
 Optional `THOUGHTS_BROWSER_TEST_FILTER` selects Playwright test names;
 `THOUGHTS_BROWSER_ARTIFACTS=/tmp/thoughts-browser-review` retains synthetic
 screenshots and test artifacts outside the source tree. Ordinary Go checks skip
-this browser host. `npm test` against a running normal demo skips cases requiring
-the injected fake.
+this browser host. Recording tests require the opt-in fake-consumer host (or explicit native speech
+setup). A normal unconfigured demo supports typed drafts without capture.
 
 Chromium uses generated tones; Firefox's PCM cases use its synthetic microphone
 device. These tests exercise the real worklet/socket path, not physical

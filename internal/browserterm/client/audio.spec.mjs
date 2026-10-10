@@ -28,7 +28,7 @@ async function prepareAudioDraft(page) {
   });
   await page.goto('/');
   await expect(page.locator('#status')).toHaveText('Connected');
-  await page.keyboard.press('t');
+  await page.keyboard.press('F8');
   await expect(screen(page)).toContainText('Create thought');
   await page.keyboard.type('typed draft');
 }
@@ -36,7 +36,7 @@ async function startCapture(page, permissionIndex) {
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(permissionIndex + 1);
   await page.evaluate(index => window.voiceProbe.grant(index), permissionIndex);
-  await expect(page.locator('#status')).toHaveText('Recording audio (recognizer not connected)');
+  await expect(page.locator('#status')).toHaveText('Transcribing…');
   await expect.poll(() => page.evaluate(() => window.audioProbe.audioFrames)).toBeGreaterThan(0);
   await expect(screen(page)).toContainText('synthetic speech');
 }

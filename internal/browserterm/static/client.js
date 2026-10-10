@@ -43,13 +43,13 @@
     else if (state.recordingStatus === 'stopping') microphone.stop();
     else if (state.recordingStatus === 'idle' || !state.draftID) microphone.cancel();
     if (connected && !ended) {
-      status.textContent = ({requesting: 'Requesting microphone…', recording: 'Recording audio (recognizer not connected)', stopping: 'Stopping audio…'})[state.recordingStatus] || 'Connected';
+      status.textContent = ({requesting: 'Requesting microphone…', recording: 'Transcribing…', stopping: 'Stopping audio…'})[state.recordingStatus] || 'Connected';
     }
     if (restoreFocus) term.focus();
   }
   window.addEventListener('pagehide', clearVoice);
   container.addEventListener('keydown', event => {
-    if (event.key === 'F8' && connected && voiceState.draftID && voiceState.recordingStatus === 'idle') microphone.prepare();
+    if (event.key === 'F8' && connected && voiceState.speechRecognitionAvailable && voiceState.draftID && voiceState.recordingStatus === 'idle') microphone.prepare();
   }, true);
 
   // Use xterm's supported logger seam. Never forward terminal data or errors.

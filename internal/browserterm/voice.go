@@ -17,7 +17,9 @@ type voiceBridgeModel struct {
 }
 
 func (m voiceBridgeModel) Init() tea.Cmd {
-	return tea.Batch(m.Model.Init(), func() tea.Msg { return thoughts.BrowserRecordingEnabledMsg{SessionID: m.audioSession.sessionID} })
+	return tea.Batch(m.Model.Init(), func() tea.Msg {
+		return thoughts.BrowserRecordingEnabledMsg{SessionID: m.audioSession.sessionID, SpeechRecognitionAvailable: m.audioSession.consumerFactory != nil}
+	})
 }
 func (m voiceBridgeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
