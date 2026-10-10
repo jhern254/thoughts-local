@@ -14,7 +14,9 @@ setup and model installation; ordinary builds contain no native runtime.
 | Windows amd64 | Build-only | Build-only | Verified | Verified in CI | [Windows execution](https://github.com/jhern254/thoughts-local/pull/69/checks); private ONNX DLL prevents system-runtime collisions. |
 | iOS arm64 | Planned | Planned | Planned | Not implemented | Desktop cgo support does not imply iOS support. |
 
-CI evidence links follow this PR's current head; inspect the matching
+The table links record desktop batch-inference verification. The
+[browser streaming checks](https://github.com/jhern254/thoughts-local/actions/workflows/modelassets.yml?query=branch%3Afeature%2Fbrowser-moonshine)
+exercise streaming on those same four targets. Inspect the matching
 `Native transcription (<GOOS>/<GOARCH>)` job for each platform.
 
 Core app and Browser TUI statuses describe running/hosting the Go application,
@@ -35,3 +37,9 @@ and Browser TUI have not been interactively verified.
 The speech workflow records GOOS, GOARCH, actual runner architecture, archive
 identity, and successful native transcription. Update this table only from
 those results; cross-compilation does not establish runtime support.
+
+Browser recordings now use one native stream per recording when explicitly
+configured. Linux streaming was executed locally with the licensed fixture in
+100 ms chunks, including a Chromium worklet-to-draft walkthrough with the real
+recognizer. Interactive macOS/Windows microphones remain unverified; the
+Browser TUI statuses above are unchanged. iOS remains outside this desktop work.

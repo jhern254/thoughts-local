@@ -27,6 +27,7 @@ func (s *voiceSubjects) List(ctx context.Context, _ string) ([]data.Subject, err
 func voiceModel(t *testing.T) Model {
 	t.Helper()
 	m := New(t.Context(), "u", thought.NewService(testutils.NewFakeThoughtStore()), logging.Nop())
+	m.speechRecognitionAvailable = true
 	m.OpenVoice(1, &voiceSubjects{})
 	return m
 }

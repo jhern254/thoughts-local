@@ -48,6 +48,12 @@ EXPORTS
     moonshine_get_version
     moonshine_load_transcriber_from_memory_files
     moonshine_transcribe_without_streaming
+    moonshine_create_stream
+    moonshine_start_stream
+    moonshine_transcribe_add_audio_to_stream
+    moonshine_transcribe_stream
+    moonshine_stop_stream
+    moonshine_free_stream
     moonshine_free_transcriber
 '@ | Set-Content -Encoding ASCII $exportDefinitions
 

@@ -41,11 +41,12 @@ const (
 )
 
 type Model struct {
-	browserSessionID string
-	ctx              context.Context
-	userID           string
-	service          Service
-	logger           logging.Logger
+	browserSessionID           string
+	speechRecognitionAvailable bool
+	ctx                        context.Context
+	userID                     string
+	service                    Service
+	logger                     logging.Logger
 
 	// owner separates model instances. request owns list/get/create and cursor
 	// replies; statsRequest lets a full-scope statistics refresh independently.
@@ -300,8 +301,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	switch message := msg.(type) {
-	case BrowserRecordingEnabledMsg:
+	case BrowserVoiceSessionMsg:
 		m.browserSessionID = message.SessionID
+		m.speechRecognitionAvailable = message.SpeechRecognitionAvailable
 		return m, nil
 	case voice.TranscriptUpdate:
 		return m.applyTranscriptUpdate(message)

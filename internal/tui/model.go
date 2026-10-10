@@ -149,7 +149,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch message := message.(type) {
-	case thoughts.BrowserRecordingEnabledMsg:
+	case thoughts.BrowserVoiceSessionMsg:
 		m.browserRecordingEnabled = true
 		m.thoughts, _ = m.thoughts.Update(message)
 		return m, nil
@@ -236,7 +236,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.handleSubjectFound(message)
 	case tea.KeyPressMsg:
-		if message.String() == "t" && m.VoiceState().CanOpenThoughtDraft {
+		if (message.String() == "t" || (message.Code == tea.KeyF8 && m.screen == screenEvents)) && m.VoiceState().CanOpenThoughtDraft {
 			return m.update(thoughts.VoiceAction{Action: "open"})
 		}
 	}
@@ -422,7 +422,7 @@ func localUserLabel(user *data.User) string {
 
 // VoiceState exposes only bounded control metadata to the browser bridge.
 func (m Model) VoiceState() thoughts.VoiceState {
-	state := thoughts.VoiceState{BrowserRecordingEnabled: m.browserRecordingEnabled}
+	state := thoughts.VoiceState{BrowserRecordingEnabled: m.browserRecordingEnabled, SpeechRecognitionAvailable: m.thoughts.VoiceState().SpeechRecognitionAvailable}
 	if !m.browserRecordingEnabled || m.exitPromptOpen {
 		return state
 	}

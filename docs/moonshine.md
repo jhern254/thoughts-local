@@ -1,10 +1,52 @@
-# Local Moonshine PCM smoke test
+# Local Moonshine speech
 
-This developer-only path proves approved model assets → local native inference
-→ transcript text. It does not capture microphones or connect speech to Thoughts'
-browser, TUI, application runtime or database. Ordinary builds and tests require
-no native runtime; opening verified assets in those builds returns
-`speech.ErrRuntime`.
+Moonshine provides local speech recognition for browser thought drafts and a
+separate developer PCM smoke command. Both use the same verified model and
+native boundary. Ordinary builds and tests require no native runtime; explicitly
+configuring speech in those builds fails safely instead of capturing audio.
+
+## Browser speech
+
+First complete the platform's native setup below and explicitly install the
+approved model. No browser action downloads models or runtime libraries.
+Then build with the native tag in the same configured shell:
+
+```sh
+go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
+GOFLAGS=-tags=moonshine make tui/browser
+# Or supply the model root directly:
+go run -tags=moonshine ./cmd/thoughts-tui --browser --models-dir "$THOUGHTS_MODELS_DIR"
+```
+
+On Windows, set `$env:GOFLAGS = '-tags=moonshine'` before running `make tui/browser`,
+or use `go run -tags=moonshine ./cmd/thoughts-tui --browser --models-dir $env:THOUGHTS_MODELS_DIR`.
+The database must already have the normal application migrations when using
+`go run` directly.
+
+On the Events timeline, F8 opens a draft. Press F8 again to record, then F8 to
+stop. Text remains unsaved until the normal Thought save. Without a model root
+configured, typed drafts remain available and recording shows a fixed
+unavailable message. An explicitly configured but invalid model/runtime prevents
+browser startup with safe feedback. `--models-dir` overrides `THOUGHTS_MODELS_DIR`.
+Terminal-only mode does not initialize speech.
+
+The browser server keeps one verified transcriber loaded, then creates and
+closes one stream per recording. `StartStream` permits one active stream on that
+transcriber. Each `AddAudio` supplies a short chunk and returns cumulative text;
+unchanged text is not republished. PCM16 browser samples become float amplitude
+samples in the adapter, without another resampler or retaining previous chunks.
+
+Stop revokes draft authority before cleanup. `Stream.Close` calls the native
+stop/free functions but does not request a final transcript. Pending words may
+therefore be discarded on Stop; this is deliberately not a Finish operation.
+Stream copies share cleanup state, and parent Close frees an active stream
+before releasing its model. The browser server joins all recording work before
+closing that parent.
+
+The pinned API internally limits how often it analyzes new audio. Thoughts asks
+for updated text after each 100 ms chunk without forcing extra analysis or
+adding another scheduler. Cancellation discards results but must wait for a
+native call already in progress.
 
 ## PCM and the input format
 
@@ -100,7 +142,7 @@ Moonshine's **model architecture**, which identifies a neural model layout such
 as Small Streaming. Ordinary builds select the unavailable-runtime implementation
 and need no C headers or libraries. The portable package owns lifecycle policy;
 the tagged file owns C memory and calls. This split keeps platform mapping/linking separate from the shared C API
-implementation. It does not wire speech into the application. See
+implementation. Browser startup owns optional speech separately from the SQLite application runtime. See
 [platform support](platform-support.md) for actual runtime evidence.
 
 ## Upstream contract
@@ -327,7 +369,7 @@ installation causes, and `errors.As` can retrieve a numeric `NativeStatusError`.
 Unwrapped causes may contain paths and must not be logged.
 
 Deferred: Tiny/Whisper and other models, automatic selection/hardware detection,
-iOS/Android and other unimplemented native targets, browser/microphone transport, AudioWorklet,
-PCM WebSockets, application/runtime wiring, resampling/VAD pipelines, partial UI,
-draft mutation and session fencing, SQLite speech state, recommendations,
-embeddings/LLMs/Python, automatic updates, and native runtime bundling/installers.
+iOS/Android, application.Runtime speech ownership, VAD/resampling pipelines,
+speakers/timestamps/confidence, Finish/final-drain semantics, automatic saves,
+SQLite speech state, recommendations, embeddings/LLMs/Python, automatic updates,
+and native runtime bundling/installers.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -18,17 +19,23 @@ import (
 	"github.com/jhern254/go-thoughts/internal/logging"
 )
 
-func runBrowser(ctx context.Context, port int, autoOpen bool, newModel func(context.Context) tea.Model, out io.Writer, logger logging.Logger) error {
+func runBrowser(ctx context.Context, port int, autoOpen bool, modelDirectory string, newModel func(context.Context) tea.Model, out io.Writer, logger logging.Logger) error {
 	var opener func(context.Context, string) error
 	if autoOpen {
 		opener = openDefaultBrowser
 	}
-	return serveBrowser(ctx, port, newModel, out, logger, opener)
+	return serveBrowser(ctx, port, modelDirectory, newModel, out, logger, opener)
 }
 
-func serveBrowser(ctx context.Context, port int, newModel func(context.Context) tea.Model, out io.Writer, logger logging.Logger, opener func(context.Context, string) error) error {
+func serveBrowser(ctx context.Context, port int, modelDirectory string, newModel func(context.Context) tea.Model, out io.Writer, logger logging.Logger, opener func(context.Context, string) error) (serveErr error) {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	consumerFactory, closeSpeech, err := openBrowserSpeech(ctx, modelDirectory)
+	if err != nil {
+		return err
+	}
+	defer func() { serveErr = errors.Join(serveErr, closeSpeech()) }()
+
 	listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
 		return err
@@ -40,7 +47,7 @@ func serveBrowser(ctx context.Context, port int, newModel func(context.Context) 
 	// Serve rejects terminal tracing before startup. Let that validation finish
 	// without opening a tab for a server that cannot run.
 	if opener == nil || os.Getenv("TEA_TRACE") != "" {
-		return browserterm.Serve(ctx, listener, newModel, logger)
+		return browserterm.ServeWithAudioConsumerFactory(ctx, listener, newModel, logger, consumerFactory)
 	}
 	openingCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -53,7 +60,7 @@ func serveBrowser(ctx context.Context, port int, newModel func(context.Context) 
 			fmt.Fprintln(out, "Could not open the default browser. Open the printed address manually.")
 		}
 	}()
-	err = browserterm.Serve(ctx, listener, newModel, logger)
+	err = browserterm.ServeWithAudioConsumerFactory(ctx, listener, newModel, logger, consumerFactory)
 	cancel()
 	<-opened
 	return err
