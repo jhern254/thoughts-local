@@ -5,8 +5,9 @@ const DefaultBackgroundDarkness = 70
 // Visual contains only native-owned browser presentation preferences.
 type Visual struct {
 	BackgroundAsset string
-	Darkness        int
-	Framing         BackgroundFraming
+	// Darkness is black overlay opacity in percent (0–95), independent of text.
+	Darkness int
+	Framing  BackgroundFraming
 }
 
 // BackgroundFraming uses normalized overflow positions so framing adapts to

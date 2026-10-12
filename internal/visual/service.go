@@ -52,6 +52,8 @@ func (s *Service) Load(ctx context.Context) (data.Visual, error) {
 }
 
 func validAsset(name string) bool {
+	// Imports use 16 random bytes encoded as 32 lowercase hex characters, plus
+	// a four-character .jpg/.png suffix. Accept only that application-owned name.
 	if len(name) != 36 || (filepath.Ext(name) != ".jpg" && filepath.Ext(name) != ".png") {
 		return false
 	}
