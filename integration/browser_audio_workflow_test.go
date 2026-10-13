@@ -72,7 +72,7 @@ func TestBrowserAudioWorkflow_SQLite(t *testing.T) {
 		go func() {
 			serverDone <- browserterm.ServeWithAudioConsumer(ctx, listener, func(session context.Context) tea.Model {
 				return browserObservedModel{Model: tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logger), views: views}
-			}, logger, consumer)
+			}, logger, consumer, nil)
 		}()
 		serverJoined := false
 		defer func() {

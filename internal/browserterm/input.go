@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
@@ -33,6 +34,32 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 	}
 	body := frame[1:]
 	switch frame[0] {
+	case 'o':
+		var msg tui.BrowserOptionsMsg
+		// Options frames carry only control metadata, not image bytes: cap JSON at
+		// 256 bytes. IDs must fit JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1)
+		// so browser rounding cannot break operation ownership. Darkness is overlay
+		// opacity in percent; 0–95 matches the persisted Visual settings contract.
+		if len(body) > 256 || json.Unmarshal(body, &msg) != nil || msg.ID > 9007199254740991 || msg.Darkness < 0 || msg.Darkness > 95 {
+			return nil, errInput
+		}
+		switch msg.Action {
+		case "open":
+			if msg.ID != 0 {
+				return nil, errInput
+			}
+		case "reframe":
+			if msg.ID == 0 || !msg.Framing.Valid() || msg.Framing.Fit != "fill" {
+				return nil, errInput
+			}
+		case "loaded", "selected", "cancelled", "saved", "warning", "failed":
+			if msg.ID == 0 {
+				return nil, errInput
+			}
+		default:
+			return nil, errInput
+		}
+		return []tea.Msg{msg}, nil
 	case 'v':
 		var action thoughts.VoiceAction
 		// Voice frames contain only small control metadata, so cap JSON at 256 bytes.

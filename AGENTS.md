@@ -213,9 +213,10 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 
 Soft-deleting a subject retains its record and atomically clears `subject_id` on all linked thoughts and events, including already soft-deleted records. Unlinking advances affected records’ versions and keeps `updated_at` nondecreasing. This changes assignment, not historical existence: thoughts and events remain retained, along with event/thought provenance, goal progress, thought-tag associations, mindset periods, and other historical relationships.
 
-* Treat SQLite as a serious persistence layer, not a throwaway dev database.
+* Treat SQLite as a serious persistence layer, even when development databases are disposable.
 * Use migrations for schema changes.
 * Keep schema changes intentional and reviewable.
+* Current development databases are disposable. Consolidate schema changes for a feature into one final migration pair, including all new tables needed by that feature. Amend the relevant existing migration instead of adding incremental ALTER migrations for development-only changes, and recreate the development DB. Keep SQL migrations authoritative and update schema docs and tests. Once databases must be preserved, use forward migrations instead; do not rewrite deployed migration history.
 * Preserve foreign keys, constraints, indexes, and timestamp conventions already established in the project.
 * Do not make broad schema redesigns inside a small feature PR unless explicitly requested.
 
@@ -250,6 +251,8 @@ Markdown file -> fragile parser -> hidden app state
 ```
 
 ## Pull Request Expectations
+
+Keep README changes limited to high-level setup and user-facing usage. Do not add migration history, internal schema/query details, or implementation notes there; use maintainer documentation when those details are needed.
 
 A good PR should be:
 

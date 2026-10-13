@@ -37,6 +37,7 @@ test('back navigation and default No preserve the session until exit is confirme
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Misc thoughts');
+  await expect(screen(page)).not.toContainText('Loading subjects');
   await page.keyboard.press('Control+c');
   await expect(page.locator('#status')).toHaveText('Connected');
   await expect(screen(page)).not.toContainText('Exit app?');
@@ -68,7 +69,7 @@ test('reload during filter editing waits for the previous session to finish', as
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Misc thoughts');
-  await expect(screen(page)).not.toContainText('Loading…');
+  await expect(screen(page)).not.toContainText('Loading');
   await page.keyboard.press('/');
   await page.keyboard.type('Building');
   await expect(screen(page)).toContainText('Filter: Building');
@@ -106,11 +107,11 @@ test('browser paste preserves Unicode and rejects unsupported content without de
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Misc thoughts');
-  await expect(screen(page)).not.toContainText('Loading…');
+  await expect(screen(page)).not.toContainText('Loading');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Create thought');
-  await expect(screen(page)).not.toContainText('Loading…');
+  await expect(screen(page)).not.toContainText('Loading');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Ctrl+S');
   await page.keyboard.insertText('λ');

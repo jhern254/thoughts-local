@@ -2,36 +2,13 @@
 
 ## Database migrations
 
-Run `make migrate/up` (optionally `DB_PATH=/path/to/thoughts.db`). The Make targets
-build the standard golang-migrate CLI into `bin/migrate` from the pinned module in
-`tools/migrate`. No globally installed migration CLI is required. The tool uses
-modernc SQLite v1.46.1 (SQLite 3.51.2), matching the application. Older CLI builds
-can lack `unhex()`, which the schema needs for exact counts after embedded NULs. Keep the
-tool and application SQLite versions aligned when upgrading. `make check` also
-verifies the migration tool builds; `make build` builds only the application.
-The tool dependencies do not enter the application module.
+Run `make migrate/up` (optionally `DB_PATH=/path/to/thoughts.db`). The migration
+tool builds locally; no global installation is required. `make migrate/down`
+rolls back one migration, and `make migrate/version` reports the version.
+The executable does not apply migrations automatically.
 
-`make migrate/down` rolls back one migration; `make migrate/version` reports the
-version. Disposable TUI demos use the same local migration binary. Migrations
-remain explicit and are never applied automatically by the executable.
-
-`make dev/seed` and seeded demos also use the system `sqlite3` command. Use
-SQLite **3.41.0 or newer**, which provides [`unhex()`](https://www.sqlite.org/releaselog/3_41_0.html),
-when executing migrations or writing this schema with external SQLite tools.
-Check your CLI version with `sqlite3 --version`.
-
-The development schema was revised in migration `000004`: recreate disposable
-development databases after this change. Running migrations against an already
-migrated database does not retrofit the revised table definition.
-
-Thoughts store a generated `character_count`: the number of Unicode code points
-in the complete stored text, including whitespace, newlines and embedded NULs.
-SQLite maintains this STORED value on every write, including SQL imports. The
-1,000,000-code-point limit uses this count, including text after embedded NULs. The
-existing active chronological index appends the count, letting Event statistics
-read integers from the index; Event pages read the same value for visible rows.
-Ordinary browsing and latest previews still select zero for their unused count.
-The SQL migrations are authoritative; `mvp_schema.dbml` is a schema overview.
+Seeding commands and demos require the system `sqlite3` CLI, version **3.41.0
+or newer**.
 
 ## Thoughts TUI
 
@@ -103,10 +80,46 @@ are not needed to build or run it.
   shortcuts such as Ctrl+L and Ctrl+W remain browser actions. Click the terminal
   to return focus. Microphone, attachments, and mobile packaging are deferred.
 
+### Browser background
+
+Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use
+**Ctrl+,** / **Cmd+,** without leaving a draft. Under Visual, choose a local JPEG or PNG, preview it, and
+apply it behind the terminal. Background darkness changes only the readability
+overlay; Apply saves it. Remove background returns to the normal dark surface.
+Controls are rendered in the TUI: Tab/Shift+Tab moves focus, arrows adjust
+darkness, Enter activates, and Q/Esc returns without saving. Mouse buttons and
+slider dragging also work. The browser supplies the device picker and the real
+image inside the preview border. These controls affect browser presentation,
+not terminal drafts or stored Thoughts.
+
+Use **Image fit: Fill** to cover the browser window or **Fit** to show the whole
+image with dark margins. In Fill mode, **Adjust framing** opens a larger preview:
+drag or use arrow keys to move the image, and **+ / −** to zoom (100–300%).
+**Done** keeps your draft framing; **Apply** saves it. **Cancel/Esc** restores the
+framing from entry, and **Reset framing** centers it at 100% zoom. The preview
+matches the current browser window's proportions; resizing may reveal different
+edges. The original image is retained. Darkness changes one percentage point per
+Left/Right press; Home/End select its limits.
+
+
+Images must be non-animated, at most **16 MiB**, **8,192 pixels per side**, and
+**24 million pixels** total. SVG, GIF, animated PNG, and remote URLs are unsupported.
+The default darkness is 70%; the range is 0–95%.
+
+Imported copies live in
+`<database filename>.assets/appearance/` (normally
+`data/thoughts.db.assets/appearance/`), independently of the browser profile.
+Back up the database and its asset directory together. In-memory databases do
+not support persistent backgrounds.
+
+Background assets are local application data, are not cloud-uploaded, and are
+**not encrypted**. Future encrypted-vault work must include these personal media
+assets. Video backgrounds and AI animation are separate future work.
+
 ### Local trust and maintenance
 
 Browser mode binds only `127.0.0.1`, validates the exact Host and Origin, and
-serves only embedded files. Use the printed numeric address, not a hostname or
+serves embedded client files and the selected application-owned background image. Use the printed numeric address, not a hostname or
 reverse proxy. This is a local single-user application: processes running as
 your user can access it. There is no LAN mode, authentication, or shell endpoint.
 Disable `TEA_TRACE` before launching browser mode; terminal traffic recording is

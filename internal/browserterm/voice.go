@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
@@ -41,4 +42,13 @@ func (m voiceBridgeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, cmd
+}
+
+func (m voiceBridgeModel) OptionsState() tui.BrowserOptionsState {
+	if model, ok := m.Model.(interface {
+		OptionsState() tui.BrowserOptionsState
+	}); ok {
+		return model.OptionsState()
+	}
+	return tui.BrowserOptionsState{}
 }

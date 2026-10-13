@@ -78,7 +78,7 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 			t.Fatal(err)
 		}
 		m := newScreenTestModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, service, &metricsStub{}, logging.Nop())
-		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
 		m, cmd := rootUpdate(m, enterKey())
 		old := cmd().(tea.BatchMsg)[0]() // Actual page reply held across navigation.
 		m, _ = rootUpdate(m, escapeKey())

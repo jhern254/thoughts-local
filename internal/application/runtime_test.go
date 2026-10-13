@@ -126,3 +126,18 @@ func TestSQLiteDSNWithForeignKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntime_BrowserVisual(t *testing.T) {
+	t.Run("in-memory database leaves browser visual unavailable", func(t *testing.T) {
+		db, err := sql.Open("sqlite", "file::memory:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		runtime := &Runtime{db: db, localUser: &data.User{UserID: "u"}}
+		service, err := runtime.BrowserVisual(t.Context())
+		if err != nil || service != nil {
+			t.Fatalf("visual = %v, %v; want unavailable without error", service, err)
+		}
+	})
+}

@@ -12,10 +12,16 @@
   <script defer src="/static/addon-unicode-graphemes.js"></script>
   <script defer src="/static/microphone.js"></script>
   <script defer src="/static/pcm-capture.js"></script>
+  <script defer src="/static/framing.js"></script>
+  <script defer src="/static/visual.js"></script>
   <script defer src="/static/client.js"></script>
 </head>
 <body>
+  <div id="background-surface" aria-hidden="true" hidden><img id="background-image" alt="" hidden></div>
+  <div id="background-overlay" aria-hidden="true" hidden></div>
   <header><strong>Thoughts</strong><span id="status" role="status">Connecting…</span><button id="reconnect" hidden>Reconnect</button></header>
   <main id="terminal" aria-label="Thoughts terminal"></main>
+  <input id="background-file" type="file" accept="image/jpeg,image/png" hidden aria-label="Choose background image">
+  <div id="background-preview-wrap" hidden><div id="background-preview-frame"><img id="background-preview" alt="Selected background preview"></div></div>
 </body>
 </html>

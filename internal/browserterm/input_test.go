@@ -9,6 +9,18 @@ import (
 )
 
 func TestInputMessages(t *testing.T) {
+	t.Run("bounds visual metadata and rejects unknown actions", func(t *testing.T) {
+		for _, frame := range []string{`o{"action":"open"}`, `o{"action":"loaded","id":1,"darkness":70}`} {
+			if _, err := inputMessages([]byte(frame)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, frame := range []string{`o{"action":"open","id":1}`, `o{"action":"loaded"}`, `o{"action":"saved","id":9007199254740992}`, `o{"action":"saved","id":1,"darkness":96}`, `o{"action":"path"}`, "o" + strings.Repeat(" ", 257)} {
+			if _, err := inputMessages([]byte(frame)); err == nil {
+				t.Fatal("accepted invalid visual input")
+			}
+		}
+	})
 	t.Run("preserves complete paste for existing validation", func(t *testing.T) {
 		for _, text := range []string{"first\n界 👩‍💻", "bad\r\ninput", "bad\tinput", "bad\ufffdinput", "\x1b[201~\x13", ""} {
 			got, err := inputMessages(append([]byte{'p'}, []byte(text)...))
@@ -55,4 +67,21 @@ func TestInputMessages(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestInputMessages_Framing(t *testing.T) {
+	for _, body := range []string{
+		`o{"action":"reframe","id":1,"framing":{"fit":"fill","zoom":150,"positionX":0,"positionY":10000}}`,
+		`o{"action":"reframe","id":0,"framing":{"fit":"fill","zoom":150,"positionX":0,"positionY":10000}}`,
+		`o{"action":"reframe","id":1,"framing":{"fit":"fill","zoom":150,"positionX":0,"positionY":10001}}`,
+		`o{"action":"reframe","id":1,"framing":{"fit":"fit","zoom":150,"positionX":0,"positionY":10000}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			_, err := inputMessages([]byte(body))
+			valid := body == `o{"action":"reframe","id":1,"framing":{"fit":"fill","zoom":150,"positionX":0,"positionY":10000}}`
+			if (err == nil) != valid {
+				t.Fatalf("error = %v, want valid %v", err, valid)
+			}
+		})
+	}
 }

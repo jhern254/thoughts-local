@@ -40,7 +40,7 @@ func TestRunBrowser(t *testing.T) {
 		release := make(chan struct{})
 		done := make(chan error, 1)
 		go func() {
-			done <- serveBrowser(ctx, 0, func(context.Context) tea.Model { return nil }, io.Discard, logging.Nop(), func(ctx context.Context, _ string) error {
+			done <- serveBrowser(ctx, 0, func(context.Context) tea.Model { return nil }, io.Discard, logging.Nop(), nil, func(ctx context.Context, _ string) error {
 				close(started)
 				<-ctx.Done()
 				close(cancelled)
@@ -66,7 +66,7 @@ func TestRunBrowser(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		called := false
-		err := serveBrowser(ctx, 0, func(context.Context) tea.Model { return nil }, io.Discard, logging.Nop(), func(ctx context.Context, address string) error {
+		err := serveBrowser(ctx, 0, func(context.Context) tea.Model { return nil }, io.Discard, logging.Nop(), nil, func(ctx context.Context, address string) error {
 			defer cancel()
 			called = true
 			request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
@@ -110,7 +110,7 @@ func TestRunBrowser(t *testing.T) {
 				t.Errorf("got HTTP %d after launcher failure, want 200", response.StatusCode)
 			}
 		}()
-		err := serveBrowser(ctx, 0, func(context.Context) tea.Model { return nil }, &out, logging.Nop(), func(_ context.Context, url string) error {
+		err := serveBrowser(ctx, 0, func(context.Context) tea.Model { return nil }, &out, logging.Nop(), nil, func(_ context.Context, url string) error {
 			address <- url
 			return errors.New("PRIVATE-LAUNCH-ERROR")
 		})
@@ -120,7 +120,7 @@ func TestRunBrowser(t *testing.T) {
 	})
 	t.Run("startup rejection does not open a browser", func(t *testing.T) {
 		t.Setenv("TEA_TRACE", "trace")
-		err := serveBrowser(context.Background(), 0, func(context.Context) tea.Model { return nil }, io.Discard, logging.Nop(), func(context.Context, string) error {
+		err := serveBrowser(context.Background(), 0, func(context.Context) tea.Model { return nil }, io.Discard, logging.Nop(), nil, func(context.Context, string) error {
 			t.Error("opened browser before startup validation")
 			return nil
 		})
@@ -135,7 +135,7 @@ func TestRunBrowser(t *testing.T) {
 		}
 		defer ln.Close()
 		var out bytes.Buffer
-		err = runBrowser(context.Background(), ln.Addr().(*net.TCPAddr).Port, false, func(context.Context) tea.Model { t.Fatal("constructed model before bind succeeded"); return nil }, &out, logging.Nop())
+		err = runBrowser(context.Background(), ln.Addr().(*net.TCPAddr).Port, false, func(context.Context) tea.Model { t.Fatal("constructed model before bind succeeded"); return nil }, &out, logging.Nop(), nil)
 		if err == nil || out.Len() != 0 {
 			t.Fatalf("got err %v, output %q; want bind failure and no address", err, out.String())
 		}
@@ -148,7 +148,7 @@ func TestRunBrowser(t *testing.T) {
 		address := ln.Addr().String()
 		port := ln.Addr().(*net.TCPAddr).Port
 		ln.Close()
-		err = runBrowser(context.Background(), port, false, func(context.Context) tea.Model { return nil }, failedBrowserOutput{}, logging.Nop())
+		err = runBrowser(context.Background(), port, false, func(context.Context) tea.Model { return nil }, failedBrowserOutput{}, logging.Nop(), nil)
 		if !errors.Is(err, io.ErrClosedPipe) {
 			t.Fatalf("got %v, want output failure", err)
 		}
