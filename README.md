@@ -104,6 +104,8 @@ Left/Right press; Home/End select its limits.
 
 Images must be non-animated, at most **16 MiB**, **8,192 pixels per side**, and
 **24 million pixels** total. SVG, GIF, animated PNG, and remote URLs are unsupported.
+Large imports are resized to a lightweight application-owned copy; the image on
+your device is unchanged. Reimport an existing background to optimize it.
 The default darkness is 70%; the range is 0–95%.
 
 Imported copies live in

@@ -20,21 +20,21 @@ func TestValidateImage(t *testing.T) {
 			} else {
 				_ = jpeg.Encode(&b, img, nil)
 			}
-			got, err := validateImage(b.Bytes())
+			_, got, err := prepareImage(t.Context(), b.Bytes())
 			if err != nil || got != format {
 				t.Fatalf("format = %q, %v; want %s", got, err, format)
 			}
 		})
 	}
 	t.Run("rejects unsupported private content", func(t *testing.T) {
-		if _, err := validateImage([]byte("<svg>private marker</svg>")); err == nil {
+		if _, _, err := prepareImage(t.Context(), []byte("<svg>private marker</svg>")); err == nil {
 			t.Fatal("accepted unsupported content")
 		}
 	})
 	t.Run("rejects unreasonable dimensions before decoding pixels", func(t *testing.T) {
 		var b bytes.Buffer
 		_ = png.Encode(&b, image.NewGray(image.Rect(0, 0, 8193, 1)))
-		if _, err := validateImage(b.Bytes()); err == nil {
+		if _, _, err := prepareImage(t.Context(), b.Bytes()); err == nil {
 			t.Fatal("accepted excessive width")
 		}
 	})
@@ -52,7 +52,7 @@ func TestValidateImage_Limits(t *testing.T) {
 		if _, err := png.Decode(bytes.NewReader(animated)); err != nil {
 			t.Fatalf("fixture is not decodable PNG: %v", err)
 		}
-		if _, err := validateImage(animated); err == nil {
+		if _, _, err := prepareImage(t.Context(), animated); err == nil {
 			t.Fatal("accepted animated PNG")
 		}
 	})
@@ -64,7 +64,7 @@ func TestValidateImage_Limits(t *testing.T) {
 		if _, _, err := image.DecodeConfig(bytes.NewReader(body)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := validateImage(body); err == nil {
+		if _, _, err := prepareImage(t.Context(), body); err == nil {
 			t.Fatal("accepted 30 million pixels")
 		}
 	})
@@ -73,14 +73,14 @@ func TestValidateImage_Limits(t *testing.T) {
 		if err := png.Encode(&body, image.NewGray(image.Rect(0, 0, 8192, 1))); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := validateImage(body.Bytes()); err != nil {
+		if _, _, err := prepareImage(t.Context(), body.Bytes()); err != nil {
 			t.Fatal(err)
 		}
 	})
 	t.Run("rejects valid image padded beyond byte limit", func(t *testing.T) {
 		body := make([]byte, 16*1024*1024+1)
 		copy(body, samplePNG(t))
-		if _, err := validateImage(body); err == nil {
+		if _, _, err := prepareImage(t.Context(), body); err == nil {
 			t.Fatal("accepted oversized image")
 		}
 	})
