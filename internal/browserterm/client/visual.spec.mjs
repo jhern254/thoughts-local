@@ -89,8 +89,10 @@ test('stored pixels match display-oriented previews for all EXIF orientations', 
       const buffer = insertMetadata(source, format, metadata);
       const expected = await displayedSamples(page, buffer);
       await open(page); await chooseImage(page, {name:`orientation-${orientation}.${format}`, mimeType:`image/${format}`, buffer});
-      const ratio = await page.locator('#background-preview').evaluate(image => parseFloat(image.style.width) / parseFloat(image.style.height));
-      expect(ratio).toBeCloseTo(expected.size[0] / expected.size[1], 4);
+      // Selection is acknowledged before queued preview placement paints.
+      // Wait for this image's geometry rather than reading the previous frame.
+      await expect.poll(() => page.locator('#background-preview').evaluate(image =>
+        parseFloat(image.style.width) / parseFloat(image.style.height))).toBeCloseTo(expected.size[0] / expected.size[1], 4);
       await clickControl(page, 'Apply'); await expect(screen(page)).not.toContainText('Background darkness:');
       const response = await page.request.get('/visual/background'); const stored = await response.body();
       expect(stored.includes(privateMarker)).toBe(false);
