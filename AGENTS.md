@@ -252,6 +252,8 @@ Markdown file -> fragile parser -> hidden app state
 
 ## Pull Request Expectations
 
+Keep README changes limited to high-level setup and user-facing usage. Do not add migration history, internal schema/query details, or implementation notes there; use maintainer documentation when those details are needed.
+
 A good PR should be:
 
 * small,
