@@ -222,6 +222,18 @@ speech wiring are intentionally deferred.
 
 ## Visual settings and local backgrounds
 
+Imports retain the existing 16 MiB/8,192-axis/24MP source safety limits. Stored
+copies are bounded to 4MP and 3,072 pixels per axis, without upscaling. Native
+validation decodes once, then resizes oversized images with ApproxBiLinear;
+JPEG uses quality 85 and PNG BestSpeed preserves alpha. Small imports retain
+their bytes. Existing assets are not rewritten; reimport applies the budget.
+The browser preview uses the same output dimensions for consistent framing.
+
+Visual responses include an opaque `backgroundID`, never a filesystem path.
+Settings-only changes reuse the current decoded image. Connection and activation
+generations fence delayed loads; discarded object URLs are revoked. There is no
+recurring background rendering loop or per-key full-screen refresh.
+
 The `visual` service keeps background settings in SQLite's `visual` table and
 image files beside that database in `.assets/appearance/`. Migration 000012
 creates the complete `visual` table, including framing settings.

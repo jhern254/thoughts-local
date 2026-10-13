@@ -14,6 +14,32 @@ async function imageFixture(page) {
   });
   return {name: 'synthetic.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64')};
 }
+
+test('resized JPEG and PNG retain the orientation shown by their preview', async ({page}) => {
+  await page.goto('/'); await expect(page.locator('#status')).toHaveText('Connected');
+  for (const format of ['jpeg','png']) {
+    const encoded=await page.evaluate(format=>{
+      const canvas=document.createElement('canvas');canvas.width=4096;canvas.height=256;
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#458ad0';ctx.fillRect(0,0,4096,256);
+      return canvas.toDataURL(`image/${format}`).split(',')[1];
+    },format);
+    const source=Buffer.from(encoded,'base64');
+    const tiff=Buffer.from([73,73,42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,6,0,0,0,0,0,0,0]);
+    let metadata,offset;
+    if(format==='jpeg') {metadata=Buffer.concat([Buffer.from([255,225,0,34,69,120,105,102,0,0]),tiff]);offset=2;}
+    else {
+      metadata=Buffer.alloc(tiff.length+12);metadata.writeUInt32BE(tiff.length);metadata.write('eXIf',4);tiff.copy(metadata,8);
+      let crc=0xffffffff;
+      for(const byte of metadata.subarray(4,-4)){crc^=byte;for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
+      metadata.writeUInt32BE((crc^0xffffffff)>>>0,metadata.length-4);offset=33;
+    }
+    const buffer=Buffer.concat([source.subarray(0,offset),metadata,source.subarray(offset)]);
+    await open(page);await chooseImage(page,{name:`oriented.${format}`,mimeType:`image/${format}`,buffer});
+    expect(await page.locator('#background-preview').evaluate(image=>parseFloat(image.style.width)/parseFloat(image.style.height))).toBeCloseTo(1/16,4);
+    await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
+    expect(await page.locator('#background-image').evaluate(image=>[image.naturalWidth,image.naturalHeight])).toEqual([192,3072]);
+  }
+});
 test('persists one image without resetting the terminal or its draft', async ({page}, testInfo) => {
   let sockets = 0;
   page.on('websocket', () => sockets++);
@@ -45,6 +71,11 @@ test('persists one image without resetting the terminal or its draft', async ({p
   expect(await page.locator('.xterm-viewport').evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
   expect(await page.locator('.xterm-scrollable-element').evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
   await page.screenshot({path: `/tmp/background-${testInfo.project.name}-image.png`});
+  let backgroundReads = 0;
+  page.on('request', request => {
+    if (request.method() === 'GET' && request.url().endsWith('/visual/background')) backgroundReads++;
+  });
+  await page.evaluate(() => { window.savedBackgroundElement = document.getElementById('background-image'); });
   await open(page);
   await darkness(page, 30);
   await clickControl(page, 'Apply');
@@ -56,6 +87,8 @@ test('persists one image without resetting the terminal or its draft', async ({p
   await clickControl(page, 'Apply');
   await expect(screen(page)).not.toContainText('Background darkness:');
   await page.screenshot({path: `/tmp/background-${testInfo.project.name}-high.png`});
+  expect(backgroundReads).toBe(0);
+  expect(await page.evaluate(() => document.getElementById('background-image') === window.savedBackgroundElement)).toBe(true);
   await page.setViewportSize({width: 620, height: 700});
   await page.screenshot({path: `/tmp/background-${testInfo.project.name}-narrow.png`});
   await expect(page.locator('.xterm-rows')).toContainText('unsaved draft');
@@ -132,6 +165,7 @@ test('publishes a decoded odd-sized wallpaper before returning and moving entity
       return canvas.toDataURL('image/png').split(',')[1];
     }, size);
     await chooseImage(page, {name:'odd-size.png', mimeType:'image/png', buffer:Buffer.from(encoded, 'base64')});
+    if ((await screen(page).textContent()).includes('Image fit: Fit')) await clickControl(page, 'Image fit: Fit');
     await darkness(page, 30);
     await page.evaluate(() => { window.backgroundPublications = []; });
     await clickControl(page, 'Apply');
@@ -395,6 +429,11 @@ test('Fill preserves the viewport composition for square, panoramic and thin sou
     await page.screenshot({path:`/tmp/framing-${testInfo.project.name}-${width}x${height}.png`});
     await clickControl(page,'Done');await expect(screen(page)).toContainText('Background darkness:');
     await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
-    expect(await (await page.request.get('/visual/background')).body()).toEqual(Buffer.from(encoded,'base64'));
+    if (width === 500) {
+      expect(await (await page.request.get('/visual/background')).body()).toEqual(Buffer.from(encoded,'base64'));
+    } else {
+      const size = await page.locator('#background-image').evaluate(image => [image.naturalWidth,image.naturalHeight]);
+      expect(size).toEqual(width === 4096 ? [3072,192] : [3,3072]);
+    }
   }
 });

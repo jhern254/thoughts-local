@@ -8,6 +8,12 @@ const framing = vm.createContext({});
 vm.runInContext(source, framing);
 const settings = {fit:'fill', zoom:100, positionX:5000, positionY:5000};
 
+test('stored-image dimensions preserve small images and bound thin and large imports', () => {
+  for (const [width, height, expected] of [[2000,2000,{width:2000,height:2000}], [6000,4000,{width:2449,height:1632}], [91,4093,{width:68,height:3072}], [8192,1,{width:3072,height:1}]]) {
+    assert.deepEqual({...framing.backgroundImportDimensions(width,height)}, expected);
+  }
+});
+
 test('Fill crops a centered portrait while Fit preserves the complete image', () => {
   const fill = framing.backgroundGeometry(600, 1200, 1200, 800, settings);
   assert.deepEqual({...fill}, {width:1200, height:2400, left:0, top:-800});

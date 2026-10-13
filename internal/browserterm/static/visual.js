@@ -18,6 +18,8 @@ class ThoughtsVisual {
     this.state = {open: false};
     this.previewGeneration = 0;
     this.connectionGeneration = 0;
+    this.activationGeneration = 0;
+    this.restoreGeneration = 0;
     this.ready = this.restore();
     document.addEventListener('keydown', event => {
       if ((event.ctrlKey || event.metaKey) && event.key === ',') {
@@ -47,6 +49,14 @@ class ThoughtsVisual {
     new ResizeObserver(() => { this.previewContainer.hidden = true; this.queuePreview(); }).observe(this.terminal.element);
   }
   isOpen() { return this.state.open; }
+  restoreConnection() {
+    // A busy-session retry may retire the page's initial restore. The accepted
+    // session needs its own restore, without refetching on every normal open.
+    if (this.restoreGeneration !== this.connectionGeneration) {
+      this.restoreGeneration = this.connectionGeneration;
+      this.ready = this.restore();
+    }
+  }
   reply(action, operationID, connectionGeneration = this.connectionGeneration) {
     if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) {
       this.sendAction({action, id: operationID, darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing});
@@ -237,16 +247,17 @@ class ThoughtsVisual {
         // Static preview also prevents an animated PNG from animating before
         // the authoritative native importer rejects it.
         const canvas = document.createElement('canvas');
-        const scale = Math.min(1, Math.sqrt(backgroundPreviewMaxPixels / (bitmap.width * bitmap.height)));
-        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const stored = backgroundImportDimensions(bitmap.width, bitmap.height);
+        const scale = Math.min(1, Math.sqrt(backgroundPreviewMaxPixels / (stored.width * stored.height)));
+        canvas.width = Math.max(1, Math.round(stored.width * scale));
+        canvas.height = Math.max(1, Math.round(stored.height * scale));
         canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         const blob = await new Promise(resolve => canvas.toBlob(resolve));
         if (!blob || previewGeneration !== this.previewGeneration || this.state.id !== operationID) return;
         if (this.previewURL) URL.revokeObjectURL(this.previewURL);
         this.previewURL = URL.createObjectURL(blob);
         // Thumbnail rounding must not change the crop of very thin images.
-        this.previewSourceSize = {width:bitmap.width, height:bitmap.height};
+        this.previewSourceSize = stored;
         this.preview.src = this.previewURL;
         this.queuePreview();
         this.reply('selected', operationID);
@@ -258,16 +269,25 @@ class ThoughtsVisual {
       this.reply('failed', operationID);
     } finally { this.terminal.focus(); }
   }
-  async activate(settings) {
+  async activate(settings, connectionGeneration = this.connectionGeneration) {
+    if (connectionGeneration !== this.connectionGeneration) return false;
+    const activationGeneration = ++this.activationGeneration;
+    settings = {...settings};
     if (!Number.isInteger(settings.darkness) || settings.darkness < 0 || settings.darkness > 95) settings.darkness = 70;
     settings.framing = safeBackgroundFraming(settings.framing);
-    if (settings.background) {
+    // Settings-only saves reuse the already decoded asset; identity changes
+    // still fetch the authoritative selected image through the existing route.
+    if (settings.background && (!this.saved.background || !settings.backgroundID || settings.backgroundID !== this.saved.backgroundID)) {
       const response = await fetch('/visual/background', {cache: 'no-store'});
       if (!response.ok) throw new Error();
       const url = URL.createObjectURL(await response.blob());
       const candidate = new Image();
       candidate.src = url;
       try { await candidate.decode(); } catch (error) { URL.revokeObjectURL(url); throw error; }
+      if (connectionGeneration !== this.connectionGeneration || activationGeneration !== this.activationGeneration) {
+        URL.revokeObjectURL(url);
+        return false;
+      }
       // Publish the decoded element with viewport geometry already prepared.
       // Assigning its URL to another image reopens a load/size gap as the
       // terminal becomes transparent, especially on the first odd-sized upload.
@@ -278,7 +298,7 @@ class ThoughtsVisual {
       this.image = candidate;
       if (this.activeURL) URL.revokeObjectURL(this.activeURL);
       this.activeURL = url;
-    } else {
+    } else if (!settings.background) {
       if (this.activeURL) URL.revokeObjectURL(this.activeURL);
       this.activeURL = undefined;
       this.image.removeAttribute('src');
@@ -290,14 +310,23 @@ class ThoughtsVisual {
     this.overlay.hidden = !settings.background;
     this.terminal.options.theme = {...this.terminal.options.theme, background: settings.background ? '#00000000' : '#171717'};
     this.updateDarkness(settings.darkness);
+    return true;
   }
   async restore() {
+    const connectionGeneration = this.connectionGeneration;
+    let activationGeneration = ++this.activationGeneration;
     try {
       const response = await fetch('/visual', {cache: 'no-store'});
       if (!response.ok) throw new Error();
-      await this.activate(await response.json());
+      const settings = await response.json();
+      if (activationGeneration !== this.activationGeneration) return;
+      const activation = this.activate(settings, connectionGeneration);
+      activationGeneration = this.activationGeneration;
+      if (!await activation) return;
       this.loadFailed = false;
-    } catch { this.loadFailed = true; }
+    } catch {
+      if (connectionGeneration === this.connectionGeneration && activationGeneration === this.activationGeneration) this.loadFailed = true;
+    }
   }
   async save(removeBackground, operationID, darkness, framing, connectionGeneration) {
     try {
@@ -314,7 +343,7 @@ class ThoughtsVisual {
       const response = await fetch(requestURL, requestOptions);
       if (!response.ok) throw new Error();
       const settings = await response.json();
-      await this.activate(settings);
+      if (!await this.activate(settings, connectionGeneration)) return;
       if (settings.cleanupWarning) {
         this.discardPreview();
         if (this.activeURL) this.preview.src = this.activeURL;
@@ -322,6 +351,7 @@ class ThoughtsVisual {
       this.reply(settings.cleanupWarning ? 'warning' : 'saved', operationID, connectionGeneration);
     } catch {
       // Reconcile an ambiguous lost response with authoritative native state.
+      if (connectionGeneration !== this.connectionGeneration) return;
       await this.restore();
       this.reply('failed', operationID, connectionGeneration);
     }

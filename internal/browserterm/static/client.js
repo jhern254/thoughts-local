@@ -173,6 +173,7 @@
     connection.onopen = () => {
       if (socket !== connection) return;
       connected = true;
+      visual.restoreConnection();
       sendResize({cols: term.cols, rows: term.rows});
       term.options.disableStdin = false;
       status.textContent = 'Connected';

@@ -16,6 +16,7 @@ const maxVisualRequestBytes = visual.MaxImageBytes + (64 << 10)
 const maxVisualSettingsBytes = 1024
 
 type visualResponse struct {
+	BackgroundID   string                 `json:"backgroundID,omitempty"`
 	Framing        data.BackgroundFraming `json:"framing"`
 	Background     bool                   `json:"background"`
 	Darkness       int                    `json:"darkness"`
@@ -25,6 +26,7 @@ type visualResponse struct {
 func writeVisual(w http.ResponseWriter, settings data.Visual, warning bool) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(visualResponse{
+		BackgroundID:   settings.BackgroundAsset,
 		Framing:        settings.Framing,
 		Background:     settings.BackgroundAsset != "",
 		Darkness:       settings.Darkness,

@@ -1,6 +1,12 @@
 function defaultBackgroundFraming() {
   return {fit: 'fill', zoom: 100, positionX: 5000, positionY: 5000};
 }
+// Match the native stored-image budget so preview framing uses the same aspect
+// ratio even when flooring a resized, very thin image changes it slightly.
+function backgroundImportDimensions(width, height) {
+  const scale = Math.min(1, 3072 / width, 3072 / height, Math.sqrt(4000000 / (width * height)));
+  return {width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale))};
+}
 function safeBackgroundFraming(value) {
   if (!value || !['fill', 'fit'].includes(value.fit) ||
       !Number.isInteger(value.zoom) || value.zoom < 100 || value.zoom > 300 ||
