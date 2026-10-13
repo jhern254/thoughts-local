@@ -3,9 +3,9 @@
 Imports retain the existing source limits: non-animated JPEG/PNG, 16 MiB,
 8192 pixels per axis, and 24 million decoded pixels. Stored imports are reduced
 proportionally to at most 4 million pixels and 3072 pixels per axis, without
-upscaling. Small images retain their bytes. JPEG uses quality 85; PNG uses the
-fast encoder and retains transparency. EXIF orientation is preserved. Existing
-assets are unchanged; reimporting applies the budget.
+upscaling. All new imports re-encode to remove private metadata and normalize
+orientation into pixels. JPEG uses quality 85; PNG retains transparency. Existing
+assets are unchanged; reimporting applies the budget and sanitization policy.
 
 This bounds the asset used during normal operation, not source decoding during
 preview and native validation. Resizing spends CPU once to reduce subsequent
@@ -86,7 +86,8 @@ Native fixture medians, five runs:
 The large native import is **83% slower** and allocates **19% more bytes**.
 This material one-time resize/encode cost moves work to import, not navigation.
 The RGBA scaler destination avoids per-pixel interface allocations encountered
-in the initial prototype. Small images remain essentially unchanged.
+in the initial prototype. These are the original pre-sanitization measurements; the privacy follow-up
+below supersedes the small-image original-byte optimization.
 
 Browser import medians (ms), five runs. Preview includes opening/closing the
 native file picker and waiting for the TUI preview; Apply includes control
@@ -145,3 +146,90 @@ equivalent idle cost. This establishes a repeatable static-background baseline
 for a later video PR; it does not promise lag-free operation with arbitrary ML
 workloads. The repeated source limits still permit significant transient memory
 on import, even though stored assets are bounded.
+
+## Import privacy and color contract
+
+Every new import, including small images, now decodes and re-encodes. The native
+pipeline reads only EXIF orientation, applies all eight rotation/mirror variants
+to pixels, then resizes. Stored dimensions match the browser's display-oriented
+`createImageBitmap` preview; no EXIF/eXIf is needed afterwards. Re-encoding drops
+GPS, dates, device identifiers, thumbnails, XMP, IPTC, comments and PNG text or
+other ancillary metadata. Existing files are not rewritten at startup;
+replacement/reimport applies these rules to the new copy.
+
+Go's JPEG/PNG codecs do not perform ICC color management. The scaler interpolates
+encoded components without converting color spaces. Therefore RGB or grayscale
+ICC matrix/TRC profiles accompany the same encoded components and matching
+output color model. Their numeric matrix, transfer curves, white/black point,
+chromatic adaptation and luminance tags are retained; private/descriptive tags,
+source header identifiers and timestamps are removed. Required profile text is
+replaced with fixed application text and v4 profile IDs are recalculated.
+JPEG multi-segment profiles are assembled by sequence number and written back in
+order. PNG stores a sanitized iCCP profile with a fixed keyword. Otherwise its
+sRGB declaration, or gAMA/cHRM pair, is preserved. Conflicting authoritative
+color declarations are rejected. Profiles are bounded to 4 MiB decompressed and
+4096 tag records independently of the source-image limits.
+
+This does **not** implement an ICC conversion engine. CMYK JPEG, LUT-based or
+non-matrix ICC profiles, incompatible gray/RGB profiles (including profiled
+gray-plus-alpha PNG), and PNG HDR declarations are safely rejected rather than
+converted incorrectly or stripped. Untagged images retain browser-default color
+interpretation. JPEG remains lossy at quality 85. PNG retains alpha and 16-bit
+sample depth. Resizing remains interpolation in encoded component space, not a
+new linear-light resampler. Bounded decoder/scaler/encoder calls are not individually
+preemptible; request cancellation is checked around them, with no detached work.
+
+Browser acceptance uses a synthetic wide-gamut matrix/TRC profile. It first
+establishes that tagging changes browser-rendered pixels, then compares source
+and sanitized output after browser color conversion: PNG samples must match
+exactly, JPEG samples within four channel levels. It also checks all eight
+orientations, crop dimensions, metadata removal, and immediate entity navigation.
+No external profile bytes or additional runtime dependencies are introduced.
+
+## Privacy follow-up measurements
+
+Compared the clean pre-cleanup PR head `ca088c91e153dcdf80fb8de70172bf8c2444db3d`
+against the sanitization implementation, on the same i5-8250U / Go 1.25.14 / Brave
+148.0.7778.217 environment. Native benchmark fixtures remain identical to the
+original comparison. Each revision ran separately, with no competing builds or
+tests. Five-run medians are descriptive, not a significance claim.
+
+| Native PNG import | Before ns/op | Sanitized ns/op | Before B/op | Sanitized B/op | Before/after allocs/op |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1267 × 719 | 13,009,053 | 40,917,107 | 3,709,022 | 4,998,588 | 22 / 61 |
+| 6000 × 4000 | 602,029,619 | 604,821,536 | 114,645,344 | 114,650,624 | 62 / 67 |
+
+Small imports now cost about **28 ms more (+215%)** and allocate about **35% more**
+bytes because privacy requires encoding rather than preserving original bytes.
+Large native cost is essentially unchanged in this sample (+0.5%); it already
+performed resizing and encoding. Orientation-bearing images additionally perform
+a bounded pixel permutation; these timing fixtures have orientation 1.
+
+The existing browser probe's `THOUGHTS_PERF_IMPORT_ONLY=1` mode measures five
+imports each of 1200 × 850 (57,646 bytes) and 6000 × 4000 (638,448 bytes), including
+Apply → return → entity Left/Right, without repeating the earlier idle/navigation
+matrix. Source hashes match across revisions; both migrated stress DBs still
+contain 721 Events and 20,000 Thoughts. Actual viewport is 1920 × 1080, DPR 1.
+
+| Browser metric, median | Normal before/sanitized | Large before/sanitized |
+| --- | ---: | ---: |
+| Preview including native picker, ms | 865.9 / 250.0 | 1671.9 / 1570.4 |
+| Apply, ms | 345.4 / 351.9 | 986.0 / 960.8 |
+| Apply through return and entity selection, ms | 461.9 / 489.4 | 1141.8 / 1123.8 |
+| Activation, ms | 24.9 / 12.4 | 32.9 / 28.6 |
+| Browser CPU during import, ms | 660 / 640 | 1270 / 1180 |
+| Native CPU during import, ms | 210 / 220 | 560 / 550 |
+| Peak summed browser RSS, MiB | 914.9 / 911.8 | 1197.9 / 1206.5 |
+| Peak native RSS, MiB | 43.0 / 46.1 | 265.9 / 267.7 |
+
+Normal Apply through return rises about 27 ms (+6%); peak native RSS rises about
+3 MiB. The small-image encoding cost is one-time. These runs show no material
+increase in large import/activation cost or recurring work, and do not prove
+identical performance. Preview wall time remains variable and includes desktop
+picker handoff. Two candidate attempts timed out at that handoff before a large
+import; their logs are retained separately. The completed comparison uses five
+successful imports per image, with a 15-second picker/preview timeout. It does
+not attribute the handoff failures to native processing or claim a preview speedup.
+Raw measurements are in ignored `bin/background-evidence/privacy-*`; captures
+remain under `/tmp`. Settings-only reuse and generation ownership remain covered
+by the existing controlled browser tests.

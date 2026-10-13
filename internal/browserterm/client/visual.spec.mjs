@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {test, expect} from '@playwright/test';
 import {openVisual as open, clickControl, setDarkness as darkness, chooseImage, screen} from './visual-helpers.mjs';
 
@@ -15,29 +16,126 @@ async function imageFixture(page) {
   return {name: 'synthetic.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64')};
 }
 
-test('resized JPEG and PNG retain the orientation shown by their preview', async ({page}) => {
-  await page.goto('/'); await expect(page.locator('#status')).toHaveText('Connected');
-  for (const format of ['jpeg','png']) {
-    const encoded=await page.evaluate(format=>{
-      const canvas=document.createElement('canvas');canvas.width=4096;canvas.height=256;
-      const ctx=canvas.getContext('2d');ctx.fillStyle='#458ad0';ctx.fillRect(0,0,4096,256);
-      return canvas.toDataURL(`image/${format}`).split(',')[1];
-    },format);
-    const source=Buffer.from(encoded,'base64');
-    const tiff=Buffer.from([73,73,42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,6,0,0,0,0,0,0,0]);
-    let metadata,offset;
-    if(format==='jpeg') {metadata=Buffer.concat([Buffer.from([255,225,0,34,69,120,105,102,0,0]),tiff]);offset=2;}
-    else {
-      metadata=Buffer.alloc(tiff.length+12);metadata.writeUInt32BE(tiff.length);metadata.write('eXIf',4);tiff.copy(metadata,8);
-      let crc=0xffffffff;
-      for(const byte of metadata.subarray(4,-4)){crc^=byte;for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
-      metadata.writeUInt32BE((crc^0xffffffff)>>>0,metadata.length-4);offset=33;
+function pngChunk(kind, payload) {
+  const chunk = Buffer.alloc(payload.length + 12);
+  chunk.writeUInt32BE(payload.length); chunk.write(kind, 4); payload.copy(chunk, 8);
+  let crc = 0xffffffff;
+  for (const byte of chunk.subarray(4, -4)) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  chunk.writeUInt32BE((crc ^ 0xffffffff) >>> 0, chunk.length - 4);
+  return chunk;
+}
+function jpegSegment(marker, payload) {
+  const header = Buffer.from([255, marker, 0, 0]); header.writeUInt16BE(payload.length + 2, 2);
+  return Buffer.concat([header, payload]);
+}
+function insertMetadata(source, format, metadata) {
+  const offset = format === 'jpeg' ? 2 : 33;
+  return Buffer.concat([source.subarray(0, offset), metadata, source.subarray(offset)]);
+}
+// Browser canvas encoders may add their own profile. Replace that declaration
+// when constructing the synthetic wide-gamut fixture instead of duplicating it.
+function withoutColorMetadata(source, format) {
+  const parts = [source.subarray(0, format === 'jpeg' ? 2 : 8)];
+  if (format === 'jpeg') {
+    let offset = 2;
+    while (source[offset] === 255 && source[offset + 1] !== 218) {
+      const end = offset + 2 + source.readUInt16BE(offset + 2);
+      if (source[offset + 1] !== 226) parts.push(source.subarray(offset, end));
+      offset = end;
     }
-    const buffer=Buffer.concat([source.subarray(0,offset),metadata,source.subarray(offset)]);
-    await open(page);await chooseImage(page,{name:`oriented.${format}`,mimeType:`image/${format}`,buffer});
-    expect(await page.locator('#background-preview').evaluate(image=>parseFloat(image.style.width)/parseFloat(image.style.height))).toBeCloseTo(1/16,4);
-    await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
-    expect(await page.locator('#background-image').evaluate(image=>[image.naturalWidth,image.naturalHeight])).toEqual([192,3072]);
+    parts.push(source.subarray(offset));
+  } else {
+    for (let offset = 8; offset < source.length;) {
+      const end = offset + 12 + source.readUInt32BE(offset);
+      if (!['iCCP','sRGB','gAMA','cHRM'].includes(source.toString('ascii', offset + 4, offset + 8))) parts.push(source.subarray(offset, end));
+      offset = end;
+    }
+  }
+  return Buffer.concat(parts);
+}
+async function displayedSamples(page, bytes) {
+  return page.evaluate(async encoded => {
+    const blob = new Blob([Uint8Array.from(atob(encoded), character => character.charCodeAt(0))]);
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height;
+    const context = canvas.getContext('2d'); context.drawImage(bitmap, 0, 0); bitmap.close();
+    const points = [[.2,.2], [.8,.2], [.2,.8], [.8,.8]];
+    return {size: [canvas.width, canvas.height], pixels: points.map(([x,y]) =>
+      [...context.getImageData(Math.floor(x * canvas.width), Math.floor(y * canvas.height), 1, 1).data])};
+  }, bytes.toString('base64'));
+}
+
+test('stored pixels match display-oriented previews for all EXIF orientations', async ({page}, testInfo) => {
+  test.setTimeout(90000);
+  await page.goto('/'); await expect(page.locator('#status')).toHaveText('Connected');
+  for (const format of ['jpeg', 'png']) {
+    const source = Buffer.from(await page.evaluate(format => {
+      const canvas = document.createElement('canvas'); canvas.width = 4096; canvas.height = 256;
+      const context = canvas.getContext('2d');
+      for (const [x,y,color] of [[0,0,'#458ad0'],[2048,0,'#c35b40'],[0,128,'#43b573'],[2048,128,'#ab69bd']]) {
+        context.fillStyle = color; context.fillRect(x, y, 2048, 128);
+      }
+      return canvas.toDataURL(`image/${format}`, 1).split(',')[1];
+    }, format), 'base64');
+    for (let orientation = 1; orientation <= 8; orientation++) {
+      const tiff = Buffer.from([73,73,42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,orientation,0,0,0,0,0,0,0]);
+      const privateMarker = Buffer.from('PRIVATE GPS camera serial timestamp');
+      const metadata = format === 'jpeg'
+        ? Buffer.concat([jpegSegment(225, Buffer.concat([Buffer.from('Exif\0\0'), tiff, privateMarker])), jpegSegment(254, privateMarker)])
+        : Buffer.concat([pngChunk('eXIf', Buffer.concat([tiff, privateMarker])), pngChunk('tEXt', Buffer.concat([Buffer.from('Comment\0'), privateMarker]))]);
+      const buffer = insertMetadata(source, format, metadata);
+      const expected = await displayedSamples(page, buffer);
+      await open(page); await chooseImage(page, {name:`orientation-${orientation}.${format}`, mimeType:`image/${format}`, buffer});
+      const ratio = await page.locator('#background-preview').evaluate(image => parseFloat(image.style.width) / parseFloat(image.style.height));
+      expect(ratio).toBeCloseTo(expected.size[0] / expected.size[1], 4);
+      await clickControl(page, 'Apply'); await expect(screen(page)).not.toContainText('Background darkness:');
+      const response = await page.request.get('/visual/background'); const stored = await response.body();
+      expect(stored.includes(privateMarker)).toBe(false);
+      const actual = await displayedSamples(page, stored);
+      expect(actual.size).toEqual(orientation >= 5 ? [192,3072] : [3072,192]);
+      for (let point=0; point<4; point++) for (let channel=0; channel<4; channel++) {
+        expect(Math.abs(actual.pixels[point][channel] - expected.pixels[point][channel])).toBeLessThanOrEqual(format === 'jpeg' ? 4 : 0);
+      }
+      if (orientation === 6) await page.screenshot({path:`/tmp/background-${testInfo.project.name}-${format}-normalized.png`});
+    }
+  }
+});
+
+test('sanitization preserves browser-managed wide-gamut color and removes private profile tags', async ({page}, testInfo) => {
+  await page.goto('/'); await expect(page.locator('#status')).toHaveText('Connected');
+  const profile = readFileSync(new URL('./fixtures/visual-matrix-rgb.icc', import.meta.url));
+  for (const format of ['jpeg','png']) {
+    const source = Buffer.from(await page.evaluate(format => {
+      const canvas = document.createElement('canvas'); canvas.width=1200; canvas.height=850;
+      const context=canvas.getContext('2d');
+      for (const [x,y,color] of [[0,0,'#689879'],[600,0,'#9a6265'],[0,425,'#536e9c'],[600,425,'#96783f']]) {
+        context.fillStyle=color; context.fillRect(x,y,600,425);
+      }
+      return canvas.toDataURL(`image/${format}`, 1).split(',')[1];
+    }, format), 'base64');
+    let metadata;
+    if (format === 'jpeg') metadata = jpegSegment(226, Buffer.concat([Buffer.from('ICC_PROFILE\0'), Buffer.from([1,1]), profile]));
+    else {
+      const {deflateSync} = await import('node:zlib');
+      metadata = pngChunk('iCCP', Buffer.concat([Buffer.from('Synthetic private profile\0\0'), deflateSync(profile)]));
+    }
+    const buffer = insertMetadata(withoutColorMetadata(source, format), format, metadata);
+    const intended = await displayedSamples(page, buffer);
+    const untagged = await displayedSamples(page, source);
+    // Establish that this is a color-management test, not inert byte copying.
+    expect(Math.max(...intended.pixels.flatMap((pixel,i) => pixel.map((value,c) => Math.abs(value - untagged.pixels[i][c]))))).toBeGreaterThan(8);
+    await open(page); await chooseImage(page, {name:`wide-gamut.${format}`, mimeType:`image/${format}`, buffer});
+    await clickControl(page, 'Apply'); await expect(screen(page)).not.toContainText('Background darkness:');
+    const response = await page.request.get('/visual/background'); const stored = await response.body();
+    const actual = await displayedSamples(page, stored);
+    for (let point=0; point<4; point++) for (let channel=0; channel<4; channel++) {
+      expect(Math.abs(actual.pixels[point][channel] - intended.pixels[point][channel])).toBeLessThanOrEqual(format === 'jpeg' ? 4 : 0);
+    }
+    await page.screenshot({path:`/tmp/background-${testInfo.project.name}-${format}-profile.png`});
+    await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowRight');
   }
 });
 test('persists one image without resetting the terminal or its draft', async ({page}, testInfo) => {
@@ -430,7 +528,8 @@ test('Fill preserves the viewport composition for square, panoramic and thin sou
     await clickControl(page,'Done');await expect(screen(page)).toContainText('Background darkness:');
     await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
     if (width === 500) {
-      expect(await (await page.request.get('/visual/background')).body()).toEqual(Buffer.from(encoded,'base64'));
+      const stored = await (await page.request.get('/visual/background')).body();
+      expect(await displayedSamples(page, stored)).toEqual(await displayedSamples(page, Buffer.from(encoded,'base64')));
     } else {
       const size = await page.locator('#background-image').evaluate(image => [image.naturalWidth,image.naturalHeight]);
       expect(size).toEqual(width === 4096 ? [3072,192] : [3,3072]);

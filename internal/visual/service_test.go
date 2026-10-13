@@ -36,11 +36,20 @@ func samplePNG(t *testing.T) []byte {
 	return b.Bytes()
 }
 func TestService_Background(t *testing.T) {
-	for _, failure := range []string{"invalid image", "metadata failure", "cancelled request"} {
+	for _, failure := range []string{"invalid image", "metadata failure", "cancelled request", "unsupported color profile", "malformed orientation"} {
 		t.Run(failure+" preserves previous selection", func(t *testing.T) {
 			store := &memoryStore{}
 			service := NewService(store, "user", t.TempDir())
 			first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
+			if err != nil {
+				t.Fatal(err)
+			}
+			previousFile, _, err := service.OpenBackground(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			previousImage, err := io.ReadAll(previousFile)
+			previousFile.Close()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -49,6 +58,18 @@ func TestService_Background(t *testing.T) {
 			switch failure {
 			case "invalid image":
 				body = []byte("PRIVATE invalid image")
+			case "unsupported color profile":
+				profile := syntheticColorProfile(false, "PRIVATE")
+				copy(profile[16:20], "CMYK")
+				metadata, encodeErr := (displayMetadata{profile: profile}).encodeColorMetadata("png")
+				if encodeErr != nil {
+					t.Fatal(encodeErr)
+				}
+				body = insertMetadata(body, "png", metadata)
+			case "malformed orientation":
+				var metadata bytes.Buffer
+				appendPNGChunk(&metadata, "eXIf", []byte("PRIVATE malformed metadata"))
+				body = insertMetadata(body, "png", metadata.Bytes())
 			case "metadata failure":
 				store.fail = true
 			case "cancelled request":
@@ -71,7 +92,7 @@ func TestService_Background(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Equal(got, samplePNG(t)) {
+			if !bytes.Equal(got, previousImage) {
 				t.Fatal("previous image changed")
 			}
 			entries, err := os.ReadDir(service.directory)

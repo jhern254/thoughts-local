@@ -14,6 +14,9 @@ const [url, appPID, output] = process.argv.slice(2);
 if (!url || new URL(url).hostname !== '127.0.0.1' || !/^\d+$/.test(appPID || '') || !output?.startsWith('/tmp/')) throw new Error('Usage: node background-performance.mjs http://127.0.0.1:PORT APP_PID /tmp/results.json');
 const ticks = Number(execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}));
 const count = 5, rows = [];
+const fixtureRunID = Date.now(); // Avoid native file-picker deduplication between separate probe runs.
+// Privacy follow-ups measure only one-time import/activation; avoid repeating idle/navigation matrices.
+const importOnly = process.env.THOUGHTS_PERF_IMPORT_ONLY === '1';
 // Reduce only idle sampling for a quick follow-up; import/interaction runs stay five.
 const idleSamples = Number(process.env.THOUGHTS_PERF_IDLE_SAMPLES || 5);
 if (!Number.isInteger(idleSamples) || idleSamples < 1 || idleSamples > 5) throw new Error('Idle samples must be between 1 and 5.');
@@ -61,7 +64,7 @@ function syntheticPNG(width, height) {
     pngChunk('IHDR', header), pngChunk('IDAT', deflateSync(pixels)), pngChunk('IEND', Buffer.alloc(0))
   ]);
 }
-const fixtures = [[1267,719],[91,4093],[4093,91],[6000,4000]].map(([width,height]) => ({width,height,buffer:syntheticPNG(width,height)}));
+const fixtures = (importOnly ? [[1200,850],[6000,4000]] : [[1267,719],[91,4093],[4093,91],[6000,4000]]).map(([width,height]) => ({width,height,buffer:syntheticPNG(width,height)}));
 const browser = await chromium.launch({headless:false, executablePath:process.env.THOUGHTS_PERF_BROWSER || '/usr/bin/brave-browser'});
 try {
   const page = await browser.newPage({viewport:null});
@@ -75,7 +78,7 @@ try {
   const {windowId} = await cdp.send('Browser.getWindowForTarget');
   const fullscreen = async () => { await cdp.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'fullscreen'}}); await page.waitForTimeout(500); };
   await fullscreen();
-  const metadata = {revision:process.env.THOUGHTS_PERF_REVISION || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),logicalCPUs:availableParallelism(),contentionWorkers:Math.min(4,Math.max(1,Math.floor(availableParallelism()/2))),browser:await browser.version(),go:execFileSync('go',['version'],{encoding:'utf8'}).trim(),system:await browserCDP.send('SystemInfo.getInfo'),viewport:await page.evaluate(()=>[innerWidth,innerHeight,devicePixelRatio]),count,idleSamples,appPID};
+  const metadata = {revision:process.env.THOUGHTS_PERF_REVISION || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),logicalCPUs:availableParallelism(),contentionWorkers:Math.min(4,Math.max(1,Math.floor(availableParallelism()/2))),browser:await browser.version(),go:execFileSync('go',['version'],{encoding:'utf8'}).trim(),system:await browserCDP.send('SystemInfo.getInfo'),viewport:await page.evaluate(()=>[innerWidth,innerHeight,devicePixelRatio]),count,idleSamples,importOnly,appPID};
   // Keyboard focus avoids pointer coordinates racing the desktop window manager.
   const clickControl = async (page, label) => {
     await page.locator('.xterm-helper-textarea').focus();
@@ -95,7 +98,7 @@ try {
     const chooser = page.waitForEvent('filechooser');
     await clickControl(page, 'Choose image');
     await (await chooser).setFiles(fixture);
-    await expect(screen(page)).toContainText('Preview only. Apply to save.');
+    await expect(screen(page)).toContainText('Preview only. Apply to save.', {timeout: 15000});
     await expect(page.locator('#background-preview-wrap')).toBeVisible();
   };
   const usage = async () => {
@@ -143,7 +146,7 @@ try {
     } finally {await Promise.all(workers.map(worker=>worker.terminate()));}
   };
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');
-  await idle('opaque');
+  if(!importOnly)await idle('opaque');
   await page.bringToFront();await page.locator('.xterm-helper-textarea').focus();await page.keyboard.press('Tab');await expect(screen(page)).toContainText('Tab/Q: events');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Background darkness:');await expect(screen(page)).not.toContainText('Loading visual');
   for(const fixture of fixtures) {
     const image=`${fixture.width}x${fixture.height}`;
@@ -152,7 +155,7 @@ try {
       const initial=await usage();let peakBrowserRSS=initial.browserRSS,peakAppRSS=initial.appRSS;
       const timer=setInterval(()=>usage().then(v=>{peakBrowserRSS=Math.max(peakBrowserRSS,v.browserRSS);peakAppRSS=Math.max(peakAppRSS,v.appRSS);}).catch(()=>{}),100);
       try {
-      const start=performance.now();await chooseImage(page,{name:`synthetic-${image}-${run}.png`,mimeType:'image/png',buffer:fixture.buffer});
+      const start=performance.now();await chooseImage(page,{name:`synthetic-${fixtureRunID}-${image}-${run}.png`,mimeType:'image/png',buffer:fixture.buffer});
       const previewMs=performance.now()-start;
       if((await screen(page).textContent()).includes('Image fit: Fit'))await clickControl(page,'Image fit: Fit');
       await setDarkness(page,30);
@@ -165,28 +168,30 @@ try {
         add({phase:'import',image,run,viewport:await page.evaluate(()=>[innerWidth,innerHeight]),bytes:fixture.buffer.length,sha256:createHash('sha256').update(fixture.buffer).digest('hex'),previewMs,applyMs,returnAndSelectionMs:performance.now()-applyStart,activationMs:await page.evaluate(()=>window.activationTimes.at(-1)),stored:await page.locator('#background-image').evaluate(i=>[i.naturalWidth,i.naturalHeight]),browserCPUMs:1000*(end.browserCPU-initial.browserCPU),appCPUMs:1000*(end.appCPU-initial.appCPU),peakBrowserRSS,peakAppRSS,...end});
       } finally {clearInterval(timer);}
     }
-    await navigation(image);
-    if(fixture===fixtures[0] || fixture===fixtures.at(-1))await idle(image);
-    if(fixture===fixtures.at(-1))await navigation(image,true);
+    if(!importOnly)await navigation(image);
+    if(!importOnly && (fixture===fixtures[0] || fixture===fixtures.at(-1)))await idle(image);
+    if(!importOnly && fixture===fixtures.at(-1))await navigation(image,true);
   }
-  // Keep the Events workload separate from the reported entity-picker artifact.
-  await page.keyboard.press('Tab');
-  for(let run=0;run<count;run++) {
-    await page.keyboard.press('Home');await page.waitForTimeout(50);
-    const values=[];for(let i=0;i<10;i++){values.push(await keyLatency('ArrowDown'));values.push(await keyLatency('ArrowUp'));}
-    const days=[];for(let i=0;i<4;i++){days.push(await keyLatency('ArrowLeft'));days.push(await keyLatency('ArrowRight'));}
-    add({phase:'events',run,scrollMedianMs:median(values.filter(v=>v!==null)),dayMedianMs:median(days.filter(v=>v!==null)),dayP95Ms:percentile95(days.filter(v=>v!==null))});
-  }
-  await page.keyboard.press('t');await expect(screen(page)).toContainText('Create thought');
-  for(let run=0;run<count;run++){const values=[];for(const character of 'cpuheadroom')values.push(await keyLatency(character));add({phase:'typing',run,medianMs:median(values.filter(v=>v!==null)),p95Ms:percentile95(values.filter(v=>v!==null))});}
-  await page.keyboard.press('Escape');
-  const watchResize=()=>page.evaluate(()=>{window.resizeLatency=new Promise(resolve=>window.addEventListener('resize',()=>{const start=performance.now();const observer=new MutationObserver(()=>{observer.disconnect();resolve(performance.now()-start);});observer.observe(document.querySelector('.xterm-rows'),{subtree:true,childList:true,attributes:true});},{once:true}));});
-  const resizeLatency=()=>page.evaluate(()=>Promise.race([window.resizeLatency,new Promise(resolve=>setTimeout(()=>resolve(null),2000))]));
-  for(let run=0;run<count;run++){
-    await watchResize();const start=performance.now();await cdp.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'normal'}});await page.waitForTimeout(300);
-    await page.screenshot({path:output.replace('.json',`-narrow-${run}.png`)});
-    const narrow=await page.evaluate(()=>[innerWidth,innerHeight]);const narrowMs=await resizeLatency();await watchResize();await fullscreen();const desktopMs=await resizeLatency();
-    add({phase:'resize',run,pairIncludingSettleMs:performance.now()-start,narrowMs,desktopMs,narrow,desktop:await page.evaluate(()=>[innerWidth,innerHeight])});
+  if(!importOnly) {
+    // Keep the Events workload separate from the reported entity-picker artifact.
+    await page.keyboard.press('Tab');
+    for(let run=0;run<count;run++) {
+      await page.keyboard.press('Home');await page.waitForTimeout(50);
+      const values=[];for(let i=0;i<10;i++){values.push(await keyLatency('ArrowDown'));values.push(await keyLatency('ArrowUp'));}
+      const days=[];for(let i=0;i<4;i++){days.push(await keyLatency('ArrowLeft'));days.push(await keyLatency('ArrowRight'));}
+      add({phase:'events',run,scrollMedianMs:median(values.filter(v=>v!==null)),dayMedianMs:median(days.filter(v=>v!==null)),dayP95Ms:percentile95(days.filter(v=>v!==null))});
+    }
+    await page.keyboard.press('t');await expect(screen(page)).toContainText('Create thought');
+    for(let run=0;run<count;run++){const values=[];for(const character of 'cpuheadroom')values.push(await keyLatency(character));add({phase:'typing',run,medianMs:median(values.filter(v=>v!==null)),p95Ms:percentile95(values.filter(v=>v!==null))});}
+    await page.keyboard.press('Escape');
+    const watchResize=()=>page.evaluate(()=>{window.resizeLatency=new Promise(resolve=>window.addEventListener('resize',()=>{const start=performance.now();const observer=new MutationObserver(()=>{observer.disconnect();resolve(performance.now()-start);});observer.observe(document.querySelector('.xterm-rows'),{subtree:true,childList:true,attributes:true});},{once:true}));});
+    const resizeLatency=()=>page.evaluate(()=>Promise.race([window.resizeLatency,new Promise(resolve=>setTimeout(()=>resolve(null),2000))]));
+    for(let run=0;run<count;run++){
+      await watchResize();const start=performance.now();await cdp.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'normal'}});await page.waitForTimeout(300);
+      await page.screenshot({path:output.replace('.json',`-narrow-${run}.png`)});
+      const narrow=await page.evaluate(()=>[innerWidth,innerHeight]);const narrowMs=await resizeLatency();await watchResize();await fullscreen();const desktopMs=await resizeLatency();
+      add({phase:'resize',run,pairIncludingSettleMs:performance.now()-start,narrowMs,desktopMs,narrow,desktop:await page.evaluate(()=>[innerWidth,innerHeight])});
+    }
   }
   await page.screenshot({path:output.replace('.json','-desktop.png')});
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');

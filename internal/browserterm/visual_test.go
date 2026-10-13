@@ -77,8 +77,28 @@ func TestVisual_Routes(t *testing.T) {
 			}
 			w = httptest.NewRecorder()
 			s.ServeHTTP(w, httptest.NewRequest("GET", "http://127.0.0.1:7777/visual/background", nil))
-			if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), want) {
-				t.Fatalf("retrieval = %d, want original image", w.Code)
+			if w.Code != 200 {
+				t.Fatalf("retrieval = %d, want 200", w.Code)
+			}
+			stored, storedFormat, err := image.Decode(bytes.NewReader(w.Body.Bytes()))
+			if err != nil || storedFormat != format {
+				t.Fatalf("stored format=%s, error=%v, want %s", storedFormat, err, format)
+			}
+			original, _, err := image.Decode(bytes.NewReader(want))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stored.Bounds() != original.Bounds() {
+				t.Fatalf("stored bounds=%v, want %v", stored.Bounds(), original.Bounds())
+			}
+			for y := 0; y < 8; y++ {
+				for x := 0; x < 12; x++ {
+					r, g, b, a := stored.At(x, y).RGBA()
+					wantR, wantG, wantB, wantA := original.At(x, y).RGBA()
+					if r != wantR || g != wantG || b != wantB || a != wantA {
+						t.Fatalf("stored pixel at (%d,%d) differs from source", x, y)
+					}
+				}
 			}
 			for _, path := range []string{"/visual/../PRIVATE", "/visual/background/../../PRIVATE", "/visual/" + store.settings.BackgroundAsset} {
 				w = httptest.NewRecorder()

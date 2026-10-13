@@ -14,7 +14,7 @@ import (
 )
 
 func TestPrepareImage(t *testing.T) {
-	t.Run("resizing preserves EXIF orientation for JPEG and PNG", func(t *testing.T) {
+	t.Run("resizing normalizes orientation and discards EXIF for JPEG and PNG", func(t *testing.T) {
 		// Little-endian TIFF with one orientation tag: 6 means clockwise 90°.
 		tiff := []byte{'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 1, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0}
 		for _, format := range []string{"jpeg", "png"} {
@@ -44,10 +44,10 @@ func TestPrepareImage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Contains(prepared, metadata) {
-				t.Fatalf("%s lost orientation metadata", format)
+			if bytes.Contains(prepared, tiff) {
+				t.Fatalf("%s retained source EXIF", format)
 			}
-			if config, _, err := image.DecodeConfig(bytes.NewReader(prepared)); err != nil || config.Width != 3072 || config.Height != 192 {
+			if config, _, err := image.DecodeConfig(bytes.NewReader(prepared)); err != nil || config.Width != 192 || config.Height != 3072 {
 				t.Fatalf("%s stored config = %+v, %v", format, config, err)
 			}
 		}
@@ -79,8 +79,23 @@ func TestPrepareImage(t *testing.T) {
 				if got.X > 3072 || got.Y > 3072 || got.X*got.Y > 4_000_000 || got.X < 1 || got.Y < 1 {
 					t.Fatalf("stored size = %v, exceeds budget", got)
 				}
-				if size == (image.Point{12, 8}) && !bytes.Equal(body, source.Bytes()) {
-					t.Fatal("changed small image bytes")
+				if size == (image.Point{12, 8}) && got != size {
+					t.Fatalf("small image size = %v, want %v", got, size)
+				}
+				if size == (image.Point{12, 8}) {
+					original, _, err := image.Decode(bytes.NewReader(source.Bytes()))
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := color.NRGBAModel.Convert(original.At(0, 0)).(color.NRGBA)
+					pixel := color.NRGBAModel.Convert(decoded.At(0, 0)).(color.NRGBA)
+					for index, channel := range []uint8{pixel.R, pixel.G, pixel.B, pixel.A} {
+						reference := []uint8{want.R, want.G, want.B, want.A}[index]
+						difference := int(channel) - int(reference)
+						if difference < -3 || difference > 3 {
+							t.Fatalf("small image pixel=%v, want approximately %v", pixel, want)
+						}
+					}
 				}
 				if size == (image.Point{6000, 4000}) && got != (image.Point{2449, 1632}) {
 					t.Fatalf("size = %v, want (2449,1632)", got)

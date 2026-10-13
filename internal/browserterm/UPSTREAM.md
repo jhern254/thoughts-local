@@ -286,3 +286,9 @@ without rewriting background assets. Bubble Tea owns draft settings and framing
 navigation. The browser owns pixel geometry and sends bounded, operation-scoped
 drag updates. One geometry calculation paints both the viewport and its scaled
 preview, including after resize; thumbnail dimensions do not determine the crop.
+
+New backgrounds are sanitized natively before storage; existing files are only
+changed by explicit replacement/reimport. Orientation is normalized into pixels
+and only supported color-transform metadata is retained. See
+[the import contract and measurements](../../docs/browser-background-performance.md#import-privacy-and-color-contract)
+for profile compatibility, privacy limits and one-time processing cost.
