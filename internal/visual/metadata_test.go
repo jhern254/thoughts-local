@@ -40,7 +40,7 @@ func insertMetadata(source []byte, format string, metadata []byte) []byte {
 	}
 	return append(append(append([]byte{}, source[:offset]...), metadata...), source[offset:]...)
 }
-func sourceImage(t *testing.T, img image.Image, format string) []byte {
+func sourceImage(t testing.TB, img image.Image, format string) []byte {
 	t.Helper()
 	var output bytes.Buffer
 	var err error
@@ -156,15 +156,125 @@ func TestNormalizeOrientation(t *testing.T) {
 func FuzzDisplayMetadata(f *testing.F) {
 	f.Add([]byte{'I', 'I', 42, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0})
 	f.Add([]byte("private malformed input"))
-	f.Add(syntheticColorProfile(false, "PRIVATE"))
+	for orientation := 1; orientation <= 8; orientation++ {
+		f.Add(tiffOrientation(orientation, "PRIVATE"))
+	}
+	for _, gray := range []bool{false, true} {
+		profile := syntheticColorProfile(gray, "PRIVATE")
+		f.Add(profile)
+		var source image.Image = image.NewNRGBA(image.Rect(0, 0, 3, 2))
+		if gray {
+			source = image.NewGray(image.Rect(0, 0, 3, 2))
+		}
+		for _, format := range []string{"jpeg", "png"} {
+			encoded := sourceImage(f, source, format)
+			f.Add(encoded)
+			metadata, err := (displayMetadata{profile: profile}).encodeColorMetadata(format)
+			if err != nil {
+				f.Fatal(err)
+			}
+			if format == "jpeg" {
+				metadata = append(metadata, jpegSegment(0xe1, append([]byte("Exif\x00\x00"), tiffOrientation(6, "PRIVATE")...))...)
+			} else {
+				var orientation bytes.Buffer
+				appendPNGChunk(&orientation, "eXIf", tiffOrientation(8, "PRIVATE"))
+				metadata = append(metadata, orientation.Bytes()...)
+			}
+			f.Add(insertMetadata(encoded, format, metadata))
+		}
+	}
+	var srgb bytes.Buffer
+	appendPNGChunk(&srgb, "sRGB", []byte{0})
+	f.Add(insertMetadata(sourceImage(f, image.NewNRGBA(image.Rect(0, 0, 3, 2)), "png"), "png", srgb.Bytes()))
 
 	f.Fuzz(func(t *testing.T, body []byte) {
 		if len(body) > MaxImageBytes {
 			return
 		}
-		_, _ = readOrientation(body)
-		_, _ = inspectDisplayMetadata(body, "jpeg")
-		_, _ = inspectDisplayMetadata(body, "png")
-		_, _ = sanitizeColorProfile(body, image.NewRGBA(image.Rect(0, 0, 1, 1)))
+		if orientation, err := readOrientation(body); err == nil && (orientation < 1 || orientation > 8) {
+			t.Fatalf("orientation=%d, want 1–8", orientation)
+		}
+		// Metadata-only fuzzing never allocates pixels based on untrusted dimensions.
+		profiles := [][]byte{body}
+		for _, format := range []string{"jpeg", "png"} {
+			metadata, err := inspectDisplayMetadata(body, format)
+			if err != nil {
+				continue
+			}
+			if metadata.orientation < 1 || metadata.orientation > 8 || len(metadata.profile) > maxColorProfileBytes {
+				t.Fatal("display metadata exceeds orientation/profile bounds")
+			}
+			if len(metadata.profile) > 0 {
+				if len(metadata.pngColorChunks) != 0 {
+					t.Fatal("ICC profile conflicts with retained PNG declarations")
+				}
+				profiles = append(profiles, metadata.profile)
+			}
+			for chunks := metadata.pngColorChunks; len(chunks) > 0; {
+				if len(chunks) < 12 {
+					t.Fatal("truncated retained PNG chunk")
+				}
+				end := uint64(binary.BigEndian.Uint32(chunks[:4])) + 12
+				if end > uint64(len(chunks)) {
+					t.Fatal("retained PNG chunk exceeds output bounds")
+				}
+				switch string(chunks[4:8]) {
+				case "sRGB", "gAMA", "cHRM":
+				default:
+					t.Fatal("retained non-display PNG metadata")
+				}
+				chunks = chunks[end:]
+			}
+		}
+		for _, profile := range profiles {
+			for _, gray := range []bool{false, true} {
+				var source image.Image = image.NewRGBA(image.Rect(0, 0, 1, 1))
+				if gray {
+					source = image.NewGray(image.Rect(0, 0, 1, 1))
+				}
+				if sanitized, err := sanitizeColorProfile(profile, source); err == nil && len(sanitized) > 0 {
+					assertDisplayProfile(t, sanitized, gray)
+				}
+			}
+		}
 	})
+}
+
+func assertDisplayProfile(t *testing.T, profile []byte, gray bool) {
+	t.Helper()
+	if len(profile) < 132 || uint64(binary.BigEndian.Uint32(profile[:4])) != uint64(len(profile)) {
+		t.Fatal("sanitized profile has an invalid output length")
+	}
+	space := "RGB "
+	if gray {
+		space = "GRAY"
+	}
+	if string(profile[16:20]) != space {
+		t.Fatal("sanitized profile is incompatible with the pixel channels")
+	}
+	count := uint64(binary.BigEndian.Uint32(profile[128:132]))
+	tableEnd := 132 + count*12
+	if tableEnd > uint64(len(profile)) {
+		t.Fatal("sanitized profile tag table exceeds output bounds")
+	}
+	for index := uint64(0); index < count; index++ {
+		entry := profile[132+index*12 : 144+index*12]
+		offset, size := uint64(binary.BigEndian.Uint32(entry[4:8])), uint64(binary.BigEndian.Uint32(entry[8:12]))
+		if offset < tableEnd || offset+size > uint64(len(profile)) {
+			t.Fatal("sanitized profile tag exceeds output bounds")
+		}
+		switch string(entry[:4]) {
+		case "desc", "cprt", "wtpt", "bkpt", "chad", "lumi":
+		case "kTRC":
+			if !gray {
+				t.Fatal("RGB output retained a grayscale transform")
+			}
+		case "rXYZ", "gXYZ", "bXYZ", "rTRC", "gTRC", "bTRC":
+			if gray {
+				t.Fatal("grayscale output retained an RGB transform")
+			}
+		default:
+			t.Fatal("sanitized profile retained a non-display tag")
+		}
+	}
 }
