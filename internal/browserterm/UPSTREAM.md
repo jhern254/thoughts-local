@@ -224,7 +224,7 @@ speech wiring are intentionally deferred.
 
 The `visual` service keeps background settings in SQLite's `visual` table and
 image files beside that database in `.assets/appearance/`. Migration 000012
-creates `visual` directly; migration 000013 adds framing settings.
+creates the complete `visual` table, including framing settings.
 
 Replacing a background must not destroy the working selection if the new image
 cannot be saved. The service validates the JPEG/PNG within its size limits,
@@ -269,7 +269,7 @@ is enabled only on Options. Native Options retains its browser-only explanation.
 
 ### Background framing
 
-Migration 000013 adds bounded Fill/Fit, zoom, and normalized overflow positions
+Migration 000012 defines bounded Fill/Fit, zoom, and normalized overflow positions
 without rewriting background assets. Bubble Tea owns draft settings and framing
 navigation. The browser owns pixel geometry and sends bounded, operation-scoped
 drag updates. One geometry calculation paints both the viewport and its scaled

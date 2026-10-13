@@ -1,4 +1,0 @@
-ALTER TABLE visual DROP COLUMN position_y;
-ALTER TABLE visual DROP COLUMN position_x;
-ALTER TABLE visual DROP COLUMN zoom;
-ALTER TABLE visual DROP COLUMN fit;

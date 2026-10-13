@@ -21,6 +21,19 @@ func TestVisual(t *testing.T) {
 		if _, err := db.Exec("INSERT INTO visual(user_id) VALUES ('user-1')"); err != nil {
 			t.Fatal(err)
 		}
+		var fit string
+		var darkness, zoom, x, y int
+		if err := db.QueryRow("SELECT darkness,fit,zoom,position_x,position_y FROM visual").Scan(&darkness, &fit, &zoom, &x, &y); err != nil {
+			t.Fatal(err)
+		}
+		if darkness != 70 || fit != "fill" || zoom != 100 || x != 5000 || y != 5000 {
+			t.Fatalf("defaults = %d %s %d %d %d, want 70 fill 100 5000 5000", darkness, fit, zoom, x, y)
+		}
+		applyMigrationFiles(t, db, "000012_create_visual.down.sql", false)
+		applyMigrationFiles(t, db, "000012_create_visual.up.sql", false)
+		if _, err := db.Exec("INSERT INTO visual(user_id,fit,zoom,position_x,position_y) VALUES ('user-1','fit',150,1000,9000)"); err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("stores one selection per existing user", func(t *testing.T) {
@@ -61,21 +74,7 @@ func TestBackgroundFraming(t *testing.T) {
 	t.Run("defaults to centered unzoomed Fill", func(t *testing.T) {
 		db := openMigratedDatabase(t)
 		insertUsers(t, db)
-		down, err := os.ReadFile("000013_add_background_framing.down.sql")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = db.Exec(string(down)); err != nil {
-			t.Fatal(err)
-		}
 		if _, err := db.Exec("INSERT INTO visual(user_id) VALUES ('user-1')"); err != nil {
-			t.Fatal(err)
-		}
-		up, err := os.ReadFile("000013_add_background_framing.up.sql")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = db.Exec(string(up)); err != nil {
 			t.Fatal(err)
 		}
 		var fit string

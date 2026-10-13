@@ -20,9 +20,11 @@ SQLite **3.41.0 or newer**, which provides [`unhex()`](https://www.sqlite.org/re
 when executing migrations or writing this schema with external SQLite tools.
 Check your CLI version with `sqlite3 --version`.
 
-The development schema was revised in migrations `000004` and `000012`: recreate
-disposable development databases after these changes. Running migrations against
-an already migrated database does not retrofit the revised table definition.
+The development schema was revised in migrations `000004` and `000012`; Visual
+settings and framing are consolidated in `000012` (the development-only `000013`
+was removed). Recreate disposable development databases after these changes.
+Running migrations against an already migrated database does not retrofit the
+revised table definition.
 
 Thoughts store a generated `character_count`: the number of Unicode code points
 in the complete stored text, including whitespace, newlines and embedded NULs.
