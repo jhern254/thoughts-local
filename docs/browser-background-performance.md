@@ -7,6 +7,8 @@ upscaling. All new imports re-encode to remove private metadata and normalize
 orientation into pixels. JPEG uses quality 85; PNG retains transparency. Existing
 assets are unchanged; reimporting applies the budget and sanitization policy.
 
+The durable product policy is documented in [Media handling and privacy](media-handling-policy.md). This document records implementation details, measurements, and limitations for specific revisions; historical benchmark results are not current privacy guarantees.
+
 This bounds the asset used during normal operation, not source decoding during
 preview and native validation. Resizing spends CPU once to reduce subsequent
 activation work. Darkness/framing changes reuse the decoded active image.
