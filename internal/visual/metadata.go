@@ -127,6 +127,7 @@ func (metadata *displayMetadata) inspectJPEG(body []byte) error {
 
 func (metadata *displayMetadata) inspectPNG(body []byte) error {
 	orientationFound, profileFound, srgbFound := false, false, false
+	grayAlpha := false
 	var gamma, chromaticity, srgb []byte
 	for offset := 8; offset+12 <= len(body); {
 		size := uint64(binary.BigEndian.Uint32(body[offset : offset+4]))
@@ -141,6 +142,13 @@ func (metadata *displayMetadata) inspectPNG(body []byte) error {
 			return ErrImage
 		}
 		switch string(chunk[4:8]) {
+		case "IHDR":
+			if len(payload) != 13 {
+				return ErrImage
+			}
+			// Go expands gray+alpha into NRGBA, which loses the original
+			// channel model. Its profile cannot be copied to RGB output.
+			grayAlpha = payload[9] == 4
 		case "acTL", "fcTL", "fdAT", "cICP", "mDCV", "cLLI":
 			return ErrImage // Animation/HDR requires another display pipeline.
 		case "eXIf":
@@ -200,9 +208,9 @@ func (metadata *displayMetadata) inspectPNG(body []byte) error {
 			break
 		}
 	}
-	if profileFound && srgbFound {
+	if profileFound && (srgbFound || grayAlpha) {
 		return ErrImage
-	} // Conflicting authoritative color declarations.
+	} // Conflicting color declarations or an unsupported source color model.
 	if profileFound {
 		return nil
 	}

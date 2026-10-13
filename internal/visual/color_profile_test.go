@@ -216,6 +216,28 @@ func TestPrepareImage_Color(t *testing.T) {
 			}
 		}
 	})
+	t.Run("grayscale alpha cannot acquire an RGB profile during reencoding", func(t *testing.T) {
+		// PNG color type 4 has gray+alpha samples, even though Go decodes
+		// it into NRGBA. An RGB profile is incompatible with the source.
+		var source bytes.Buffer
+		source.Write([]byte{137, 80, 78, 71, 13, 10, 26, 10})
+		appendPNGChunk(&source, "IHDR", []byte{0, 0, 0, 1, 0, 0, 0, 1, 8, 4, 0, 0, 0})
+		metadata, err := (displayMetadata{profile: syntheticColorProfile(false, "PRIVATE")}).encodeColorMetadata("png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		source.Write(metadata)
+		var compressed bytes.Buffer
+		writer := zlib.NewWriter(&compressed)
+		writer.Write([]byte{0, 128, 128})
+		writer.Close()
+		appendPNGChunk(&source, "IDAT", compressed.Bytes())
+		appendPNGChunk(&source, "IEND", nil)
+		if _, _, err := prepareImage(t.Context(), source.Bytes()); err != ErrImage {
+			t.Fatalf("error=%v, want safe incompatible-profile rejection", err)
+		}
+	})
+
 	t.Run("oversized compressed PNG profile is rejected", func(t *testing.T) {
 		var compressed bytes.Buffer
 		writer := zlib.NewWriter(&compressed)
