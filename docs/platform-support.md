@@ -4,7 +4,10 @@ This is the authoritative status of Thoughts on each platform. **Verified**
 means actual runtime execution; **Build-only** means compiled without runtime
 proof; **Upstream-supported** means Moonshine supports it but Thoughts has not
 verified it; **Planned** means not implemented. STT requires explicit native
-setup and model installation; ordinary builds contain no native runtime.
+setup and model installation. `make speech/setup` prepares the engine locally;
+`make tui/browser` then uses it automatically. Ordinary Go builds contain no
+native runtime. The developer setup helper is checked by the existing four-target
+native workflow; interactive microphone statuses below remain unchanged.
 
 | Platform | Core app | Browser TUI | Moonshine STT | Native STT integration test | Notes |
 |---|---|---|---|---|---|
