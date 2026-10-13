@@ -14,10 +14,12 @@ import (
 	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
-// BrowserRecordingEnabledMsg enables recording controls for a browser session.
-// Only the browser adapter sends it. Microphone support and permission are
-// checked on Record, not when the adapter enables these controls.
-type BrowserRecordingEnabledMsg struct{ SessionID string }
+// BrowserVoiceSessionMsg identifies the browser session and its speech availability.
+// Availability comes from startup configuration; microphone permission is checked on Record.
+type BrowserVoiceSessionMsg struct {
+	SessionID                  string
+	SpeechRecognitionAvailable bool
+}
 
 // VoiceAction contains control metadata only, never audio or transcript text.
 type VoiceAction struct {
@@ -28,7 +30,8 @@ type VoiceAction struct {
 
 // VoiceState reports browser recording controls and the current draft's status.
 type VoiceState struct {
-	SessionID string `json:"sessionID"`
+	SessionID                  string `json:"sessionID"`
+	SpeechRecognitionAvailable bool   `json:"speechRecognitionAvailable"`
 	// This Go-only authority carries no PCM or capability. The browser bridge
 	// uses the same revocation boundary as the draft mutation.
 	TranscriptAuthority *voice.TranscriptAuthority `json:"-"`
@@ -123,11 +126,12 @@ func (m *Model) EnableVoice(draftID uint64, reader VoiceSubjectReader, subjectNa
 }
 func (m Model) VoiceState() VoiceState {
 	state := VoiceState{
-		SessionID:           m.browserSessionID,
-		TranscriptAuthority: m.voice.transcriptAuthority,
-		DraftID:             m.voice.draftID,
-		RecordingID:         m.voice.recordingID,
-		RecordingStatus:     m.voice.recordingStatus,
+		SessionID:                  m.browserSessionID,
+		SpeechRecognitionAvailable: m.speechRecognitionAvailable,
+		TranscriptAuthority:        m.voice.transcriptAuthority,
+		DraftID:                    m.voice.draftID,
+		RecordingID:                m.voice.recordingID,
+		RecordingStatus:            m.voice.recordingStatus,
 	}
 	if m.voice.suspended || m.screen != create || m.loading {
 		state.DraftID = 0
@@ -174,6 +178,10 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 	}
 	switch action.Action {
 	case "start":
+		if !m.speechRecognitionAvailable {
+			m.voice.message = "Speech recognition is not configured. You can still type and save."
+			return m, nil
+		}
 		if m.voiceLocked() {
 			return m, nil
 		}

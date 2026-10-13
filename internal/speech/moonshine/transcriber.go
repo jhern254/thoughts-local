@@ -25,6 +25,7 @@ var moonshineRuntimeGate = make(chan struct{}, 1)
 
 type nativeTranscriber interface {
 	Transcribe(audioSamples []float32, sampleRateHz int) ([]string, error)
+	StartStream() (nativeStream, error)
 	Close() error
 }
 
@@ -37,8 +38,11 @@ type Transcriber struct {
 
 type transcriberState struct {
 	nativeBackend nativeTranscriber
-	closed        bool
-	closeErr      error
+	// The adapter owns one recording stream at a time so parent Close can
+	// release its native speech state before freeing the model.
+	activeStream *streamState
+	closed       bool
+	closeErr     error
 }
 
 // Open fully verifies the approved installation before loading it. Keep the
@@ -113,6 +117,14 @@ func (transcriber *Transcriber) Transcribe(ctx context.Context, audioSamples []f
 	if nativeErr != nil {
 		return speech.Transcript{}, withErrorCategory(speech.ErrTranscription, nativeErr)
 	}
+	transcriptText := joinTranscriptLines(transcriptLines)
+	if err := ctx.Err(); err != nil {
+		return speech.Transcript{}, err
+	}
+	return speech.Transcript{Text: transcriptText}, nil
+}
+
+func joinTranscriptLines(transcriptLines []string) string {
 	var transcriptText strings.Builder
 	for _, lineText := range transcriptLines {
 		if len(lineText) == 0 {
@@ -123,10 +135,7 @@ func (transcriber *Transcriber) Transcribe(ctx context.Context, audioSamples []f
 		}
 		transcriptText.WriteString(lineText)
 	}
-	if err := ctx.Err(); err != nil {
-		return speech.Transcript{}, err
-	}
-	return speech.Transcript{Text: transcriptText.String()}, nil
+	return transcriptText.String()
 }
 
 // Close waits for active native work and attempts all owned resource cleanup.
@@ -141,9 +150,12 @@ func (transcriber *Transcriber) Close() error {
 		return transcriber.state.closeErr
 	}
 	transcriber.state.closed = true
+	if transcriber.state.activeStream != nil {
+		transcriber.state.closeErr = transcriber.state.activeStream.closeWithRuntimeHeld()
+	}
 	if transcriber.state.nativeBackend != nil {
 		if err := transcriber.state.nativeBackend.Close(); err != nil {
-			transcriber.state.closeErr = withErrorCategory(speech.ErrRuntime, err)
+			transcriber.state.closeErr = withErrorCategory(speech.ErrRuntime, errors.Join(transcriber.state.closeErr, err))
 		}
 		transcriber.state.nativeBackend = nil
 	}
