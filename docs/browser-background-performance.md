@@ -235,3 +235,156 @@ not attribute the handoff failures to native processing or claim a preview speed
 Raw measurements are in ignored `bin/background-evidence/privacy-*`; captures
 remain under `/tmp`. Settings-only reuse and generation ownership remain covered
 by the existing controlled browser tests.
+
+## Looping video: bounds and measured costs
+
+The first video implementation uses self-contained SDR H.264 MP4/MOV inputs,
+128 MiB, 1–30 seconds, 4096 pixels per axis, 9 million pixels per frame and 60
+FPS. Aggregate decoded work is capped at four billion pixels. Processing/staging
+has a two-minute deadline, one decoder/encoder/filter thread, a 64 MiB
+single-allocation limit and 64 KiB probe/diagnostic budgets. These are resource
+restrictions, **not an OS sandbox or a hard total RSS ceiling**. Input references
+are checked before the restricted MOV demuxer opens the private staged file.
+
+Prepared assets use Constrained Baseline H.264, Level 3.2, CRF 23, `veryfast`,
+3 Mbps VBV ceiling/6 Mb buffer, 8-bit `yuv420p`, even square-pixel dimensions,
+at most 1280 pixels per axis/921,600 pixels per frame, 24 FPS and 16 MiB. Level
+3.2 accommodates macroblock padding for non-16-aligned shapes within this pixel
+budget. Output is independently probed, checked for fast-start layout and fully
+decoded. Audio, other streams, chapters, source metadata and SEI payloads are
+removed. SDR Rec.709 is supported; untagged SDR is interpreted as Rec.709.
+Explicit incompatible declarations, ICC video profiles and arbitrary display
+transforms are rejected. Cardinal rotations are normalized into frames.
+
+A poster is generated once from the validated prepared file. Explicit Rec.709
+matrix/range decoding produces bounded RGB bytes; Go encodes the opaque JPEG at
+quality 85. Directly encoding the video's YCbCr into JPEG produced a confirmed
+matrix mismatch: the uniform-band browser regression differed by 14 channel
+levels before correction and passes the eight-level JPEG tolerance afterward.
+Tiny moving edges are unsuitable for this test because JPEG chroma loss is
+independent of a matrix error. The synthetic uniform-band fixture contains no
+personal media. The poster contains no source metadata.
+
+### Codec spike
+
+The unchanged stress app at `3dc2a916bc4bc0e13b55f1f67d9042eba7e04b82`
+received a supported JPEG still; a temporary browser-only substitution compared
+synthetic eight-second 1280×720/24 FPS Baseline and Main clips (Level 3.1).
+Three separate 20-second normal-speed samples on the i5-8250U/8 logical CPUs,
+Brave 148.0.7778.217, Linux and Go 1.25.14 produced median browser CPU of
+21.48% and 22.53% of one logical CPU respectively, with zero dropped frames.
+Baseline remains the selected profile; this is not a statistically significant
+speed comparison or proof that Main is universally slower. Firefox and Chromium
+subsequently executed the actual prepared Baseline/Level 3.2 assets, including
+poster-color, playback and lifecycle acceptance.
+
+Baseline fixture: 3,114,995 bytes,
+SHA-256 `14a75c20ac292d05a13264f2a3312265bd3334c92b9c734b0558e5a6bf39686f`.
+Main fixture: 2,446,590 bytes,
+SHA-256 `85ed1f590b0987afaecf83454bb54ff8e79f5f1e5af51f054519b1af1b89f408`.
+Both use `testsrc2`, CRF 23/veryfast, 3 Mbps maxrate/6 Mbps buffer, one thread and
+Rec.709 signaling. Fixture generation finishes before measurements.
+
+### One-time native import
+
+Five `BenchmarkPrepareVideo` runs used the identical pre-generated Baseline
+fixture, `-benchtime=1x -benchmem`, with compilation excluded and no competing
+builds/tests. This includes staging, probing, encoding, complete output decoding,
+poster preparation and cleanup; it excludes selection persistence.
+
+| Revision | Median ns/op | B/op | allocs/op | Maximum process/child RSS |
+| --- | ---: | ---: | ---: | ---: |
+| `401df012c8893927de1c23bd15a70664ffd30844` | 2,415,442,130 | 41,426,904 | 922,243 | 110.4 MiB |
+| Opaque RGBA correction, `1b09424` | 2,383,168,794 | 37,736,400 | 640 | 110.6 MiB |
+
+Opaque RGBA uses the standard JPEG encoder's direct pixel path. The measured
+allocation reduction is 99.93% and bytes reduction 8.91%; the 1.34% elapsed
+difference is not a significance claim. FFmpeg dominates one-time cost. GNU
+`time` reports the largest process/child RSS, not simultaneous summed RSS; Go
+allocation counters exclude FFmpeg. User/system CPU across all five imports was
+11.35/0.79 seconds before and 11.26/0.81 seconds after. Later upload/playback
+ownership corrections do not change this RGB/encoding path.
+
+### Recurring playback and interaction
+
+Actual implementation `7d720a2` used the same clip and the migrated stress
+fixture (721 Events/20,000 Thoughts) on the same reference machine. The existing
+probe was extended for video; a temporary owned host used the real application
+services and browser PCM transport with a discard consumer. It measures capture
+and ingestion, **not speech inference or another ML pipeline**. Each steady
+state below has one 30-second sample after settling. CPU is relative to one
+logical CPU. Browser PSS sums the measured browser processes; RSS double-counts
+shared pages. Native CPU/memory is recorded separately.
+
+| State | Browser CPU | Native CPU | Browser PSS |
+| --- | ---: | ---: | ---: |
+| Static image | 1.20% | 2.13% | 312.6 MiB |
+| Video 100% | 23.25% | 2.23% | 388.7 MiB |
+| Video + synthetic recording | 39.68% | 3.06% | 413.1 MiB |
+| Video 50% | 15.23% | 2.29% | 413.1 MiB |
+| Video 25% | 7.81% | 2.36% | 413.4 MiB |
+| Paused | 0.83% | 1.96% | 408.2 MiB |
+| Reduced motion | 0.93% | 1.96% | 408.7 MiB |
+| Hidden visibility emulation | 0.93% | 1.96% | 409.1 MiB |
+
+Brave's actual player properties reported `VaapiVideoDecoder` and
+`kIsPlatformVideoDecoder=true`; codec capability hints alone were not used as
+hardware proof. **The additional normal-speed CPU target below 10% was missed**
+(+22.05 points). Native recurring cost changed little. This synthetic moving
+pattern is busy; quieter content/hardware can differ, but acceptable cost is not
+guaranteed. Pausing, using a smaller/lower-FPS source or retaining an image are
+simple available tradeoffs. No cache, frame-copy loop or recurring workaround was
+added. Quarter speed presents roughly six frames per second and can look choppy;
+50–100% is the simple recommendation for smoother motion. No interpolation is
+implemented.
+
+Five 20-key Events navigation groups gave median group p95 of 33.8 ms with the
+static image and 40.4 ms with video (+6.6 ms), below the 10 ms target in this
+run. No statistical significance or universal latency guarantee is claimed.
+Five video selections had median preview 1942 ms, Apply-to-visible-player 4061 ms,
+and poster/settings activation 10.9 ms. The latter does **not** include decoder
+readiness. Repeated imports and deferred browser reclamation affected memory;
+these process totals do not establish a leak or a memory plateau.
+
+A real inactive-window/minimize attempt left `document.visibilityState` visible
+in this automated desktop setup; that attempt kept playing and is not hidden-tab
+proof. Explicitly labeled visibility emulation exercised the production listener
+and stopped playback. Real desktop hidden-tab CPU remains unverified. The
+redundant post-recording generic Events workload had an incorrect screen
+assumption and was stopped; its partial rows are excluded. Earlier variable or
+failed setup runs remain diagnostic evidence, not accepted measurements.
+
+Transient logs, source clips, JSON and captures are under `/tmp/thoughts-video-spike`.
+The durable policy is [Media handling and privacy](media-handling-policy.md).
+New video/poster assets are unencrypted local display copies; originals are not
+archived and existing assets are not rewritten. The intermittent black rectangles
+remain unresolved. Linux browser verification does not establish macOS/Windows
+runtime support.
+
+
+Reproduce the video mode on a disposable stress demo, with a pre-generated
+synthetic clip and no competing builds/tests:
+
+```sh
+THOUGHTS_BACKGROUND_PERF_DISPOSABLE=1 \
+THOUGHTS_PERF_VIDEO_FIXTURE=/tmp/synthetic-720.mp4 \
+THOUGHTS_PERF_IDLE_SAMPLES=1 \
+node internal/browserterm/client/background-performance.mjs \
+  http://127.0.0.1:PORT APP_PID /tmp/video-results.json
+```
+
+`THOUGHTS_PERF_RECORDING=1` additionally requires an explicitly configured
+synthetic PCM consumer host; it must not open a physical microphone. Native
+one-time imports can be repeated independently with
+`THOUGHTS_VIDEO_BENCH_FIXTURE=/tmp/synthetic-720.mp4 go test ./internal/visual -run '^$' -bench '^BenchmarkPrepareVideo$' -benchmem -count=5 -benchtime=1x`.
+FFmpeg/ffprobe must be on PATH. Compile separately when using OS CPU/RSS tools.
+
+
+A separate matched 1200×850 draft probe used 55 typed keys and five resize pairs
+(650×600 ↔ 1200×850), with no competing builds/tests. Static/video typing median
+was 12.4/13.3 ms; pooled p95 was 24.4/41.5 ms (+17.1 ms). This is an observed
+responsiveness cost worth flagging, although it is not the Events navigation
+metric and is not a significance claim. Resize event-to-first-row-mutation
+ranged 0.5–1.8 ms static and 0.4–1.7 ms video; this does not measure complete GPU
+paint. No timeouts occurred. Screenshots were retained and reviewed separately;
+timing assertions alone do not establish visual correctness.

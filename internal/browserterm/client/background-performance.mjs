@@ -1,6 +1,7 @@
 // Opt-in local probe: imports/removes synthetic backgrounds on a disposable demo.
 // Run revisions separately; do not run builds/tests alongside measurements.
 import {chromium, expect} from '@playwright/test';
+import {fakeMicrophone} from './capture-fixture.mjs';
 import {openVisual, setDarkness, screen} from './visual-helpers.mjs';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
@@ -76,6 +77,7 @@ try {
   const page = await browser.newPage({viewport:null});
   const cdp = await page.context().newCDPSession(page);
   const browserCDP = await browser.newBrowserCDPSession();
+  if(process.env.THOUGHTS_PERF_RECORDING==='1')await fakeMicrophone(page,.25);
   await page.route('**/static/visual.js', async route => {
     const response = await route.fetch();
     await route.fulfill({response,body:await response.text()+`;window.activationTimes=[];const measuredActivate=ThoughtsVisual.prototype.activate;ThoughtsVisual.prototype.activate=async function(...args){const start=performance.now();const result=await measuredActivate.apply(this,args);window.activationTimes.push(performance.now()-start);return result;};`});
@@ -216,7 +218,19 @@ try {
       await openVisual(page);await clickControl(page,`Playback speed: ${percent===100?100:percent===50?100:50}%`);
       await page.keyboard.press('Home');for(let value=25;value<percent;value+=5)await page.keyboard.press('ArrowRight');
       await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
-      await idle(`video-${percent}`);if(percent===100)await events('video');
+      await idle(`video-${percent}`);
+      if(percent===100) {
+        await events('video');
+        if(process.env.THOUGHTS_PERF_RECORDING==='1') {
+          await page.keyboard.press('F8');await expect(screen(page)).toContainText('Create thought');
+          await page.keyboard.press('F8');await expect.poll(()=>page.evaluate(()=>window.voiceProbe.requests)).toBe(1);
+          await page.evaluate(()=>window.voiceProbe.grant(0));await expect(page.locator('#status')).toHaveText('Transcribing…');
+          await idle('video-synthetic-recording');
+          await page.keyboard.press('F8');await expect(screen(page)).toContainText('F8: Record');
+          await page.keyboard.press('Escape');await page.keyboard.press('Tab');await page.keyboard.press('q');await page.keyboard.press('Tab');
+          await expect(screen(page)).toContainText('Tab/Q: events');
+        }
+      }
     }
     await openVisual(page);await clickControl(page,'Pause video');await clickControl(page,'Apply');
     await expect(screen(page)).not.toContainText('Background darkness:');await idle('video-paused');
@@ -227,9 +241,15 @@ try {
     // A second desktop window tests real visibility rather than dispatching a
     // fabricated event. Record document visibility so failed hiding is explicit.
     const other=await browser.newPage();await other.goto('about:blank');await other.bringToFront();
-    await idle('video-hidden');await other.close();await page.bringToFront();
+    await idle('video-hidden-attempt');await other.close();await page.bringToFront();
+    // Some automated desktop setups keep inactive windows visible. Exercise
+    // the real application listener with an explicitly labeled hidden state,
+    // without describing that emulation as a successful OS/tab transition.
+    await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
+    await idle('video-hidden-emulated');
+    await page.evaluate(()=>{delete document.hidden;delete document.visibilityState;document.dispatchEvent(new Event('visibilitychange'));});
   }
-  if(!importOnly) {
+  if(!importOnly && !videoFixturePath) {
     // Keep the Events workload separate from the reported entity-picker artifact.
     await page.keyboard.press('Tab');
     for(let run=0;run<count;run++) {
