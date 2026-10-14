@@ -136,3 +136,10 @@ test('a retired preview play rejection cannot pause its replacement',async()=>{
  rejectOld(new Error('retired synthetic preview'));await pending;
  assert.equal(f.visual.previewPlaying,true);assert.equal(pauses,0);
 });
+
+
+test('opening Options does not resume or accelerate a saved paused video while loading',()=>{
+ const f=activationFixture();
+ Object.assign(f.visual,{video:{},connected:true,documentVisible:true,motionQuery:{matches:false},state:{open:true,request:'load',speedPercent:100,userPaused:false},saved:{background:true,kind:'video',speedPercent:50,userPaused:true}});
+ assert.equal(f.visual.shouldPlayBackground(),false);assert.equal(f.visual.playbackSpeed(),.5);
+});

@@ -424,11 +424,14 @@ class ThoughtsVisual {
       playbackBlocked: !!(this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride))});
   }
   playbackSpeed() {
-    const percent = this.state.open ? this.state.speedPercent : this.saved.speedPercent;
+    // Until the load reply arrives, the Options defaults are not user preferences.
+    const preferences = this.state.open && this.state.request !== 'load' ? this.state : this.saved;
+    const percent = preferences.speedPercent;
     return Number.isInteger(percent) ? Math.max(25, Math.min(100, percent)) / 100 : 1;
   }
   shouldPlayBackground() {
-    const paused = this.state.open ? this.state.userPaused : this.saved.userPaused;
+    const preferences = this.state.open && this.state.request !== 'load' ? this.state : this.saved;
+    const paused = preferences.userPaused;
     return !!(this.video && this.saved.background && this.saved.kind === 'video' && !paused &&
       this.connected && this.documentVisible && (!this.motionQuery?.matches || this.motionOverride) &&
       !this.previewPlaying && !this.playbackFailed);
