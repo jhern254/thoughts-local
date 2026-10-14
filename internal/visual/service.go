@@ -87,7 +87,8 @@ func (s *Service) Import(ctx context.Context, input io.Reader, darkness int, fra
 	if err != nil {
 		return data.Visual{}, false, err
 	}
-	format, err := validateImage(body)
+	// Sanitize before creating a replacement file; failure leaves the saved asset untouched.
+	body, format, err := prepareImage(ctx, body)
 	if err != nil {
 		return data.Visual{}, false, err
 	}

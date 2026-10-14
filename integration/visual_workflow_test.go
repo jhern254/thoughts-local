@@ -16,6 +16,54 @@ import (
 )
 
 func TestVisualWorkflow_SQLite(t *testing.T) {
+	t.Run("restores optimized background and framing after restart", func(t *testing.T) {
+		_, dsn := openMigratedSQLite(t)
+		runtime, err := application.Open(t.Context(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		service, err := runtime.BrowserVisual(t.Context())
+		if err != nil {
+			runtime.Close()
+			t.Fatal(err)
+		}
+		var source bytes.Buffer
+		if err := png.Encode(&source, image.NewNRGBA(image.Rect(0, 0, 6000, 4000))); err != nil {
+			runtime.Close()
+			t.Fatal(err)
+		}
+		framing := data.BackgroundFraming{Fit: "fill", Zoom: 175, PositionX: 1200, PositionY: 9000}
+		first, warning, err := service.Import(t.Context(), bytes.NewReader(source.Bytes()), 42, framing)
+		if err != nil || warning {
+			runtime.Close()
+			t.Fatalf("import = %v, warning %v; want success", err, warning)
+		}
+		if err := runtime.Close(); err != nil {
+			t.Fatal(err)
+		}
+		runtime, err = application.Open(t.Context(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer runtime.Close()
+		service, err = runtime.BrowserVisual(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := service.Load(t.Context())
+		if err != nil || got != first {
+			t.Fatalf("restored = %+v, %v; want %+v", got, err, first)
+		}
+		file, _, err := service.OpenBackground(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		config, format, err := image.DecodeConfig(file)
+		if err != nil || format != "png" || config.Width != 2449 || config.Height != 1632 {
+			t.Fatalf("stored = %+v, %s, %v; want 2449x1632 PNG", config, format, err)
+		}
+	})
 	t.Run("opens the selected image from the application asset directory", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		runtime, err := application.Open(t.Context(), dsn)
@@ -96,6 +144,19 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		if err != nil || warning {
 			t.Fatalf("import = %v, warning %v", err, warning)
 		}
+		importedFile, _, err := service.OpenBackground(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		importedBytes, err := io.ReadAll(importedFile)
+		importedFile.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := png.Decode(bytes.NewReader(importedBytes))
+		if err != nil || decoded.Bounds().Size() != (image.Point{8, 6}) {
+			t.Fatalf("imported image = %v, %v", decoded, err)
+		}
 		if err = runtime.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -127,7 +188,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(loaded, body.Bytes()) {
+		if !bytes.Equal(loaded, importedBytes) {
 			t.Fatal("restored image differs from imported image")
 		}
 		if _, _, err = service.Remove(t.Context()); err != nil {

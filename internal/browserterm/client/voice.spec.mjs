@@ -1,6 +1,6 @@
 import {fakeMicrophone} from './capture-fixture.mjs';
 import {test, expect} from '@playwright/test';
-import {openVisual, clickControl, setDarkness} from './visual-helpers.mjs';
+import {openVisual, clickControl, setDarkness, chooseImage} from './visual-helpers.mjs';
 const screen = page => page.locator('.xterm-rows');
 async function ready(page) {
   await page.goto('/');
@@ -117,6 +117,8 @@ test('regular thought creation uses the same form and recording action', async (
 });
 
 test('visual preserves recording and terminal focus ownership', async ({page}) => {
+  let sockets = 0;
+  page.on('websocket', () => sockets++);
   await fakeMicrophone(page); await ready(page);
   await paste(page, 'visual voice draft');
   await openVisual(page);
@@ -131,11 +133,29 @@ test('visual preserves recording and terminal focus ownership', async ({page}) =
   await expect(screen(page)).toContainText('Background darkness:');
   await expect(screen(page)).not.toContainText('Loading visual');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+  const activeSockets = sockets;
+  // Six megapixels exceeds the 4MP stored budget: resize/activation must also
+  // preserve recording ownership, rather than only testing a small-image save.
+  const encoded = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2000;
+    canvas.height = 3000;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#458ad0';
+    context.fillRect(0, 0, 2000, 3000);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await chooseImage(page, {
+    name: 'recording-background.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(encoded, 'base64')
+  });
   await setDarkness(page, 65);
   await clickControl(page, 'Apply');
   await expect(screen(page)).not.toContainText('Background darkness:');
   expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   expect(await page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(0);
+  expect(sockets).toBe(activeSockets);
   await expect(screen(page)).toContainText('visual voice draft');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await page.keyboard.press('F8');

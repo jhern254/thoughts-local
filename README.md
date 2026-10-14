@@ -98,8 +98,10 @@ drag or use arrow keys to move the image, and **+ / −** to zoom (100–300%).
 **Done** keeps your draft framing; **Apply** saves it. **Cancel/Esc** restores the
 framing from entry, and **Reset framing** centers it at 100% zoom. The preview
 matches the current browser window's proportions; resizing may reveal different
-edges. The original image is retained. Darkness changes one percentage point per
-Left/Right press; Home/End select its limits.
+edges. Framing changes preserve the imported display copy. Thoughts never modifies
+the source file on your device, and background import does not archive an original
+inside the app. Darkness changes one percentage point per Left/Right press;
+Home/End select its limits.
 
 
 Images must be non-animated, at most **16 MiB**, **8,192 pixels per side**, and
@@ -112,9 +114,15 @@ Imported copies live in
 Back up the database and its asset directory together. In-memory databases do
 not support persistent backgrounds.
 
-Background assets are local application data, are not cloud-uploaded, and are
-**not encrypted**. Future encrypted-vault work must include these personal media
-assets. Video backgrounds and AI animation are separate future work.
+Every newly imported background is re-encoded into a bounded display copy, including small images. Orientation is applied to pixels, unnecessary embedded metadata such as location, device details, dates, comments, and thumbnails is removed, and supported display color information is retained. JPEG output is lossy; larger images may also be resized.
+
+Existing backgrounds and older backups are not automatically sanitized. Replace or reimport a background to apply the current policy. Local background assets are not encrypted yet.
+
+Some JPEG/PNG color encodings are unsupported. When an image is rejected for compatibility, export a standard SDR/sRGB JPEG or PNG in an image editor and try again; all normal size and validation limits still apply.
+
+See [Media handling and privacy](docs/media-handling-policy.md) for the distinction between background display copies and future private media attachments. Metadata removal does not anonymize what is visible in a picture.
+
+Background assets remain local and are not cloud-uploaded. Video backgrounds and AI animation are separate future work.
 
 ### Local trust and maintenance
 

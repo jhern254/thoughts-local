@@ -222,6 +222,20 @@ speech wiring are intentionally deferred.
 
 ## Visual settings and local backgrounds
 
+Imports retain the existing 16 MiB/8,192-axis/24MP source safety limits. Stored
+copies are bounded to 4MP and 3,072 pixels per axis, without upscaling. Native
+validation decodes once, then resizes oversized images with ApproxBiLinear;
+JPEG uses quality 85 and PNG BestSpeed preserves alpha.
+Every new background import is decoded and re-encoded, including small images. Source files on the user's device are untouched. Existing application assets are not rewritten automatically; replacement/reimport applies the current bounded, metadata-minimal display-copy policy.
+The browser preview uses the same output dimensions for consistent framing.
+
+Backgrounds are presentation assets, not archival media attachments. Do not reuse this sanitization path to replace future canonical attachment originals. See [Media handling and privacy](../../docs/media-handling-policy.md) for preservation, extraction, derivative, and disclosure rules.
+
+Visual responses include an opaque `backgroundID`, never a filesystem path.
+Settings-only changes reuse the current decoded image. Connection and activation
+generations fence delayed loads; discarded object URLs are revoked. There is no
+recurring background rendering loop or per-key full-screen refresh.
+
 The `visual` service keeps background settings in SQLite's `visual` table and
 image files beside that database in `.assets/appearance/`. Migration 000012
 creates the complete `visual` table, including framing settings.
@@ -274,3 +288,9 @@ without rewriting background assets. Bubble Tea owns draft settings and framing
 navigation. The browser owns pixel geometry and sends bounded, operation-scoped
 drag updates. One geometry calculation paints both the viewport and its scaled
 preview, including after resize; thumbnail dimensions do not determine the crop.
+
+New backgrounds are sanitized natively before storage; existing files are only
+changed by explicit replacement/reimport. Orientation is normalized into pixels
+and only supported color-transform metadata is retained. See
+[the import contract and measurements](../../docs/browser-background-performance.md#import-privacy-and-color-contract)
+for profile compatibility, privacy limits and one-time processing cost.
