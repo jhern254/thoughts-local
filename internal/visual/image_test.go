@@ -43,11 +43,14 @@ func TestValidateImage(t *testing.T) {
 func TestValidateImage_Limits(t *testing.T) {
 	t.Run("rejects animated PNG accepted by the standard decoder", func(t *testing.T) {
 		original := samplePNG(t)
+		// APNG acTL: twelve-byte chunk framing plus frame count/play count
+		// (two uint32s). One frame and zero plays means infinite looping.
 		chunk := make([]byte, 20)
 		binary.BigEndian.PutUint32(chunk[:4], 8)
 		copy(chunk[4:8], "acTL")
 		binary.BigEndian.PutUint32(chunk[8:12], 1)
 		binary.BigEndian.PutUint32(chunk[16:], crc32.ChecksumIEEE(chunk[4:16]))
+		// Insert after the PNG signature (8) and complete IHDR chunk (25).
 		animated := append(append(append([]byte{}, original[:33]...), chunk...), original[33:]...)
 		if _, err := png.Decode(bytes.NewReader(animated)); err != nil {
 			t.Fatalf("fixture is not decodable PNG: %v", err)
@@ -58,6 +61,8 @@ func TestValidateImage_Limits(t *testing.T) {
 	})
 	t.Run("rejects excessive pixels before allocating a decoded image", func(t *testing.T) {
 		body := samplePNG(t)
+		// IHDR payload starts at byte 16: width/height are uint32s, followed
+		// by five method/depth bytes. Recompute the CRC at 29 over type+payload.
 		binary.BigEndian.PutUint32(body[16:20], 6000)
 		binary.BigEndian.PutUint32(body[20:24], 5000)
 		binary.BigEndian.PutUint32(body[29:33], crc32.ChecksumIEEE(body[12:29]))

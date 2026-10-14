@@ -29,6 +29,8 @@ function pngChunk(type, body) {
   chunk.writeUInt32BE(body.length);
   chunk.write(type, 4);
   body.copy(chunk, 8);
+  // PNG CRC-32 covers type+payload, starts/ends with all-bit inversion,
+  // and uses reflected polynomial EDB88320 (IEEE CRC-32).
   let crc = 0xffffffff;
   for (const byte of chunk.subarray(4, -4)) {
     crc ^= byte;
@@ -38,6 +40,8 @@ function pngChunk(type, body) {
   return chunk;
 }
 function syntheticPNG(width, height) {
+  // RGB8 uses three bytes per pixel; each PNG row begins with filter byte 0
+  // (None), supplied by the zero-initialized buffer. Fixture colors are decorative.
   const stride = width * 3 + 1;
   const pixels = Buffer.alloc(stride * height);
   for (let y = 0; y < height; y++) {
@@ -57,6 +61,7 @@ function syntheticPNG(width, height) {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width);
   header.writeUInt32BE(height, 4);
+  // IHDR: width/height uint32, depth 8, color type 2 (RGB), default methods 0.
   header[8] = 8;
   header[9] = 2;
   return Buffer.concat([
@@ -109,6 +114,9 @@ try {
       try { browserRSS+=Number(readFileSync(`/proc/${process.id}/status`,'utf8').match(/VmRSS:\s+(\d+)/)[1]); } catch {}
       try { browserPSS+=Number(readFileSync(`/proc/${process.id}/smaps_rollup`,'utf8').match(/^Pss:\s+(\d+)/m)[1]); } catch {}
     }
+    // After stripping pid/(comm), indices 11/12 are Linux stat fields 14/15
+    // (user/system CPU ticks). CLK_TCK converts them to CPU seconds;
+    // /proc memory values are KiB and become MiB below.
     const stat=readFileSync(`/proc/${appPID}/stat`,'utf8').split(') ')[1].split(' ');
     const appCPU=(Number(stat[11])+Number(stat[12]))/ticks;
     const appRSS=Number(readFileSync(`/proc/${appPID}/status`,'utf8').match(/VmRSS:\s+(\d+)/)[1]);

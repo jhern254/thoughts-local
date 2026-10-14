@@ -19,6 +19,8 @@ async function imageFixture(page) {
 function pngChunk(kind, payload) {
   const chunk = Buffer.alloc(payload.length + 12);
   chunk.writeUInt32BE(payload.length); chunk.write(kind, 4); payload.copy(chunk, 8);
+  // PNG CRC-32 covers type+payload, starts/ends with all-bit inversion,
+  // and uses reflected polynomial EDB88320 (IEEE CRC-32).
   let crc = 0xffffffff;
   for (const byte of chunk.subarray(4, -4)) {
     crc ^= byte;
@@ -27,11 +29,13 @@ function pngChunk(kind, payload) {
   chunk.writeUInt32BE((crc ^ 0xffffffff) >>> 0, chunk.length - 4);
   return chunk;
 }
+// JPEG length counts its own two bytes, excluding the FF+marker prefix.
 function jpegSegment(marker, payload) {
   const header = Buffer.from([255, marker, 0, 0]); header.writeUInt16BE(payload.length + 2, 2);
   return Buffer.concat([header, payload]);
 }
 function insertMetadata(source, format, metadata) {
+  // Two-byte JPEG SOI, or eight-byte PNG signature plus 25-byte IHDR chunk.
   const offset = format === 'jpeg' ? 2 : 33;
   return Buffer.concat([source.subarray(0, offset), metadata, source.subarray(offset)]);
 }
@@ -41,6 +45,8 @@ function withoutColorMetadata(source, format) {
   const parts = [source.subarray(0, format === 'jpeg' ? 2 : 8)];
   if (format === 'jpeg') {
     let offset = 2;
+    // Canvas JPEG headers have length-bearing segments up to SOS (DA/218).
+    // APP2 (E2/226) is removed so the fixture has one authoritative ICC profile.
     while (source[offset] === 255 && source[offset + 1] !== 218) {
       const end = offset + 2 + source.readUInt16BE(offset + 2);
       if (source[offset + 1] !== 226) parts.push(source.subarray(offset, end));
@@ -81,8 +87,11 @@ test('stored pixels match display-oriented previews for all EXIF orientations', 
       return canvas.toDataURL(`image/${format}`, 1).split(',')[1];
     }, format), 'base64');
     for (let orientation = 1; orientation <= 8; orientation++) {
+      // Classic little-endian TIFF: II, magic 42, IFD0 offset 8, one
+      // Orientation (0112) SHORT entry, inline value, zero next-IFD pointer.
       const tiff = Buffer.from([73,73,42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,orientation,0,0,0,0,0,0,0]);
       const privateMarker = Buffer.from('PRIVATE GPS camera serial timestamp');
+      // JPEG APP1 (225) contains EXIF; COM (254) holds the synthetic private marker.
       const metadata = format === 'jpeg'
         ? Buffer.concat([jpegSegment(225, Buffer.concat([Buffer.from('Exif\0\0'), tiff, privateMarker])), jpegSegment(254, privateMarker)])
         : Buffer.concat([pngChunk('eXIf', Buffer.concat([tiff, privateMarker])), pngChunk('tEXt', Buffer.concat([Buffer.from('Comment\0'), privateMarker]))]);
@@ -97,6 +106,8 @@ test('stored pixels match display-oriented previews for all EXIF orientations', 
       const response = await page.request.get('/visual/background'); const stored = await response.body();
       expect(stored.includes(privateMarker)).toBe(false);
       const actual = await displayedSamples(page, stored);
+      // Transposed orientations swap axes; the 3072-axis budget shrinks 4096×256
+      // to 3072×192 (or 192×3072). Color samples are inside uniform quadrants.
       expect(actual.size).toEqual(orientation >= 5 ? [192,3072] : [3072,192]);
       for (let point=0; point<4; point++) for (let channel=0; channel<4; channel++) {
         expect(Math.abs(actual.pixels[point][channel] - expected.pixels[point][channel])).toBeLessThanOrEqual(format === 'jpeg' ? 4 : 0);

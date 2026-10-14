@@ -17,18 +17,22 @@ func syntheticColorProfile(gray bool, private string) []byte {
 	return syntheticColorProfileVersion(gray, private, 4)
 }
 func syntheticColorProfileVersion(gray bool, private string, major byte) []byte {
+	// ICC header is 128 bytes; the following uint32 counts twelve-byte tag records.
 	profile := make([]byte, 132)
 	profile[8] = major
-	profile[9] = 0x30
+	profile[9] = 0x30 // Version minor/bugfix nibbles: 3.0.
 	copy(profile[12:24], "mntrRGB XYZ ")
 	if gray {
 		copy(profile[16:20], "GRAY")
 	}
 	copy(profile[36:40], "acsp")
+	// Rendering intent 1 is relative colorimetric; header illuminant is D50 XYZ.
+	// ICC XYZ values are signed 16.16 fixed point (65536 represents 1.0).
 	binary.BigEndian.PutUint32(profile[64:68], 1)
 	for index, value := range []float64{.9642, 1, .8249} {
 		binary.BigEndian.PutUint32(profile[68+index*4:72+index*4], uint32(math.Round(value*65536)))
 	}
+	// Manufacturer (48) and creator (80) identifiers must not survive sanitization.
 	copy(profile[48:52], "PRIV")
 	copy(profile[80:84], "USER")
 	xyz := func(values ...float64) []byte {
@@ -39,6 +43,8 @@ func syntheticColorProfileVersion(gray bool, private string, major byte) []byte 
 		}
 		return data
 	}
+	// v4 parametric curve function 0: eight-byte type/reserved header,
+	// two-byte function, two reserved bytes, one signed 16.16 gamma value.
 	curve := make([]byte, 16)
 	copy(curve, "para")
 	binary.BigEndian.PutUint32(curve[12:16], uint32(math.Round(2.2*65536)))
@@ -46,7 +52,7 @@ func syntheticColorProfileVersion(gray bool, private string, major byte) []byte 
 		curve = make([]byte, 14)
 		copy(curve, "curv")
 		binary.BigEndian.PutUint32(curve[8:12], 1)
-		binary.BigEndian.PutUint16(curve[12:14], 563)
+		binary.BigEndian.PutUint16(curve[12:14], 563) // v2 single-value curve: round(2.2×256), unsigned 8.8 gamma.
 	}
 
 	names := []string{"desc", "cprt", "wtpt", "priv"}
@@ -61,6 +67,7 @@ func syntheticColorProfileVersion(gray bool, private string, major byte) []byte 
 		tags["kTRC"] = curve
 	} else {
 		names = append(names, "rXYZ", "gXYZ", "bXYZ", "rTRC", "gTRC", "bTRC")
+		// D50-adapted Adobe RGB primary columns; these numeric transforms must survive.
 		tags["rXYZ"] = xyz(.6097559, .3111242, .0194811)
 		tags["gXYZ"] = xyz(.2052401, .625656, .0608902)
 		tags["bXYZ"] = xyz(.149224, .0632197, .7448387)
@@ -76,6 +83,7 @@ func syntheticColorProfileVersion(gray bool, private string, major byte) []byte 
 		binary.BigEndian.PutUint32(entry[4:8], uint32(len(profile)))
 		binary.BigEndian.PutUint32(entry[8:12], uint32(len(tags[name])))
 		profile = append(profile, tags[name]...)
+		// ICC payload offsets must land on four-byte boundaries.
 		for len(profile)%4 != 0 {
 			profile = append(profile, 0)
 		}
@@ -84,6 +92,8 @@ func syntheticColorProfileVersion(gray bool, private string, major byte) []byte 
 	return profile
 }
 
+// Read the synthetic ICC table: 128-byte header, uint32 count, then twelve-byte
+// records containing signature, absolute payload offset and payload byte size.
 func profileTag(profile []byte, name string) []byte {
 	count := int(binary.BigEndian.Uint32(profile[128:132]))
 	for index := 0; index < count; index++ {
@@ -167,6 +177,7 @@ func TestPrepareImage_Color(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// APP2 length excludes its two-byte marker; move the first segment behind the rest.
 		firstEnd := 2 + int(binary.BigEndian.Uint16(encoded[2:4]))
 		reordered := append(append([]byte{}, encoded[firstEnd:]...), encoded[:firstEnd]...)
 		body := insertMetadata(sourceImage(t, image.NewRGBA(image.Rect(0, 0, 8, 6)), "jpeg"), "jpeg", reordered)
@@ -191,6 +202,7 @@ func TestPrepareImage_Color(t *testing.T) {
 			}
 		}
 		profile := syntheticColorProfile(false, "PRIVATE")
+		// Replace the first tag signature with a LUT transform to exercise safe rejection.
 		copy(profile[132:136], "A2B0")
 		if _, err := sanitizeColorProfile(profile, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != ErrImage {
 			t.Fatalf("LUT profile error=%v", err)
@@ -199,10 +211,10 @@ func TestPrepareImage_Color(t *testing.T) {
 	t.Run("PNG effective color declarations remain without private chunks", func(t *testing.T) {
 		for _, kind := range []string{"sRGB", "gAMA"} {
 			var chunks bytes.Buffer
-			payload := []byte{1}
+			payload := []byte{1} // sRGB relative-colorimetric rendering intent.
 			if kind == "gAMA" {
 				payload = make([]byte, 4)
-				binary.BigEndian.PutUint32(payload, 45455)
+				binary.BigEndian.PutUint32(payload, 45455) // round((1/2.2)×100000) image gamma.
 			}
 			appendPNGChunk(&chunks, kind, payload)
 			appendPNGChunk(&chunks, "tEXt", []byte("Comment\x00PRIVATE"))
@@ -221,6 +233,7 @@ func TestPrepareImage_Color(t *testing.T) {
 		// it into NRGBA. An RGB profile is incompatible with the source.
 		var source bytes.Buffer
 		source.Write([]byte{137, 80, 78, 71, 13, 10, 26, 10})
+		// IHDR: 1×1 pixel, depth 8, gray+alpha type 4, default method bytes 0.
 		appendPNGChunk(&source, "IHDR", []byte{0, 0, 0, 1, 0, 0, 0, 1, 8, 4, 0, 0, 0})
 		metadata, err := (displayMetadata{profile: syntheticColorProfile(false, "PRIVATE")}).encodeColorMetadata("png")
 		if err != nil {
@@ -229,7 +242,7 @@ func TestPrepareImage_Color(t *testing.T) {
 		source.Write(metadata)
 		var compressed bytes.Buffer
 		writer := zlib.NewWriter(&compressed)
-		writer.Write([]byte{0, 128, 128})
+		writer.Write([]byte{0, 128, 128}) // Filter None (0), one gray8 sample, one alpha8 sample.
 		writer.Close()
 		appendPNGChunk(&source, "IDAT", compressed.Bytes())
 		appendPNGChunk(&source, "IEND", nil)
@@ -250,6 +263,7 @@ func TestPrepareImage_Color(t *testing.T) {
 		}
 	})
 	t.Run("missing and duplicate JPEG ICC parts are rejected", func(t *testing.T) {
+		// ICC header declares sequence 1 of 2: omit the second part or duplicate the first.
 		for _, suffix := range [][]byte{nil, jpegSegment(0xe2, append([]byte("ICC_PROFILE\x00\x01\x02"), []byte("PRIVATE")...))} {
 			metadata := jpegSegment(0xe2, append([]byte("ICC_PROFILE\x00\x01\x02"), []byte("PRIVATE")...))
 			metadata = append(metadata, suffix...)

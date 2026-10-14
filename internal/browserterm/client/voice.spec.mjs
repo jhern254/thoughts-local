@@ -134,6 +134,8 @@ test('visual preserves recording and terminal focus ownership', async ({page}) =
   await expect(screen(page)).not.toContainText('Loading visual');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   const activeSockets = sockets;
+  // Six megapixels exceeds the 4MP stored budget: resize/activation must also
+  // preserve recording ownership, rather than only testing a small-image save.
   const encoded = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 2000;

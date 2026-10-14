@@ -16,16 +16,17 @@ func readOrientation(tiff []byte) (int, error) {
 	}
 	var order binary.ByteOrder
 	switch string(tiff[:2]) {
-	case "II":
+	case "II": // TIFF little-endian byte order (Intel).
 		order = binary.LittleEndian
-	case "MM":
+	case "MM": // TIFF big-endian byte order (Motorola).
 		order = binary.BigEndian
 	default:
 		return 0, ErrImage
 	}
-	if order.Uint16(tiff[2:4]) != 42 {
+	if order.Uint16(tiff[2:4]) != 42 { // Classic TIFF magic; BigTIFF is outside this EXIF subset.
 		return 0, ErrImage
 	}
+	// Bytes 4–7 point to IFD0 relative to the TIFF header, not the JPEG/PNG file.
 	offset := uint64(order.Uint32(tiff[4:8]))
 	if offset < 8 || offset+2 > uint64(len(tiff)) {
 		return 0, ErrImage
@@ -40,9 +41,11 @@ func readOrientation(tiff []byte) (int, error) {
 	found := false
 	for index := uint64(0); index < count; index++ {
 		entry := tiff[offset+2+index*12 : offset+2+(index+1)*12]
-		if order.Uint16(entry[:2]) != 0x112 {
+		if order.Uint16(entry[:2]) != 0x112 { // TIFF Orientation tag (274).
 			continue
 		}
+		// Type 3 is SHORT (uint16); count 1 fits in the four-byte inline value
+		// field at bytes 8–11. Values 1–8 describe the standard display transforms.
 		value := int(order.Uint16(entry[8:10]))
 		if found || order.Uint16(entry[2:4]) != 3 || order.Uint32(entry[4:8]) != 1 || value < 1 || value > 8 {
 			return 0, ErrImage
@@ -61,7 +64,7 @@ func normalizeOrientation(source image.Image, orientation int) image.Image {
 	}
 	bounds := source.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
-	if orientation >= 5 {
+	if orientation >= 5 { // Transpose/90° transforms exchange displayed width and height.
 		width, height = height, width
 	}
 	// Draw into a concrete buffer once, then copy whole pixels. This avoids
@@ -114,6 +117,9 @@ func normalizeOrientation(source image.Image, orientation int) image.Image {
 	for y := 0; y < bounds.Dy(); y++ {
 		for x := 0; x < bounds.Dx(); x++ {
 			destinationX, destinationY := x, y
+			// EXIF orientation maps encoded coordinates to upright display:
+			// 1 unchanged; 2 horizontal mirror; 3 rotate 180°; 4 vertical mirror;
+			// 5 transpose; 6 rotate 90° clockwise; 7 transverse; 8 rotate 90° counterclockwise.
 			switch orientation {
 			case 2:
 				destinationX = bounds.Dx() - 1 - x
@@ -130,6 +136,8 @@ func normalizeOrientation(source image.Image, orientation int) image.Image {
 			case 8:
 				destinationX, destinationY = y, bounds.Dx()-1-x
 			}
+			// Strides are bytes per row; pixelBytes is 1/2 for gray8/16,
+			// or 4/8 for RGBA8/16. Copy complete pixels to retain alpha/depth.
 			from := y*sourceStride + x*pixelBytes
 			to := destinationY*destinationStride + destinationX*pixelBytes
 			copy(output[to:to+pixelBytes], input[from:from+pixelBytes])

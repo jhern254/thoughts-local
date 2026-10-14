@@ -4,6 +4,8 @@ function defaultBackgroundFraming() {
 // Match the native stored-image budget so preview framing uses the same aspect
 // ratio even when flooring a resized, very thin image changes it slightly.
 function backgroundImportDimensions(width, height) {
+  // 3072 limits each axis; 4,000,000 limits area. Area changes as scale²,
+  // so its constraint uses a square root. The leading 1 prevents upscaling.
   const scale = Math.min(1, 3072 / width, 3072 / height, Math.sqrt(4000000 / (width * height)));
   return {width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale))};
 }

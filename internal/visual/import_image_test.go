@@ -26,12 +26,14 @@ func TestPrepareImage(t *testing.T) {
 				if err := jpeg.Encode(&source, img, nil); err != nil {
 					t.Fatal(err)
 				}
+				// APP1: two-byte length + six-byte EXIF prefix + 26-byte TIFF = 34.
 				metadata = append([]byte{0xff, 0xe1, 0, 34, 'E', 'x', 'i', 'f', 0, 0}, tiff...)
 				offset = 2
 			} else {
 				if err := png.Encode(&source, img); err != nil {
 					t.Fatal(err)
 				}
+				// PNG eXIf chunk: length/type/payload/CRC; insert after signature+IHDR.
 				metadata = make([]byte, 12+len(tiff))
 				binary.BigEndian.PutUint32(metadata[:4], uint32(len(tiff)))
 				copy(metadata[4:8], "eXIf")
@@ -92,6 +94,7 @@ func TestPrepareImage(t *testing.T) {
 					for index, channel := range []uint8{pixel.R, pixel.G, pixel.B, pixel.A} {
 						reference := []uint8{want.R, want.G, want.B, want.A}[index]
 						difference := int(channel) - int(reference)
+						// JPEG quality-85 re-encoding can round these uniform channel values.
 						if difference < -3 || difference > 3 {
 							t.Fatalf("small image pixel=%v, want approximately %v", pixel, want)
 						}

@@ -16,6 +16,8 @@ const maxVisualRequestBytes = visual.MaxImageBytes + (64 << 10)
 const maxVisualSettingsBytes = 1024
 
 type visualResponse struct {
+	// Identity lets settings-only updates reuse decoded pixels. It is an opaque
+	// application asset name, not a path or an alternate asset-serving route.
 	BackgroundID   string                 `json:"backgroundID,omitempty"`
 	Framing        data.BackgroundFraming `json:"framing"`
 	Background     bool                   `json:"background"`

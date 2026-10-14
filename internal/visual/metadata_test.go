@@ -15,25 +15,31 @@ import (
 
 func tiffOrientation(orientation int, private string) []byte {
 	// A private ASCII tag points beyond IFD0. The reader never needs its data.
+	// Eight-byte TIFF header + two-entry IFD (2 + 2×12 + 4 bytes) = 38.
 	tiff := make([]byte, 38)
 	copy(tiff, "II")
 	binary.LittleEndian.PutUint16(tiff[2:4], 42)
 	binary.LittleEndian.PutUint32(tiff[4:8], 8)
 	binary.LittleEndian.PutUint16(tiff[8:10], 2)
+	// Orientation (0112), SHORT type 3, count 1: its uint16 value fits inline.
 	binary.LittleEndian.PutUint16(tiff[10:12], 0x112)
 	binary.LittleEndian.PutUint16(tiff[12:14], 3)
 	binary.LittleEndian.PutUint32(tiff[14:18], 1)
 	binary.LittleEndian.PutUint16(tiff[18:20], uint16(orientation))
+	// Make (010F), ASCII type 2: its private string follows IFD0 at byte 38.
 	binary.LittleEndian.PutUint16(tiff[22:24], 0x10f)
 	binary.LittleEndian.PutUint16(tiff[24:26], 2)
 	binary.LittleEndian.PutUint32(tiff[26:30], uint32(len(private)+1))
 	binary.LittleEndian.PutUint32(tiff[30:34], 38)
 	return append(append(tiff, []byte(private)...), 0)
 }
+
+// JPEG segment length includes the uint16 length field but excludes FF+marker.
 func jpegSegment(marker byte, payload []byte) []byte {
 	return append([]byte{0xff, marker, byte((len(payload) + 2) >> 8), byte(len(payload) + 2)}, payload...)
 }
 func insertMetadata(source []byte, format string, metadata []byte) []byte {
+	// Insert after PNG signature/IHDR (8+12+13) or JPEG SOI (two bytes).
 	offset := 33
 	if format == "jpeg" {
 		offset = 2
@@ -64,6 +70,7 @@ func TestPrepareImage_Metadata(t *testing.T) {
 			tiff := tiffOrientation(6, marker)
 			var metadata bytes.Buffer
 			if format == "jpeg" {
+				// APP1 (E1) carries EXIF/XMP, APP13 (ED) IPTC, COM (FE) comments.
 				metadata.Write(jpegSegment(0xe1, append([]byte("Exif\x00\x00"), tiff...)))
 				metadata.Write(jpegSegment(0xe1, []byte("http://ns.adobe.com/xap/1.0/\x00"+marker)))
 				metadata.Write(jpegSegment(0xed, []byte("IPTC "+marker)))
@@ -133,6 +140,8 @@ func TestNormalizeOrientation(t *testing.T) {
 				t.Fatalf("rows=%s, want %s", got.String(), rows[orientation])
 			}
 			for _, order := range []binary.ByteOrder{binary.LittleEndian, binary.BigEndian} {
+				// Header + one-entry IFD: 8 + 2 + 12 + 4 = 26 bytes,
+				// with Orientation (0112), SHORT type 3 and one inline value.
 				tiff := make([]byte, 26)
 				copy(tiff, "II")
 				if order == binary.BigEndian {
@@ -240,6 +249,8 @@ func FuzzDisplayMetadata(f *testing.F) {
 	})
 }
 
+// Check the ICC header/table independently of sanitizer helpers: total size at
+// byte 0, device space at 16, tag count at 128, and twelve-byte records at 132.
 func assertDisplayProfile(t *testing.T, profile []byte, gray bool) {
 	t.Helper()
 	if len(profile) < 132 || uint64(binary.BigEndian.Uint32(profile[:4])) != uint64(len(profile)) {

@@ -173,6 +173,7 @@
     connection.onopen = () => {
       if (socket !== connection) return;
       connected = true;
+      // Restore once for the accepted connection after any busy-session retry.
       visual.restoreConnection();
       sendResize({cols: term.cols, rows: term.rows});
       term.options.disableStdin = false;

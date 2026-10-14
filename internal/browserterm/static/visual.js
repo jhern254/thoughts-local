@@ -18,6 +18,8 @@ class ThoughtsVisual {
     this.state = {open: false};
     this.previewGeneration = 0;
     this.connectionGeneration = 0;
+    // A connection owns its async work; activation generations also order
+    // competing image/settings publications within that connection.
     this.activationGeneration = 0;
     this.restoreGeneration = 0;
     this.ready = this.restore();
@@ -247,6 +249,9 @@ class ThoughtsVisual {
         // Static preview also prevents an animated PNG from animating before
         // the authoritative native importer rejects it.
         const canvas = document.createElement('canvas');
+        // createImageBitmap dimensions already reflect display orientation.
+        // Predict native storage first, then make a smaller preview thumbnail;
+        // the thumbnail pixel cap must not redefine the saved framing geometry.
         const stored = backgroundImportDimensions(bitmap.width, bitmap.height);
         const scale = Math.min(1, Math.sqrt(backgroundPreviewMaxPixels / (stored.width * stored.height)));
         canvas.width = Math.max(1, Math.round(stored.width * scale));
@@ -271,6 +276,7 @@ class ThoughtsVisual {
   }
   async activate(settings, connectionGeneration = this.connectionGeneration) {
     if (connectionGeneration !== this.connectionGeneration) return false;
+    // Advance even for removal/settings-only saves, retiring any older decode.
     const activationGeneration = ++this.activationGeneration;
     settings = {...settings};
     if (!Number.isInteger(settings.darkness) || settings.darkness < 0 || settings.darkness > 95) settings.darkness = 70;
@@ -284,6 +290,8 @@ class ThoughtsVisual {
       const candidate = new Image();
       candidate.src = url;
       try { await candidate.decode(); } catch (error) { URL.revokeObjectURL(url); throw error; }
+      // Fetch/decode can finish after disconnect or a newer save. Retire its
+      // candidate URL before it can replace the currently selected background.
       if (connectionGeneration !== this.connectionGeneration || activationGeneration !== this.activationGeneration) {
         URL.revokeObjectURL(url);
         return false;
@@ -314,6 +322,8 @@ class ThoughtsVisual {
   }
   async restore() {
     const connectionGeneration = this.connectionGeneration;
+    // Fence the metadata request too: a late restore must not undo a newer save
+    // before activate gets a chance to fence its own fetch/decode work.
     let activationGeneration = ++this.activationGeneration;
     try {
       const response = await fetch('/visual', {cache: 'no-store'});
@@ -321,6 +331,8 @@ class ThoughtsVisual {
       const settings = await response.json();
       if (activationGeneration !== this.activationGeneration) return;
       const activation = this.activate(settings, connectionGeneration);
+      // activate increments the generation synchronously before its first await;
+      // follow that ownership so only this restore can report its load failure.
       activationGeneration = this.activationGeneration;
       if (!await activation) return;
       this.loadFailed = false;

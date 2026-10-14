@@ -27,6 +27,8 @@ var ErrImage = errors.New("choose a valid, non-animated JPEG or PNG within the i
 var ErrDarkness = errors.New("background darkness must be between 0 and 95")
 var ErrBusy = errors.New("an visual change is already in progress")
 
+// Decode/scaler/encoder calls are bounded but not individually cancellable.
+// Check the request context between stages and before handing output to storage.
 func prepareImage(ctx context.Context, body []byte) ([]byte, string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
@@ -34,6 +36,8 @@ func prepareImage(ctx context.Context, body []byte) ([]byte, string, error) {
 	if len(body) > MaxImageBytes {
 		return nil, "", ErrImage
 	}
+	// Read dimensions before allocating pixels; int64 multiplication avoids
+	// overflow when enforcing the independent decoded-pixel budget.
 	config, format, err := image.DecodeConfig(bytes.NewReader(body))
 	if err != nil || (format != "jpeg" && format != "png") || config.Width < 1 || config.Height < 1 ||
 		config.Width > MaxDimension || config.Height > MaxDimension || int64(config.Width)*int64(config.Height) > MaxPixels {
@@ -53,6 +57,8 @@ func prepareImage(ctx context.Context, body []byte) ([]byte, string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
 	}
+	// Go's JPEG encoder has no CMYK output or ICC-aware color conversion.
+	// Reject CMYK rather than attach its profile to incompatible output pixels.
 	if decoded.ColorModel() == color.CMYKModel {
 		return nil, "", ErrImage
 	}
@@ -68,6 +74,7 @@ func prepareImage(ctx context.Context, body []byte) ([]byte, string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
 	}
+	// Even small imports encode anew: returning source bytes would retain private tags.
 	var output bytes.Buffer
 	if format == "jpeg" {
 		err = jpeg.Encode(&output, resized, &jpeg.Options{Quality: backgroundJPEGQuality})
@@ -88,10 +95,10 @@ func prepareImage(ctx context.Context, body []byte) ([]byte, string, error) {
 	}
 	// Encoding starts from pixels, so all source APP/ancillary chunks are gone.
 	// Only the inspected color allowlist is inserted before image data.
-	metadataOffset := 33 // PNG signature and complete IHDR.
+	metadataOffset := 33 // Eight-byte PNG signature + 12-byte chunk framing + 13-byte IHDR.
 	if format == "jpeg" {
-		metadataOffset = 2
-	} // JPEG SOI.
+		metadataOffset = 2 // JPEG SOI (FF D8); APP2 color segments precede image data.
+	}
 	if len(colorMetadata) > 0 {
 		encoded = append(append(append(make([]byte, 0, len(encoded)+len(colorMetadata)), encoded[:metadataOffset]...), colorMetadata...), encoded[metadataOffset:]...)
 	}
@@ -101,6 +108,7 @@ func prepareImage(ctx context.Context, body []byte) ([]byte, string, error) {
 	if len(encoded) > MaxImageBytes {
 		return nil, "", ErrImage
 	}
+	// Recheck the actual encoded container, including color metadata, before storage.
 	stored, storedFormat, err := image.DecodeConfig(bytes.NewReader(encoded))
 	if err != nil || storedFormat != format || stored.Width != resized.Bounds().Dx() || stored.Height != resized.Bounds().Dy() ||
 		stored.Width > MaxBackgroundDimension || stored.Height > MaxBackgroundDimension || int64(stored.Width)*int64(stored.Height) > MaxBackgroundPixels {
@@ -116,6 +124,7 @@ func prepareImage(ctx context.Context, body []byte) ([]byte, string, error) {
 // exceed either storage limit; keep extremely thin images at least one pixel.
 func backgroundDimensions(width, height int) (int, int) {
 	scale := math.Min(1, math.Min(float64(MaxBackgroundDimension)/float64(width), float64(MaxBackgroundDimension)/float64(height)))
+	// Pixel area scales with the square of the linear scale, hence the square root.
 	scale = math.Min(scale, math.Sqrt(float64(MaxBackgroundPixels)/(float64(width)*float64(height))))
 	return max(1, int(math.Floor(float64(width)*scale))), max(1, int(math.Floor(float64(height)*scale)))
 }
