@@ -28,7 +28,7 @@ func newDownloadClient() *http.Client {
 	}
 }
 
-func (installer *Installer) downloadModelFile(ctx context.Context, destinationPath string, fileManifest modelFileManifest) (err error) {
+func (installer *Installer) downloadModelFile(ctx context.Context, destinationPath string, fileManifest modelFileManifest, reportBytesWritten func(int64)) (err error) {
 	downloadContext, cancelDownload := context.WithTimeout(ctx, installer.downloadTimeout)
 	defer cancelDownload()
 	request, err := http.NewRequestWithContext(downloadContext, http.MethodGet, fileManifest.DownloadURL, nil)
@@ -99,7 +99,7 @@ func (installer *Installer) downloadModelFile(ctx context.Context, destinationPa
 		default:
 		}
 	}
-	err = copyAndVerifyModelFile(downloadContext, response.Body, modelFile, fileManifest, reportDownloadProgress)
+	err = copyAndVerifyModelFile(downloadContext, response.Body, downloadProgressWriter{destination: modelFile, reportBytesWritten: reportBytesWritten}, fileManifest, reportDownloadProgress)
 	if err != nil {
 		if errors.Is(err, ErrIntegrity) {
 			return err
@@ -182,4 +182,18 @@ func copyAndVerifyModelFile(ctx context.Context, source io.Reader, destination i
 		return ErrIntegrity
 	}
 	return nil
+}
+
+// The view counts successful writes without changing the file's sync/close owner.
+type downloadProgressWriter struct {
+	destination        io.Writer
+	reportBytesWritten func(int64)
+}
+
+func (writer downloadProgressWriter) Write(payload []byte) (int, error) {
+	bytesWritten, err := writer.destination.Write(payload)
+	if bytesWritten > 0 && writer.reportBytesWritten != nil {
+		writer.reportBytesWritten(int64(bytesWritten))
+	}
+	return bytesWritten, err
 }

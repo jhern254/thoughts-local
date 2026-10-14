@@ -12,6 +12,11 @@ import (
 )
 
 func TestNativeRuntime_Unavailable(t *testing.T) {
+	t.Run("runtime check requires neither model files nor downloads", func(t *testing.T) {
+		if err := CheckRuntime(t.Context()); !errors.Is(err, speech.ErrRuntime) {
+			t.Fatalf("got %v, want unavailable runtime", err)
+		}
+	})
 	t.Run("rejects loading without accessing model files", func(t *testing.T) {
 		nativeBackend, err := openNativeTranscriber(context.Background(), nil, modelassets.Installation{})
 		if nativeBackend != nil || !errors.Is(err, speech.ErrRuntime) {

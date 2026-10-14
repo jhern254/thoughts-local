@@ -21,13 +21,30 @@ Re-running setup verifies the retained archive and rebuilds/checks the engine
 without downloading it again. A failed check preserves the previous working
 engine.
 
-The model is still a separate explicit download until the first-run setup
-screen is added:
+The browser now offers a Models popup over Events when speech needs setup.
+Choose **Download and enable** to install the approved English model. The progress
+bar shows bytes actually downloaded; speech becomes ready after verification and
+loading finish. **Keep writing** hides the popup while the session continues the
+download. **Cancel download** stops it, and **Options → Models** reopens setup or
+progress. **Not now** leaves typing available and offers setup on a later launch.
+
+Models stay in a visible shared folder, independent of the current database:
+`~/Thoughts/models` on Linux/macOS and `%USERPROFILE%\Thoughts\models` on Windows.
+Later launches verify and reuse the installed model, with no download or restart
+needed to enable F8. `--models-dir` overrides `THOUGHTS_MODELS_DIR`, which overrides
+this default. Options → Models shows the selected folder. Keep files unmodified
+while Thoughts is running. Cache cleanup and app updates do not remove this
+folder; manually deleting it makes Thoughts offer setup again.
+
+A speech-enabled build is still required. If the engine is unavailable, the popup
+explains it and does not offer an unusable download. `make speech/setup` followed
+by `make tui/browser` is the developer path. No browser action downloads native
+engine libraries or models without the explicit model-download action.
+
+The existing explicit model install command remains available:
 
 ```sh
-export THOUGHTS_MODELS_DIR="$PWD/data/models"
 go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
-make tui/browser
 ```
 
 Without prepared engine files, `make tui/browser` remains an ordinary build.
@@ -52,10 +69,13 @@ before retrying. Temporary `.setup-*` directories can be removed while setup is
 inactive. No automatic stale-lock takeover or background cleanup runs.
 
 On the Events timeline, F8 opens a draft. Press F8 again to record, then F8 to
-stop. Text remains unsaved until the normal Thought save. Without a model root
-configured, typed drafts remain available and recording shows a fixed
-unavailable message. An explicitly configured but invalid model/runtime prevents
-browser startup with safe feedback. `--models-dir` overrides `THOUGHTS_MODELS_DIR`.
+stop. Text remains unsaved until the normal Thought save. Until setup is ready,
+typed drafts remain available and recording shows a fixed unavailable message.
+Missing, damaged, or inaccessible models are reported in the popup while the
+rest of the browser TUI remains available. Damaged/incomplete revisions are not
+automatically overwritten: close Thoughts, remove the affected revision folder,
+and retry setup. Stale installer locks require the same manual cleanup described
+in the modelassets package contract.
 Terminal-only mode does not initialize speech.
 
 The browser server keeps one verified transcriber loaded, then creates and

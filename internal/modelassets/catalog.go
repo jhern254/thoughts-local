@@ -72,6 +72,7 @@ type modelFileManifest struct {
 }
 type modelManifest struct {
 	ID          ModelID
+	DisplayName string
 	Kind        string
 	Runtime     string
 	Revision    string
@@ -114,10 +115,15 @@ func isValidModelManifest(manifest modelManifest) bool {
 	if len(manifest.Files) == 0 {
 		return false
 	}
+	var totalSizeBytes int64
 	for fileIndex, modelFile := range manifest.Files {
 		if !isValidModelFileManifest(modelFile) {
 			return false
 		}
+		if modelFile.ExpectedSizeBytes > math.MaxInt64-totalSizeBytes {
+			return false
+		}
+		totalSizeBytes += modelFile.ExpectedSizeBytes
 		for _, previousFile := range manifest.Files[:fileIndex] {
 			if modelFilePathsConflict(modelFile.RelativePath, previousFile.RelativePath) {
 				return false

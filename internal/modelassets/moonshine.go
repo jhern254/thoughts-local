@@ -11,10 +11,11 @@ const moonshineSmallStreamingDownloadBase = "https://download.moonshine.ai/model
 // The optional attention decoder is unnecessary with word timestamps disabled.
 func moonshineSmallStreamingManifest() modelManifest {
 	return modelManifest{
-		ID:       MoonshineSmallStreamingEnglish,
-		Kind:     "speech-to-text",
-		Runtime:  "moonshine-voice-0.1.5",
-		Revision: "quantized_26_08_21",
+		DisplayName: "Moonshine Small Streaming English",
+		ID:          MoonshineSmallStreamingEnglish,
+		Kind:        "speech-to-text",
+		Runtime:     "moonshine-voice-0.1.5",
+		Revision:    "quantized_26_08_21",
 		Files: []modelFileManifest{
 			{
 				DownloadURL:       moonshineSmallStreamingDownloadBase + "adapter.ort",

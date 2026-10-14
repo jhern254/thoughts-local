@@ -74,6 +74,7 @@ type Model struct {
 	width          int
 	height         int
 	options        optionsState
+	models         modelSetupState
 	exitPromptOpen bool
 	exitYes        bool
 	events         events.Model
@@ -101,7 +102,13 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 
 type homeOpened struct{}
 
-func (Model) Init() tea.Cmd { return func() tea.Msg { return homeOpened{} } }
+func (m Model) Init() tea.Cmd {
+	home := func() tea.Msg { return homeOpened{} }
+	if m.models.service != nil {
+		return tea.Batch(home, m.checkInstalledModel())
+	}
+	return home
+}
 
 func (m Model) openHome() (tea.Model, tea.Cmd) {
 	m.subjects.stopRead()
@@ -114,6 +121,7 @@ func (m Model) openHome() (tea.Model, tea.Cmd) {
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.update(message)
 	next := updated.(Model)
+	next.offerModelSetup()
 	if next.ctx.Err() == nil && next.browserRecordingEnabled && next.thoughts.Creating() && !next.thoughts.VoiceOpen() {
 		next.voiceDraftID++
 		name := ""
@@ -130,14 +138,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.ctx.Err() != nil {
 		return m, nil
 	}
-	if msg, ok := message.(BrowserOptionsMsg); ok {
-		return m.updateBrowserOptions(msg)
-	}
-	if m.options.open {
-		switch message.(type) {
-		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg, tea.MouseWheelMsg:
-			return m.updateOptionsInput(message)
-		}
+	switch message.(type) {
+	case modelSetupChecked, modelSetupProgress, modelSetupFinished:
+		return m.updateModelSetup(message)
 	}
 	if m.exitPromptOpen {
 		switch message := message.(type) {
@@ -147,6 +150,26 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+	if m.models.open && !m.exitPromptOpen {
+		switch msg := message.(type) {
+		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg, tea.MouseWheelMsg:
+			return m.updateModelsInput(message)
+		case thoughts.VoiceAction:
+			if msg.Action == "start" || msg.Action == "open" {
+				return m, nil
+			}
+		}
+	}
+	if msg, ok := message.(BrowserOptionsMsg); ok {
+		return m.updateBrowserOptions(msg)
+	}
+	if m.options.open {
+		switch message.(type) {
+		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg, tea.MouseWheelMsg:
+			return m.updateOptionsInput(message)
+		}
+	}
+
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "ctrl+c":
@@ -172,6 +195,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case thoughts.BrowserVoiceSessionMsg:
 		m.browserRecordingEnabled = true
+		if m.models.service != nil {
+			message.SpeechRecognitionAvailable = m.models.ready
+		}
 		m.thoughts, _ = m.thoughts.Update(message)
 		return m, nil
 	case voice.TranscriptUpdate, voice.RecordingEnded:
@@ -399,7 +425,20 @@ func (m Model) entityStrip() string {
 }
 
 func (m Model) View() tea.View {
-	if m.options.open {
+	view := m.viewUnderlying()
+	if m.exitPromptOpen {
+		return view
+	}
+	if m.models.open {
+		return m.overlayModelsPopup(view)
+	}
+	if m.models.notice != "" && strings.Count(view.Content, "\n")+1 < m.height {
+		view.Content += "\n" + ansi.Truncate(m.models.notice, max(1, m.width), "…")
+	}
+	return view
+}
+func (m Model) viewUnderlying() tea.View {
+	if m.options.open && !m.exitPromptOpen {
 		return m.viewOptions()
 	}
 	view := tea.NewView("")
@@ -478,7 +517,7 @@ func (m Model) VoiceState() thoughts.VoiceState {
 	}
 	switch m.screen {
 	case screenEvents:
-		state.CanOpenThoughtDraft = m.events.CanLeave()
+		state.CanOpenThoughtDraft = m.events.CanLeave() && !m.models.open
 	case screenSubjectList:
 		state.CanOpenThoughtDraft = !m.subjects.loading && !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered()
 	case screenBrowseThoughts, screenMiscThoughts, screenSubjectDetail:
@@ -489,6 +528,9 @@ func (m Model) VoiceState() thoughts.VoiceState {
 	if m.thoughts.VoiceOpen() && m.voiceSubjectReturn == nil {
 		state = m.thoughts.VoiceState()
 		state.BrowserRecordingEnabled = true
+	}
+	if m.models.open || m.options.menu {
+		state.CanOpenThoughtDraft = false
 	}
 	return state
 }

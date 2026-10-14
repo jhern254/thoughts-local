@@ -58,8 +58,8 @@ type nativeModelTranscriber struct {
 // Only the read-only mappings outlive this call; temporary C names/options are
 // copied by Moonshine. Native sessions reference the mappings until destruction.
 func openNativeTranscriber(ctx context.Context, modelRoot *os.Root, installation modelassets.Installation) (nativeTranscriber, error) {
-	if C.moonshine_get_version() != C.MOONSHINE_HEADER_VERSION {
-		return nil, speech.ErrRuntime
+	if err := checkNativeRuntime(); err != nil {
+		return nil, err
 	}
 	modelFiles, err := mapModelFiles(ctx, modelRoot, installation)
 	if err != nil {
@@ -217,4 +217,11 @@ func nativeStatusError(nativeStatus C.int32_t) error {
 		return nil
 	}
 	return &NativeStatusError{Code: int32(nativeStatus)}
+}
+
+func checkNativeRuntime() error {
+	if C.moonshine_get_version() != C.MOONSHINE_HEADER_VERSION {
+		return speech.ErrRuntime
+	}
+	return nil
 }

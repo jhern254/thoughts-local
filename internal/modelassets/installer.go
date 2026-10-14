@@ -163,7 +163,14 @@ func (installer *Installer) verifyInstalledModelFile(ctx context.Context, filePa
 // destination after rename. Directory metadata is not synced (see package docs).
 // Existing revisions are fully verified and reused, never overwritten. Staging
 // cleanup is best effort; lock release failures return a filesystem error.
-func (installer *Installer) Install(ctx context.Context, modelID ModelID) (installedModel Installation, err error) {
+func (installer *Installer) Install(ctx context.Context, modelID ModelID) (Installation, error) {
+	return installer.InstallWithProgress(ctx, modelID, nil)
+}
+
+// InstallWithProgress reports cumulative bytes written to staging. Reporting is
+// synchronous; callbacks must return promptly. Reaching TotalBytes does not mean
+// verification, synchronization, closure or publication has succeeded.
+func (installer *Installer) InstallWithProgress(ctx context.Context, modelID ModelID, reportProgress func(DownloadProgress)) (installedModel Installation, err error) {
 	manifest, approved := installer.catalog[modelID]
 	if !approved {
 		return Installation{}, ErrUnknownModel
@@ -191,6 +198,16 @@ func (installer *Installer) Install(ctx context.Context, modelID ModelID) (insta
 		return Installation{}, withErrorCategory(ErrFilesystem, statErr)
 	}
 
+	progress := DownloadProgress{TotalBytes: describeModelManifest(manifest).ExpectedSizeBytes}
+	if reportProgress != nil {
+		reportProgress(progress)
+	}
+	reportBytesWritten := func(bytesWritten int64) {
+		progress.DownloadedBytes += bytesWritten
+		if reportProgress != nil {
+			reportProgress(progress)
+		}
+	}
 	stagingDirectory := ".stage-" + rand.Text()
 	if err = installer.modelRoot.Mkdir(stagingDirectory, 0700); err != nil {
 		return Installation{}, withErrorCategory(ErrFilesystem, err)
@@ -201,7 +218,7 @@ func (installer *Installer) Install(ctx context.Context, modelID ModelID) (insta
 		if err = installer.modelRoot.MkdirAll(path.Dir(destinationPath), 0700); err != nil {
 			return Installation{}, withErrorCategory(ErrFilesystem, err)
 		}
-		if err = installer.downloadModelFile(ctx, destinationPath, modelFile); err != nil {
+		if err = installer.downloadModelFile(ctx, destinationPath, modelFile, reportBytesWritten); err != nil {
 			return Installation{}, err
 		}
 	}

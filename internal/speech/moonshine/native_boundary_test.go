@@ -11,6 +11,11 @@ import (
 )
 
 func TestNativeModelFiles_Construction(t *testing.T) {
+	t.Run("linked C API matches the approved runtime without model loading", func(t *testing.T) {
+		if err := CheckRuntime(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("rejects incomplete model buffer sets before crossing the C boundary", func(t *testing.T) {
 		nativeBackend, err := loadMappedTranscriber(context.Background(), &mappedModelFiles{})
 		if nativeBackend != nil || !errors.Is(err, speech.ErrModelLoad) {

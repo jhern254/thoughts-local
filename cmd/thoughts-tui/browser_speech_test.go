@@ -111,22 +111,3 @@ func TestBrowserSpeechConsumer_ConsumePCM(t *testing.T) {
 		}
 	})
 }
-func TestOpenBrowserSpeech(t *testing.T) {
-	t.Run("unconfigured speech returns no consumer factory", func(t *testing.T) {
-		factory, closeSpeech, err := openBrowserSpeech(t.Context(), "")
-		if err != nil || factory != nil {
-			t.Fatalf("got %v, factory present=%v", err, factory != nil)
-		}
-		if err := closeSpeech(); err != nil {
-			t.Fatal(err)
-		}
-	})
-	t.Run("explicit invalid setup returns safe startup failure", func(t *testing.T) {
-		for _, directory := range []string{t.TempDir() + "/private-missing", t.TempDir()} {
-			factory, _, err := openBrowserSpeech(t.Context(), directory)
-			if factory != nil || !errors.Is(err, errBrowserSpeechSetup) || err.Error() != errBrowserSpeechSetup.Error() {
-				t.Fatalf("got %v", err)
-			}
-		}
-	})
-}
