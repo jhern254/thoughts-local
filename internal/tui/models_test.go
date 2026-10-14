@@ -38,6 +38,26 @@ func deliverModelsCheck(model Model) Model {
 	return model
 }
 func TestModel_ModelSetup(t *testing.T) {
+	t.Run("closing Options restores F8 draft creation from Events", func(t *testing.T) {
+		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{Ready: true}}))
+		model, _ = rootUpdate(model, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
+		model, _ = rootUpdate(model, BrowserOptionsEnabledMsg{})
+		if !model.VoiceState().CanOpenThoughtDraft {
+			t.Fatal("Events did not allow draft creation")
+		}
+		model, _ = rootUpdate(model, BrowserOptionsMsg{Action: "open"})
+		if model.VoiceState().CanOpenThoughtDraft {
+			t.Fatal("Options allowed draft creation behind the menu")
+		}
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+		if !model.VoiceState().CanOpenThoughtDraft {
+			t.Fatal("closing Options did not restore draft creation")
+		}
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyF8})
+		if !strings.Contains(model.View().Content, "Create thought") {
+			t.Fatal("F8 did not open the thought draft")
+		}
+	})
 	t.Run("mouse activates Keep writing at its rendered row", func(t *testing.T) {
 		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
 		model, _ = rootUpdate(model, tea.WindowSizeMsg{Width: 100, Height: 40})

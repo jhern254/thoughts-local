@@ -529,7 +529,7 @@ func (m Model) VoiceState() thoughts.VoiceState {
 		state = m.thoughts.VoiceState()
 		state.BrowserRecordingEnabled = true
 	}
-	if m.models.open || m.options.menu {
+	if m.models.open || (m.options.open && m.options.menu) {
 		state.CanOpenThoughtDraft = false
 	}
 	return state

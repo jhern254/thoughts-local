@@ -2,24 +2,23 @@
 
 Moonshine provides local speech recognition for browser thought drafts and a
 separate developer PCM smoke command. Both use the same verified model and
-native boundary. Ordinary builds and tests require no native runtime; explicitly
-configuring speech in those builds fails safely instead of capturing audio.
+native boundary. Ordinary builds and tests require no native runtime; speech in
+those builds remains unavailable instead of silently capturing audio.
 
 ## Browser speech
 
-For development, prepare the speech engine once:
+For development, start the browser app:
 
 ```sh
-make speech/setup
+make tui/browser
 ```
 
-This downloads the pinned Moonshine engine into ignored `bin/moonshine/`, checks
-its checksum before unpacking, and executes a native test before marking it
-ready. It installs nothing globally. Later `make tui/browser` launches use that
-engine automatically, with no library-path exports or additional downloads.
-Re-running setup verifies the retained archive and rebuilds/checks the engine
-without downloading it again. A failed check preserves the previous working
-engine.
+The first source build prepares the pinned Moonshine engine in ignored
+`bin/moonshine/`, checks its checksum before unpacking, and executes a native test
+before marking it ready. It installs nothing globally. Later `make tui/browser`
+launches reuse it. `make speech/setup` remains available to verify the retained
+archive and rebuild/check the engine without downloading it again. A failed
+check preserves the previous working engine.
 
 The browser now offers a Models popup over Events when speech needs setup.
 Choose **Download and enable** to install the approved English model. The progress
@@ -37,19 +36,19 @@ while Thoughts is running. Cache cleanup and app updates do not remove this
 folder; manually deleting it makes Thoughts offer setup again.
 
 A speech-enabled build is still required. If the engine is unavailable, the popup
-explains it and does not offer an unusable download. `make speech/setup` followed
-by `make tui/browser` is the developer path. No browser action downloads native
-engine libraries or models without the explicit model-download action.
+explains it and does not offer an unusable download. Engine preparation happens
+before the app runs, during development or packaging. The popup installs only
+model weights; it never downloads or builds native engine libraries.
 
 The existing explicit model install command remains available:
 
 ```sh
-go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
+go run ./cmd/moonshine-smoke install -models-dir "$HOME/Thoughts/models"
 ```
 
-Without prepared engine files, `make tui/browser` remains an ordinary build.
-Other Go builds and tests do not automatically enable speech. Existing manual
-platform setup below still works. To run a native developer command using the
+Ordinary Go builds and tests do not prepare or automatically enable speech.
+Ordinary builds with `CGO_ENABLED=0` and unsupported targets remain available.
+Existing manual platform setup below still works. To run a native developer command using the
 prepared engine, use `bash scripts/moonshine-dev.sh exec COMMAND ...`, for example:
 
 ```sh
@@ -61,6 +60,17 @@ Tools and unzip. Windows needs Git Bash, PowerShell 7, x64 Visual Studio C++ bui
 tools, and MinGW GCC/dlltool; the helper activates MSVC in its own process. It
 does not install these tools. Explicit `CGO_ENABLED=0` and cross-target builds
 cannot use a prepared native engine; ordinary `go build` remains available.
+
+For users running a prebuilt app, the engine belongs in the application bundle,
+not in a setup step. `make tui/package` builds `bin/packages/thoughts-<os>-<arch>`
+with the linked app, required private libraries, and dependency notices, then
+creates a release archive and SHA-256 file. The
+existing native CI matrix builds these bundles and executes real transcription
+after moving them out of the build directory without developer loader settings.
+The CI artifacts are candidate app releases for review, not another user setup
+dependency. [The bundle guide](desktop-bundle.md) describes launch and model
+onboarding. No Go or C toolchain is required on the user's machine. Publishing
+and signing a release remain separate from this PR.
 
 An incomplete prepared bundle fails with a setup message. If setup was killed,
 remove `bin/moonshine/v0.1.5/.setup.lock` only when no setup is running. A leftover
@@ -223,7 +233,8 @@ Useful Sensors, Inc. (dba Moonshine AI); see
 https://github.com/moonshine-ai/moonshine/blob/v0.1.5/LICENSE.
 ONNX Runtime is MIT; other upstream third-party components retain their own
 licenses, including Eigen's MPL-2.0 subset. No native binaries or weights are
-redistributed in this repository. The separate speech fixture is CC BY 4.0;
+committed to Git. Development bundles include the runtime and its retained
+dependency notices. The separate speech fixture is CC BY 4.0;
 see [its attribution and checksums](../internal/speech/moonshine/testdata/README.md).
 
 ## Local Linux x86-64 setup

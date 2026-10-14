@@ -11,7 +11,7 @@ if ($archiveSHA256 -ne $expectedSHA256) { throw 'Moonshine runtime archive check
 # The release contains MSVC C++ static archives, not a Moonshine DLL. Keep those
 # objects behind an MSVC-built DLL so cgo's MinGW compiler only sees the C ABI.
 # Activate MSVC only inside this helper; the caller's environment is unchanged.
-if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue) -or -not $env:VCToolsRedistDir) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
     if (-not (Test-Path $vswhere)) { throw 'Moonshine setup requires Visual Studio C++ build tools' }
     $visualStudioDirectory = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -90,4 +90,10 @@ $bridgeDependencies = & dumpbin.exe /DEPENDENTS $bridgeDLL
 if ($LASTEXITCODE -ne 0) { throw 'Moonshine bridge dependency inspection failed' }
 if ($bridgeDependencies -match '^\s*onnxruntime\.dll\s*$') { throw 'Moonshine bridge imports ambient ONNX Runtime' }
 if (-not ($bridgeDependencies -match 'thoughts-moonshine-onnxruntime\.dll')) { throw 'Moonshine bridge lacks its private ONNX dependency' }
+# The user bundle must not depend on Visual Studio being installed. Copy only
+# the toolchain's designated app-local redistributables, never System32 DLLs.
+$redistributableDirectories = @(Get-ChildItem (Join-Path $env:VCToolsRedistDir 'x64') -Directory |
+    Where-Object { $_.Name -match '^Microsoft\.VC\d+\.CRT$' })
+if ($redistributableDirectories.Count -ne 1) { throw 'Moonshine setup requires the x64 Visual C++ redistributable directory' }
+Copy-Item (Join-Path $redistributableDirectories[0].FullName '*.dll') $bridgeDirectory -Force
 Write-Output "Moonshine C API bridge built from verified v0.1.5 runtime"

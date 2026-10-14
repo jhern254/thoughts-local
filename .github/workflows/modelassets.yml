@@ -10,8 +10,10 @@ on:
       - 'scripts/setup-moonshine-windows.ps1'
       - 'scripts/moonshine-dev.sh'
       - 'scripts/moonshine_dev_test.go'
+      - 'scripts/package-browser.sh'
       - 'Makefile'
       - 'docs/moonshine.md'
+      - 'docs/desktop-bundle.md'
       - 'docs/platform-support.md'
       - 'AGENTS.md'
       - '.github/workflows/modelassets.yml'
@@ -103,9 +105,42 @@ jobs:
       - name: Explicitly install approved model through modelassets
         run: go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
         shell: bash
-      - name: Execute native batch and streaming speech, ownership, and privacy integration
+      - name: Build a speech-enabled app bundle
         shell: bash
-        run: bash scripts/moonshine-dev.sh exec go test '-tags=moonshine,moonshine_integration' -race -count=1 -v ./internal/speech/moonshine
+        run: make tui/package
+      - name: Execute native integration from the relocated bundle
+        shell: bash
+        run: |
+          bundleName='thoughts-${{ matrix.goos }}-${{ matrix.goarch }}'
+          testExecutable=moonshine-native.test
+          if [ '${{ matrix.goos }}' = windows ]; then testExecutable="$testExecutable.exe"; fi
+          relocatedDirectory=$(mktemp -d)
+          trap 'rm -rf "$relocatedDirectory"' EXIT
+          bash scripts/moonshine-dev.sh exec go test -c '-tags=moonshine,moonshine_integration' -race -o "$relocatedDirectory/$testExecutable" ./internal/speech/moonshine
+          if [ '${{ matrix.goos }}' = windows ]; then
+            export THOUGHTS_PACKAGE_ARCHIVE
+            THOUGHTS_PACKAGE_ARCHIVE=$(cygpath -m "$PWD/bin/packages/$bundleName.zip")
+            export THOUGHTS_PACKAGE_EXTRACT
+            THOUGHTS_PACKAGE_EXTRACT=$(cygpath -m "$relocatedDirectory")
+            pwsh -NoProfile -Command 'Expand-Archive -LiteralPath $env:THOUGHTS_PACKAGE_ARCHIVE -DestinationPath $env:THOUGHTS_PACKAGE_EXTRACT'
+            appExecutable=thoughts-tui.exe
+          else
+            tar -xzf "bin/packages/$bundleName.tar.gz" -C "$relocatedDirectory"
+            appExecutable=thoughts-tui
+          fi
+          mv "$relocatedDirectory/$testExecutable" "$relocatedDirectory/$bundleName/$testExecutable"
+          unset LD_LIBRARY_PATH DYLD_LIBRARY_PATH
+          "$relocatedDirectory/$bundleName/$appExecutable" --help > /dev/null
+          cd internal/speech/moonshine
+          "$relocatedDirectory/$bundleName/$testExecutable" -test.v -test.timeout=10m
+      - name: Retain the candidate app release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: thoughts-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            bin/packages/thoughts-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz*
+            bin/packages/thoughts-${{ matrix.goos }}-${{ matrix.goarch }}.zip*
+          if-no-files-found: error
       - name: Record executed integration target
         shell: bash
         run: echo 'Native transcription executed successfully on ${{ matrix.goos }}/${{ matrix.goarch }} (${{ runner.arch }}) using ${{ matrix.archive }}' >> "$GITHUB_STEP_SUMMARY"
