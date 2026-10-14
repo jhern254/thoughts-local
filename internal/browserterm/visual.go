@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/visual"
@@ -289,6 +290,18 @@ func (s *server) importVisualVideo(w http.ResponseWriter, r *http.Request) {
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&settings) != nil || decoder.Decode(new(any)) != io.EOF {
 		http.Error(w, "Invalid visual settings.", http.StatusBadRequest)
+		return
+	}
+	// Request cancellation alone does not interrupt a blocked HTTP body Read.
+	// Bound staging on the connection as well as subprocess work, and honor an
+	// earlier owner deadline. Real net/http writers support this controller;
+	// recorder-only handler tests do not have a connection deadline to set.
+	deadline := time.Now().Add(visual.MaxVideoProcessingTime)
+	if ownerDeadline, ok := r.Context().Deadline(); ok && ownerDeadline.Before(deadline) {
+		deadline = ownerDeadline
+	}
+	if err := http.NewResponseController(w).SetReadDeadline(deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		visualError(w, err)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, visual.MaxVideoBytes)

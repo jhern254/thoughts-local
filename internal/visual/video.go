@@ -30,7 +30,7 @@ const (
 	MaxStoredVideoDimension = 1280
 	MaxStoredVideoPixels    = 1280 * 720
 	MaxStoredVideoFPS       = 24
-	videoProcessingTimeout  = 2 * time.Minute
+	MaxVideoProcessingTime  = 2 * time.Minute
 	maxVideoProbeBytes      = 64 << 10
 	// This limits each FFmpeg allocation, not total process memory. Frame size,
 	// stream count, decoder threads and duration bound the remaining work.
@@ -261,6 +261,21 @@ func probeVideo(ctx context.Context, tool, path string) (videoProbe, error) {
 	return info, nil
 }
 
+// The caller owns interrupting a blocked Read (HTTP uses a read deadline).
+// Checking each returned chunk also stops continuously arriving input promptly
+// when the processing context expires, without a detached copying goroutine.
+type videoSourceReader struct {
+	ctx   context.Context
+	input io.Reader
+}
+
+func (source videoSourceReader) Read(body []byte) (int, error) {
+	if err := source.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return source.input.Read(body)
+}
+
 // prepareVideo owns its staging directory until every subprocess has joined.
 // Outputs are bounded display derivatives, not archives of the uploaded source.
 func prepareVideo(ctx context.Context, input io.Reader) ([]byte, []byte, error) {
@@ -275,7 +290,7 @@ func prepareVideo(ctx context.Context, input io.Reader) ([]byte, []byte, error) 
 	if err != nil {
 		return nil, nil, ErrVideoTools
 	}
-	ctx, cancel := context.WithTimeout(ctx, videoProcessingTimeout)
+	ctx, cancel := context.WithTimeout(ctx, MaxVideoProcessingTime)
 	defer cancel()
 	directory, err := os.MkdirTemp("", "thoughts-video-")
 	if err != nil {
@@ -287,7 +302,7 @@ func prepareVideo(ctx context.Context, input io.Reader) ([]byte, []byte, error) 
 	if err != nil {
 		return nil, nil, err
 	}
-	size, copyErr := io.Copy(file, io.LimitReader(input, MaxVideoBytes+1))
+	size, copyErr := io.Copy(file, videoSourceReader{ctx: ctx, input: io.LimitReader(input, MaxVideoBytes+1)})
 	if copyErr == nil {
 		copyErr = ctx.Err()
 	}

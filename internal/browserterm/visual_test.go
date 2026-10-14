@@ -1,19 +1,23 @@
 package browserterm
 
 import (
+	"bufio"
 	"bytes"
 	tea "charm.land/bubbletea/v2"
 	"context"
 	"errors"
+	"fmt"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"image"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -348,6 +352,51 @@ func TestVisual_VideoBoundary(t *testing.T) {
 		s.ServeHTTP(response, httptest.NewRequest("GET", "http://127.0.0.1:7777/visual/poster", nil))
 		if response.Code != 200 || response.Body.String() != "synthetic-poster" {
 			t.Fatalf("poster: %d %q", response.Code, response.Body.String())
+		}
+	})
+}
+
+func TestVisual_VideoUploadOwnership(t *testing.T) {
+	t.Run("a stalled upload ends with the owning request deadline", func(t *testing.T) {
+		if _, err := exec.LookPath("ffmpeg"); err != nil {
+			t.Skip("FFmpeg is not installed")
+		}
+		if _, err := exec.LookPath("ffprobe"); err != nil {
+			t.Skip("ffprobe is not installed")
+		}
+		owner, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+		defer cancel()
+		store := &visualStore{}
+		s := &server{visual: visual.NewService(store, "user", t.TempDir())}
+		host := httptest.NewUnstartedServer(s)
+		s.authority = host.Listener.Addr().String()
+		host.Config.BaseContext = func(net.Listener) context.Context { return owner }
+		host.Start()
+		defer host.Close()
+		connection, err := net.Dial("tcp", s.authority)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer connection.Close()
+		if err := connection.SetDeadline(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		settings := `{"darkness":70,"framing":{"fit":"fill","zoom":100,"positionX":5000,"positionY":5000},"speedPercent":100,"userPaused":false}`
+		_, err = fmt.Fprintf(connection, "POST /visual/video HTTP/1.1\r\nHost: %s\r\nOrigin: http://%s\r\nX-Background-Settings: %s\r\nContent-Length: 1000\r\n\r\nPRIVATE partial body", s.authority, s.authority, settings)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := http.ReadResponse(bufio.NewReader(connection), nil)
+		if err != nil {
+			t.Fatalf("upload did not end with owner deadline: %v", err)
+		}
+		defer response.Body.Close()
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response.StatusCode < 400 || strings.Contains(string(body), "PRIVATE") || store.settings.BackgroundAsset != "" {
+			t.Fatalf("unsafe upload failure: %d %q %+v", response.StatusCode, body, store.settings)
 		}
 	})
 }
