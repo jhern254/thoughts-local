@@ -395,7 +395,9 @@ func prepareVideoPoster(ctx context.Context, ffmpeg, videoPath, directory string
 	if len(pixels) != stream.Width*stream.Height*3 {
 		return nil, ErrVideo
 	}
-	decoded := image.NewNRGBA(image.Rect(0, 0, stream.Width, stream.Height))
+	// Video pixels are opaque. RGBA also uses the JPEG encoder's direct
+	// pixel path rather than allocating an interface color for every pixel.
+	decoded := image.NewRGBA(image.Rect(0, 0, stream.Width, stream.Height))
 	for pixel := 0; pixel < stream.Width*stream.Height; pixel++ {
 		copy(decoded.Pix[pixel*4:pixel*4+3], pixels[pixel*3:pixel*3+3])
 		decoded.Pix[pixel*4+3] = 255
