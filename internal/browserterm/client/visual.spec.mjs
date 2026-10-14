@@ -276,7 +276,7 @@ test('publishes a decoded odd-sized wallpaper before returning and moving entity
       return canvas.toDataURL('image/png').split(',')[1];
     }, size);
     await chooseImage(page, {name:'odd-size.png', mimeType:'image/png', buffer:Buffer.from(encoded, 'base64')});
-    if ((await screen(page).textContent()).includes('Image fit: Fit')) await clickControl(page, 'Image fit: Fit');
+    if ((await screen(page).textContent()).includes('Background fit: Fit')) await clickControl(page, 'Background fit: Fit');
     await darkness(page, 30);
     await page.evaluate(() => { window.backgroundPublications = []; });
     await clickControl(page, 'Apply');
@@ -384,7 +384,7 @@ test('invalid selection clears an unsaved preview without implying it was applie
   await open(page);
   await chooseImage(page, await imageFixture(page));
   const chooser = page.waitForEvent('filechooser');
-  await clickControl(page, 'Choose image');
+  await clickControl(page, 'Choose image or video');
   await (await chooser).setFiles({name:'invalid.png',mimeType:'image/png',buffer:Buffer.from('not an image')});
   await expect(screen(page)).toContainText('Could not load or apply');
   await expect(page.locator('#background-preview')).not.toHaveAttribute('src');
@@ -452,7 +452,7 @@ test('frames a portrait, matches the viewport crop, and restores framing after r
   });
   await chooseImage(page,{name:'portrait.png',mimeType:'image/png',buffer:Buffer.from(portrait,'base64')});
   await darkness(page,30);
-  if ((await screen(page).textContent()).includes('Image fit: Fit')) await clickControl(page,'Image fit: Fit');
+  if ((await screen(page).textContent()).includes('Background fit: Fit')) await clickControl(page,'Background fit: Fit');
   await clickControl(page,'Adjust framing');
   await expect(screen(page)).toContainText('Preview · Zoom: 100%');
   const frame=page.locator('#background-preview-frame');
@@ -497,8 +497,8 @@ test('frames a portrait, matches the viewport crop, and restores framing after r
   await expect(screen(page)).toContainText('Zoom: 100%');
   await clickControl(page,'Done');
   await expect(screen(page)).toContainText('Background darkness:');
-  await clickControl(page,'Image fit: Fill');
-  await expect(screen(page)).toContainText('Image fit: Fit');
+  await clickControl(page,'Background fit: Fill');
+  await expect(screen(page)).toContainText('Background fit: Fit');
   await page.screenshot({path:`/tmp/framing-${testInfo.project.name}-fit.png`});
   await clickControl(page,'Apply');
   await expect(screen(page)).not.toContainText('Background darkness:');
@@ -524,7 +524,7 @@ test('Fill preserves the viewport composition for square, panoramic and thin sou
       return canvas.toDataURL('image/png').split(',')[1];
     },[width,height]);
     await chooseImage(page,{name:'shape.png',mimeType:'image/png',buffer:Buffer.from(encoded,'base64')});
-    if ((await screen(page).textContent()).includes('Image fit: Fit')) await clickControl(page,'Image fit: Fit');
+    if ((await screen(page).textContent()).includes('Background fit: Fit')) await clickControl(page,'Background fit: Fit');
     await clickControl(page,'Adjust framing');
     await expect(screen(page)).toContainText('Preview · Zoom: 100%');
     await expect(page.locator('#background-preview-frame')).toHaveAttribute('data-editing','true');

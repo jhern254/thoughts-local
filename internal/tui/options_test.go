@@ -15,7 +15,7 @@ func TestModel_Options(t *testing.T) {
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Darkness: 70})
-		for _, label := range []string{"Choose image", "Image fit: Fill", "Adjust framing", "Background darkness: 70%", "Apply", "Remove background", "Back"} {
+		for _, label := range []string{"Choose image or video", "Background fit: Fill", "Adjust framing", "Background darkness: 70%", "Apply", "Remove background", "Back"} {
 			if !strings.Contains(m.View().Content, m.subjects.list.Styles.Title.Render(label)) {
 				t.Fatalf("%q does not use the entity highlight", label)
 			}
@@ -127,6 +127,59 @@ func TestModel_Options(t *testing.T) {
 		m, cmd := rootUpdate(m, runeKey('q'))
 		if cmd != nil || m.screen != screenEvents || m.selectedEntity != entityOptions {
 			t.Fatal("native return changed")
+		}
+	})
+}
+
+func TestModel_VideoOptions(t *testing.T) {
+	t.Run("video controls occupy separate rows and speed changes by five percent", func(t *testing.T) {
+		m := newRootTestModel()
+		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Background: true, Kind: "video", SpeedPercent: 100, Darkness: 70})
+		rows := strings.Split(ansi.Strip(m.View().Content), "\n")
+		for index, text := range []string{"Playback speed: 100%", "Pause video", "Play / pause preview", "", "Apply", "Remove background", "Back"} {
+			if got := strings.TrimSpace(rows[19+index]); got != text {
+				t.Fatalf("row %d got %q, want %q", 19+index, got, text)
+			}
+		}
+		for range 4 {
+			m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyDown})
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyLeft})
+		if got := m.OptionsState().SpeedPercent; got != 95 {
+			t.Fatalf("speed=%d, want 95", got)
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyHome})
+		if got := m.OptionsState().SpeedPercent; got != 25 {
+			t.Fatalf("minimum speed=%d, want 25", got)
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyDown})
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+		if !m.OptionsState().UserPaused || m.OptionsState().Request != "play" {
+			t.Fatalf("pause preference: %+v", m.OptionsState())
+		}
+	})
+}
+
+func TestModel_VideoImportCancellation(t *testing.T) {
+	t.Run("Escape retires a pending video import without altering underlying screen", func(t *testing.T) {
+		m := newRootTestModel()
+		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
+		before := m.View().Content
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Kind: "video", Background: true, Darkness: 70, SpeedPercent: 100})
+		m.options.focus = optionsFocusApply
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+		id := m.OptionsState().ID
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+		if m.OptionsState().Open || m.View().Content != before {
+			t.Fatal("cancel changed the underlying screen")
+		}
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "saved", ID: id, Kind: "video", Background: true, Darkness: 70, SpeedPercent: 100})
+		if m.OptionsState().Open || m.View().Content != before {
+			t.Fatal("late import result changed navigation")
 		}
 	})
 }

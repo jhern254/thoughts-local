@@ -83,7 +83,7 @@ are not needed to build or run it.
 ### Browser background
 
 Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use
-**Ctrl+,** / **Cmd+,** without leaving a draft. Under Visual, choose a local JPEG or PNG, preview it, and
+**Ctrl+,** / **Cmd+,** without leaving a draft. Under Visual, choose a local JPEG/PNG image or SDR H.264 MP4/MOV video, preview it, and
 apply it behind the terminal. Background darkness changes only the readability
 overlay; Apply saves it. Remove background returns to the normal dark surface.
 Controls are rendered in the TUI: Tab/Shift+Tab moves focus, arrows adjust
@@ -92,7 +92,7 @@ slider dragging also work. The browser supplies the device picker and the real
 image inside the preview border. These controls affect browser presentation,
 not terminal drafts or stored Thoughts.
 
-Use **Image fit: Fill** to cover the browser window or **Fit** to show the whole
+Use **Background fit: Fill** to cover the browser window or **Fit** to show the whole
 image with dark margins. In Fill mode, **Adjust framing** opens a larger preview:
 drag or use arrow keys to move the image, and **+ / −** to zoom (100–300%).
 **Done** keeps your draft framing; **Apply** saves it. **Cancel/Esc** restores the
@@ -122,12 +122,22 @@ Some JPEG/PNG color encodings are unsupported. When an image is rejected for com
 
 See [Media handling and privacy](docs/media-handling-policy.md) for the distinction between background display copies and future private media attachments. Metadata removal does not anonymize what is visible in a picture.
 
-Background assets remain local and are not cloud-uploaded. Video backgrounds and AI animation are separate future work.
+Video imports require installed **FFmpeg and ffprobe** with H.264 encoding support.
+Clips must be 1–30 seconds, at most 128 MiB, 4,096 pixels per side, 9MP per frame,
+and 60 FPS. Thoughts stores a silent, bounded 720p-class display copy and a still
+poster. Under Visual, adjust **Playback speed** from 25–100% in five-point steps,
+or **Play/Pause video**; Apply saves these preferences. Slower playback can look
+less smooth. Hidden tabs, disconnected sessions and reduced-motion preferences
+pause playback automatically; a deliberate Play action can override reduced
+motion for the current session. Preview playback pauses the active background.
+Trimming, HDR/HEVC, and AI animation remain separate work.
+
+Background assets remain local and are not cloud-uploaded.
 
 ### Local trust and maintenance
 
 Browser mode binds only `127.0.0.1`, validates the exact Host and Origin, and
-serves embedded client files and the selected application-owned background image. Use the printed numeric address, not a hostname or
+serves embedded client files and the selected application-owned background assets. Use the printed numeric address, not a hostname or
 reverse proxy. This is a local single-user application: processes running as
 your user can access it. There is no LAN mode, authentication, or shell endpoint.
 Disable `TEA_TRACE` before launching browser mode; terminal traffic recording is

@@ -51,3 +51,15 @@ configured. Linux streaming was executed locally with the licensed fixture in
 100 ms chunks, including a Chromium worklet-to-draft walkthrough with the real
 recognizer. Interactive macOS/Windows microphones remain unverified; the
 Browser TUI statuses above are unchanged. iOS remains outside this desktop work.
+
+## Browser video background processor
+
+Video import requires user-installed FFmpeg/ffprobe with `libx264`, tested on
+Linux amd64 with FFmpeg 6.1.1. They are not bundled, auto-installed, or required
+by ordinary app builds/image backgrounds. Keep the tools patched using the
+platform's maintained distribution. Processing uses Go subprocesses without cgo;
+this does not establish an OS sandbox. Chromium and Firefox Linux playback were
+executed with synthetic SDR clips; codec support does not prove hardware decoding.
+macOS/Windows video import/playback remain unverified. See the
+[background measurements](browser-background-performance.md) for CPU limits and
+missed targets. Native speech statuses above are unchanged.

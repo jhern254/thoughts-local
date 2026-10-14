@@ -127,7 +127,7 @@ func ServeWithAudioConsumerFactory(ctx context.Context, listener net.Listener, n
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Permissions-Policy", "microphone=(self), camera=()")
 	w.Header().Set("X-Frame-Options", "DENY")
@@ -137,7 +137,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
-	if r.URL.Path == "/visual" || r.URL.Path == "/visual/background" || r.URL.Path == "/visual/settings" {
+	if r.URL.Path == "/visual" || r.URL.Path == "/visual/background" || r.URL.Path == "/visual/settings" || r.URL.Path == "/visual/video" || r.URL.Path == "/visual/poster" {
 		s.mu.Lock()
 		if s.closing {
 			s.mu.Unlock()

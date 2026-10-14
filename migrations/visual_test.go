@@ -99,3 +99,32 @@ func TestBackgroundFraming(t *testing.T) {
 		})
 	}
 }
+
+func TestVisualPlayback(t *testing.T) {
+	t.Run("defaults to normal speed with no deliberate pause", func(t *testing.T) {
+		db := openMigratedDatabase(t)
+		insertUsers(t, db)
+		if _, err := db.Exec("INSERT INTO visual(user_id,background_asset) VALUES ('user-1','0123456789abcdef0123456789abcdef.mp4')"); err != nil {
+			t.Fatal(err)
+		}
+		var speed, paused int
+		if err := db.QueryRow("SELECT speed_percent,user_paused FROM visual").Scan(&speed, &paused); err != nil {
+			t.Fatal(err)
+		}
+		if speed != 100 || paused != 0 {
+			t.Fatalf("got %d/%d, want 100/0", speed, paused)
+		}
+	})
+	for _, assignment := range []string{"speed_percent=24", "speed_percent=101", "speed_percent=50.5", "user_paused=2", "user_paused=-1", "user_paused=0.5"} {
+		t.Run("rejects "+assignment, func(t *testing.T) {
+			db := openMigratedDatabase(t)
+			insertUsers(t, db)
+			if _, err := db.Exec("INSERT INTO visual(user_id) VALUES ('user-1')"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec("UPDATE visual SET " + assignment); err == nil {
+				t.Fatal("invalid playback preference accepted")
+			}
+		})
+	}
+}

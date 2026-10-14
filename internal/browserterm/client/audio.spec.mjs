@@ -1,4 +1,6 @@
 import {test, expect} from '@playwright/test';
+import {readFileSync} from 'node:fs';
+import {openVisual, clickControl, chooseImage} from './visual-helpers.mjs';
 import {fakeMicrophone} from './capture-fixture.mjs';
 test.skip(process.env.THOUGHTS_BROWSER_AUDIO_TEST !== '1', 'requires the injected Go fake-consumer host');
 const screen = page => page.locator('.xterm-rows');
@@ -104,4 +106,20 @@ test('one F8 from Events opens a thought and immediately records', async ({page}
   await page.keyboard.press('F8');
   await expect(screen(page)).toContainText('F8: Record');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(1);
+});
+
+test('video import during recording preserves microphone, audio socket and draft ownership',async({page})=>{
+ await prepareAudioDraft(page);await startCapture(page,0);
+ const before=await page.evaluate(()=>window.audioProbe.audioFrames);
+ await openVisual(page);
+ await chooseImage(page,{name:'synthetic-video.mp4',mimeType:'video/mp4',buffer:readFileSync(new URL('./fixtures/visual-video.mp4',import.meta.url))});
+ await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
+ await expect(page.locator('#status')).toHaveText('Transcribing…');
+ await expect(screen(page)).toContainText('typed draft');
+ await expect.poll(()=>page.evaluate(()=>window.audioProbe.audioFrames)).toBeGreaterThan(before);
+ expect(await page.evaluate(()=>window.audioProbe.audioConnections)).toBe(1);
+ expect(await page.evaluate(()=>window.voiceProbe.requests)).toBe(1);
+ expect(await page.evaluate(()=>window.voiceProbe.tracksStopped)).toBe(0);
+ await page.keyboard.press('F8');await expect(screen(page)).toContainText('F8: Record');
+ await openVisual(page);await clickControl(page,'Remove background');
 });

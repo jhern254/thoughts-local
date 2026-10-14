@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -16,6 +17,66 @@ import (
 )
 
 func TestVisualWorkflow_SQLite(t *testing.T) {
+	t.Run("restores prepared video poster and deliberate playback preferences after restart", func(t *testing.T) {
+		if _, err := exec.LookPath("ffmpeg"); err != nil {
+			t.Skip("FFmpeg is not installed")
+		}
+		if _, err := exec.LookPath("ffprobe"); err != nil {
+			t.Skip("ffprobe is not installed")
+		}
+		_, dsn := openMigratedSQLite(t)
+		runtime, err := application.Open(t.Context(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		service, err := runtime.BrowserVisual(t.Context())
+		if err != nil {
+			runtime.Close()
+			t.Fatal(err)
+		}
+		source, err := os.Open("../internal/browserterm/client/fixtures/visual-video.mp4")
+		if err != nil {
+			runtime.Close()
+			t.Fatal(err)
+		}
+		first, warning, err := service.ImportVideo(t.Context(), source, 42, data.DefaultBackgroundFraming(), 50, true)
+		source.Close()
+		if err != nil || warning {
+			runtime.Close()
+			t.Fatalf("video import: %v warning=%v", err, warning)
+		}
+		if err := runtime.Close(); err != nil {
+			t.Fatal(err)
+		}
+		runtime, err = application.Open(t.Context(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer runtime.Close()
+		service, err = runtime.BrowserVisual(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		restored, err := service.Load(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if restored != first || restored.SpeedPercent != 50 || !restored.UserPaused {
+			t.Fatalf("restored=%+v, want %+v", restored, first)
+		}
+		poster, kind, err := service.OpenPoster(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer poster.Close()
+		config, _, err := image.DecodeConfig(poster)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kind != "image/jpeg" || config.Width != 96 || config.Height != 64 {
+			t.Fatalf("poster=%s %dx%d, want JPEG 96x64", kind, config.Width, config.Height)
+		}
+	})
 	t.Run("restores optimized background and framing after restart", func(t *testing.T) {
 		_, dsn := openMigratedSQLite(t)
 		runtime, err := application.Open(t.Context(), dsn)
@@ -103,6 +164,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		wantSettings := data.Visual{
 			BackgroundAsset: asset,
 			Darkness:        42,
+			SpeedPercent:    100,
 			Framing: data.BackgroundFraming{
 				Fit:       "fit",
 				Zoom:      175,

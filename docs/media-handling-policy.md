@@ -1,6 +1,6 @@
 # Media handling and privacy policy
 
-**Status:** Agreed architectural direction. Background implementation is scoped to PR #72. General attachments, vault encryption, sync, and external AI disclosure remain future work.
+**Status:** Agreed architectural direction. Image background implementation originated in PR #72; bounded looping video extends the same display-copy policy. General attachments, trimming, vault encryption, sync, and external AI disclosure remain future work.
 
 **Decision date:** 2026-10-13
 
@@ -80,6 +80,38 @@ Existing assets are not rewritten at startup. Explicit replacement/reimport appl
 
 Framing changes preserve the imported display copy. The source file on the user's device remains untouched. Wallpaper import does not archive an original inside Thoughts.
 
+## Looping video backgrounds
+
+Video backgrounds are presentation assets with the same no-archive policy.
+Thoughts stores one prepared silent H.264 display copy and a generated JPEG
+poster; the original source on the user's device is untouched. Audio, subtitles,
+data streams, chapters, source location/device/date metadata and comments are
+not retained. Display rotation is normalized into frames; only supported SDR
+color interpretation and necessary playback/container information remain.
+
+Source limits are 128 MiB, 1–30 seconds, 4,096 pixels per axis, 9 million pixels
+per frame and 60 FPS, with an aggregate four-billion-pixel processing budget.
+Stored output uses even dimensions, square pixels, at most 1,280 pixels per axis,
+921,600 pixels per frame, 24 FPS and 16 MiB. Re-encoding is lossy. Untagged SDR
+is interpreted as Rec.709; explicit incompatible primaries/transfer, ICC video
+profiles, HDR/HEVC, encrypted/fragmented/reference movies, arbitrary display
+transforms and unsupported encodings are rejected rather than silently relabeled.
+
+Native processing stages private application-named files, uses explicit argument
+arrays and a local-file protocol allowlist, validates self-contained container
+references, limits work and joins canceled subprocesses before cleanup. FFmpeg
+and ffprobe are installed separately and must be maintained by the user. This
+boundary is not an OS sandbox; protocol restrictions alone do not confine files.
+Prepared output is probed and fully decoded before selection is committed.
+
+Speed and deliberate pause persist. Visibility, connection, reduced-motion,
+preview exclusivity and playback failure are browser lifecycle conditions, never
+saved pause preferences. A stable poster covers loading, buffering, pause and
+failure. No frames travel through the terminal or WebSocket. Local video/poster
+assets and staging files are not encrypted; crashes can leave unselected files.
+Future vault work must include these assets. No attachment originals or video
+trimming are introduced by this background feature.
+
 ## Storage, processing, and replacement safety
 
 Use generated identifiers, controlled asset routes, bounded input and processing, appropriate file permissions, and the established local Host/Origin checks. Do not expose a general filesystem directory or log image bytes, original filenames, private metadata, paths, or raw decoder errors.
@@ -125,9 +157,9 @@ An existing `FuzzDisplayMetadata` target exercises orientation, JPEG/PNG metadat
 
 The intermittent black-rectangle report remains unresolved. Readiness and one-shot repaint safeguards do not establish its root cause. Do not claim a compositor fix, universal color support, or zero privacy leakage.
 
-## Scope boundary for PR #72
+## Scope boundary for backgrounds
 
-No attachment schema, original-media archive, GPS indexing, encryption/key management, sync, cloud AI, video processing, premium system, generic metadata framework, or new color-conversion engine belongs in this finalization.
+No attachment schema, original-media archive, GPS indexing, encryption/key management, sync, cloud AI, general video processing, premium system, generic metadata framework, or new color-conversion engine belongs in this finalization.
 
 Finish the bounded background importer. Record the future attachment architecture without implementing it prematurely.
 

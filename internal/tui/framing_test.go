@@ -53,7 +53,7 @@ func TestModel_BackgroundFraming(t *testing.T) {
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		m, _ = rootUpdate(m, enterKey())
-		if m.OptionsState().Framing != data.DefaultBackgroundFraming() || m.OptionsState().Darkness != 70 || !m.options.hasImage {
+		if m.OptionsState().Framing != data.DefaultBackgroundFraming() || m.OptionsState().Darkness != 70 || !m.options.hasBackground {
 			t.Fatal("reset changed unrelated values")
 		}
 		for range 5 {

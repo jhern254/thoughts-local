@@ -12,14 +12,18 @@ import (
 
 type BrowserOptionsEnabledMsg struct{}
 
-// BrowserOptionsMsg carries only bounded visual control metadata. Images
-// stay in the browser and travel through the existing validated HTTP routes.
+// BrowserOptionsMsg carries only bounded visual controls. Media bytes use
+// validated HTTP routes; no frames or authored content travel in these messages.
 type BrowserOptionsMsg struct {
-	Action     string                 `json:"action"`
-	ID         uint64                 `json:"id"`
-	Darkness   int                    `json:"darkness"`
-	Background bool                   `json:"background"`
-	Framing    data.BackgroundFraming `json:"framing"`
+	Action          string                 `json:"action"`
+	ID              uint64                 `json:"id"`
+	Darkness        int                    `json:"darkness"`
+	Background      bool                   `json:"background"`
+	Kind            string                 `json:"kind"`
+	SpeedPercent    int                    `json:"speedPercent"`
+	UserPaused      bool                   `json:"userPaused"`
+	PlaybackBlocked bool                   `json:"playbackBlocked"`
+	Framing         data.BackgroundFraming `json:"framing"`
 }
 
 type PreviewRect struct{ X, Y, Width, Height int }
@@ -27,20 +31,25 @@ type PreviewRect struct{ X, Y, Width, Height int }
 // BrowserOptionsState exposes the reserved terminal cells, not pixel geometry.
 // ID changes for each browser operation so late results cannot affect a new page.
 type BrowserOptionsState struct {
-	Open     bool                   `json:"open"`
-	Editing  bool                   `json:"editing"`
-	Framing  data.BackgroundFraming `json:"framing"`
-	ID       uint64                 `json:"id"`
-	Request  string                 `json:"request"`
-	Darkness int                    `json:"darkness"`
-	Preview  PreviewRect            `json:"preview"`
+	Open         bool                   `json:"open"`
+	Editing      bool                   `json:"editing"`
+	Framing      data.BackgroundFraming `json:"framing"`
+	ID           uint64                 `json:"id"`
+	Request      string                 `json:"request"`
+	Darkness     int                    `json:"darkness"`
+	SpeedPercent int                    `json:"speedPercent"`
+	UserPaused   bool                   `json:"userPaused"`
+	Preview      PreviewRect            `json:"preview"`
 }
 
 const (
-	optionsFocusChooseImage = iota
+	optionsFocusChooseBackground = iota
 	optionsFocusFit
 	optionsFocusAdjust
 	optionsFocusDarkness
+	optionsFocusSpeed
+	optionsFocusPlayback
+	optionsFocusPreview
 	optionsFocusApply
 	optionsFocusRemoveBackground
 	optionsFocusBack
@@ -56,7 +65,11 @@ type optionsState struct {
 	darkness          int
 	focus             int
 	status            string
-	hasImage          bool
+	hasBackground     bool
+	video             bool
+	speedPercent      int
+	userPaused        bool
+	playbackBlocked   bool
 	framing           data.BackgroundFraming
 	editing           bool
 	framingFocus      int
@@ -74,13 +87,14 @@ func (m Model) OptionsState() BrowserOptionsState {
 	}
 	_, rect := m.optionsLayout()
 	return BrowserOptionsState{
-		Open:     m.options.open,
-		Editing:  m.options.editing,
-		Framing:  m.options.framing,
-		ID:       m.options.id,
-		Request:  m.options.request,
-		Darkness: m.options.darkness,
-		Preview:  rect,
+		Open:         m.options.open,
+		Editing:      m.options.editing,
+		Framing:      m.options.framing,
+		ID:           m.options.id,
+		Request:      m.options.request,
+		Darkness:     m.options.darkness,
+		SpeedPercent: m.options.speedPercent, UserPaused: m.options.userPaused,
+		Preview: rect,
 	}
 }
 
@@ -101,12 +115,20 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if !m.options.open {
 			m.options.open = true
 			m.options.editing = false
-			m.options.hasImage = false
+			m.options.hasBackground = false
 			m.options.framing = data.DefaultBackgroundFraming()
-			m.options.focus = optionsFocusChooseImage
+			m.options.focus = optionsFocusChooseBackground
 			m.options.darkness = 70
+			m.options.speedPercent = 100
+			m.options.userPaused = false
 			m.options.status = "Loading visual…"
 			m.requestOptions("load")
+		}
+		return m, nil
+	}
+	if msg.Action == "playback" {
+		if m.options.open && msg.ID == m.options.id {
+			m.options.playbackBlocked = msg.PlaybackBlocked
 		}
 		return m, nil
 	}
@@ -126,20 +148,32 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			return m, nil
 		}
 		m.options.darkness = max(0, min(95, msg.Darkness))
-		m.options.hasImage = msg.Background
+		m.options.hasBackground = msg.Background
+		m.options.video = msg.Kind == "video"
+		if msg.SpeedPercent >= 25 && msg.SpeedPercent <= 100 {
+			m.options.speedPercent = msg.SpeedPercent
+		}
+		m.options.userPaused = msg.UserPaused
+		m.options.playbackBlocked = msg.PlaybackBlocked
 		if msg.Framing.Valid() {
 			m.options.framing = msg.Framing
 		}
-		m.options.status = "JPEG / PNG · 16 MiB · 8192px per side · 24MP"
+		m.options.status = "JPEG/PNG · MP4/MOV SDR H.264 · video ≤30s / 128 MiB"
 	case "selected":
 		if m.options.request != "choose" {
 			return m, nil
 		}
-		m.options.hasImage = true
+		m.options.hasBackground = true
+		m.options.video = msg.Kind == "video"
 		fit := m.options.framing.Fit
 		m.options.framing = data.DefaultBackgroundFraming()
 		m.options.framing.Fit = fit
 		m.options.status = "Preview only. Apply to save."
+	case "played", "previewed":
+		if m.options.request != "play" && m.options.request != "preview" {
+			return m, nil
+		}
+		m.options.status = ""
 	case "cancelled":
 		if m.options.request != "choose" {
 			return m, nil
@@ -150,23 +184,35 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			return m, nil
 		}
 		m.options.darkness = max(0, min(95, msg.Darkness))
-		m.options.hasImage = msg.Background
+		m.options.hasBackground = msg.Background
+		m.options.video = msg.Kind == "video"
+		if msg.SpeedPercent >= 25 && msg.SpeedPercent <= 100 {
+			m.options.speedPercent = msg.SpeedPercent
+		}
+		m.options.userPaused = msg.UserPaused
+		m.options.playbackBlocked = msg.PlaybackBlocked
 		if msg.Framing.Valid() {
 			m.options.framing = msg.Framing
 		}
 		if msg.Action == "saved" {
 			m.options.open = false
 		} else {
-			m.options.status = "Saved. Previous image file could not be removed."
+			m.options.status = "Saved. Previous background file could not be removed."
 		}
 	case "failed":
 		if m.options.request == "choose" {
-			m.options.hasImage = msg.Background
+			m.options.hasBackground = msg.Background
+			m.options.video = msg.Kind == "video"
+			if msg.SpeedPercent >= 25 && msg.SpeedPercent <= 100 {
+				m.options.speedPercent = msg.SpeedPercent
+			}
+			m.options.userPaused = msg.UserPaused
+			m.options.playbackBlocked = msg.PlaybackBlocked
 			if msg.Framing.Valid() {
 				m.options.framing = msg.Framing
 			}
 		}
-		m.options.status = "Could not load or apply. Check image limits and retry."
+		m.options.status = "Could not load or apply. Check media limits and retry."
 	default:
 		return m, nil
 	}
@@ -186,7 +232,7 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "esc":
-			if m.options.request != "apply" && m.options.request != "remove" {
+			if (m.options.request != "apply" && m.options.request != "remove") || (m.options.request == "apply" && m.options.video) {
 				m.options.open = false
 				if m.speechSetup.service != nil {
 					m.options.open = true
@@ -196,13 +242,25 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "tab", "down":
 			if !busy {
-				m.options.focus = (m.options.focus + 1) % optionsFocusCount
+				m.options.focus = m.nextOptionsFocus(1)
 			}
 		case "shift+tab", "up":
 			if !busy {
-				m.options.focus = (m.options.focus + optionsFocusCount - 1) % optionsFocusCount
+				m.options.focus = m.nextOptionsFocus(-1)
 			}
 		case "left", "right", "home", "end":
+			if !busy && m.options.focus == optionsFocusSpeed && m.options.video {
+				switch msg.String() {
+				case "left":
+					m.options.speedPercent = max(25, m.options.speedPercent-5)
+				case "right":
+					m.options.speedPercent = min(100, m.options.speedPercent+5)
+				case "home":
+					m.options.speedPercent = 25
+				case "end":
+					m.options.speedPercent = 100
+				}
+			}
 			if !busy && m.options.focus == optionsFocusFit && (msg.String() == "left" || msg.String() == "right") {
 				m.toggleBackgroundFit()
 			}
@@ -237,13 +295,13 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) activateOption() {
 	switch m.options.focus {
-	case optionsFocusChooseImage:
-		m.options.status = "Choose a JPEG or PNG…"
+	case optionsFocusChooseBackground:
+		m.options.status = "Choose a JPEG/PNG image or SDR H.264 MP4/MOV…"
 		m.requestOptions("choose")
 	case optionsFocusFit:
 		m.toggleBackgroundFit()
 	case optionsFocusAdjust:
-		if m.options.hasImage && m.options.framing.Fit == "fill" {
+		if m.options.hasBackground && m.options.framing.Fit == "fill" {
 			m.options.editing = true
 			m.options.framingFocus = framingFocusPreview
 			m.options.framingBeforeEdit = m.options.framing
@@ -251,8 +309,21 @@ func (m *Model) activateOption() {
 		} else {
 			m.options.status = "Choose an image and use Fill to adjust framing."
 		}
+	case optionsFocusPlayback:
+		if m.options.playbackBlocked {
+			m.options.userPaused = false
+		} else {
+			m.options.userPaused = !m.options.userPaused
+		}
+		m.options.playbackBlocked = false
+		m.requestOptions("play")
+	case optionsFocusPreview:
+		m.requestOptions("preview")
 	case optionsFocusApply:
 		m.options.status = "Saving…"
+		if m.options.video {
+			m.options.status = "Preparing video… Esc: cancel"
+		}
 		m.requestOptions("apply")
 	case optionsFocusRemoveBackground:
 		m.options.status = "Removing…"
@@ -275,7 +346,11 @@ func (m Model) optionsLayout() (int, PreviewRect) {
 	}
 	width := max(10, min(60, m.width-4))
 	x := max(0, (m.width-width)/2)
-	height := max(0, min(8, m.height-23))
+	reserved := 23
+	if m.options.video {
+		reserved += 3
+	}
+	height := max(0, min(8, m.height-reserved))
 	return width, PreviewRect{X: x + 1, Y: 8, Width: width - 2, Height: height}
 }
 
@@ -291,7 +366,7 @@ func (m *Model) clickOption(x, y int, activate bool) {
 	}
 	switch {
 	case y == 5 && activate:
-		m.options.focus = optionsFocusChooseImage
+		m.options.focus = optionsFocusChooseBackground
 		m.activateOption()
 	case y == 7+shift && activate:
 		m.options.focus = optionsFocusFit
@@ -304,8 +379,13 @@ func (m *Model) clickOption(x, y int, activate bool) {
 	case y == 10+shift:
 		m.options.focus = optionsFocusDarkness
 		m.options.darkness = max(0, min(95, (x-left)*95/max(1, width-1)))
-	case y >= 12+shift && y <= 14+shift && activate:
-		m.options.focus = optionsFocusApply + y - (12 + shift)
+	case m.options.video && y >= 11+shift && y <= 13+shift && activate:
+		m.options.focus = optionsFocusSpeed + y - (11 + shift)
+		if m.options.focus != optionsFocusSpeed {
+			m.activateOption()
+		}
+	case y >= 12+shift+m.videoOptionRows() && y <= 14+shift+m.videoOptionRows() && activate:
+		m.options.focus = optionsFocusApply + y - (12 + shift + m.videoOptionRows())
 		m.activateOption()
 	}
 }
@@ -327,7 +407,7 @@ func (m Model) viewOptions() tea.View {
 		}
 		return plain.Render(text)
 	}
-	lines := []string{selected.Render("Options"), "", "Visual", "", "Background image", label(optionsFocusChooseImage, "Choose image"), ""}
+	lines := []string{selected.Render("Options"), "", "Visual", "", "Background", label(optionsFocusChooseBackground, "Choose image or video"), ""}
 	if rect.Height > 0 {
 		lines = append(lines, muted.Render("╭"+strings.Repeat("─", rect.Width)+"╮"))
 		for range rect.Height {
@@ -342,8 +422,15 @@ func (m Model) viewOptions() tea.View {
 	if m.options.framing.Fit == "fit" {
 		fitLabel = "Fit"
 	}
-	lines = append(lines, label(optionsFocusFit, "Image fit: "+fitLabel), label(optionsFocusAdjust, "Adjust framing"), label(optionsFocusDarkness, fmt.Sprintf("Background darkness: %d%%", m.options.darkness)), slider, "",
-		label(optionsFocusApply, "Apply"), label(optionsFocusRemoveBackground, "Remove background"), label(optionsFocusBack, "Back"))
+	lines = append(lines, label(optionsFocusFit, "Background fit: "+fitLabel), label(optionsFocusAdjust, "Adjust framing"), label(optionsFocusDarkness, fmt.Sprintf("Background darkness: %d%%", m.options.darkness)), slider)
+	if m.options.video {
+		playbackLabel := "Pause video"
+		if m.options.userPaused || m.options.playbackBlocked {
+			playbackLabel = "Play video"
+		}
+		lines = append(lines, label(optionsFocusSpeed, fmt.Sprintf("Playback speed: %d%%", m.options.speedPercent)), label(optionsFocusPlayback, playbackLabel), label(optionsFocusPreview, "Play / pause preview"))
+	}
+	lines = append(lines, "", label(optionsFocusApply, "Apply"), label(optionsFocusRemoveBackground, "Remove background"), label(optionsFocusBack, "Back"))
 	if rect.Height == 0 && m.height < 20 {
 		lines = append(lines, muted.Render(m.options.status), muted.Render("↑/↓/Tab: focus · ←/→: value"), muted.Render("Enter: activate · Q/Esc: back"))
 	} else {
@@ -416,4 +503,21 @@ func (m Model) viewOptionsMenu() tea.View {
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	return view
+}
+
+func (m Model) videoOptionRows() int {
+	if m.options.video {
+		return 3
+	}
+	return 0
+}
+
+func (m Model) nextOptionsFocus(direction int) int {
+	focus := m.options.focus
+	for {
+		focus = (focus + direction + optionsFocusCount) % optionsFocusCount
+		if m.options.video || focus < optionsFocusSpeed || focus > optionsFocusPreview {
+			return focus
+		}
+	}
 }

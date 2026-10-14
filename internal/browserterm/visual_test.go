@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -292,6 +294,60 @@ func TestVisual_FramingSettings(t *testing.T) {
 			if strings.Contains(response.Body.String(), "PRIVATE") {
 				t.Fatal("unsafe diagnostic")
 			}
+		}
+	})
+}
+
+func TestVisual_VideoBoundary(t *testing.T) {
+	for _, scenario := range []struct {
+		name, method, origin, host string
+		status                     int
+	}{
+		{"missing origin", "POST", "", "127.0.0.1:7777", 403},
+		{"foreign origin", "POST", "http://PRIVATE", "127.0.0.1:7777", 403},
+		{"wrong host", "POST", "http://127.0.0.1:7777", "PRIVATE", 403},
+		{"unexpected method", "PUT", "http://127.0.0.1:7777", "127.0.0.1:7777", 405},
+		{"invalid settings", "POST", "http://127.0.0.1:7777", "127.0.0.1:7777", 400},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(&visualStore{}, "user", t.TempDir())}
+			request := httptest.NewRequest(scenario.method, "http://127.0.0.1:7777/visual/video", strings.NewReader("PRIVATE"))
+			request.Host = scenario.host
+			if scenario.origin != "" {
+				request.Header.Set("Origin", scenario.origin)
+			}
+			response := httptest.NewRecorder()
+			s.ServeHTTP(response, request)
+			if response.Code != scenario.status {
+				t.Fatalf("got %d, want %d", response.Code, scenario.status)
+			}
+			if strings.Contains(response.Body.String(), "PRIVATE") {
+				t.Fatal("private data disclosed")
+			}
+		})
+	}
+	t.Run("range requests serve selected video and poster only", func(t *testing.T) {
+		directory := t.TempDir()
+		const asset = "0123456789abcdef0123456789abcdef.mp4"
+		store := &visualStore{settings: data.Visual{BackgroundAsset: asset, Darkness: 70, Framing: data.DefaultBackgroundFraming(), SpeedPercent: 100}}
+		if err := os.WriteFile(filepath.Join(directory, asset), []byte("synthetic-video-body"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "0123456789abcdef0123456789abcdef.jpg"), []byte("synthetic-poster"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", directory)}
+		request := httptest.NewRequest("GET", "http://127.0.0.1:7777/visual/background?file=../../PRIVATE", nil)
+		request.Header.Set("Range", "bytes=0-8")
+		response := httptest.NewRecorder()
+		s.ServeHTTP(response, request)
+		if response.Code != 206 || response.Body.String() != "synthetic" || response.Header().Get("Content-Type") != "video/mp4" {
+			t.Fatalf("range: %d %q %s", response.Code, response.Body.String(), response.Header().Get("Content-Type"))
+		}
+		response = httptest.NewRecorder()
+		s.ServeHTTP(response, httptest.NewRequest("GET", "http://127.0.0.1:7777/visual/poster", nil))
+		if response.Code != 200 || response.Body.String() != "synthetic-poster" {
+			t.Fatalf("poster: %d %q", response.Code, response.Body.String())
 		}
 	})
 }

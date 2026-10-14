@@ -294,3 +294,27 @@ changed by explicit replacement/reimport. Orientation is normalized into pixels
 and only supported color-transform metadata is retained. See
 [the import contract and measurements](../../docs/browser-background-performance.md#import-privacy-and-color-contract)
 for profile compatibility, privacy limits and one-time processing cost.
+
+
+## Looping video ownership
+
+The Visual boundary additionally accepts self-contained SDR H.264 MP4/MOV.
+Video bytes use `POST /visual/video` with bounded `X-Background-Settings` JSON;
+`GET /visual/background` serves only the current selection with byte ranges,
+and `GET /visual/poster` serves only its generated still. Host/Origin validation,
+request ownership and cancellation remain shared with image imports. The CSP
+allows media only from this server and transient local preview blobs.
+
+FFmpeg/ffprobe are explicit native dependencies for video import; images and
+ordinary builds do not require them. The importer re-encodes, strips unrelated
+streams/metadata, validates the output and stores both video and poster before
+committing selection. See [media policy](../../docs/media-handling-policy.md).
+
+The browser owns one selected player and an optional candidate player. Only one
+may play: preview pauses the background, and Back/Apply/disconnect retires preview
+resources. Saved speed/pause are separate from visibility, connection, reduced
+motion and decoder failure. Settings-only updates retain the player/time; terminal
+renders do not call `play()`. Posters are stable fallback assets, not frame copies.
+Run `video.spec.mjs` with FFmpeg/ffprobe available, and the injected audio host for
+`audio.spec.mjs` to verify import during recording. Existing image tests remain
+required. The synthetic video fixture is documented in `client/fixtures/README.md`.

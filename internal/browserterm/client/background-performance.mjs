@@ -17,6 +17,7 @@ const count = 5, rows = [];
 const fixtureRunID = Date.now(); // Avoid native file-picker deduplication between separate probe runs.
 // Privacy follow-ups measure only one-time import/activation; avoid repeating idle/navigation matrices.
 const importOnly = process.env.THOUGHTS_PERF_IMPORT_ONLY === '1';
+const videoFixturePath = process.env.THOUGHTS_PERF_VIDEO_FIXTURE;
 // Reduce only idle sampling for a quick follow-up; import/interaction runs stay five.
 const idleSamples = Number(process.env.THOUGHTS_PERF_IDLE_SAMPLES || 5);
 if (!Number.isInteger(idleSamples) || idleSamples < 1 || idleSamples > 5) throw new Error('Idle samples must be between 1 and 5.');
@@ -69,7 +70,7 @@ function syntheticPNG(width, height) {
     pngChunk('IHDR', header), pngChunk('IDAT', deflateSync(pixels)), pngChunk('IEND', Buffer.alloc(0))
   ]);
 }
-const fixtures = (importOnly ? [[1200,850],[6000,4000]] : [[1267,719],[91,4093],[4093,91],[6000,4000]]).map(([width,height]) => ({width,height,buffer:syntheticPNG(width,height)}));
+const fixtures = (videoFixturePath ? [[1200,850]] : importOnly ? [[1200,850],[6000,4000]] : [[1267,719],[91,4093],[4093,91],[6000,4000]]).map(([width,height]) => ({width,height,buffer:syntheticPNG(width,height)}));
 const browser = await chromium.launch({headless:false, executablePath:process.env.THOUGHTS_PERF_BROWSER || '/usr/bin/brave-browser'});
 try {
   const page = await browser.newPage({viewport:null});
@@ -84,10 +85,16 @@ try {
   const fullscreen = async () => { await cdp.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'fullscreen'}}); await page.waitForTimeout(500); };
   await fullscreen();
   const metadata = {revision:process.env.THOUGHTS_PERF_REVISION || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),logicalCPUs:availableParallelism(),contentionWorkers:Math.min(4,Math.max(1,Math.floor(availableParallelism()/2))),browser:await browser.version(),go:execFileSync('go',['version'],{encoding:'utf8'}).trim(),system:await browserCDP.send('SystemInfo.getInfo'),viewport:await page.evaluate(()=>[innerWidth,innerHeight,devicePixelRatio]),count,idleSamples,importOnly,appPID};
+  metadata.decoderProperties=[];
+  await cdp.send('Media.enable');
+  cdp.on('Media.playerPropertiesChanged',event=>{
+    const properties=event.properties.filter(property=>/decoder/i.test(property.name));
+    if(properties.length)metadata.decoderProperties.push(properties);
+  });
   // Keyboard focus avoids pointer coordinates racing the desktop window manager.
   const clickControl = async (page, label) => {
     await page.locator('.xterm-helper-textarea').focus();
-    for (let step = 0; step < 7; step++) {
+    for (let step = 0; step < 10; step++) {
       const selected = page.locator('.xterm-bg-62').filter({hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')});
       if (await selected.count()) {
         await page.keyboard.press('Enter');
@@ -101,7 +108,7 @@ try {
   };
   const chooseImage = async (page, fixture) => {
     const chooser = page.waitForEvent('filechooser');
-    await clickControl(page, 'Choose image');
+    await clickControl(page, 'Choose image or video');
     await (await chooser).setFiles(fixture);
     await expect(screen(page)).toContainText('Preview only. Apply to save.', {timeout: 15000});
     await expect(page.locator('#background-preview-wrap')).toBeVisible();
@@ -127,7 +134,8 @@ try {
     await page.waitForTimeout(3000);
     for(let run=0;run<idleSamples;run++) {
       const a=await usage(),start=performance.now();await page.waitForTimeout(30000);const b=await usage();const seconds=(performance.now()-start)/1000;
-      add({phase:'idle',image,run,browserCPUPercent:100*(b.browserCPU-a.browserCPU)/seconds,appCPUPercent:100*(b.appCPU-a.appCPU)/seconds,...b});
+      const quality=await page.evaluate(()=>{const video=document.querySelector('#background-video');if(!video)return null;const quality=video.getVideoPlaybackQuality();return {paused:video.paused,currentTime:video.currentTime,frames:quality.totalVideoFrames,dropped:quality.droppedVideoFrames,visibility:document.visibilityState};});
+      add({phase:'idle',image,run,quality,browserCPUPercent:100*(b.browserCPU-a.browserCPU)/seconds,appCPUPercent:100*(b.appCPU-a.appCPU)/seconds,...b});
     }
   };
   // Measure keydown -> observed terminal row mutation, excluding automation delivery.
@@ -154,7 +162,7 @@ try {
     } finally {await Promise.all(workers.map(worker=>worker.terminate()));}
   };
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');
-  if(!importOnly)await idle('opaque');
+  if(!importOnly&&!videoFixturePath)await idle('opaque');
   await page.bringToFront();await page.locator('.xterm-helper-textarea').focus();await page.keyboard.press('Tab');await expect(screen(page)).toContainText('Tab/Q: events');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Background darkness:');await expect(screen(page)).not.toContainText('Loading visual');
   for(const fixture of fixtures) {
     const image=`${fixture.width}x${fixture.height}`;
@@ -165,7 +173,7 @@ try {
       try {
       const start=performance.now();await chooseImage(page,{name:`synthetic-${fixtureRunID}-${image}-${run}.png`,mimeType:'image/png',buffer:fixture.buffer});
       const previewMs=performance.now()-start;
-      if((await screen(page).textContent()).includes('Image fit: Fit'))await clickControl(page,'Image fit: Fit');
+      if((await screen(page).textContent()).includes('Background fit: Fit'))await clickControl(page,'Background fit: Fit');
       await setDarkness(page,30);
       await page.evaluate(()=>{window.activationTimes=[];});
       const applyStart=performance.now();
@@ -177,8 +185,49 @@ try {
       } finally {clearInterval(timer);}
     }
     if(!importOnly)await navigation(image);
-    if(!importOnly && (fixture===fixtures[0] || fixture===fixtures.at(-1)))await idle(image);
-    if(!importOnly && fixture===fixtures.at(-1))await navigation(image,true);
+    if(!importOnly && !videoFixturePath && (fixture===fixtures[0] || fixture===fixtures.at(-1)))await idle(image);
+    if(!importOnly && !videoFixturePath && fixture===fixtures.at(-1))await navigation(image,true);
+  }
+  if(videoFixturePath) {
+    const fixture=readFileSync(videoFixturePath);
+    add({phase:'video-fixture',bytes:fixture.length,sha256:createHash('sha256').update(fixture).digest('hex')});
+    const events=async mode=>{
+      // Tab leaves the entity picker; day keys then exercise actual Events.
+      await page.keyboard.press('Tab');
+      for(let run=0;run<count;run++) {
+        const values=[];
+        for(let i=0;i<10;i++){values.push(await keyLatency('ArrowLeft'));values.push(await keyLatency('ArrowRight'));}
+        add({phase:'video-events',mode,run,p95Ms:percentile95(values.filter(value=>value!==null)),medianMs:median(values.filter(value=>value!==null)),timeouts:values.filter(value=>value===null).length});
+      }
+      await page.keyboard.press('Tab');
+    };
+    await idle('static-video-baseline');await events('static');
+    for(let run=0;run<count;run++) {
+      await openVisual(page);
+      const start=performance.now();
+      await chooseImage(page,{name:`synthetic-video-${fixtureRunID}-${run}.mp4`,mimeType:'video/mp4',buffer:fixture});
+      const previewMs=performance.now()-start;
+      const applyStart=performance.now();await clickControl(page,'Apply');
+      await expect(screen(page)).not.toContainText('Background darkness:',{timeout:120000});
+      await expect(page.locator('#background-video')).toBeVisible();
+      add({phase:'video-import',run,previewMs,applyMs:performance.now()-applyStart,activationMs:await page.evaluate(()=>window.activationTimes.at(-1)),...await usage()});
+    }
+    for(const percent of [100,50,25]) {
+      await openVisual(page);await clickControl(page,`Playback speed: ${percent===100?100:percent===50?100:50}%`);
+      await page.keyboard.press('Home');for(let value=25;value<percent;value+=5)await page.keyboard.press('ArrowRight');
+      await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
+      await idle(`video-${percent}`);if(percent===100)await events('video');
+    }
+    await openVisual(page);await clickControl(page,'Pause video');await clickControl(page,'Apply');
+    await expect(screen(page)).not.toContainText('Background darkness:');await idle('video-paused');
+    await openVisual(page);await clickControl(page,'Play video');await clickControl(page,'Apply');
+    await expect(screen(page)).not.toContainText('Background darkness:');
+    await page.emulateMedia({reducedMotion:'reduce'});await idle('video-reduced-motion');
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    // A second desktop window tests real visibility rather than dispatching a
+    // fabricated event. Record document visibility so failed hiding is explicit.
+    const other=await browser.newPage();await other.goto('about:blank');await other.bringToFront();
+    await idle('video-hidden');await other.close();await page.bringToFront();
   }
   if(!importOnly) {
     // Keep the Events workload separate from the reported entity-picker artifact.
