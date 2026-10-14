@@ -278,6 +278,12 @@ speed comparison or proof that Main is universally slower. Firefox and Chromium
 subsequently executed the actual prepared Baseline/Level 3.2 assets, including
 poster-color, playback and lifecycle acceptance.
 
+A separate compatibility check played both identical spike clips past two
+seconds in Chromium 149.0.7827.55 and Firefox 151.0 at 1280×720, with zero
+reported dropped frames in those short samples. This verifies basic playback
+of both profiles, not their relative CPU cost or hardware decoding. Its results
+are retained in `/tmp/thoughts-video-spike/profile-compatibility.json`.
+
 Baseline fixture: 3,114,995 bytes,
 SHA-256 `14a75c20ac292d05a13264f2a3312265bd3334c92b9c734b0558e5a6bf39686f`.
 Main fixture: 2,446,590 bytes,
