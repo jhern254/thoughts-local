@@ -13,8 +13,8 @@ model with progress and enables F8 without a restart. The engine is already in
 this app folder. **Not now** lets you keep writing. **Options → Models** returns
 to setup later.
 
-Downloaded models live in `~/Thoughts/models` (Linux/macOS) or
-`%USERPROFILE%\Thoughts\models` (Windows). They remain available after updating
+Downloaded models live in `~/Documents/Thoughts/models` (Linux/macOS) or
+`%USERPROFILE%\Documents\Thoughts\models` (Windows). They remain available after updating
 or moving this app folder. Audio is kept in memory; transcripts stay unsaved
 until you save the Thought normally.
 

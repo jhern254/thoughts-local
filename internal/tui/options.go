@@ -394,6 +394,7 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 	case 1:
 		m.models.open = true
 		m.models.offered = true
+		m.models.focus = 0
 	case 2:
 		m.options.open = false
 	}

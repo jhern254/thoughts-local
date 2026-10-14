@@ -21,14 +21,14 @@ archive and rebuild/check the engine without downloading it again. A failed
 check preserves the previous working engine.
 
 The browser now offers a Models popup over Events when speech needs setup.
-Choose **Download and enable** to install the approved English model. The progress
+**Download and enable** is selected by default. Choose it to install the approved English model. The progress
 bar shows bytes actually downloaded; speech becomes ready after verification and
 loading finish. **Keep writing** hides the popup while the session continues the
 download. **Cancel download** stops it, and **Options → Models** reopens setup or
 progress. **Not now** leaves typing available and offers setup on a later launch.
 
 Models stay in a visible shared folder, independent of the current database:
-`~/Thoughts/models` on Linux/macOS and `%USERPROFILE%\Thoughts\models` on Windows.
+`~/Documents/Thoughts/models` on Linux/macOS and `%USERPROFILE%\Documents\Thoughts\models` on Windows.
 Later launches verify and reuse the installed model, with no download or restart
 needed to enable F8. `--models-dir` overrides `THOUGHTS_MODELS_DIR`, which overrides
 this default. Options → Models shows the selected folder. Keep files unmodified
@@ -43,7 +43,7 @@ model weights; it never downloads or builds native engine libraries.
 The existing explicit model install command remains available:
 
 ```sh
-go run ./cmd/moonshine-smoke install -models-dir "$HOME/Thoughts/models"
+go run ./cmd/moonshine-smoke install -models-dir "$HOME/Documents/Thoughts/models"
 ```
 
 Ordinary Go builds and tests do not prepare or automatically enable speech.
@@ -78,8 +78,8 @@ remove `bin/moonshine/v0.1.5/.setup.lock` only when no setup is running. A lefto
 before retrying. Temporary `.setup-*` directories can be removed while setup is
 inactive. No automatic stale-lock takeover or background cleanup runs.
 
-On the Events timeline, F8 opens a draft. Press F8 again to record, then F8 to
-stop. Text remains unsaved until the normal Thought save. Until setup is ready,
+On the Events timeline, F8 opens a thought and immediately starts recording.
+Press F8 again to stop. T opens a draft for typing. Text remains unsaved until the normal Thought save. Until setup is ready,
 typed drafts remain available and recording shows a fixed unavailable message.
 Missing, damaged, or inaccessible models are reported in the popup while the
 rest of the browser TUI remains available. Damaged/incomplete revisions are not

@@ -69,7 +69,7 @@ func (m *Model) ConfigureModelSetup(service ModelSetup) {
 	m.models = modelSetupState{
 		service:     service,
 		description: service.Description(),
-		focus:       1,
+		focus:       0,
 		checking:    true,
 		status:      "Checking local speech…",
 	}
@@ -241,7 +241,7 @@ func (m Model) modelsButtons() []modelsButton {
 		if m.models.status != "" {
 			label = "Retry download"
 		}
-		return []modelsButton{{modelsDownload, label}, {modelsClose, "Not now"}}
+		return []modelsButton{{modelsDownload, label}, {modelsClose, "Not now (recommended to download)"}}
 	case m.models.loadFailed:
 		return []modelsButton{{modelsCheck, "Retry check"}, {modelsClose, "Not now"}}
 	default:

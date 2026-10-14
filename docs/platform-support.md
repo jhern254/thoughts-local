@@ -8,7 +8,7 @@ the speech engine; users only install the model through onboarding.
 `make tui/browser` automatically prepares a missing engine for source builds.
 `make tui/package` builds the app and engine together; the existing native matrix
 checks these bundles after relocation on all four desktop targets. Browser model onboarding stores
-weights in the visible per-user `Thoughts/models` folder, shared across databases;
+weights in the visible per-user `Documents/Thoughts/models` folder, shared across databases;
 normal builds without the engine explain its absence and offer no download.
 Ordinary Go builds contain no
 native runtime. The developer setup helper is checked by the existing four-target

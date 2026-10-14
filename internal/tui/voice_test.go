@@ -94,17 +94,34 @@ func TestModel_VoiceDraft(t *testing.T) {
 }
 
 func TestModel_BrowserF8(t *testing.T) {
-	t.Run("opens a typed draft only from an eligible Events timeline", func(t *testing.T) {
+	t.Run("Options does not advertise draft creation to browser microphone preparation", func(t *testing.T) {
+		model := newRootTestModel()
+		model, _ = rootUpdate(model, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
+		model, _ = rootUpdate(model, BrowserOptionsEnabledMsg{})
+		model, _ = rootUpdate(model, BrowserOptionsMsg{Action: "open"})
+		if model.VoiceState().CanOpenThoughtDraft {
+			t.Fatal("Options advertised a recording shortcut it cannot accept")
+		}
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyF8})
+		if model.VoiceState().RecordingID != 0 {
+			t.Fatal("F8 started a recording behind Options")
+		}
+	})
+	t.Run("opens a draft and requests recording in one keypress from eligible screens", func(t *testing.T) {
 		for _, screen := range []screen{screenEvents, screenSubjectList, screenBrowseThoughts} {
 			m := newRootTestModel()
 			m.screen = screen
-			m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
+			m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyF8}))
-			if got, want := m.thoughts.VoiceOpen(), screen == screenEvents; got != want {
+			if got, want := m.thoughts.VoiceOpen(), true; got != want {
 				t.Fatalf("screen=%v draft=%v, want %v", screen, got, want)
 			}
-			if screen == screenEvents && m.VoiceState().RecordingStatus != "idle" {
-				t.Fatal("opening draft also started recording")
+			if recording := m.VoiceState(); recording.RecordingStatus != "requesting" || recording.RecordingID == 0 || recording.TranscriptAuthority == nil {
+				t.Fatal("F8 did not immediately request an authorized recording")
+			}
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyF8}))
+			if m.VoiceState().RecordingStatus != "stopping" {
+				t.Fatal("second F8 did not stop recording")
 			}
 		}
 	})

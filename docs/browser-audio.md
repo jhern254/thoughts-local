@@ -6,8 +6,9 @@ use for typing.
 
 With the approved model installed and the native runtime configured, browser
 recording uses local Moonshine speech recognition. On the Events timeline, F8
-opens a thought draft; inside the draft, F8 starts or stops recording. Review
-and edit the words before saving.
+opens a thought and immediately starts recording. T opens a draft for typing.
+Inside the draft, F8 starts or stops recording. Review and edit the words before
+saving.
 
 Without speech configured, Thoughts still starts and supports typed drafts.
 Trying to record explains that speech is unavailable without requesting the

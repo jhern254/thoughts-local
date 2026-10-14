@@ -20,7 +20,7 @@ type modelSetupStub struct {
 func (setup *modelSetupStub) Description() modelassets.ModelDescription {
 	return modelassets.ModelDescription{DisplayName: "Moonshine Small Streaming English", ExpectedSizeBytes: 142300974}
 }
-func (*modelSetupStub) Directory() string { return "/home/test/Thoughts/models" }
+func (*modelSetupStub) Directory() string { return "/home/test/Documents/Thoughts/models" }
 func (setup *modelSetupStub) LoadInstalledModel(context.Context) (ModelSetupStatus, error) {
 	return setup.status, nil
 }
@@ -38,7 +38,18 @@ func deliverModelsCheck(model Model) Model {
 	return model
 }
 func TestModel_ModelSetup(t *testing.T) {
-	t.Run("closing Options restores F8 draft creation from Events", func(t *testing.T) {
+	t.Run("download is selected by default and Not now explains the recommendation", func(t *testing.T) {
+		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
+		if !strings.Contains(ansi.Strip(model.View().Content), "Not now (recommended to download)") {
+			t.Error("missing download recommendation beside Not now")
+		}
+		model, command := rootUpdate(model, enterKey())
+		if !model.models.busy || command == nil || !model.models.open {
+			t.Fatal("Enter did not start the default download action")
+		}
+		model.models.cancel()
+	})
+	t.Run("closing Options restores typed draft creation from Events", func(t *testing.T) {
 		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{Ready: true}}))
 		model, _ = rootUpdate(model, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
 		model, _ = rootUpdate(model, BrowserOptionsEnabledMsg{})
@@ -53,9 +64,9 @@ func TestModel_ModelSetup(t *testing.T) {
 		if !model.VoiceState().CanOpenThoughtDraft {
 			t.Fatal("closing Options did not restore draft creation")
 		}
-		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyF8})
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: 't', Text: "t"})
 		if !strings.Contains(model.View().Content, "Create thought") {
-			t.Fatal("F8 did not open the thought draft")
+			t.Fatal("T did not open the thought draft")
 		}
 	})
 	t.Run("mouse activates Keep writing at its rendered row", func(t *testing.T) {
@@ -88,6 +99,7 @@ func TestModel_ModelSetup(t *testing.T) {
 				t.Fatalf("missing %q: %s", text, content)
 			}
 		}
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
 		model, _ = rootUpdate(model, enterKey())
 		if model.models.open || model.View().Content != before {
 			t.Fatal("Not now changed underlying view or focus")
@@ -110,6 +122,7 @@ func TestModel_ModelSetup(t *testing.T) {
 	})
 	t.Run("Options has Visual and Models and reopens setup", func(t *testing.T) {
 		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
 		model, _ = rootUpdate(model, enterKey())
 		model, _ = rootUpdate(model, BrowserOptionsEnabledMsg{})
 		model, _ = rootUpdate(model, BrowserOptionsMsg{Action: "open"})
@@ -121,6 +134,11 @@ func TestModel_ModelSetup(t *testing.T) {
 		if !model.models.open {
 			t.Fatal("Models did not reopen popup")
 		}
+		model, command := rootUpdate(model, enterKey())
+		if !model.models.busy || command == nil {
+			t.Fatal("reopened Models did not select Download by default")
+		}
+		model.models.cancel()
 	})
 	t.Run("narrow popup keeps actions within terminal bounds", func(t *testing.T) {
 		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
@@ -149,7 +167,6 @@ func TestModel_ModelSetup(t *testing.T) {
 			return ctx.Err()
 		}}
 		model := deliverModelsCheck(configuredModelsTestModel(setup))
-		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyUp})
 		model, command := rootUpdate(model, enterKey())
 		batch := command().(tea.BatchMsg)
 		finished := make(chan tea.Msg, 1)
@@ -210,7 +227,6 @@ func TestModelSetup_SessionShutdown(t *testing.T) {
 		})
 		initCommands := session.Init()().(tea.BatchMsg)
 		session.Update(initCommands[1]())
-		session.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 		_, command := session.Update(enterKey())
 		commands := command().(tea.BatchMsg)
 		downloadDone := make(chan tea.Msg, 1)

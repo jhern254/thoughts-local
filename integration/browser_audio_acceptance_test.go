@@ -116,7 +116,7 @@ func (*browserModelsSetupFixture) Description() modelassets.ModelDescription {
 	description, _ := modelassets.DescribeModel(modelassets.MoonshineSmallStreamingEnglish)
 	return description
 }
-func (*browserModelsSetupFixture) Directory() string { return "~/Thoughts/models" }
+func (*browserModelsSetupFixture) Directory() string { return "~/Documents/Thoughts/models" }
 func (fixture *browserModelsSetupFixture) LoadInstalledModel(context.Context) (tui.ModelSetupStatus, error) {
 	return tui.ModelSetupStatus{Ready: fixture.ready, CanDownload: !fixture.ready}, nil
 }

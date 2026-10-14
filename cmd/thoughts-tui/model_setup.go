@@ -45,7 +45,7 @@ func resolveModelDirectory(configuredDirectory, homeDirectory string) string {
 	if configuredDirectory != "" {
 		return configuredDirectory
 	}
-	return filepath.Join(homeDirectory, "Thoughts", "models")
+	return filepath.Join(homeDirectory, "Documents", "Thoughts", "models")
 }
 func newBrowserModelSetup(configuredDirectory string) (*browserModelSetup, error) {
 	homeDirectory, err := os.UserHomeDir()

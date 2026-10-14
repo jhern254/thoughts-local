@@ -22,9 +22,9 @@ func (transcriber *setupTestTranscriber) StartRecordingStream(context.Context) (
 }
 func (transcriber *setupTestTranscriber) Close() error { transcriber.closeCalls++; return nil }
 func TestBrowserModelSetup(t *testing.T) {
-	t.Run("visible default is independent of database and explicit directory wins", func(t *testing.T) {
+	t.Run("default uses Documents and explicit directory wins", func(t *testing.T) {
 		home := t.TempDir()
-		if got, want := resolveModelDirectory("", home), filepath.Join(home, "Thoughts", "models"); got != want {
+		if got, want := resolveModelDirectory("", home), filepath.Join(home, "Documents", "Thoughts", "models"); got != want {
 			t.Fatalf("got %q, want %q", got, want)
 		}
 		if got := resolveModelDirectory("custom models", home); got != "custom models" {

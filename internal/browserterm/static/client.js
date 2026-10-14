@@ -34,7 +34,9 @@
     const restoreFocus = state.draftID && (voiceState.draftID !== state.draftID || (voiceState.recordingStatus !== "idle" && state.recordingStatus === "idle"));
     const identity = {sessionID: state.sessionID, draftID: state.draftID, recordingID: state.recordingID};
     if (!captureIdentity || captureIdentity.sessionID !== identity.sessionID || captureIdentity.draftID !== identity.draftID || captureIdentity.recordingID !== identity.recordingID) {
-      const acceptedStart = state.recordingStatus === 'requesting' && voiceState.sessionID === state.sessionID && voiceState.draftID === state.draftID;
+      // F8 can create the draft and recording together. Preserve the audio
+      // context activated by that keypress until the server grant arrives.
+      const acceptedStart = state.recordingStatus === 'requesting' && voiceState.sessionID === state.sessionID && (voiceState.canOpenThoughtDraft || voiceState.draftID === state.draftID);
       microphone.cancel(acceptedStart);
       captureIdentity = identity.draftID ? identity : undefined;
     }
@@ -49,7 +51,7 @@
   }
   window.addEventListener('pagehide', clearVoice);
   container.addEventListener('keydown', event => {
-    if (event.key === 'F8' && connected && voiceState.speechRecognitionAvailable && voiceState.draftID && voiceState.recordingStatus === 'idle') microphone.prepare();
+    if (event.key === 'F8' && connected && voiceState.speechRecognitionAvailable && (voiceState.canOpenThoughtDraft || (voiceState.draftID && voiceState.recordingStatus === 'idle'))) microphone.prepare();
   }, true);
 
   // Use xterm's supported logger seam. Never forward terminal data or errors.

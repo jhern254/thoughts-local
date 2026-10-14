@@ -28,7 +28,7 @@ async function prepareAudioDraft(page) {
   });
   await page.goto('/');
   await expect(page.locator('#status')).toHaveText('Connected');
-  await page.keyboard.press('F8');
+  await page.keyboard.press('t');
   await expect(screen(page)).toContainText('Create thought');
   await page.keyboard.type('typed draft');
 }
@@ -87,4 +87,21 @@ test('permission denial preserves the draft and does not open an audio socket', 
   await expect(screen(page)).toContainText('permission was denied');
   await expect(screen(page)).toContainText('typed draft');
   expect(await page.evaluate(() => window.audioProbe.audioConnections)).toBe(0);
+});
+
+
+test('one F8 from Events opens a thought and immediately records', async ({page}) => {
+  await fakeMicrophone(page, 0.25, test.info().project.name === 'firefox');
+  await page.goto('/');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await expect(screen(page)).toContainText('Events');
+  await page.keyboard.press('F8');
+  await expect(screen(page)).toContainText('Create thought');
+  await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
+  await page.evaluate(() => window.voiceProbe.grant(0));
+  await expect(page.locator('#status')).toHaveText('Transcribing…');
+  await expect(screen(page)).toContainText('synthetic speech');
+  await page.keyboard.press('F8');
+  await expect(screen(page)).toContainText('F8: Record');
+  await expect.poll(() => page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(1);
 });
