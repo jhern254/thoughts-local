@@ -125,3 +125,14 @@ test('playback updates do not retry a rejected play or persist automatic pauses'
  assert.equal(f.visual.playbackStatus.textContent,'Video playback is unavailable. The still background remains visible.');
  f.visual.documentVisible=false;f.visual.updatePlayback();assert.ok(pauses>0);assert.equal(f.visual.saved.userPaused,false);
 });
+
+test('a retired preview play rejection cannot pause its replacement',async()=>{
+ const f=activationFixture();let rejectOld,pauses=0;
+ const old={pause(){},play(){return new Promise((resolve,reject)=>{rejectOld=reject;});}};
+ Object.assign(f.visual,{previewVideo:old,connected:true,documentVisible:true,state:{open:true,id:1,speedPercent:100},previewPlaying:false});
+ f.visual.updatePlayback=()=>{};
+ const pending=f.visual.togglePreviewPlayback();
+ f.visual.previewVideo={pause(){pauses++;}};f.visual.previewPlaying=true;
+ rejectOld(new Error('retired synthetic preview'));await pending;
+ assert.equal(f.visual.previewPlaying,true);assert.equal(pauses,0);
+});

@@ -19,7 +19,11 @@ class ThoughtsVisual {
     this.documentVisible = !document.hidden;
     this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
     this.playbackStatus = document.getElementById('video-status');
-    this.motionQuery.addEventListener('change', () => { this.motionOverride = false; this.updatePlayback(); this.reportPlayback(); });
+    this.motionQuery.addEventListener('change', () => {
+      this.motionOverride = false;
+      if (this.motionQuery.matches) this.stopPreviewPlayback();
+      this.updatePlayback(); this.reportPlayback();
+    });
     document.addEventListener('visibilitychange', () => { this.documentVisible = !document.hidden; this.updatePlayback(); if (document.hidden) this.stopPreviewPlayback(); });
     this.state = {open: false};
     this.previewGeneration = 0;
@@ -109,7 +113,7 @@ class ThoughtsVisual {
         this.motionOverride = !state.userPaused; this.playbackFailed = false; this.updatePlayback();
         this.reply('played', operationID); break;
       case 'preview':
-        await this.togglePreviewPlayback(); this.reply('previewed', operationID); break;
+        await this.togglePreviewPlayback(); this.reply('previewed', operationID, connectionGeneration); break;
       case 'apply': case 'remove':
         await this.save(state.request === 'remove', operationID, state.darkness, state.framing, connectionGeneration);
         break;
@@ -510,7 +514,11 @@ class ThoughtsVisual {
       await video.play();
       if (this.previewVideo !== video || !this.state.open || !this.previewPlaying) {video.pause();return;}
       video.hidden = false; this.queuePreview();
-    } catch {this.stopPreviewPlayback();}
+    } catch {
+      // Retiring an old player can reject its pending play promise after a new
+      // preview has started. That completion must not pause the new owner.
+      if (this.previewVideo === video) this.stopPreviewPlayback();
+    }
   }
   async previewVideoFile(file, operationID, previewGeneration) {
     if (file.size > 128 * 1024 * 1024) throw new Error();

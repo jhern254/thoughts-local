@@ -58,7 +58,11 @@ test('video preserves draft, connection, framing and player across settings-only
 
 test('reduced motion and blocked playback keep a stable poster without changing user preference',async({page},testInfo)=>{
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');await selectVideo(page);
+ await openVisual(page);await clickControl(page,'Play / pause preview');
+ await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(false);
  await page.emulateMedia({reducedMotion:'reduce'});
+ await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(true);
+ await clickControl(page,'Back');
  await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
  await expect(page.locator('#background-video')).toBeHidden();await expect(page.locator('#background-image')).toBeVisible();
  expect((await (await page.request.get('/visual')).json()).userPaused).toBe(false);
