@@ -7,21 +7,49 @@ configuring speech in those builds fails safely instead of capturing audio.
 
 ## Browser speech
 
-First complete the platform's native setup below and explicitly install the
-approved model. No browser action downloads models or runtime libraries.
-Then build with the native tag in the same configured shell:
+For development, prepare the speech engine once:
 
 ```sh
-go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
-GOFLAGS=-tags=moonshine make tui/browser
-# Or supply the model root directly:
-go run -tags=moonshine ./cmd/thoughts-tui --browser --models-dir "$THOUGHTS_MODELS_DIR"
+make speech/setup
 ```
 
-On Windows, set `$env:GOFLAGS = '-tags=moonshine'` before running `make tui/browser`,
-or use `go run -tags=moonshine ./cmd/thoughts-tui --browser --models-dir $env:THOUGHTS_MODELS_DIR`.
-The database must already have the normal application migrations when using
-`go run` directly.
+This downloads the pinned Moonshine engine into ignored `bin/moonshine/`, checks
+its checksum before unpacking, and executes a native test before marking it
+ready. It installs nothing globally. Later `make tui/browser` launches use that
+engine automatically, with no library-path exports or additional downloads.
+Re-running setup verifies the retained archive and rebuilds/checks the engine
+without downloading it again. A failed check preserves the previous working
+engine.
+
+The model is still a separate explicit download until the first-run setup
+screen is added:
+
+```sh
+export THOUGHTS_MODELS_DIR="$PWD/data/models"
+go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
+make tui/browser
+```
+
+Without prepared engine files, `make tui/browser` remains an ordinary build.
+Other Go builds and tests do not automatically enable speech. Existing manual
+platform setup below still works. To run a native developer command using the
+prepared engine, use `bash scripts/moonshine-dev.sh exec COMMAND ...`, for example:
+
+```sh
+bash scripts/moonshine-dev.sh exec go test -tags=moonshine,moonshine_integration -race -count=1 ./internal/speech/moonshine
+```
+
+Setup requires Bash, Go, curl and a C compiler. macOS needs Xcode Command Line
+Tools and unzip. Windows needs Git Bash, PowerShell 7, x64 Visual Studio C++ build
+tools, and MinGW GCC/dlltool; the helper activates MSVC in its own process. It
+does not install these tools. Explicit `CGO_ENABLED=0` and cross-target builds
+cannot use a prepared native engine; ordinary `go build` remains available.
+
+An incomplete prepared bundle fails with a setup message. If setup was killed,
+remove `bin/moonshine/v0.1.5/.setup.lock` only when no setup is running. A leftover
+`.previous-<os>-<arch>` directory is the prior working bundle: inspect/restore it
+before retrying. Temporary `.setup-*` directories can be removed while setup is
+inactive. No automatic stale-lock takeover or background cleanup runs.
 
 On the Events timeline, F8 opens a draft. Press F8 again to record, then F8 to
 stop. Text remains unsaved until the normal Thought save. Without a model root

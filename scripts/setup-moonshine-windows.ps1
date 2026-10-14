@@ -10,11 +10,28 @@ if ($archiveSHA256 -ne $expectedSHA256) { throw 'Moonshine runtime archive check
 
 # The release contains MSVC C++ static archives, not a Moonshine DLL. Keep those
 # objects behind an MSVC-built DLL so cgo's MinGW compiler only sees the C ABI.
-# Build in an x64 Visual Studio developer shell with MinGW tools on PATH.
+# Activate MSVC only inside this helper; the caller's environment is unchanged.
+if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+    if (-not (Test-Path $vswhere)) { throw 'Moonshine setup requires Visual Studio C++ build tools' }
+    $visualStudioDirectory = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if (-not $visualStudioDirectory) { throw 'Moonshine setup requires Visual Studio C++ build tools' }
+    $developerCommand = "`"$visualStudioDirectory\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 >nul && set"
+    $developerEnvironment = & $env:ComSpec /d /s /c $developerCommand
+    if ($LASTEXITCODE -ne 0) { throw 'Moonshine MSVC environment setup failed' }
+    foreach ($environmentLine in $developerEnvironment) {
+        if ($environmentLine -match '^([^=]+)=(.*)$') {
+            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+        }
+    }
+}
 Get-Command cl.exe, lib.exe, dumpbin.exe, dlltool.exe -ErrorAction Stop | Out-Null
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 $OutputDirectory = (Resolve-Path $OutputDirectory).Path
-& tar -xzf $RuntimeArchivePath -C $OutputDirectory
+# Git Bash's GNU tar interprets a drive-letter archive path as a remote host.
+# Use Windows' bsdtar so this helper works from either PowerShell or Git Bash.
+$windowsTar = Join-Path $env:SystemRoot 'System32/tar.exe'
+& $windowsTar -xzf $RuntimeArchivePath -C $OutputDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Moonshine runtime extraction failed' }
 $runtimeDirectory = Join-Path $OutputDirectory 'moonshine-voice-windows-x86_64'
 $nativeLibraryDirectory = Join-Path $runtimeDirectory 'lib'
