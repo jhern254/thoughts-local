@@ -20,7 +20,7 @@ type TimelineReader interface {
 
 func (m *Model) OpenEventView(scope timeline.ThoughtScope, reader TimelineReader) tea.Cmd {
 	previous := m.browseThoughts
-	retain := previous.eventScope != nil && previous.eventScope.Event().EventID == scope.Event().EventID
+	retain := previous.eventScope != nil && previous.eventScope.Key() == scope.Key()
 	m.Reset()
 	m.browsingThoughtsView = true
 	m.browseThoughts.eventScope, m.browseThoughts.timelineView = &scope, reader

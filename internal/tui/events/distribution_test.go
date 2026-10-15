@@ -41,7 +41,7 @@ func TestModel_Distributions(t *testing.T) {
 		m, _, _ := fixture(t)
 		start := m.day.Add(8 * time.Hour)
 		end := start.Add(time.Hour)
-		m.items = append([]data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}, m.items...)
+		m.items = append(eventEntries([]data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}), m.items...)
 		m.counts = append(m.counts, data.EventThoughtCountView{EventID: 2, Count: 20})
 		for _, width := range []int{80, 60, 59, 40} {
 			m.Resize(width, 27)
@@ -131,7 +131,7 @@ func TestModel_Distributions(t *testing.T) {
 			t.Fatal("reset did not restore defaults")
 		}
 		press("enter")
-		if m.expanded != 0 {
+		if !m.expanded.IsZero() {
 			t.Fatal("closing controls expanded a card")
 		}
 		if lists != service.lists || counts != store.counts || reads != store.reads {
@@ -284,7 +284,7 @@ func TestModel_Distributions(t *testing.T) {
 			start := m.day.Add(time.Duration(3+i*6) * time.Hour)
 			end := start.Add(time.Hour)
 			id := int64(i + 1)
-			m.items = append(m.items, data.Event{EventID: id, StartedAt: start, EndedAt: &end})
+			m.items = append(m.items, eventEntries([]data.Event{{EventID: id, StartedAt: start, EndedAt: &end}})...)
 			m.counts = append(m.counts, data.EventThoughtCountView{EventID: id, Count: count})
 		}
 		before, positions, _ := m.layout()
@@ -296,7 +296,7 @@ func TestModel_Distributions(t *testing.T) {
 		if !(widths[0] < widths[1] && widths[1] < widths[2]) {
 			t.Fatalf("counts 20, 100, 200 have peak widths %v, want increasing widths", widths)
 		}
-		m.expanded = 3
+		m.expanded.EventID = 3
 		expanded, got, _ := m.layout()
 		for _, id := range []int64{1, 2} {
 			if distributionLane(before[positions[id]:positions[id]+4]) != distributionLane(expanded[got[id]:got[id]+4]) {
@@ -313,8 +313,8 @@ func TestModel_Distributions(t *testing.T) {
 
 	t.Run("highlight follows event identity when an earlier event has no count", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		end := m.items[0].StartedAt
-		m.items = append([]data.Event{{EventID: 2, StartedAt: end.Add(-time.Hour), EndedAt: &end}}, m.items...)
+		end := m.items[0].Event.StartedAt
+		m.items = append(eventEntries([]data.Event{{EventID: 2, StartedAt: end.Add(-time.Hour), EndedAt: &end}}), m.items...)
 		m.position.eventIndex = 1
 		lines, positions, _ := m.layout()
 		row := positions[1] + 2
@@ -339,7 +339,7 @@ func TestModel_Distributions(t *testing.T) {
 		m.day = m.day.AddDate(0, 0, -1)
 		start := m.day.Add(9 * time.Hour)
 		middle, end := start.Add(time.Hour), start.Add(2*time.Hour)
-		m.items = []data.Event{{EventID: 1, StartedAt: start, EndedAt: &middle}, {EventID: 2, StartedAt: middle, EndedAt: &end}}
+		m.items = eventEntries([]data.Event{{EventID: 1, StartedAt: start, EndedAt: &middle}, {EventID: 2, StartedAt: middle, EndedAt: &end}})
 		m.counts = []data.EventThoughtCountView{{EventID: 1, Count: 20}, {EventID: 2, Count: 20}}
 		combined, positions, _ := m.layout()
 		row := positions[2] - 1
@@ -356,7 +356,7 @@ func TestModel_Distributions(t *testing.T) {
 		if hasDistribution(last) || strings.TrimSpace(last) != "..." {
 			t.Fatal("historical ending covered or changed")
 		}
-		m.expanded = 1
+		m.expanded.EventID = 1
 		expanded, _, _ := m.layout()
 		if hasDistribution(strings.Join(expanded, "\n")) {
 			t.Fatal("expanded event or unknown count contributed a curve")
@@ -402,7 +402,7 @@ func TestModel_Distributions(t *testing.T) {
 		m, _, _ := fixture(t)
 		start := m.day.Add(9 * time.Hour)
 		end := start.Add(time.Hour)
-		m.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}, m.items[0]}
+		m.items = eventEntries([]data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}, *m.items[0].Event})
 		m.counts = []data.EventThoughtCountView{{EventID: 1, Count: 10}, {EventID: 2, Count: 20}}
 		m.position.followNow = false
 		lines, positions, _ := m.layout()

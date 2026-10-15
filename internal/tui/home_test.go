@@ -547,3 +547,13 @@ func (s homeThoughtStore) ThoughtStatsInRange(ctx context.Context, u string, fro
 func (*homeTimelineStub) ThoughtStats(context.Context, string, timeline.ThoughtScope) (data.ThoughtIntervalStats, error) {
 	panic("unexpected event stats")
 }
+
+func (*homeTimelineStub) Day(context.Context, string, time.Time, time.Time) ([]timeline.Entry, error) {
+	return nil, nil
+}
+func (*homeTimelineStub) OpenMiscThoughtsView(context.Context, string, time.Time) (timeline.ThoughtScope, error) {
+	panic("unexpected Misc expansion")
+}
+func (s homeThoughtStore) MiscThoughtGroups(context.Context, string, time.Time, time.Time, time.Time) ([]data.MiscThoughtGroup, error) {
+	return nil, nil
+}

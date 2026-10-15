@@ -9,6 +9,7 @@ import (
 )
 
 type Store interface {
+	MiscThoughtGroups(context.Context, string, time.Time, time.Time, time.Time) ([]data.MiscThoughtGroup, error)
 	ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error)
 	ThoughtStatsInRange(context.Context, string, time.Time, time.Time) (data.ThoughtIntervalStats, error)
 	CountThoughts(context.Context, string) (int64, error)
@@ -38,4 +39,8 @@ func (s *Service) ThoughtCountsBySubject(ctx context.Context, userID string) ([]
 
 func (s *Service) ThoughtStatsInRange(ctx context.Context, userID string, from, until time.Time) (data.ThoughtIntervalStats, error) {
 	return s.store.ThoughtStatsInRange(ctx, userID, from, until)
+}
+
+func (s *Service) MiscThoughtGroups(ctx context.Context, userID string, from, until, ongoingUntil time.Time) ([]data.MiscThoughtGroup, error) {
+	return s.store.MiscThoughtGroups(ctx, userID, from, until, ongoingUntil)
 }

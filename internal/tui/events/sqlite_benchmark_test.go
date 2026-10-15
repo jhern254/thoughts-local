@@ -131,7 +131,7 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 					}
 					// Same launch order and independent commands as loadDay's batch.
 					launch(func() tea.Msg {
-						items, err := events.List(ctx, "demo", day, day.AddDate(0, 0, 1))
+						items, err := view.Day(ctx, "demo", day, day.AddDate(0, 0, 1))
 						return listedMsg{items: items, err: err}
 					})
 					pending := 1
@@ -156,10 +156,10 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 							}
 							if concurrent {
 								for _, item := range result.items {
-									if item.EndedAt == nil {
+									if item.Event != nil && item.Event.EndedAt == nil {
 										pending++
 										launch(func() tea.Msg {
-											latest, err := view.LatestThought(ctx, "demo", item.EventID)
+											latest, err := view.LatestThought(ctx, "demo", item.Event.EventID)
 											return latestMsg{item: latest, err: err}
 										})
 									}
@@ -207,13 +207,13 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 }
 
 type countedEventReads struct {
-	Service
+	TimelineView
 	calls atomic.Int64
 }
 
-func (s *countedEventReads) List(ctx context.Context, user string, from, until time.Time) ([]data.Event, error) {
+func (s *countedEventReads) Day(ctx context.Context, user string, from, until time.Time) ([]timeline.Entry, error) {
 	s.calls.Add(1)
-	return s.Service.List(ctx, user, from, until)
+	return s.TimelineView.Day(ctx, user, from, until)
 }
 
 // Each burst launches ordinary List/Counts batches concurrently, but postpones
@@ -230,8 +230,8 @@ func BenchmarkTimelineBurst(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.Cleanup(func() { _ = runtime.Close() })
-	service := &countedEventReads{Service: runtime.Events()}
-	m := New(b.Context(), "demo", service, runtime.TimelineView(), runtime.Thoughts(), runtime.Subjects(), logging.Nop())
+	service := &countedEventReads{TimelineView: runtime.TimelineView()}
+	m := New(b.Context(), "demo", runtime.Events(), service, runtime.Thoughts(), runtime.Subjects(), logging.Nop())
 	current, err := runtime.Events().Get(b.Context(), "demo", 721)
 	if err != nil {
 		b.Fatal(err)

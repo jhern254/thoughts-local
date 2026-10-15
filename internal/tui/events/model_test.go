@@ -76,6 +76,7 @@ func (s *eventStub) End(_ context.Context, _ string, id, version int64, end time
 
 type viewStore struct {
 	items         []data.ThoughtSummaryView
+	miscGroups    []data.MiscThoughtGroup
 	counts, reads int
 	err           error
 }
@@ -132,7 +133,7 @@ func TestModel_DayArrival(t *testing.T) {
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
-		if m.expanded != 0 || m.position.eventIndex != 0 || !strings.HasPrefix(timelineCardText(strings.Split(m.View(), "\n")[2]), "09:00 PM  ╭") {
+		if !m.expanded.IsZero() || m.position.eventIndex != 0 || !strings.HasPrefix(timelineCardText(strings.Split(m.View(), "\n")[2]), "09:00 PM  ╭") {
 			t.Fatalf("got day view %q, want first event visible with calendar focus", ansi.Strip(m.View()))
 		}
 	})
@@ -276,7 +277,7 @@ func TestModel_EventThoughtPicker(t *testing.T) {
 			t.Fatal("detail return lost anchors")
 		}
 		m, _ = m.Update(eventKey("esc"))
-		if m.expanded != 0 {
+		if !m.expanded.IsZero() {
 			t.Fatal("one Escape should collapse inline picker")
 		}
 	})
@@ -420,8 +421,8 @@ func TestModel_EventForms(t *testing.T) {
 		m = execute(t, m, cmd)
 		view := ansi.Strip(m.View())
 		box, now := strings.Index(view, "new activity"), strings.Index(view, "Now ·")
-		if box < 0 || now < box || !m.position.followNow || m.items[m.position.eventIndex].EventID != saved.item.EventID || !m.clock.Equal(m.now()) {
-			t.Fatalf("got selection %d and view:\n%s\nwant new event selected and visible above Now", m.items[m.position.eventIndex].EventID, view)
+		if box < 0 || now < box || !m.position.followNow || m.items[m.position.eventIndex].Event.EventID != saved.item.EventID || !m.clock.Equal(m.now()) {
+			t.Fatalf("got selection %d and view:\n%s\nwant new event selected and visible above Now", m.items[m.position.eventIndex].Event.EventID, view)
 		}
 	})
 	t.Run("friendly input is converted before calling the existing service", func(t *testing.T) {
@@ -536,3 +537,17 @@ func (s *viewStore) ThoughtStatsInRange(ctx context.Context, u string, from, unt
 	}
 	return data.ThoughtIntervalStats{Count: int64(len(s.items)), MaxCharacters: largest}, s.err
 }
+
+func eventEntries(items []data.Event) []timeline.Entry {
+	entries := make([]timeline.Entry, 0, len(items))
+	for i := range items {
+		entries = append(entries, timeline.Entry{Event: &items[i]})
+	}
+	return entries
+}
+
+func (s *viewStore) MiscThoughtGroups(context.Context, string, time.Time, time.Time, time.Time) ([]data.MiscThoughtGroup, error) {
+	return s.miscGroups, nil
+}
+
+func (m *Model) openEvent(id int64) tea.Cmd { return m.openEntry(timeline.EntryKey{EventID: id}) }

@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/render"
+	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
@@ -81,13 +82,13 @@ func (m *Model) cardContent(item data.Event) []string {
 	startLayout, endLayout := "03:04", "03:04 PM"
 	crossDay := !displaytime.Day(item.StartedAt).Equal(displaytime.Day(end))
 	differentZone := displaytime.Format(item.StartedAt, "MST") != displaytime.Format(end, "MST")
-	if crossDay || displaytime.Format(item.StartedAt, "PM") != displaytime.Format(end, "PM") || (item.EventID == m.expanded && differentZone) {
+	if crossDay || displaytime.Format(item.StartedAt, "PM") != displaytime.Format(end, "PM") || (item.EventID == m.expanded.EventID && differentZone) {
 		startLayout = "03:04 PM"
 	}
 	if crossDay {
 		startLayout, endLayout = "Jan 2 "+startLayout, "Jan 2 "+endLayout
 	}
-	if item.EventID == m.expanded {
+	if item.EventID == m.expanded.EventID {
 		endLayout += " MST"
 		if differentZone {
 			startLayout += " MST"
@@ -105,13 +106,29 @@ func (m *Model) cardContent(item data.Event) []string {
 	if end.After(m.day.AddDate(0, 0, 1)) {
 		interval += " →"
 	}
-	width := m.cardWidth()
 	heading += " · " + interval
 	if item.EndedAt == nil {
 		heading += " · ongoing"
 	}
+	return m.cardRows(heading, timeline.EntryKey{EventID: item.EventID}, m.count(item.EventID), item.EndedAt == nil)
+}
+
+func (m *Model) entryContent(entry timeline.Entry) []string {
+	if entry.Event != nil {
+		return m.cardContent(*entry.Event)
+	}
+	heading := list.DefaultStyles(true).Title.Render("Misc") + " · " + displaytime.Format(entry.Misc.ObservedAt, "03:04:05 PM")
+	count := "1 thought"
+	if entry.Misc.Count != 1 {
+		count = fmt.Sprintf("%d thoughts", entry.Misc.Count)
+	}
+	return m.cardRows(heading, entry.Key(), count, false)
+}
+
+func (m *Model) cardRows(heading string, key timeline.EntryKey, count string, ongoing bool) []string {
+	width := m.cardWidth()
 	content := ansi.Truncate(heading, width, "…") + "\n"
-	if item.EventID == m.expanded {
+	if key == m.expanded {
 		content += "\n"
 		if m.opening {
 			content += "Loading thoughts…"
@@ -121,8 +138,8 @@ func (m *Model) cardContent(item data.Event) []string {
 			content += m.picker.View()
 		}
 	} else {
-		content += m.count(item.EventID)
-		if item.EndedAt == nil {
+		content += count
+		if ongoing {
 			content += "\n"
 			switch {
 			case m.load.latestPending:
@@ -136,8 +153,7 @@ func (m *Model) cardContent(item data.Event) []string {
 			}
 		}
 	}
-	// Lip Gloss Width includes the border. Clip each logical row before
-	// wrapping so narrow cards cannot split a two-line thought preview.
+	// Clip before adding borders so narrow cards cannot wrap preview rows.
 	lines := strings.Split(content, "\n")
 	for i := range lines {
 		lines[i] = ansi.Truncate(lines[i], width, "…")
@@ -175,15 +191,17 @@ func (m *Model) interval(item data.Event) (time.Time, time.Time) {
 func (m *Model) hourHeight() int { return max(4, (m.bodyHeight()+4)/5) }
 
 type railEntry struct {
-	at       time.Time
-	priority int
-	id       int64
-	text     string
-	content  []string
-	selected bool
-	now      bool
-	end      time.Time
-	hideEnd  bool
+	at         time.Time
+	priority   int
+	key        timeline.EntryKey
+	count      int64
+	countKnown bool
+	text       string
+	content    []string
+	selected   bool
+	now        bool
+	end        time.Time
+	hideEnd    bool
 }
 
 // timelineLayout is a per-call measurement, never retained on Model. Card rows
@@ -191,7 +209,7 @@ type railEntry struct {
 type timelineLayout struct {
 	lines             []string // Rail and boundary labels; card interiors are painted later.
 	cards             []timelineCard
-	positions         map[int64]int
+	positions         map[timeline.EntryKey]int
 	curves            []render.Distribution
 	selectedCurve     int
 	nowLine, curveEnd int
@@ -212,19 +230,35 @@ func (m *Model) measureTimeline() timelineLayout {
 		entries = append(entries, railEntry{at: hour, text: displaytime.Format(hour, "03:04 PM")})
 	}
 	for i, item := range m.items {
-		at, end := m.interval(item)
+		at, end := item.StartedAt(), item.StartedAt()
+		if item.Event != nil {
+			at, end = m.interval(*item.Event)
+		}
 		hideEnd := at.Equal(end) || (end.Equal(m.clock) && m.clock.Before(until))
-		if i+1 < len(m.items) && m.items[i+1].StartedAt.Equal(end) {
+		if i+1 < len(m.items) && m.items[i+1].StartedAt().Equal(end) {
 			hideEnd = true
 		}
+		count, known := int64(0), false
+		if item.Misc != nil {
+			count, known = item.Misc.Count, true
+		} else if m.load.countErr == nil {
+			for _, value := range m.counts {
+				if value.EventID == item.Event.EventID {
+					count, known = value.Count, true
+					break
+				}
+			}
+		}
 		entries = append(entries, railEntry{
-			at:       at,
-			priority: 1,
-			id:       item.EventID,
-			content:  m.cardContent(item),
-			selected: i == m.position.eventIndex,
-			end:      end,
-			hideEnd:  hideEnd,
+			count:      count,
+			countKnown: known,
+			at:         at,
+			priority:   1,
+			key:        item.Key(),
+			content:    m.entryContent(item),
+			selected:   i == m.position.eventIndex,
+			end:        end,
+			hideEnd:    hideEnd,
 		})
 	}
 	if !m.clock.Before(m.day) && m.clock.Before(until) {
@@ -238,7 +272,7 @@ func (m *Model) measureTimeline() timelineLayout {
 	})
 	lines := []string{}
 	var cards []timelineCard
-	positions := make(map[int64]int)
+	positions := make(map[timeline.EntryKey]int)
 	var curves []render.Distribution
 	selectedCurve := -1
 	nowLine := -1
@@ -247,11 +281,11 @@ func (m *Model) measureTimeline() timelineLayout {
 	var previousTime time.Time
 	for i, entry := range entries {
 		// Covered hours are omitted; cards show only their boundaries.
-		if entry.id == 0 && !entry.now && !previousTime.IsZero() && !entry.at.After(previousTime) {
+		if entry.key.IsZero() && !entry.now && !previousTime.IsZero() && !entry.at.After(previousTime) {
 			continue
 		}
 		// An event starting on the hour owns that label's row, not a row below it.
-		if entry.id == 0 && !entry.now && i+1 < len(entries) && entries[i+1].id != 0 && entry.at.Equal(entries[i+1].at) {
+		if entry.key.IsZero() && !entry.now && i+1 < len(entries) && !entries[i+1].key.IsZero() && entry.at.Equal(entries[i+1].at) {
 			continue
 		}
 		if !previousTime.IsZero() {
@@ -260,39 +294,31 @@ func (m *Model) measureTimeline() timelineLayout {
 				lines = append(lines, timelineLabelPadding+"│")
 			}
 		}
-		if entry.id != 0 && len(lines) == previousTop+1 && !previousTime.IsZero() {
+		if !entry.key.IsZero() && len(lines) == previousTop+1 && !previousTime.IsZero() {
 			// A small visual separator is not an elapsed-time gap.
 			lines = append(lines, "")
 		}
 		previousTop, previousTime = len(lines), entry.at
-		if entry.id != 0 {
-			positions[entry.id] = len(lines)
+		if !entry.key.IsZero() {
+			positions[entry.key] = len(lines)
 		}
 		if entry.now {
 			nowLine = len(lines)
 		}
 		if entry.now {
 			lines = append(lines, timelineLabelPadding+entry.text)
-		} else if entry.id == 0 {
+		} else if entry.key.IsZero() {
 			lines = append(lines, fmt.Sprintf("%-*s│", timelineLabelWidth, entry.text))
 		} else {
 			height := len(entry.content) + 2
 			cards = append(cards, timelineCard{top: len(lines), content: entry.content, selected: entry.selected})
-			if m.cardColumn() != timelineLabelWidth && entry.id != m.expanded && m.load.countErr == nil {
-				for _, count := range m.counts {
-					if count.EventID != entry.id {
-						continue
-					}
-					if entry.id == m.items[m.position.eventIndex].EventID {
-						selectedCurve = len(curves)
-					}
-					// Counts affect the renderer's shape, never the card height.
-					// Convert rows to Braille dots (four per cell); center between
-					// the first and last dot, hence (height*4-1)/2.
-					center := float64(len(lines)*4) + float64(height*4-1)/2
-					curves = append(curves, render.Distribution{CenterY: center, Count: count.Count})
-					break
+			if m.cardColumn() != timelineLabelWidth && entry.key != m.expanded && entry.countKnown {
+				if entry.selected {
+					selectedCurve = len(curves)
 				}
+				// Braille cells have four dot rows; center the curve on the card.
+				center := float64(len(lines)*4) + float64(height*4-1)/2
+				curves = append(curves, render.Distribution{CenterY: center, Count: entry.count})
 			}
 			labels := make([]string, height)
 			labels[0] = displaytime.Format(entry.at, "03:04 PM")
@@ -346,8 +372,8 @@ func (m *Model) bodyHeight() int { return max(1, m.height-4) }
 func (m *Model) revealSelected() {
 	layout := m.measureTimeline()
 	if len(m.items) > 0 {
-		top := layout.positions[m.items[m.position.eventIndex].EventID]
-		m.position.showSelected(top, m.bodyHeight(), m.expanded != 0)
+		top := layout.positions[m.items[m.position.eventIndex].Key()]
+		m.position.showSelected(top, m.bodyHeight(), !m.expanded.IsZero())
 	}
 	m.position.clamp(len(layout.lines))
 }
@@ -355,7 +381,7 @@ func (m *Model) anchor() {
 	if m.day.IsZero() {
 		return
 	}
-	if !m.position.followNow && m.expanded != 0 {
+	if !m.position.followNow && !m.expanded.IsZero() {
 		m.revealSelected()
 		return
 	}
@@ -404,14 +430,14 @@ func (m Model) View() string {
 	} else if !m.load.eventsPending && len(m.items) == 0 && m.message == "" {
 		status = "No events on this day. n: start event • d: distributions"
 	}
-	if m.expanded != 0 {
+	if !m.expanded.IsZero() {
 		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
 	}
 	help := "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end"
 	if m.day.Equal(displaytime.Day(m.clock)) {
 		help = "← day / → open • Home/End: first/now • r: refresh • n: start • e: end"
 	}
-	if m.expanded != 0 {
+	if !m.expanded.IsZero() {
 		help = "Q/Esc back • r reload • d distributions"
 	}
 	if m.distributions.open {

@@ -17,11 +17,12 @@ import (
 )
 
 type Service interface {
-	List(context.Context, string, time.Time, time.Time) ([]data.Event, error)
 	Create(context.Context, string, string, time.Time, *int64) (*data.Event, error)
 	End(context.Context, string, int64, int64, time.Time) (*data.Event, error)
 }
 type TimelineView interface {
+	Day(context.Context, string, time.Time, time.Time) ([]timeline.Entry, error)
+	OpenMiscThoughtsView(context.Context, string, time.Time) (timeline.ThoughtScope, error)
 	thoughts.TimelineReader
 	OpenThoughtsView(context.Context, string, int64) (timeline.ThoughtScope, error)
 	LatestThought(context.Context, string, int64) (*data.ThoughtSummaryView, error)
@@ -38,7 +39,7 @@ type tickMsg struct {
 type listedMsg struct {
 	owner   *int
 	request uint64
-	items   []data.Event
+	items   []timeline.Entry
 	err     error
 }
 type loadDelayedMsg struct {
@@ -112,7 +113,7 @@ type Model struct {
 	// day and items are the accepted timeline. load.pendingDay is not presented as the
 	// current day until its matching listedMsg reply succeeds.
 	clock, day time.Time
-	items      []data.Event
+	items      []timeline.Entry
 	counts     []data.EventThoughtCountView
 	latest     *data.ThoughtSummaryView
 
@@ -122,7 +123,7 @@ type Model struct {
 	width, height int
 
 	// expanded delegates keys and rendering to picker without replacing the day.
-	expanded int64
+	expanded timeline.EntryKey
 	opening  bool
 	picker   thoughts.Model
 	form     eventForm
@@ -182,7 +183,7 @@ func (m *Model) Close() {
 	m.stopExpansion()
 	m.expansion++
 	m.picker.Reset()
-	m.expanded = 0
+	m.expanded = timeline.EntryKey{}
 }
 func (m *Model) SetFocused(focused bool) {
 	blurred := !focused
@@ -201,7 +202,7 @@ func (m Model) FormOpen() bool { return m.form.open }
 
 // AtTopLevel excludes the nested views and controls owned by Events.
 func (m Model) AtTopLevel() bool {
-	return m.CanLeave() && m.expanded == 0 && !m.distributions.open
+	return m.CanLeave() && m.expanded.IsZero() && !m.distributions.open
 }
 func (m *Model) Resize(width, height int) {
 	m.load.retainedBody = ""
@@ -246,12 +247,12 @@ func (m *Model) loadDay(day time.Time) tea.Cmd {
 	m.opening = false
 	m.err = nil
 	m.message = ""
-	owner, request, ctx, user, service, view := m.owner, m.load.generation, m.load.ctx, m.userID, m.service, m.timelineView
+	owner, request, ctx, user, view := m.owner, m.load.generation, m.load.ctx, m.userID, m.timelineView
 	return tea.Batch(func() tea.Msg {
 		if err := ctx.Err(); err != nil {
 			return listedMsg{owner: owner, request: request, err: err}
 		}
-		items, err := service.List(ctx, user, day, day.AddDate(0, 0, 1))
+		items, err := view.Day(ctx, user, day, day.AddDate(0, 0, 1))
 		return listedMsg{owner, request, items, err}
 	}, func() tea.Msg {
 		if err := ctx.Err(); err != nil {
@@ -267,13 +268,13 @@ func (m *Model) stopExpansion() {
 	}
 }
 
-func (m *Model) openEvent(id int64) tea.Cmd {
-	if m.expanded != id {
+func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
+	if m.expanded != key {
 		m.picker.Reset()
 	}
 	m.stopExpansion()
 	m.expansion++
-	m.expanded = id
+	m.expanded = key
 	m.opening = true
 	m.position.followNow = false
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -283,7 +284,13 @@ func (m *Model) openEvent(id int64) tea.Cmd {
 		if ctx.Err() != nil {
 			return nil
 		}
-		scope, err := view.OpenThoughtsView(ctx, user, id)
+		var scope timeline.ThoughtScope
+		var err error
+		if key.EventID != 0 {
+			scope, err = view.OpenThoughtsView(ctx, user, key.EventID)
+		} else {
+			scope, err = view.OpenMiscThoughtsView(ctx, user, key.ObservedAt)
+		}
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -338,18 +345,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		if !m.day.Equal(m.load.pendingDay) {
 			m.day = m.load.pendingDay
-			m.position.eventIndex, m.position.topLine, m.expanded = 0, 0, 0
+			m.position.eventIndex, m.position.topLine, m.expanded = 0, 0, timeline.EntryKey{}
 			m.items = nil
 			m.picker.Reset()
 		}
 		if m.load.countsPending {
 			// Only retain successful counts for unchanged displayed intervals.
-			sameIntervals := slices.EqualFunc(m.items, result.items, func(a, b data.Event) bool {
-				sameEnd := a.EndedAt == nil && b.EndedAt == nil
-				if a.EndedAt != nil && b.EndedAt != nil {
-					sameEnd = a.EndedAt.Equal(*b.EndedAt)
+			sameIntervals := slices.EqualFunc(m.items, result.items, func(a, b timeline.Entry) bool {
+				if a.Event == nil || b.Event == nil {
+					return a.Key() == b.Key()
 				}
-				return a.EventID == b.EventID && a.StartedAt.Equal(b.StartedAt) && sameEnd
+				left, right := a.Event, b.Event
+				sameEnd := left.EndedAt == nil && right.EndedAt == nil
+				if left.EndedAt != nil && right.EndedAt != nil {
+					sameEnd = left.EndedAt.Equal(*right.EndedAt)
+				}
+				return left.EventID == right.EventID && left.StartedAt.Equal(right.StartedAt) && sameEnd
 			})
 			if !sameIntervals || m.load.countErr != nil {
 				m.counts = nil
@@ -358,30 +369,33 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		} else {
 			m.counts, m.load.countErr = m.load.pendingCounts.items, m.load.pendingCounts.err
 		}
-		selected := int64(0)
+		selected := timeline.EntryKey{}
 		if len(m.items) > 0 {
-			selected = m.items[m.position.eventIndex].EventID
+			selected = m.items[m.position.eventIndex].Key()
 		}
 		m.items = result.items
 		m.position.clampSelection(len(m.items))
 		var latest, open tea.Cmd
+		if m.position.followNow && len(m.items) > 0 {
+			m.position.eventIndex = len(m.items) - 1
+		}
 		foundExpanded := false
 		m.latest = nil
 		m.load.latestErr = nil
 		for i, item := range m.items {
-			if item.EventID == selected {
+			if !m.position.followNow && item.Key() == selected {
 				m.position.eventIndex = i
 			}
-			if item.EventID == m.expanded {
+			if item.Key() == m.expanded {
 				foundExpanded = true
-				open = m.openEvent(item.EventID)
+				open = m.openEntry(item.Key())
 			}
-			if item.EndedAt == nil {
+			if item.Event != nil && item.Event.EndedAt == nil {
 				if m.position.followNow {
 					m.position.eventIndex = i
 				}
 				m.load.latestPending = true
-				owner, request, ctx, user, view, id := m.owner, m.load.generation, m.load.ctx, m.userID, m.timelineView, item.EventID
+				owner, request, ctx, user, view, id := m.owner, m.load.generation, m.load.ctx, m.userID, m.timelineView, item.Event.EventID
 				latest = func() tea.Msg {
 					if err := ctx.Err(); err != nil {
 						return latestMsg{owner: owner, request: request, err: err}
@@ -392,13 +406,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 		if !foundExpanded {
-			m.expanded = 0
+			m.expanded = timeline.EntryKey{}
 			m.picker.Reset()
 		}
 		m.anchor()
-		if selected == 0 && !m.position.followNow && len(m.items) > 0 {
+		if selected.IsZero() && !m.position.followNow && len(m.items) > 0 {
 			layout := m.measureTimeline()
-			m.position.topLine = layout.positions[m.items[0].EventID]
+			m.position.topLine = layout.positions[m.items[0].Key()]
 			m.position.clamp(len(layout.lines))
 		}
 		return m, tea.Batch(latest, open)
@@ -438,10 +452,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.message = diagnostics.EventMessage(result.err, "Could not open event.")
 			return m, nil
 		}
-		item := result.scope.Event()
-		for i := range m.items {
-			if m.items[i].EventID == item.EventID {
-				m.items[i] = item
+		if result.scope.Key().EventID != 0 {
+			item := result.scope.Event()
+			for i := range m.items {
+				if m.items[i].Key() == result.scope.Key() {
+					m.items[i].Event = &item
+				}
 			}
 		}
 		cmd := m.picker.OpenEventView(result.scope, m.timelineView)
@@ -514,18 +530,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.load.retainedBody = ""
 		return m, nil
 	}
-	if m.expanded != 0 {
+	if !m.expanded.IsZero() {
 		if key.String() == "esc" || key.String() == "left" || key.String() == "h" {
 			m.stopExpansion()
 			m.expansion++
-			m.expanded = 0
+			m.expanded = timeline.EntryKey{}
 			m.opening = false
 			m.picker.Reset()
 			m.revealSelected()
 			return m, nil
 		}
 		if key.String() == "r" {
-			cmd := m.openEvent(m.expanded)
+			cmd := m.openEntry(m.expanded)
 			return m, cmd
 		}
 		if key.String() == "right" || key.String() == "l" {
@@ -603,13 +619,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.position.scrollPage(direction, m.height, len(layout.lines))
 	case "enter":
 		if len(m.items) > 0 {
-			cmd := m.openEvent(m.items[m.position.eventIndex].EventID)
+			cmd := m.openEntry(m.items[m.position.eventIndex].Key())
 			return m, cmd
 		}
 	case "esc":
 		m.stopExpansion()
 		m.expansion++
-		m.expanded = 0
+		m.expanded = timeline.EntryKey{}
 		m.opening = false
 		m.picker.Reset()
 		layout := m.measureTimeline()
@@ -618,7 +634,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		cmd := m.startForm(false)
 		return m, cmd
 	case "e":
-		if len(m.items) > 0 && m.items[m.position.eventIndex].EndedAt == nil {
+		if len(m.items) > 0 && m.items[m.position.eventIndex].Event != nil && m.items[m.position.eventIndex].Event.EndedAt == nil {
 			cmd := m.startForm(true)
 			return m, cmd
 		}

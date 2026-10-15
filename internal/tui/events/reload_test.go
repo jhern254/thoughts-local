@@ -12,11 +12,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
 type blockedEventRead struct {
-	Service
+	TimelineView
 	started chan context.Context
 }
 
@@ -80,7 +81,7 @@ func TestModel_DayTransition(t *testing.T) {
 	})
 	t.Run("failure retains the visible day and original error without exposing its text", func(t *testing.T) {
 		m, s, _ := fixture(t)
-		day, selected := m.day, m.items[m.position.eventIndex].EventID
+		day, selected := m.day, m.items[m.position.eventIndex].Event.EventID
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")
 		if err != nil {
@@ -90,7 +91,7 @@ func TestModel_DayTransition(t *testing.T) {
 		s.listErr = errors.New("PRIVATE_DAY_READ_MARKER")
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
-		if m.err != s.listErr || !m.day.Equal(day) || m.items[m.position.eventIndex].EventID != selected || !strings.Contains(m.View(), "Could not load events for September 10, 2026") {
+		if m.err != s.listErr || !m.day.Equal(day) || m.items[m.position.eventIndex].Event.EventID != selected || !strings.Contains(m.View(), "Could not load events for September 10, 2026") {
 			t.Fatal("failure lost the displayed day, selection, original error, or safe feedback")
 		}
 		if strings.Contains(m.View()+logs.String(), "PRIVATE_DAY_READ_MARKER") || strings.Contains(m.View(), "Loading events") {
@@ -122,7 +123,7 @@ func TestModel_DayTransition(t *testing.T) {
 		today := m.day
 		m, old := m.Update(eventKey("left"))
 		m, cmd := m.Update(eventKey("enter"))
-		if cmd != nil || m.expanded != 0 {
+		if cmd != nil || !m.expanded.IsZero() {
 			t.Fatal("pending navigation opened the previous day's card")
 		}
 		m, cmd = m.Update(eventKey("end"))
@@ -162,7 +163,7 @@ func TestModel_DayTransition(t *testing.T) {
 		m, _, _ := fixture(t)
 		m, _ = m.Update(eventKey("r"))
 		m, cmd := m.Update(eventKey("right"))
-		if cmd == nil || m.expanded == 0 {
+		if cmd == nil || m.expanded.IsZero() {
 			t.Fatal("refresh blocked opening the current event")
 		}
 		m, _ = m.Update(eventKey("esc"))
@@ -209,13 +210,13 @@ func TestModel_CollapsedCounts(t *testing.T) {
 		if got := m.count(1); got != "" {
 			t.Fatalf("got pending count %q, want an empty reserved row", got)
 		}
-		before := strings.Count(m.card(m.items[0], true), "\n")
+		before := strings.Count(m.card(*m.items[0].Event, true), "\n")
 		m, _ = m.Update(loadDelayedMsg{m.owner, m.load.generation})
 		if m.count(1) != "Counting thoughts…" || strings.Contains(m.View(), "Loading events") {
 			t.Fatal("slow count did not show its own feedback independently of events")
 		}
 		m = execute(t, m, batch[1])
-		if m.count(1) != "1 thought" || strings.Count(m.card(m.items[0], true), "\n") != before {
+		if m.count(1) != "1 thought" || strings.Count(m.card(*m.items[0].Event, true), "\n") != before {
 			t.Fatal("ready count did not replace feedback without changing card height")
 		}
 		m.Close()
@@ -248,7 +249,7 @@ func TestModel_CollapsedCounts(t *testing.T) {
 	})
 }
 
-func (s blockedEventRead) List(ctx context.Context, _ string, _, _ time.Time) ([]data.Event, error) {
+func (s blockedEventRead) Day(ctx context.Context, _ string, _, _ time.Time) ([]timeline.Entry, error) {
 	s.started <- ctx
 	<-ctx.Done()
 	return nil, ctx.Err()
@@ -274,7 +275,7 @@ func TestModel_ReloadCancellation(t *testing.T) {
 		for _, closeView := range []bool{false, true} {
 			m, _, _ := fixture(t)
 			started := make(chan context.Context, 1)
-			m.service = blockedEventRead{Service: m.service, started: started}
+			m.timelineView = blockedEventRead{TimelineView: m.timelineView, started: started}
 			cmd := m.loadDay(m.day)().(tea.BatchMsg)[0]
 			reply := make(chan tea.Msg, 1)
 			go func() { reply <- cmd() }()

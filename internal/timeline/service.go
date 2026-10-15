@@ -10,6 +10,7 @@ import (
 )
 
 type EventReader interface {
+	List(context.Context, string, time.Time, time.Time) ([]data.Event, error)
 	Get(context.Context, string, int64) (*data.Event, error)
 }
 
@@ -20,6 +21,7 @@ type ThoughtReader interface {
 }
 
 type MetricsReader interface {
+	MiscThoughtGroups(context.Context, string, time.Time, time.Time, time.Time) ([]data.MiscThoughtGroup, error)
 	ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error)
 	ThoughtStatsInRange(context.Context, string, time.Time, time.Time) (data.ThoughtIntervalStats, error)
 }

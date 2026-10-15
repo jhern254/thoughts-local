@@ -74,7 +74,7 @@ func (m *Model) startForm(ending bool) tea.Cmd {
 	m.form.fields[1].Placeholder = "Search subjects"
 	m.form.fields[2].SetValue(displaytime.FormatInput(m.now()))
 	if ending {
-		m.form.event = m.items[m.position.eventIndex]
+		m.form.event = *m.items[m.position.eventIndex].Event
 		m.form.index = 2
 	}
 	m.resizeForm()

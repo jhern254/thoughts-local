@@ -20,7 +20,7 @@ func BenchmarkTimeline(b *testing.B) {
 				for i := 0; i < 23; i++ {
 					start := m.day.Add(time.Duration(i) * 20 * time.Minute)
 					end := start.Add(20 * time.Minute)
-					m.items = append(m.items, data.Event{EventID: int64(i + 2), StartedAt: start, EndedAt: &end})
+					m.items = append(m.items, eventEntries([]data.Event{{EventID: int64(i + 2), StartedAt: start, EndedAt: &end}})...)
 					m.counts = append(m.counts, data.EventThoughtCountView{EventID: int64(i + 2), Count: int64(i)})
 				}
 				m.items = append(m.items, current)
@@ -28,7 +28,7 @@ func BenchmarkTimeline(b *testing.B) {
 				m.Resize(size[0], size[1])
 				keys := [2]string{"up", "down"}
 				if mode == "Expanded" {
-					m = execute(b, m, m.openEvent(current.EventID))
+					m = execute(b, m, m.openEvent(current.Event.EventID))
 					keys = [2]string{"down", "up"}
 				}
 				key := 0

@@ -123,6 +123,11 @@ func (m *Model) renderEventCurveCells(layout timelineLayout, offset, height int)
 		for _, count := range m.counts {
 			reference = max(reference, count.Count)
 		}
+		for _, item := range m.items {
+			if item.Misc != nil {
+				reference = max(reference, item.Misc.Count)
+			}
+		}
 		shifted := make([]render.Distribution, len(layout.curves))
 		for i, curve := range layout.curves {
 			shifted[i] = curve
@@ -145,7 +150,7 @@ func (m *Model) renderExpandedThoughtPlotCells(layout timelineLayout, offset, he
 	// Paint only the visible intersection; the picker supplies its own scroll mapping.
 	thoughtPlotTop, thoughtPlotEnd, selectedThoughtPlot := -1, -1, -1
 	var thoughtPlotCells [][]render.Cell
-	if top, ok := layout.positions[m.expanded]; ok && m.expanded != 0 {
+	if top, ok := layout.positions[m.expanded]; ok && !m.expanded.IsZero() {
 		for _, card := range layout.cards {
 			if card.top != top {
 				continue
