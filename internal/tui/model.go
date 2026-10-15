@@ -317,7 +317,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case screenMiscThoughts:
 		return m.updateMiscThoughts(message)
 	case screenVoiceThought:
-		if key, ok := message.(tea.KeyPressMsg); ok && (key.String() == "esc" || key.String() == "q") && m.thoughts.ShowingDetail() {
+		if key, ok := message.(tea.KeyPressMsg); ok && (key.String() == "esc" || key.String() == "q" || key.String() == "left") && m.thoughts.ShowingDetail() {
 			m.thoughts.Reset()
 			return m.openHome()
 		}
@@ -330,7 +330,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case screenBrowseThoughts:
 		if key, ok := message.(tea.KeyPressMsg); ok && m.thoughts.Browsing() {
 			switch key.String() {
-			case "q", "esc":
+			case "left", "q", "esc":
 				m.thoughts.Reset()
 				return m.openHome()
 			}
@@ -498,7 +498,7 @@ func (m Model) viewUnderlying() tea.View {
 		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
 		content = heading + "\n" + m.thoughts.View()
 		if m.thoughts.Browsing() {
-			content += "\nQ/Esc: entities"
+			content += "\n←/Q/Esc: events"
 		}
 	}
 	view.Content = content

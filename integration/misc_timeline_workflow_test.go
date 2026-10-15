@@ -152,7 +152,7 @@ func TestMiscTimelineTUIWorkflow_SQLite(t *testing.T) {
 		if view := m.View().Content; strings.Contains(view, "Newest first") || !strings.Contains(view, "Uncovered observation") {
 			t.Fatalf("got detail %q, want standalone thought", view)
 		}
-		m, cmd = m.Update(tuiKey(tea.KeyEscape))
+		m, cmd = m.Update(tuiKey(tea.KeyLeft))
 		m = executeEventData(t, m, cmd)
 		if got := m.View().Content; got != expanded {
 			t.Fatalf("detail return: got %q, want originating expanded card %q", got, expanded)

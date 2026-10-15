@@ -387,7 +387,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			key = tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape})
 			msg = key
 		}
-		if m.screen == detail && key.String() == "esc" {
+		if m.screen == detail && (key.String() == "left" || key.String() == "esc") {
 			if m.cancelRead != nil {
 				m.cancelRead()
 			}
@@ -518,7 +518,7 @@ func (m Model) View() string {
 	case create:
 		return m.editorView(status)
 	case detail:
-		return fmt.Sprintf("Thought %d • %s\n%s%s\n↑/↓: scroll • PgUp/PgDn: page • Q/Esc: thoughts • r: reload", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
+		return fmt.Sprintf("Thought %d • %s\n%s%s\n←/Q/Esc: back • ↑/↓: scroll • PgUp/PgDn: page • r: reload", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:
 		if m.browsingThoughtsView {
 			return m.renderBrowseThoughtsView(status)

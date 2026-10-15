@@ -136,6 +136,23 @@ func TestModel_EventsHome(t *testing.T) {
 		m = startHomeData(t, m, cmd)
 		return m, events
 	}
+
+	t.Run("Left from event thought detail restores the expanded event", func(t *testing.T) {
+		m, _ := newHome(t)
+		m, cmd := rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		before := m.View().Content
+		m, cmd = rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		if m.events.CanLeave() {
+			t.Fatal("thought detail did not open")
+		}
+		m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+		m = runHomeData(t, m, cmd)
+		if m.screen != screenEvents || m.entityFocused || m.events.AtTopLevel() || m.View().Content != before {
+			t.Fatal("Left lost the originating expanded event, focus, selection or scroll")
+		}
+	})
 	t.Run("curve controls route keys without changing panel or day", func(t *testing.T) {
 		m, _ := newHome(t)
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
