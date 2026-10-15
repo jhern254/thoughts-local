@@ -89,7 +89,7 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
     const values = await perform();
     const sorted = field => values.map(value => value[field]).sort((a,b) => a-b);
     const render=sorted('renderMs'), opportunity=sorted('opportunityMs');
-    add({phase:'video-interaction', mode, run, window:phase, workload:name, samples:values.length,
+    add({phase:'video-interaction', mode, run, window:phase, viewport:page.viewportSize(), workload:name, samples:values.length,
       medianMs:render[Math.floor(render.length/2)], p95Ms:render[Math.ceil(render.length*.95)-1],
       opportunityP95Ms:opportunity[Math.ceil(opportunity.length*.95)-1], values});
   }
@@ -145,9 +145,10 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
   }
 
   const runs = process.env.THOUGHTS_PERF_INTERACTION_SMOKE === '1' ? 1 : count;
-  for(let run=0;run<runs;run++) for(const selected of ['static','paused','playing'].slice(run%3).concat(['static','paused','playing'].slice(0,run%3))) {
+  const narrowOnly = process.env.THOUGHTS_PERF_INTERACTION_NARROW_ONLY === '1';
+  for(let run=0;run<runs;run++) for(const selected of narrowOnly ? ['playing'] : ['static','paused','playing'].slice(run%3).concat(['static','paused','playing'].slice(0,run%3))) {
     mode=selected;
-    await page.setViewportSize({width:1200,height:850});
+    await page.setViewportSize(narrowOnly ? {width:650,height:600} : {width:1200,height:850});
     await ready();
     await workload('startup-selection',run,'restore',async () => {
       const values=[];
@@ -175,7 +176,7 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
     const trace = process.env.THOUGHTS_PERF_TRACE === '1' && mode === 'playing' && run === 0;
     if(trace) await cdp.send('Tracing.start',{categories:'devtools.timeline,disabled-by-default-devtools.timeline,cc,media',transferMode:'ReturnAsStream'});
     const before=await usage(), started=performance.now();
-    await events(run,'settled');
+    await events(run,narrowOnly ? 'narrow-repeat' : 'settled');
     await page.keyboard.press('Tab');
     await expect(page.locator('.xterm-rows')).toContainText('Tab/Q: events');
     for(let attempt=0;attempt<3 && !await page.locator('.xterm-bg-62').filter({hasText:/^Thoughts$/}).count();attempt++) {
@@ -186,7 +187,7 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
     await page.keyboard.press('Enter');
     await expect(page.locator('.xterm-rows')).toContainText('20000 thoughts');
     await key('ArrowDown',{thought:20000}); // All Thoughts begins on its Create row.
-    await workload('all-thoughts',run,'settled',async () => {
+    await workload('all-thoughts',run,narrowOnly ? 'narrow-repeat' : 'settled',async () => {
       const values=[];
       for(let n=1;n<=30;n++) values.push(await key('ArrowDown',{thought:20000-n}));
       for(let n=29;n>=0;n--) values.push(await key('ArrowUp',{thought:20000-n}));
@@ -202,7 +203,7 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
       let body='';for(;;) {const part=await cdp.send('IO.read',{handle:stream});body+=part.data;if(part.eof)break;}
       await cdp.send('IO.close',{handle:stream});writeFileSync(output.replace('.json','-trace.json'),body);
     }
-    if(run === 0) {
+    if(run === 0 && !narrowOnly) {
       await page.keyboard.press('Escape');
       await page.setViewportSize({width:650,height:600});
       await ready();await events(run,'narrow');
