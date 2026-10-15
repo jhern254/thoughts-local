@@ -250,8 +250,8 @@ func TestModel_Layout(t *testing.T) {
 			t.Fatalf("unexpected offset or 24-hour label: %s", view)
 		}
 		m = execute(t, m, m.openEvent(1))
-		if !strings.Contains(ansi.Strip(m.View()), "Started at 10:37 AM PDT · ongoing") {
-			t.Fatal("expanded event lost Pacific timestamp")
+		if !strings.Contains(ansi.Strip(m.View()), "Started at 10:37 AM · ongoing") {
+			t.Fatal("expanded event start should use Pacific time without a timezone suffix")
 		}
 	})
 	t.Run("current day ends at Now and completed days retain every hour", func(t *testing.T) {
@@ -363,4 +363,36 @@ func TestModel_Layout(t *testing.T) {
 			t.Fatal("paused timeline changed date")
 		}
 	})
+}
+
+func TestModel_EventStartLabel(t *testing.T) {
+	t.Run("omits the timezone suffix in winter and summer while expanded", func(t *testing.T) {
+		for _, month := range []time.Month{time.January, time.July} {
+			m, _, _ := fixture(t)
+			item := *m.items[0].Event
+			item.StartedAt = time.Date(2026, month, 11, 18, 37, 0, 0, time.UTC)
+			m.clock = item.StartedAt.Add(time.Hour)
+			m.day = displaytime.Day(item.StartedAt)
+			m.expanded.EventID = item.EventID
+			heading := ansi.Strip(m.cardContent(item)[0])
+			want := "Started at " + displaytime.Format(item.StartedAt, "03:04 PM") + " · ongoing"
+			if !strings.Contains(heading, want) || strings.Contains(heading, "PDT") || strings.Contains(heading, "PST") {
+				t.Fatalf("got heading %q, want %q without timezone suffix", heading, want)
+			}
+		}
+	})
+	t.Run("retains timezone distinctions for completed intervals across fall back", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		item := *m.items[0].Event
+		item.StartedAt = time.Date(2026, time.November, 1, 8, 30, 0, 0, time.UTC)
+		end := item.StartedAt.Add(time.Hour)
+		item.EndedAt = &end
+		m.day = displaytime.Day(end)
+		m.expanded.EventID = item.EventID
+		heading := ansi.Strip(m.cardContent(item)[0])
+		if !strings.Contains(heading, "01:30 AM PDT - 01:30 AM PST") {
+			t.Fatalf("got heading %q, want both offsets for repeated hour", heading)
+		}
+	})
+
 }

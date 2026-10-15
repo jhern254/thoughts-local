@@ -88,7 +88,7 @@ func (m *Model) cardContent(item data.Event) []string {
 	if crossDay {
 		startLayout, endLayout = "Jan 2 "+startLayout, "Jan 2 "+endLayout
 	}
-	if item.EventID == m.expanded.EventID {
+	if item.EventID == m.expanded.EventID && item.EndedAt != nil {
 		endLayout += " MST"
 		if differentZone {
 			startLayout += " MST"
