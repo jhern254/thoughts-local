@@ -9,6 +9,7 @@ import {availableParallelism} from 'node:os';
 import {createHash} from 'node:crypto';
 import {Worker} from 'node:worker_threads';
 import {deflateSync} from 'node:zlib';
+import {measureVideoInteractions} from './video-interaction-performance.mjs';
 
 if (process.env.THOUGHTS_BACKGROUND_PERF_DISPOSABLE !== '1') throw new Error('Use only a disposable seeded demo; set THOUGHTS_BACKGROUND_PERF_DISPOSABLE=1.');
 const [url, appPID, output] = process.argv.slice(2);
@@ -78,9 +79,22 @@ try {
   const cdp = await page.context().newCDPSession(page);
   const browserCDP = await browser.newBrowserCDPSession();
   if(process.env.THOUGHTS_PERF_RECORDING==='1')await fakeMicrophone(page,.25);
+  if (process.env.THOUGHTS_PERF_INTERACTIONS === '1') await page.addInitScript(() => {
+    // Test-only arrival stamp: split application/transport waiting from xterm's
+    // queued rendering without adding instrumentation to the shipped adapter.
+    const NativeWebSocket = WebSocket;
+    window.WebSocket = class extends NativeWebSocket {
+      constructor(...args) {
+        super(...args);
+        this.addEventListener('message', event => {
+          if (event.data instanceof ArrayBuffer && new Uint8Array(event.data)[0] === 49) window.lastTerminalArrival = performance.now();
+        });
+      }
+    };
+  });
   await page.route('**/static/visual.js', async route => {
     const response = await route.fetch();
-    await route.fulfill({response,body:await response.text()+`;window.activationTimes=[];const measuredActivate=ThoughtsVisual.prototype.activate;ThoughtsVisual.prototype.activate=async function(...args){const start=performance.now();const result=await measuredActivate.apply(this,args);window.activationTimes.push(performance.now()-start);return result;};`});
+    await route.fulfill({response,body:await response.text()+`;window.activationTimes=[];const measuredActivate=ThoughtsVisual.prototype.activate;ThoughtsVisual.prototype.activate=async function(...args){window.backgroundProbe=this;const start=performance.now();const result=await measuredActivate.apply(this,args);window.activationTimes.push(performance.now()-start);return result;};`});
   });
   await page.goto(url); await page.bringToFront(); await expect(page.locator('#status')).toHaveText('Connected');
   const {windowId} = await cdp.send('Browser.getWindowForTarget');
@@ -129,7 +143,7 @@ try {
     const stat=readFileSync(`/proc/${appPID}/stat`,'utf8').split(') ')[1].split(' ');
     const appCPU=(Number(stat[11])+Number(stat[12]))/ticks;
     const appRSS=Number(readFileSync(`/proc/${appPID}/status`,'utf8').match(/VmRSS:\s+(\d+)/)[1]);
-    return {browserCPU,appCPU,browserRSS:browserRSS/1024,browserPSS:browserPSS/1024,appRSS:appRSS/1024};
+    return {browserCPU,appCPU,browserRSS:browserRSS/1024,browserPSS:browserPSS/1024,appRSS:appRSS/1024,processCPU:processInfo.map(({id,type,cpuTime}) => ({id,type,cpuTime}))};
   };
   const add = row => {rows.push(row);writeFileSync(output,JSON.stringify({metadata,rows},null,2));console.log(JSON.stringify(row));};
   const idle = async image => {
@@ -163,6 +177,10 @@ try {
       }
     } finally {await Promise.all(workers.map(worker=>worker.terminate()));}
   };
+  if (process.env.THOUGHTS_PERF_INTERACTIONS === '1') {
+    if (!videoFixturePath) throw new Error('Interaction mode requires THOUGHTS_PERF_VIDEO_FIXTURE.');
+    await measureVideoInteractions({page, cdp, url, videoFixturePath, output, add, usage, count, openVisual, chooseImage, clickControl});
+  } else {
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');
   if(!importOnly&&!videoFixturePath)await idle('opaque');
   await page.bringToFront();await page.locator('.xterm-helper-textarea').focus();await page.keyboard.press('Tab');await expect(screen(page)).toContainText('Tab/Q: events');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Background darkness:');await expect(screen(page)).not.toContainText('Loading visual');
@@ -272,4 +290,5 @@ try {
   }
   await page.screenshot({path:output.replace('.json','-desktop.png')});
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');
+  }
 } finally {await browser.close();}
