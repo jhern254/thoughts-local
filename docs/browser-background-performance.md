@@ -394,3 +394,193 @@ metric and is not a significance claim. Resize event-to-first-row-mutation
 ranged 0.5–1.8 ms static and 0.4–1.7 ms video; this does not measure complete GPU
 paint. No timeouts occurred. Screenshots were retained and reviewed separately;
 timing assertions alone do not establish visual correctness.
+
+
+## Full traversal: viewport-only Thought formatting
+
+The follow-up compares PR head `38b0aee436d420348d9808455287b52cfc69d815`
+with `e61797fbf65b0d3778ecd3c9b5ff0748deafe571`. The original-head worktree
+receives only the identical benchmark/test fixtures, not production changes.
+The same migrated stress seed contains 721 Events and 20,000 Thoughts; its
+ongoing Event contains 200 Thoughts. Seed DB SHA-256 before app use:
+`9769c81d89fb24c488a476bb4f124166dc9b7500a58bd95ba6d8d9a59bec710e`.
+The source clip is the identical synthetic eight-second 720p Baseline fixture
+identified above. The prepared output hash is recorded in each run.
+
+The previous video probe measured the first DOM mutation and mostly day changes.
+The new opt-in interaction mode verifies the requested selection or completed
+screen transition through xterm's public buffer/render callback. It walks the
+whole day's 18 cards in both directions, opens/collapses the ongoing Event,
+traverses all 200 Thoughts newest-to-oldest-to-newest (398 moves, including page
+fetches), changes days, and samples All Thoughts scrolling. All Thoughts is a
+bounded 30-record round trip, not a traversal of all 20,000 records.
+
+Static control uses the video's exact poster. Paused and playing controls use
+the same selected prepared clip at 100% speed. Five repetitions rotate scenario
+order at 1200×850; one smaller walkthrough per state uses 650×600. Reload startup
+and immediate actual Apply → navigation are recorded separately from settled
+playback. The initial metadata viewport describes the launched browser window;
+these workload dimensions are explicitly set by the probe. Native/backend
+response arrival and subsequent render timings are separate; arrival stamps
+include transport and can include interleaved terminal output, not isolated SQL
+time. The later animation callback is a rendering opportunity, not proof of GPU
+presentation. Diagnostic traces are separate from accepted timing runs.
+
+The reference remains the i5-8250U (8 logical CPUs), Linux amd64, Go 1.25.14,
+Brave 148.0.7778.217 and FFmpeg 6.1.1. Revisions run separately with no competing
+builds/tests. CPU percentages use one logical CPU. These five runs do not establish
+statistical significance.
+
+### Hotspot and selected change
+
+A temporary owned native host recorded a CPU profile during the same full
+traversal; it added no application endpoint or permanent instrumentation. Of
+8.69 CPU-seconds sampled over 88.46 seconds, cumulative
+`renderBrowseThoughtsView` accounted for 33.95% (2.95 seconds), including 32.45%
+in `SummaryPreview`. The renderer formatted up to 150 resident previews before
+slicing out the viewport. ANSI styling, Unicode width calculation, copying and
+allocation dominated that unnecessary work.
+
+The retained production change formats only previews intersecting the viewport,
+then clips partial rows exactly as before. Paging/selection state, statistics,
+queries, distribution geometry, video quality and playback remain unchanged.
+There is no cache or new renderer. Independent literal partial-row coverage and
+existing navigation/geometry tests pass before and after.
+
+A browser trace also showed document-root layout/painting. A four-line CSS row
+containment experiment was stopped during its third repetition because the
+partial samples showed no convincing benefit. It was discarded. Those partial
+results are diagnostic evidence, not a completed five-run comparison or a claim
+of a significant regression. Failed initial probe setup attempts (heading lookup,
+entity timing and Home/End selection assumptions) are retained and excluded.
+
+### Native measurements
+
+Both benchmark suites use five one-second runs with compilation and fixture
+setup outside timing. The new summary fixture has 150 records plus Create,
+80-code-point Unicode previews plus ellipsis and a central alternating selection without data
+commands. The existing Timeline benchmark keeps its original fixtures/sizes.
+Values below are medians; byte/allocation values are per operation.
+
+| Summary window | Before ns/op | After ns/op | Time delta | B/op before → after | allocs/op before → after |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 80×27 Render | 4,784,460 | 275,737 | −94.2% | 366,463 → 24,090 | 7,399 → 421 |
+| 80×27 Navigate | 4,732,980 | 300,056 | −93.7% | 366,543 → 24,178 | 7,403 → 425 |
+| 140×45 Render | 4,635,074 | 457,674 | −90.1% | 313,763 → 36,992 | 6,499 → 631 |
+| 140×45 Navigate | 4,762,801 | 485,060 | −89.8% | 313,850 → 37,071 | 6,503 → 635 |
+
+| Timeline | Before ns/op | After ns/op | Time delta | B/op before → after | allocs/op before → after |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 80×27 Render | 876,037 | 866,017 | −1.1% | 83,660 → 83,644 | 2,140 → 2,140 |
+| 80×27 Navigate | 1,358,848 | 1,390,540 | +2.3% | 143,436 → 143,393 | 3,830 → 3,830 |
+| 80×27 Expanded | 1,934,892 | 855,678 | −55.8% | 186,965 → 118,757 | 4,901 → 2,923 |
+| 40×20 Render | 497,756 | 500,461 | +0.5% | 70,914 → 70,951 | 1,963 → 1,963 |
+| 40×20 Navigate | 951,161 | 925,154 | −2.7% | 128,106 → 127,877 | 3,424 → 3,424 |
+| 40×20 Expanded | 1,807,395 | 639,565 | −64.6% | 154,692 → 80,846 | 4,523 → 2,315 |
+
+### Browser interaction and resource results
+
+Each latency cell is **median/p95 before → after**, in milliseconds: the
+median of five per-run medians/p95s, not a claim of statistical significance.
+The prepared MP4 was byte-identical on both revisions: SHA-256
+`5dd55f91046d34c34aa867eb6a542b28509210fee739a13a3df50aff996b0924`.
+Both runs reported `VaapiVideoDecoder` / platform decoding.
+
+| 1200×850 workload | Static | Paused | Playing 100% |
+| --- | --- | --- | --- |
+| Full-day Event selection | 16.9/38.0 → 18.6/32.3 | 19.8/33.2 → 19.6/30.9 | 20.5/28.3 → 20.4/28.6 |
+| Event expansion/collapse | 20.7/37.8 → 19.6/32.4 | 28.6/38.3 → 24.2/32.0 | 30.1/32.8 → 29.7/32.1 |
+| Full 200-Thought traversal | 19.7/34.1 → 20.9/33.0 | 23.2/33.6 → 18.5/31.8 | 23.4/29.7 → 21.2/32.0 |
+| Day navigation | 21.5/33.7 → 25.9/41.6 | 25.1/37.1 → 25.2/37.8 | 25.3/37.7 → 25.4/37.9 |
+| All Thoughts round trip | 19.5/27.3 → 16.8/27.3 | 14.8/26.5 → 16.1/26.8 | 16.9/29.3 → 16.2/25.3 |
+
+Latency did not improve universally. Static day-navigation p95 rose 7.9 ms,
+and playing expanded-Thought p95 rose 2.3 ms while its median fell 2.2 ms.
+Startup also remains variable: reload-selection p95 was 31.2 → 32.9 ms static,
+32.2 → 28.2 paused, and 33.2 → 36.2 playing. Immediate Apply-selection p95 was
+28.2 → 31.9 ms. The refactor does not establish that initial lag is eliminated.
+Native work is substantially cheaper; terminal frame scheduling, transport and
+browser rendering remain part of end-to-end latency.
+
+The initial single narrow pass appeared worse by more than 10 ms in several
+workloads (selection 26.5 → 43.5 ms p95; full Thought traversal 30.1 → 42.1;
+day navigation 30.9 → 46.6). That prompted a separate **five-run** playing-video
+comparison at 650×600 using the same fixtures and full traversals:
+
+| 650×600 repeat | Median before → after | p95 before → after |
+| --- | ---: | ---: |
+| Full-day Event selection | 18.6 → 17.3 | 28.4 → 28.0 |
+| Event expansion/collapse | 24.1 → 19.4 | 37.3 → 31.1 |
+| Full 200-Thought traversal | 20.7 → 19.7 | 34.1 → 30.0 |
+| Day navigation | 21.5 → 20.7 | 31.3 → 31.0 |
+| All Thoughts round trip | 19.8 → 19.2 | 29.7 → 27.9 |
+
+The greater-than-10-ms increase did not repeat in that follow-up. Both the
+initial result and repeats are retained; five runs do not prove it can never
+occur. All measured transitions reached their expected selections/endpoints.
+All five playing-video frame-counter snapshots reported zero dropped frames on
+each revision; this is not a universal playback guarantee.
+
+Resource values are medians of the five desktop repetitions. Sequence CPU is
+CPU-milliseconds for the same automated interaction sequence, including browser
+instrumentation and playback during it, not isolated decoder cost or steady
+utilization. Total CPU is the median of per-run browser+native sums.
+
+| State | Native sequence CPU ms | Browser sequence CPU ms | Total sequence CPU ms | Idle browser CPU |
+| --- | ---: | ---: | ---: | ---: |
+| Static | 7,080 → 5,290 | 13,680 → 14,440 | 20,760 → 19,690 | 1.62% → 1.48% |
+| Paused | 7,400 → 5,290 | 13,900 → 14,530 | 21,300 → 19,820 | 1.49% → 1.61% |
+| Playing 100% | 7,410 → 5,650 | 16,720 → 17,220 | 24,050 → 23,110 | 25.81% → 24.21% |
+
+Native sequence CPU fell 24–29%; total sampled CPU fell about 4–7%. Browser
+sequence CPU rose about 3–6%, so no browser CPU improvement is claimed. Native
+RSS remained similar (static 41.55 → 40.16 MiB, paused 41.92 → 41.12, playing
+41.56 → 40.71); browser PSS was 330.22 → 330.89, 332.78 → 329.04, and
+344.16 → 341.21 MiB respectively. Lower allocation does not imply immediate RSS
+reclamation or prove a memory plateau/leak absence.
+
+**The additional playback CPU target below 10% remains missed.** Idle playback
+is still approximately 24–26% of one logical CPU; the media path did not change,
+so the small idle difference is not attributed to this refactor. Video quality,
+limits, speed/pause semantics and poster ownership are unchanged. The prior
+intermittent black-rectangle report remains unresolved. Opaque cell regions were
+visible in both baseline and optimized walkthroughs; their relationship to the
+earlier report was not established, and no compositor fix is claimed.
+
+### Reproduction and limits
+
+Generate/migrate the disposable stress fixture and compile before measurement.
+Run the two revisions separately with FFmpeg/ffprobe on PATH:
+
+```sh
+THOUGHTS_BACKGROUND_PERF_DISPOSABLE=1 \
+THOUGHTS_PERF_INTERACTIONS=1 \
+THOUGHTS_PERF_VIDEO_FIXTURE=/tmp/synthetic-720.mp4 \
+node internal/browserterm/client/background-performance.mjs \
+  http://127.0.0.1:PORT APP_PID /tmp/interactions.json
+
+go test ./internal/tui/thoughts -run '^$' \
+  -bench '^BenchmarkThoughtSummaryWindow$' -benchmem -count=5 -benchtime=1s
+go test ./internal/tui/events -run '^$' \
+  -bench '^BenchmarkTimeline$' -benchmem -count=5 -benchtime=1s
+```
+
+`THOUGHTS_PERF_INTERACTION_NARROW_ONLY=1` runs five playing-video repetitions at
+650×600. Workload rows now record their viewport explicitly.
+`THOUGHTS_PERF_INTERACTION_SMOKE=1` reduces repetitions for workload validation;
+`THOUGHTS_PERF_TRACE=1` records a diagnostic browser trace. Neither substitutes
+for unprofiled repeated timings. Logs, profiles, discarded experiments and
+captures are retained under `/tmp/thoughts-video-optimization`.
+
+Desktop/narrow expanded captures and immediate Apply → entity Left/Right were
+reviewed on both revisions with synthetic media. The terminal socket remained
+unchanged. All 64 Chromium/Firefox acceptance cases and the visual/framing/PCM/
+microphone unit suites passed, including import during recording. `make quick`
+and `make ci` passed with the native processor enabled; the latter includes
+fresh unit/integration tests, build, pinned migration CLI and the race detector.
+
+The probe accepts an external synthetic clip and records actual prepared
+geometry/frame counters, so future 1080p work can reuse it. Current stored bounds
+remain 720p-class; an uploaded 1080p source still becomes a bounded 720p-class
+derivative. These results do not establish 1080p readiness. No long one-time
+import benchmark was repeated because the media pipeline did not change.

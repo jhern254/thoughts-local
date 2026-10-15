@@ -143,8 +143,10 @@ npx playwright test browser.spec.mjs
 ```
 
 For the complete synthetic PCM/fake-transcript path, run from the repository
-root after installing the dependencies above. The opt-in Go host owns a
-disposable migrated, seeded app and fake consumer:
+root after installing the dependencies above and full FFmpeg/ffprobe on PATH.
+The suite includes video imports; Playwright's private FFmpeg utility is
+insufficient. The opt-in Go host owns a disposable migrated, seeded app and fake
+consumer:
 
 ```sh
 node --test internal/browserterm/client/microphone.test.mjs internal/browserterm/client/pcm*.test.mjs
