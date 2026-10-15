@@ -26,6 +26,11 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 	if os.Getenv("THOUGHTS_BROWSER_AUDIO_TEST") != "1" {
 		t.Skip("set THOUGHTS_BROWSER_AUDIO_TEST=1 after installing browser test dependencies")
 	}
+	for _, tool := range []string{"ffmpeg", "ffprobe"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Fatalf("browser video acceptance requires %s on PATH", tool)
+		}
+	}
 	database, dsn := openMigratedSQLite(t)
 	seed, err := os.ReadFile("../scripts/demo.sql")
 	if err != nil {
