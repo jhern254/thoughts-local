@@ -40,7 +40,15 @@ Both build the same executable, migrate a fresh temporary database, and open on
 Events. Your default browser opens automatically; stop the server with Ctrl+C to
 delete the temporary database. Each launch starts fresh and leaves your usual database
 untouched. `make tui/browser/demo` remains an alias for the seeded version.
-Set `THOUGHTS_BROWSER_PORT=8123` if the default port is occupied.
+Each browser server needs its own port, even when its database is temporary.
+To use port 7878:
+
+```sh
+THOUGHTS_BROWSER_PORT=7878 make tui/browser/demo
+```
+
+If that port is already in use, stop the existing server with Ctrl+C in its
+terminal or choose another port.
 
 The stress fixture spans about a month, includes empty historical events, and
 puts 200 thoughts in the current event. Expand events, scroll the thought picker,

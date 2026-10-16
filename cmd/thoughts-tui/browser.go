@@ -36,7 +36,17 @@ func serveBrowser(ctx context.Context, port int, modelDirectory string, newModel
 	if err != nil {
 		return err
 	}
-	defer func() { serveErr = errors.Join(serveErr, speechSetup.Close()) }()
+	defer func() {
+		closeErr := speechSetup.Close()
+		if closeErr == nil {
+			return
+		}
+		if serveErr == nil {
+			serveErr = closeErr
+			return
+		}
+		serveErr = errors.Join(serveErr, closeErr)
+	}()
 	consumerFactory := speechSetup.RecordingConsumerFactory()
 	browserModel := func(ctx context.Context) tea.Model { return newModel(ctx, speechSetup) }
 
