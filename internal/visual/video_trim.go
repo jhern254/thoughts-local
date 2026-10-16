@@ -196,3 +196,22 @@ func (source *VideoSource) Prepare(ctx context.Context, trim VideoTrim) (*Prepar
 	}
 	return prepared, err
 }
+
+// validateLoop checks the requested span as well as the independent codec and
+// resource limits. A successful processor exit or a valid short file alone must
+// not turn a truncated source/output into a silently shorter accepted loop.
+func (info videoProbe) validateLoop(trim VideoTrim) error {
+	if err := info.validate(true); err != nil {
+		return err
+	}
+	stream, _ := info.video()
+	duration, _ := strconv.ParseFloat(stream.Duration, 64)
+	fps := videoRatio(stream.AvgFrameRate, "/")
+	requested := float64(trim.EndMS-trim.StartMS) / 1000
+	// Frame quantization may round either edge. One microsecond accommodates
+	// ffprobe's decimal timestamp precision, not another displayed frame.
+	if math.Abs(duration-requested) > 1/fps+0.000001 {
+		return ErrVideo
+	}
+	return nil
+}

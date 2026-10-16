@@ -2,6 +2,7 @@ package visual
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"io"
 	"math"
@@ -209,6 +210,36 @@ func TestVideoSource_CutTiming(t *testing.T) {
 			if math.Abs(float64(got-(trim.EndMS-trim.StartMS))) > 42 || got < 1000 || got > 30000 {
 				t.Fatalf("%+v duration=%d, want within one frame and 1–30s", trim, got)
 			}
+		}
+	})
+}
+
+func TestVideoProbe_ValidateLoop(t *testing.T) {
+	t.Run("rejects incomplete output even when codec and absolute duration limits pass", func(t *testing.T) {
+		info := videoProbe{Streams: []videoStream{{
+			CodecName:         "h264",
+			CodecType:         "video",
+			Profile:           "Constrained Baseline",
+			Level:             32,
+			Width:             1280,
+			Height:            720,
+			PixFmt:            "yuv420p",
+			AvgFrameRate:      "24/1",
+			SampleAspectRatio: "1:1",
+			Duration:          "1",
+			ColorSpace:        "bt709",
+			ColorTransfer:     "bt709",
+			ColorPrimaries:    "bt709",
+			ColorRange:        "tv",
+		}}}
+		if err := info.validate(true); err != nil {
+			t.Fatal(err)
+		}
+		if err := info.validateLoop(VideoTrim{EndMS: 2000}); !errors.Is(err, ErrVideo) {
+			t.Fatalf("partial output = %v, want ErrVideo", err)
+		}
+		if err := info.validateLoop(VideoTrim{EndMS: 1000}); err != nil {
+			t.Fatal(err)
 		}
 	})
 }

@@ -330,7 +330,7 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 	if err != nil {
 		return nil, err
 	}
-	if err = prepared.validate(true); err != nil {
+	if err = prepared.validateLoop(trim); err != nil {
 		return nil, err
 	}
 	file, err := os.Open(output)
