@@ -49,6 +49,8 @@ const (
 
 type optionsState struct {
 	open              bool
+	menu              bool
+	menuFocus         int
 	id                uint64
 	request           string
 	darkness          int
@@ -67,6 +69,9 @@ func (m *Model) requestOptions(action string) {
 }
 
 func (m Model) OptionsState() BrowserOptionsState {
+	if m.options.menu {
+		return BrowserOptionsState{}
+	}
 	_, rect := m.optionsLayout()
 	return BrowserOptionsState{
 		Open:     m.options.open,
@@ -84,6 +89,15 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 	if msg.Action == "open" {
+		if m.speechSetup.open {
+			return m, nil
+		}
+		if !m.options.open && m.speechSetup.service != nil {
+			m.options.open = true
+			m.options.menu = true
+			m.options.request = ""
+			return m, nil
+		}
 		if !m.options.open {
 			m.options.open = true
 			m.options.editing = false
@@ -161,6 +175,9 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 }
 
 func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.options.menu {
+		return m.updateOptionsMenu(message)
+	}
 	if m.options.editing {
 		return m.updateFramingInput(message)
 	}
@@ -171,6 +188,10 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			if m.options.request != "apply" && m.options.request != "remove" {
 				m.options.open = false
+				if m.speechSetup.service != nil {
+					m.options.open = true
+					m.options.menu = true
+				}
 				m.requestOptions("")
 			}
 		case "tab", "down":
@@ -238,6 +259,10 @@ func (m *Model) activateOption() {
 		m.requestOptions("remove")
 	case optionsFocusBack:
 		m.options.open = false
+		if m.speechSetup.service != nil {
+			m.options.open = true
+			m.options.menu = true
+		}
 		m.requestOptions("")
 	}
 }
@@ -286,6 +311,9 @@ func (m *Model) clickOption(x, y int, activate bool) {
 }
 
 func (m Model) viewOptions() tea.View {
+	if m.options.menu {
+		return m.viewOptionsMenu()
+	}
 	if m.options.editing {
 		return m.viewFraming()
 	}
@@ -325,6 +353,66 @@ func (m Model) viewOptions() tea.View {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")
 	}
 	view := tea.NewView(strings.Join(lines, "\n"))
+	view.AltScreen = true
+	view.MouseMode = tea.MouseModeCellMotion
+	return view
+}
+
+func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
+	activate := false
+	switch message := message.(type) {
+	case tea.KeyPressMsg:
+		switch message.String() {
+		case "q", "esc":
+			m.options.open = false
+		case "tab", "down":
+			m.options.menuFocus = (m.options.menuFocus + 1) % 3
+		case "shift+tab", "up":
+			m.options.menuFocus = (m.options.menuFocus + 2) % 3
+		case "enter", "space":
+			activate = true
+		}
+	case tea.MouseClickMsg:
+		if message.Button == tea.MouseLeft && message.Y >= 2 && message.Y <= 4 {
+			m.options.menuFocus = message.Y - 2
+			activate = true
+		}
+	}
+	if !activate {
+		return m, nil
+	}
+	switch m.options.menuFocus {
+	case 0:
+		m.options.menu = false
+		m.options.editing = false
+		m.options.hasImage = false
+		m.options.framing = data.DefaultBackgroundFraming()
+		m.options.focus = optionsFocusChooseImage
+		m.options.darkness = 70
+		m.options.status = "Loading visual…"
+		m.requestOptions("load")
+	case 1:
+		m.speechSetup.open = true
+		m.speechSetup.offered = true
+		m.speechSetup.focus = 0
+	case 2:
+		m.options.open = false
+	}
+	return m, nil
+}
+func (m Model) viewOptionsMenu() tea.View {
+	rows := []string{m.subjects.list.Styles.Title.Render("Options"), ""}
+	for index, label := range []string{"Visual", "Models", "Back"} {
+		if index == m.options.menuFocus {
+			label = m.subjects.list.Styles.Title.Render(label)
+		}
+		rows = append(rows, label)
+	}
+	rows = append(rows, "", "↑/↓/Tab: focus · Enter: open · Esc: back")
+	for index, row := range rows {
+		rows[index] = ansi.Truncate(row, max(1, m.width), "…")
+	}
+	view := tea.NewView(strings.Join(rows, "\n"))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	return view

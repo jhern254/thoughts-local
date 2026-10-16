@@ -74,6 +74,7 @@ type Model struct {
 	width          int
 	height         int
 	options        optionsState
+	speechSetup    speechSetupState
 	exitPromptOpen bool
 	exitYes        bool
 	events         events.Model
@@ -101,7 +102,13 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 
 type homeOpened struct{}
 
-func (Model) Init() tea.Cmd { return func() tea.Msg { return homeOpened{} } }
+func (m Model) Init() tea.Cmd {
+	home := func() tea.Msg { return homeOpened{} }
+	if m.speechSetup.service != nil {
+		return tea.Batch(home, m.checkInstalledSpeechModel())
+	}
+	return home
+}
 
 func (m Model) openHome() (tea.Model, tea.Cmd) {
 	m.subjects.stopRead()
@@ -114,6 +121,7 @@ func (m Model) openHome() (tea.Model, tea.Cmd) {
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.update(message)
 	next := updated.(Model)
+	next.offerSpeechSetup()
 	if next.ctx.Err() == nil && next.browserRecordingEnabled && next.thoughts.Creating() && !next.thoughts.VoiceOpen() {
 		next.voiceDraftID++
 		name := ""
@@ -130,14 +138,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.ctx.Err() != nil {
 		return m, nil
 	}
-	if msg, ok := message.(BrowserOptionsMsg); ok {
-		return m.updateBrowserOptions(msg)
-	}
-	if m.options.open {
-		switch message.(type) {
-		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg, tea.MouseWheelMsg:
-			return m.updateOptionsInput(message)
-		}
+	switch message.(type) {
+	case speechSetupChecked, speechSetupProgress, speechSetupFinished:
+		return m.updateSpeechSetup(message)
 	}
 	if m.exitPromptOpen {
 		switch message := message.(type) {
@@ -147,6 +150,26 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+	if m.speechSetup.open && !m.exitPromptOpen {
+		switch msg := message.(type) {
+		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg, tea.MouseWheelMsg:
+			return m.updateSpeechSetupInput(message)
+		case thoughts.VoiceAction:
+			if msg.Action == "start" || msg.Action == "open" {
+				return m, nil
+			}
+		}
+	}
+	if msg, ok := message.(BrowserOptionsMsg); ok {
+		return m.updateBrowserOptions(msg)
+	}
+	if m.options.open {
+		switch message.(type) {
+		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg, tea.MouseWheelMsg:
+			return m.updateOptionsInput(message)
+		}
+	}
+
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "ctrl+c":
@@ -172,6 +195,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case thoughts.BrowserVoiceSessionMsg:
 		m.browserRecordingEnabled = true
+		if m.speechSetup.service != nil {
+			message.SpeechRecognitionAvailable = m.speechSetup.ready
+		}
 		m.thoughts, _ = m.thoughts.Update(message)
 		return m, nil
 	case voice.TranscriptUpdate, voice.RecordingEnded:
@@ -183,11 +209,8 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.VoiceState().CanOpenThoughtDraft {
 				return m, nil
 			}
-			m.events.Close()
-			m.subjects.stopRead()
-			m.screen = screenVoiceThought
-			m.voiceDraftID++
-			return m, m.thoughts.OpenVoice(m.voiceDraftID, m.subjects.service)
+			command := m.openThoughtDraft()
+			return m, command
 		}
 		if m.thoughts.VoiceOpen() {
 			var cmd tea.Cmd
@@ -258,8 +281,14 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.handleSubjectFound(message)
 	case tea.KeyPressMsg:
-		if (message.String() == "t" || (message.Code == tea.KeyF8 && m.screen == screenEvents)) && m.VoiceState().CanOpenThoughtDraft {
-			return m.update(thoughts.VoiceAction{Action: "open"})
+		if (message.String() == "t" || message.Code == tea.KeyF8) && m.VoiceState().CanOpenThoughtDraft {
+			openDraft := m.openThoughtDraft()
+			if message.Code == tea.KeyF8 {
+				var startRecording tea.Cmd
+				m.thoughts, startRecording = m.thoughts.Update(message)
+				return m, tea.Batch(openDraft, startRecording)
+			}
+			return m, openDraft
 		}
 	}
 
@@ -399,7 +428,20 @@ func (m Model) entityStrip() string {
 }
 
 func (m Model) View() tea.View {
-	if m.options.open {
+	view := m.viewUnderlying()
+	if m.exitPromptOpen {
+		return view
+	}
+	if m.speechSetup.open {
+		return m.overlaySpeechSetupPopup(view)
+	}
+	if m.speechSetup.notice != "" && strings.Count(view.Content, "\n")+1 < m.height {
+		view.Content += "\n" + ansi.Truncate(m.speechSetup.notice, max(1, m.width), "…")
+	}
+	return view
+}
+func (m Model) viewUnderlying() tea.View {
+	if m.options.open && !m.exitPromptOpen {
 		return m.viewOptions()
 	}
 	view := tea.NewView("")
@@ -470,6 +512,14 @@ func localUserLabel(user *data.User) string {
 	return user.UserID
 }
 
+func (m *Model) openThoughtDraft() tea.Cmd {
+	m.events.Close()
+	m.subjects.stopRead()
+	m.screen = screenVoiceThought
+	m.voiceDraftID++
+	return m.thoughts.OpenVoice(m.voiceDraftID, m.subjects.service)
+}
+
 // VoiceState exposes only bounded control metadata to the browser bridge.
 func (m Model) VoiceState() thoughts.VoiceState {
 	state := thoughts.VoiceState{BrowserRecordingEnabled: m.browserRecordingEnabled, SpeechRecognitionAvailable: m.thoughts.VoiceState().SpeechRecognitionAvailable}
@@ -478,7 +528,7 @@ func (m Model) VoiceState() thoughts.VoiceState {
 	}
 	switch m.screen {
 	case screenEvents:
-		state.CanOpenThoughtDraft = m.events.CanLeave()
+		state.CanOpenThoughtDraft = m.events.CanLeave() && !m.speechSetup.open
 	case screenSubjectList:
 		state.CanOpenThoughtDraft = !m.subjects.loading && !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered()
 	case screenBrowseThoughts, screenMiscThoughts, screenSubjectDetail:
@@ -489,6 +539,9 @@ func (m Model) VoiceState() thoughts.VoiceState {
 	if m.thoughts.VoiceOpen() && m.voiceSubjectReturn == nil {
 		state = m.thoughts.VoiceState()
 		state.BrowserRecordingEnabled = true
+	}
+	if m.speechSetup.open || m.options.open {
+		state.CanOpenThoughtDraft = false
 	}
 	return state
 }

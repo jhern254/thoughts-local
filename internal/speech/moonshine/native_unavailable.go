@@ -13,3 +13,5 @@ import (
 func openNativeTranscriber(_ context.Context, _ *os.Root, _ modelassets.Installation) (nativeTranscriber, error) {
 	return nil, speech.ErrRuntime
 }
+
+func checkNativeRuntime() error { return speech.ErrRuntime }

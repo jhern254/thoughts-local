@@ -301,6 +301,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	switch message := msg.(type) {
+	case SpeechAvailabilityMsg:
+		m.speechRecognitionAvailable = message.Available
+		return m, nil
 	case BrowserVoiceSessionMsg:
 		m.browserSessionID = message.SessionID
 		m.speechRecognitionAvailable = message.SpeechRecognitionAvailable

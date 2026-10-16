@@ -44,7 +44,7 @@ type application struct {
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
-	runBrowser  func(context.Context, int, bool, string, func(context.Context) tea.Model, io.Writer, logging.Logger, *visual.Service) error
+	runBrowser  func(context.Context, int, bool, string, func(context.Context, tui.SpeechModelSetup) tea.Model, io.Writer, logging.Logger, *visual.Service) error
 }
 
 func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) *application {
@@ -101,7 +101,7 @@ func newTUI(app *application) *cli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			newModel := func(ctx context.Context) tea.Model {
+			newModel := func(ctx context.Context) tui.Model {
 				return tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.runtime.Events(), app.runtime.TimelineView(), app.logger)
 			}
 			var err error
@@ -112,10 +112,17 @@ func newTUI(app *application) *cli.Command {
 					app.failureMessage = "Could not load browser visual."
 					return err
 				}
-				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), cmd.String("models-dir"), newModel, app.out, app.logger, backgrounds)
+				newBrowserModel := func(ctx context.Context, setup tui.SpeechModelSetup) tea.Model {
+					model := newModel(ctx)
+					if setup != nil {
+						model.ConfigureSpeechModelSetup(setup)
+					}
+					return model
+				}
+				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), cmd.String("models-dir"), newBrowserModel, app.out, app.logger, backgrounds)
 			} else {
 				sessionCtx, cancel := context.WithCancel(ctx)
-				session := tui.NewSession(sessionCtx, cancel, newModel)
+				session := tui.NewSession(sessionCtx, cancel, func(ctx context.Context) tea.Model { return newModel(ctx) })
 				defer session.Stop()
 				err = app.runProgram(sessionCtx, session, app.in, app.out)
 				session.Stop()

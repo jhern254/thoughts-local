@@ -1,7 +1,7 @@
 .PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed tui tui/demo tui/demo/seeded tui/build migrate/build migrate/new migrate/up migrate/down migrate/version
 .PHONY: tui/demo/stress
 .PHONY: tui/browser tui/browser/demo tui/browser/demo/seeded tui/browser/demo/stress
-.PHONY: speech/setup
+.PHONY: speech/setup speech/ensure tui/package
 
 help:
 	@echo "Available commands:"
@@ -28,6 +28,7 @@ help:
 	@echo "  make tui/build    Build the TUI binary"
 	@echo "  make tui/browser Migrate, build, and serve the TUI in a local browser"
 	@echo "  make speech/setup Prepare the pinned local speech engine (explicit download)"
+	@echo "  make tui/package Build a browser app bundle with its speech engine"
 	@echo "  make tui/browser/demo Serve a disposable seeded browser demo"
 	@echo "  make tui/browser/demo/seeded Serve sample events and thoughts in the browser"
 	@echo "  make tui/browser/demo/stress Serve 721 events and 20,000 thoughts in the browser"
@@ -132,7 +133,13 @@ tui: migrate/up tui/build
 speech/setup:
 	bash ./scripts/moonshine-dev.sh setup
 
-tui/browser: migrate/up
+speech/ensure:
+	bash ./scripts/moonshine-dev.sh ensure
+
+tui/package:
+	bash ./scripts/package-browser.sh
+
+tui/browser: migrate/up speech/ensure
 	@mkdir -p "$(dir $(TUI_BIN))"
 	bash ./scripts/moonshine-dev.sh exec go build -o "$(TUI_BIN)" ./cmd/thoughts-tui
 	bash ./scripts/moonshine-dev.sh exec "$(TUI_BIN)" --browser --db-dsn "$(APP_DSN)"

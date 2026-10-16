@@ -14,8 +14,11 @@ import (
 	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
-// BrowserVoiceSessionMsg identifies the browser session and its speech availability.
-// Availability comes from startup configuration; microphone permission is checked on Record.
+// Setup can change readiness without replacing the browser identity or draft.
+type SpeechAvailabilityMsg struct{ Available bool }
+
+// BrowserVoiceSessionMsg identifies the browser session and initial availability.
+// Microphone permission is checked only when the user starts recording.
 type BrowserVoiceSessionMsg struct {
 	SessionID                  string
 	SpeechRecognitionAvailable bool

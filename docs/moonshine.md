@@ -2,37 +2,53 @@
 
 Moonshine provides local speech recognition for browser thought drafts and a
 separate developer PCM smoke command. Both use the same verified model and
-native boundary. Ordinary builds and tests require no native runtime; explicitly
-configuring speech in those builds fails safely instead of capturing audio.
+native boundary. Ordinary builds and tests require no native runtime; speech in
+those builds remains unavailable instead of silently capturing audio.
 
 ## Browser speech
 
-For development, prepare the speech engine once:
+For development, start the browser app:
 
 ```sh
-make speech/setup
-```
-
-This downloads the pinned Moonshine engine into ignored `bin/moonshine/`, checks
-its checksum before unpacking, and executes a native test before marking it
-ready. It installs nothing globally. Later `make tui/browser` launches use that
-engine automatically, with no library-path exports or additional downloads.
-Re-running setup verifies the retained archive and rebuilds/checks the engine
-without downloading it again. A failed check preserves the previous working
-engine.
-
-The model is still a separate explicit download until the first-run setup
-screen is added:
-
-```sh
-export THOUGHTS_MODELS_DIR="$PWD/data/models"
-go run ./cmd/moonshine-smoke install -models-dir "$THOUGHTS_MODELS_DIR"
 make tui/browser
 ```
 
-Without prepared engine files, `make tui/browser` remains an ordinary build.
-Other Go builds and tests do not automatically enable speech. Existing manual
-platform setup below still works. To run a native developer command using the
+The first source build prepares the pinned Moonshine engine in ignored
+`bin/moonshine/`, checks its checksum before unpacking, and executes a native test
+before marking it ready. It installs nothing globally. Later `make tui/browser`
+launches reuse it. `make speech/setup` remains available to verify the retained
+archive and rebuild/check the engine without downloading it again. A failed
+check preserves the previous working engine.
+
+The browser now offers a Models popup over Events when speech needs setup.
+**Download and enable** is selected by default. Choose it to install the approved English model. The progress
+bar shows bytes actually downloaded; speech becomes ready after verification and
+loading finish. **Keep writing** hides the popup while the session continues the
+download. **Cancel download** stops it, and **Options → Models** reopens setup or
+progress. **Not now** leaves typing available and offers setup on a later launch.
+
+Models stay in a visible shared folder, independent of the current database:
+`~/Documents/Thoughts/models` on Linux/macOS and `%USERPROFILE%\Documents\Thoughts\models` on Windows.
+Later launches verify and reuse the installed model, with no download or restart
+needed to enable F8. `--models-dir` overrides `THOUGHTS_MODELS_DIR`, which overrides
+this default. Options → Models shows the selected folder. Keep files unmodified
+while Thoughts is running. Cache cleanup and app updates do not remove this
+folder; manually deleting it makes Thoughts offer setup again.
+
+A speech-enabled build is still required. If the engine is unavailable, the popup
+explains it and does not offer an unusable download. Engine preparation happens
+before the app runs, during development or packaging. The popup installs only
+model weights; it never downloads or builds native engine libraries.
+
+The existing explicit model install command remains available:
+
+```sh
+go run ./cmd/moonshine-smoke install -models-dir "$HOME/Documents/Thoughts/models"
+```
+
+Ordinary Go builds and tests do not prepare or automatically enable speech.
+Ordinary builds with `CGO_ENABLED=0` and unsupported targets remain available.
+Existing manual platform setup below still works. To run a native developer command using the
 prepared engine, use `bash scripts/moonshine-dev.sh exec COMMAND ...`, for example:
 
 ```sh
@@ -45,17 +61,34 @@ tools, and MinGW GCC/dlltool; the helper activates MSVC in its own process. It
 does not install these tools. Explicit `CGO_ENABLED=0` and cross-target builds
 cannot use a prepared native engine; ordinary `go build` remains available.
 
+For users running a prebuilt app, the engine belongs in the application bundle,
+not in a setup step. `make tui/package` builds `bin/packages/thoughts-<os>-<arch>`
+with the linked app, required private libraries, and dependency notices, then
+creates a release archive and SHA-256 file. Each package build rechecks the pinned
+runtime archive checksum, reconstructs the engine, and runs its native check;
+an existing `.ready` marker does not skip this. The cached archive is reused
+without downloading it again. The
+existing native CI matrix builds these bundles and executes real transcription
+after moving them out of the build directory without developer loader settings.
+The CI artifacts are candidate app releases for review, not another user setup
+dependency. [The bundle guide](desktop-bundle.md) describes launch and model
+onboarding. No Go or C toolchain is required on the user's machine. Publishing
+and signing a release remain separate from this PR.
+
 An incomplete prepared bundle fails with a setup message. If setup was killed,
 remove `bin/moonshine/v0.1.5/.setup.lock` only when no setup is running. A leftover
 `.previous-<os>-<arch>` directory is the prior working bundle: inspect/restore it
 before retrying. Temporary `.setup-*` directories can be removed while setup is
 inactive. No automatic stale-lock takeover or background cleanup runs.
 
-On the Events timeline, F8 opens a draft. Press F8 again to record, then F8 to
-stop. Text remains unsaved until the normal Thought save. Without a model root
-configured, typed drafts remain available and recording shows a fixed
-unavailable message. An explicitly configured but invalid model/runtime prevents
-browser startup with safe feedback. `--models-dir` overrides `THOUGHTS_MODELS_DIR`.
+On the Events timeline, F8 opens a thought and immediately starts recording.
+Press F8 again to stop. T opens a draft for typing. Text remains unsaved until the normal Thought save. Until setup is ready,
+typed drafts remain available and recording shows a fixed unavailable message.
+Missing, damaged, or inaccessible models are reported in the popup while the
+rest of the browser TUI remains available. Damaged/incomplete revisions are not
+automatically overwritten: close Thoughts, remove the affected revision folder,
+and retry setup. Stale installer locks require the same manual cleanup described
+in the modelassets package contract.
 Terminal-only mode does not initialize speech.
 
 The browser server keeps one verified transcriber loaded, then creates and
@@ -130,6 +163,16 @@ plumbing, not a browser audio protocol or a production audio-file importer.
 
 ## Architecture and where ownership changes
 
+The Models menu is the place for model setup; its current implementation is
+speech-specific. `browserSpeechSetup` in `cmd/thoughts-tui/speech_setup.go` owns
+the installed speech model and loaded transcriber. The TUI calls it through
+`SpeechModelSetup`; recording consumers use that same loaded transcriber.
+
+`modelassets` is the shared file-installation boundary. Future embedding or LLM
+features can reuse its approved catalog and verification while owning their own
+runtime lifecycles. They should not have to implement a speech setup interface
+or create a recording consumer to appear in Models.
+
 ```mermaid
 flowchart TD
     A[Approved model ID] --> B[modelassets.Install: explicit network operation]
@@ -203,7 +246,8 @@ Useful Sensors, Inc. (dba Moonshine AI); see
 https://github.com/moonshine-ai/moonshine/blob/v0.1.5/LICENSE.
 ONNX Runtime is MIT; other upstream third-party components retain their own
 licenses, including Eigen's MPL-2.0 subset. No native binaries or weights are
-redistributed in this repository. The separate speech fixture is CC BY 4.0;
+committed to Git. Development bundles include the runtime and its retained
+dependency notices. The separate speech fixture is CC BY 4.0;
 see [its attribution and checksums](../internal/speech/moonshine/testdata/README.md).
 
 ## Local Linux x86-64 setup

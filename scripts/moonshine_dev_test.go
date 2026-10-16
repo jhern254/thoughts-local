@@ -10,6 +10,29 @@ import (
 )
 
 func TestMoonshineDeveloperSetup(t *testing.T) {
+	t.Run("browser preparation installs a missing engine once and reuses it", func(t *testing.T) {
+		fixture := newRuntimeScriptFixture(t)
+		for range 2 {
+			if output, err := fixture.run("ensure"); err != nil {
+				t.Fatal(err, output)
+			}
+		}
+		downloads, err := os.ReadFile(filepath.Join(fixture.root, "downloads"))
+		if err != nil || string(downloads) != "download\n" {
+			t.Fatalf("downloads=%q, err=%v, want exactly one download", downloads, err)
+		}
+	})
+	t.Run("browser preparation preserves explicit non-cgo builds without downloads", func(t *testing.T) {
+		fixture := newRuntimeScriptFixture(t)
+		fixture.environment = append(fixture.environment, "CGO_ENABLED=0")
+		if output, err := fixture.run("ensure"); err != nil {
+			t.Fatal(err, output)
+		}
+		fixture.assertNoPreparedRuntime(t)
+		if _, err := os.Stat(filepath.Join(fixture.root, "downloads")); !os.IsNotExist(err) {
+			t.Fatalf("download occurred: %v", err)
+		}
+	})
 	t.Run("ordinary execution needs no runtime and makes no downloads", func(t *testing.T) {
 		fixture := newRuntimeScriptFixture(t)
 		output, err := fixture.run("exec", "go", "probe")
@@ -153,6 +176,86 @@ type runtimeScriptFixture struct {
 	bashPath    string
 }
 
+func TestBrowserPackage(t *testing.T) {
+	t.Run("reconstructs prepared libraries from the cached archive without another download", func(t *testing.T) {
+		fixture := newRuntimeScriptFixture(t)
+		if output, err := fixture.run("setup"); err != nil {
+			t.Fatal(err, output)
+		}
+		preparedLibrary := filepath.Join(fixture.root, "bin/moonshine/v0.1.5/linux-amd64/moonshine-voice-linux-x86_64/lib/libmoonshine.so")
+		if err := os.WriteFile(preparedLibrary, []byte("modified prepared library"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if output, err := fixture.runScript("package-browser.sh"); err != nil {
+			t.Fatal(err, output)
+		}
+		packagedLibrary, err := os.ReadFile(filepath.Join(fixture.root, "bin/packages/thoughts-linux-amd64/lib/libmoonshine.so"))
+		if err != nil || len(packagedLibrary) != 0 {
+			t.Fatalf("packaged library=%q, err=%v, want freshly extracted fixture library", packagedLibrary, err)
+		}
+		downloads, err := os.ReadFile(filepath.Join(fixture.root, "downloads"))
+		if err != nil || string(downloads) != "download\n" {
+			t.Fatalf("downloads=%q, err=%v, want only the initial download", downloads, err)
+		}
+	})
+	t.Run("ready marker cannot bypass cached archive verification", func(t *testing.T) {
+		fixture := newRuntimeScriptFixture(t)
+		if output, err := fixture.run("setup"); err != nil {
+			t.Fatal(err, output)
+		}
+		if err := os.Remove(filepath.Join(fixture.root, "extracted")); err != nil {
+			t.Fatal(err)
+		}
+		fixture.environment = append(fixture.environment, "TEST_CHECKSUM=incorrect")
+		if output, err := fixture.runScript("package-browser.sh"); err == nil || !strings.Contains(output, "checksum") {
+			t.Fatalf("got %s, %v, want checksum rejection despite ready marker", output, err)
+		}
+		fixture.assertNoExtraction(t)
+		if _, err := os.Stat(filepath.Join(fixture.root, "bin/packages")); !os.IsNotExist(err) {
+			t.Fatalf("package output created before verification: %v", err)
+		}
+	})
+	t.Run("bundle includes its engine and notices without model weights or build tools", func(t *testing.T) {
+		fixture := newRuntimeScriptFixture(t)
+		if output, err := fixture.runScript("package-browser.sh"); err != nil {
+			t.Fatal(err, output)
+		}
+		bundleDirectory := filepath.Join(fixture.root, "bin/packages/thoughts-linux-amd64")
+		for _, relativePath := range []string{"thoughts-tui", "lib/libmoonshine.so", "lib/libonnxruntime.so.1", "licenses/LICENSE-MOONSHINE", "licenses/LICENSE-GO", "README.md"} {
+			if _, err := os.Stat(filepath.Join(bundleDirectory, relativePath)); err != nil {
+				t.Fatal(relativePath, err)
+			}
+		}
+		for _, relativePath := range []string{"runtime.archive", "models", "include", "scripts"} {
+			if _, err := os.Stat(filepath.Join(bundleDirectory, relativePath)); !os.IsNotExist(err) {
+				t.Fatalf("unexpected packaged file %s: %v", relativePath, err)
+			}
+		}
+		for _, filename := range []string{"thoughts-linux-amd64.tar.gz", "thoughts-linux-amd64.tar.gz.sha256"} {
+			if _, err := os.Stat(filepath.Join(fixture.root, "bin/packages", filename)); err != nil {
+				t.Fatal(filename, err)
+			}
+		}
+	})
+	t.Run("failed package build preserves the previous bundle and cleans staging", func(t *testing.T) {
+		fixture := newRuntimeScriptFixture(t)
+		if output, err := fixture.runScript("package-browser.sh"); err != nil {
+			t.Fatal(err, output)
+		}
+		fixture.environment = append(fixture.environment, "TEST_PACKAGE_BUILD_FAILURE=1")
+		if output, err := fixture.runScript("package-browser.sh"); err == nil {
+			t.Fatalf("got %s, want build failure", output)
+		}
+		if _, err := os.Stat(filepath.Join(fixture.root, "bin/packages/thoughts-linux-amd64/thoughts-tui")); err != nil {
+			t.Fatal("previous bundle lost", err)
+		}
+		stagingDirectories, err := filepath.Glob(filepath.Join(fixture.root, "bin/packages/.package-*"))
+		if err != nil || len(stagingDirectories) != 0 {
+			t.Fatalf("staging=%v, err=%v, want no staging", stagingDirectories, err)
+		}
+	})
+}
+
 func newRuntimeScriptFixture(t *testing.T) runtimeScriptFixture {
 	t.Helper()
 	bashPath, err := exec.LookPath("bash")
@@ -175,12 +278,22 @@ func newRuntimeScriptFixture(t *testing.T) runtimeScriptFixture {
 			t.Fatal(err)
 		}
 	}
-	script, err := os.ReadFile("moonshine-dev.sh")
-	if err != nil {
-		t.Fatal(err)
+	for _, scriptName := range []string{"moonshine-dev.sh", "package-browser.sh"} {
+		script, err := os.ReadFile(scriptName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "scripts", scriptName), script, 0700); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.WriteFile(filepath.Join(root, "scripts/moonshine-dev.sh"), script, 0700); err != nil {
-		t.Fatal(err)
+	for _, relativePath := range []string{"internal/speech/moonshine/LICENSE-MOONSHINE", "goroot/LICENSE", "docs/desktop-bundle.md"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, relativePath)), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, relativePath), []byte("test notice"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	commands := map[string]string{
 		"cc": "exit 0",
@@ -188,6 +301,13 @@ func newRuntimeScriptFixture(t *testing.T) runtimeScriptFixture {
 "env GOHOSTOS") echo "${TEST_HOST_OS:-linux}";;
 "env GOHOSTARCH") echo "${TEST_HOST_ARCH:-amd64}";;
 "env CC") echo cc;;
+"env GOROOT") echo "$TEST_ROOT/goroot";;
+build*)
+test "${TEST_PACKAGE_BUILD_FAILURE:-0}" = 0
+while [ "$1" != -o ]; do shift; done
+shift
+printf '#!/bin/bash\nexit 0\n' > "$1"
+chmod +x "$1";;
 probe) echo "tags=${GOFLAGS:-} flags=${CGO_CFLAGS:-} libraries=${LD_LIBRARY_PATH:-}";;
 *) test "${TEST_NATIVE_FAILURE:-0}" = 0;;
 esac`,
@@ -195,7 +315,8 @@ esac`,
 		"sha256sum": `echo "${TEST_CHECKSUM:-9c3a87fea93ff2ad957938868f95a0a366dce9ff8ad86bde6cdcf5a4cadb51df}  archive"`,
 		"shasum":    `echo "${TEST_CHECKSUM:-6bc7fb4b6d3a470a2ae2d681299975f3ba9d710753786d1cd7e8beabaad066e8}  archive"`,
 		"unzip":     `touch "$TEST_ROOT/extracted"; while [ "$1" != -d ]; do shift; done; mkdir -p "$2/Moonshine.xcframework/macos-arm64_x86_64/Headers"; touch "$2/Moonshine.xcframework/macos-arm64_x86_64/Headers/moonshine-c-api.h" "$2/Moonshine.xcframework/macos-arm64_x86_64/libmoonshine.a"`,
-		"tar":       `touch "$TEST_ROOT/extracted"; while [ "$1" != -C ]; do shift; done; mkdir -p "$2/moonshine-voice-linux-x86_64/include" "$2/moonshine-voice-linux-x86_64/lib"; touch "$2/moonshine-voice-linux-x86_64/include/moonshine-c-api.h" "$2/moonshine-voice-linux-x86_64/lib/libmoonshine.so" "$2/moonshine-voice-linux-x86_64/lib/libonnxruntime.so.1"`,
+		"tar": `if [ "$1" = -czf ]; then printf bundle > "$2"; exit 0; fi
+touch "$TEST_ROOT/extracted"; while [ "$1" != -C ]; do shift; done; mkdir -p "$2/moonshine-voice-linux-x86_64/include" "$2/moonshine-voice-linux-x86_64/lib"; touch "$2/moonshine-voice-linux-x86_64/include/moonshine-c-api.h" "$2/moonshine-voice-linux-x86_64/lib/libmoonshine.so" "$2/moonshine-voice-linux-x86_64/lib/libonnxruntime.so.1"`,
 	}
 	for commandName, body := range commands {
 		if err := os.WriteFile(filepath.Join(root, "commands", commandName), []byte("#!/bin/bash\nset -eu\n"+body+"\n"), 0700); err != nil {
@@ -222,9 +343,13 @@ esac`,
 	return runtimeScriptFixture{root: root, environment: environment, bashPath: bashPath}
 }
 func (fixture runtimeScriptFixture) run(arguments ...string) (string, error) {
+	return fixture.runScript("moonshine-dev.sh", arguments...)
+}
+
+func (fixture runtimeScriptFixture) runScript(scriptName string, arguments ...string) (string, error) {
 	// Git Bash adjusts PATH on Windows startup. Set fixture precedence afterward.
 	launchScript := `export PATH="$(cd "$TEST_COMMAND_DIRECTORY" && pwd):$PATH"; scriptPath=$1; shift; source "$scriptPath" "$@"`
-	commandArguments := []string{"-c", launchScript, "moonshine-fixture", filepath.ToSlash(filepath.Join(fixture.root, "scripts/moonshine-dev.sh"))}
+	commandArguments := []string{"-c", launchScript, "moonshine-fixture", filepath.ToSlash(filepath.Join(fixture.root, "scripts", scriptName))}
 	command := exec.Command(fixture.bashPath, append(commandArguments, arguments...)...)
 	command.Dir = fixture.root
 	command.Env = fixture.environment

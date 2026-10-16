@@ -15,6 +15,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/browserterm"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/modelassets"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/voice"
 )
@@ -66,7 +67,11 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 	serverDone := make(chan error, 1)
 	go func() {
 		serverDone <- browserterm.ServeWithAudioConsumer(ctx, listener, func(session context.Context) tea.Model {
-			return tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
+			model := tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
+			if os.Getenv("THOUGHTS_MODELS_ONBOARDING_TEST") == "1" {
+				model.ConfigureSpeechModelSetup(&browserSpeechSetupFixture{})
+			}
+			return model
 		}, logging.Nop(), consumer, visualService)
 	}()
 	defer func() {
@@ -98,4 +103,32 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 	if err := command.Run(); err != nil {
 		t.Fatal("browser acceptance failed", err)
 	}
+}
+
+// The first download is held until Cancel; the retry completes. Browser actions,
+// not elapsed-time sleeps or additional HTTP control routes, drive the fixture.
+type browserSpeechSetupFixture struct {
+	attempts int
+	ready    bool
+}
+
+func (*browserSpeechSetupFixture) Description() modelassets.ModelDescription {
+	description, _ := modelassets.DescribeModel(modelassets.MoonshineSmallStreamingEnglish)
+	return description
+}
+func (*browserSpeechSetupFixture) Directory() string { return "~/Documents/Thoughts/models" }
+func (fixture *browserSpeechSetupFixture) LoadInstalledSpeechModel(context.Context) (tui.SpeechModelSetupStatus, error) {
+	return tui.SpeechModelSetupStatus{Ready: fixture.ready, CanDownload: !fixture.ready}, nil
+}
+func (fixture *browserSpeechSetupFixture) InstallAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) error {
+	fixture.attempts++
+	description := fixture.Description()
+	report(modelassets.DownloadProgress{DownloadedBytes: description.ExpectedSizeBytes / 2, TotalBytes: description.ExpectedSizeBytes})
+	if fixture.attempts == 1 {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	report(modelassets.DownloadProgress{DownloadedBytes: description.ExpectedSizeBytes, TotalBytes: description.ExpectedSizeBytes})
+	fixture.ready = true
+	return nil
 }

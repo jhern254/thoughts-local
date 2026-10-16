@@ -5,8 +5,8 @@ set -euo pipefail
 repositoryDirectory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repositoryDirectory"
 operation=${1:-}
-if [[ "$operation" != setup && "$operation" != exec ]]; then
-    echo 'Usage: moonshine-dev.sh setup | exec COMMAND [ARGUMENTS...]' >&2
+if [[ "$operation" != setup && "$operation" != ensure && "$operation" != exec ]]; then
+    echo 'Usage: moonshine-dev.sh setup | ensure | exec COMMAND [ARGUMENTS...]' >&2
     exit 1
 fi
 shift
@@ -33,6 +33,7 @@ case "$hostOS-$hostArchitecture" in
         ;;
     *)
         if [[ "$operation" == exec && $# -gt 0 ]]; then exec "$@"; fi
+        if [[ "$operation" == ensure ]]; then exit 0; fi
         echo 'Moonshine developer setup is unavailable for this platform.' >&2
         exit 1
         ;;
@@ -74,10 +75,28 @@ configureRuntime() {
         export CGO_LDFLAGS="${CGO_LDFLAGS:+$CGO_LDFLAGS }\"-L$runtimeDirectory\""
     else
         export CGO_CFLAGS="${CGO_CFLAGS:+$CGO_CFLAGS }\"-I$runtimeDirectory/include\""
-        export CGO_LDFLAGS="${CGO_LDFLAGS:+$CGO_LDFLAGS }\"-L$runtimeDirectory/lib\""
+        # Packaged binaries find their sibling libraries after being moved to
+        # another machine. The upstream Moonshine library also uses $ORIGIN.
+        export CGO_LDFLAGS="${CGO_LDFLAGS:+$CGO_LDFLAGS }\"-L$runtimeDirectory/lib\" -Wl,-rpath,\$ORIGIN/lib"
         export LD_LIBRARY_PATH="$runtimeDirectory/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     fi
 }
+
+if [[ "$operation" == ensure ]]; then
+    if [[ $# != 0 ]]; then echo 'Ensure accepts no arguments.' >&2; exit 1; fi
+    if [[ "${CGO_ENABLED:-1}" == 0 || "${GOOS:-$hostOS}" != "$hostOS" || "${GOARCH:-$hostArchitecture}" != "$hostArchitecture" ]]; then
+        exit 0
+    fi
+    if [[ ! -e "$preparedDirectory" ]]; then
+        exec bash "$repositoryDirectory/scripts/moonshine-dev.sh" setup
+    fi
+    if [[ ! -f "$preparedDirectory/.ready" ]] || [[ "$(cat "$preparedDirectory/.ready")" != "$expectedSHA256" ]]; then
+        echo 'Moonshine setup is incomplete. Run make speech/setup.' >&2
+        exit 1
+    fi
+    configureRuntime "$preparedDirectory"
+    exit 0
+fi
 
 if [[ "$operation" == exec ]]; then
     if [[ $# == 0 ]]; then echo 'A developer command is required.' >&2; exit 1; fi

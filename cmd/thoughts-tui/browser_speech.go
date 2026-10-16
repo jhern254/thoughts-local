@@ -3,52 +3,13 @@ package main
 import (
 	"context"
 	"errors"
-	"os"
 	"unicode/utf8"
 
-	"github.com/jhern254/go-thoughts/internal/browserterm"
 	"github.com/jhern254/go-thoughts/internal/speech"
-	"github.com/jhern254/go-thoughts/internal/speech/moonshine"
 	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 var errBrowserSpeechSetup = errors.New("Could not start speech recognition. Check the configured model installation and native runtime.")
-
-// Model loading belongs to the browser process, not each recording. Serve joins
-// recording consumers before this owner closes the transcriber and model root.
-func openBrowserSpeech(ctx context.Context, modelDirectory string) (browserterm.PCMConsumerFactory, func() error, error) {
-	if modelDirectory == "" {
-		return nil, func() error { return nil }, nil
-	}
-	modelRoot, err := os.OpenRoot(modelDirectory)
-	if err != nil {
-		return nil, nil, &browserSpeechError{category: errBrowserSpeechSetup, cause: err}
-	}
-	moonshineTranscriber, err := moonshine.Open(ctx, modelRoot)
-	if err != nil {
-		category := errBrowserSpeechSetup
-		if ctx.Err() != nil {
-			category = ctx.Err()
-		}
-		return nil, nil, &browserSpeechError{category: category, cause: errors.Join(err, modelRoot.Close())}
-	}
-	factory := func(ctx context.Context, recording voice.RecordingKey, publish func(voice.TranscriptUpdate) bool) (browserterm.RecordingPCMConsumer, error) {
-		moonshineStream, err := moonshineTranscriber.StartStream(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return &browserSpeechConsumer{moonshineStream: moonshineStream, recording: recording, publish: publish}, nil
-	}
-	closeSpeech := func() error {
-		transcriberErr := moonshineTranscriber.Close()
-		rootErr := modelRoot.Close()
-		if cause := errors.Join(transcriberErr, rootErr); cause != nil {
-			return &browserSpeechError{category: speech.ErrRuntime, cause: cause}
-		}
-		return nil
-	}
-	return factory, closeSpeech, nil
-}
 
 // The interface keeps adapter tests independent of native models and libraries.
 type recordingSpeechStream interface {
