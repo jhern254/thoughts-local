@@ -14,7 +14,8 @@ esac
 if [[ "${CGO_ENABLED:-1}" == 0 || "${GOOS:-$hostOS}" != "$hostOS" || "${GOARCH:-$hostArchitecture}" != "$hostArchitecture" ]]; then
     echo 'Packaging requires a native build for the current host.' >&2; exit 1
 fi
-bash scripts/moonshine-dev.sh ensure
+# A release must come from the verified archive, not mutable developer files.
+bash scripts/moonshine-dev.sh setup
 packageParent="$repositoryDirectory/bin/packages"
 bundleDirectory="$packageParent/thoughts-$hostOS-$hostArchitecture"
 mkdir -p "$packageParent"
@@ -32,10 +33,6 @@ case "$hostOS" in
         ;;
     windows)
         executableName=thoughts-tui.exe
-        bridgeDirectory="$preparedDirectory/moonshine-voice-windows-x86_64/bridge"
-        if [[ ! -f "$bridgeDirectory/vcruntime140.dll" || ! -f "$bridgeDirectory/msvcp140.dll" ]]; then
-            bash scripts/moonshine-dev.sh setup
-        fi
         cp "$preparedDirectory/moonshine-voice-windows-x86_64/bridge/"*.dll "$stagingDirectory/"
         ;;
     # macOS links the official desktop static archive into the executable.

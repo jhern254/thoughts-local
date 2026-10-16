@@ -177,6 +177,44 @@ type runtimeScriptFixture struct {
 }
 
 func TestBrowserPackage(t *testing.T) {
+	t.Run("reconstructs prepared libraries from the cached archive without another download", func(t *testing.T) {
+		fixture := newRuntimeScriptFixture(t)
+		if output, err := fixture.run("setup"); err != nil {
+			t.Fatal(err, output)
+		}
+		preparedLibrary := filepath.Join(fixture.root, "bin/moonshine/v0.1.5/linux-amd64/moonshine-voice-linux-x86_64/lib/libmoonshine.so")
+		if err := os.WriteFile(preparedLibrary, []byte("modified prepared library"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if output, err := fixture.runScript("package-browser.sh"); err != nil {
+			t.Fatal(err, output)
+		}
+		packagedLibrary, err := os.ReadFile(filepath.Join(fixture.root, "bin/packages/thoughts-linux-amd64/lib/libmoonshine.so"))
+		if err != nil || len(packagedLibrary) != 0 {
+			t.Fatalf("packaged library=%q, err=%v, want freshly extracted fixture library", packagedLibrary, err)
+		}
+		downloads, err := os.ReadFile(filepath.Join(fixture.root, "downloads"))
+		if err != nil || string(downloads) != "download\n" {
+			t.Fatalf("downloads=%q, err=%v, want only the initial download", downloads, err)
+		}
+	})
+	t.Run("ready marker cannot bypass cached archive verification", func(t *testing.T) {
+		fixture := newRuntimeScriptFixture(t)
+		if output, err := fixture.run("setup"); err != nil {
+			t.Fatal(err, output)
+		}
+		if err := os.Remove(filepath.Join(fixture.root, "extracted")); err != nil {
+			t.Fatal(err)
+		}
+		fixture.environment = append(fixture.environment, "TEST_CHECKSUM=incorrect")
+		if output, err := fixture.runScript("package-browser.sh"); err == nil || !strings.Contains(output, "checksum") {
+			t.Fatalf("got %s, %v, want checksum rejection despite ready marker", output, err)
+		}
+		fixture.assertNoExtraction(t)
+		if _, err := os.Stat(filepath.Join(fixture.root, "bin/packages")); !os.IsNotExist(err) {
+			t.Fatalf("package output created before verification: %v", err)
+		}
+	})
 	t.Run("bundle includes its engine and notices without model weights or build tools", func(t *testing.T) {
 		fixture := newRuntimeScriptFixture(t)
 		if output, err := fixture.runScript("package-browser.sh"); err != nil {

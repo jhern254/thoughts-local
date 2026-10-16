@@ -64,7 +64,10 @@ cannot use a prepared native engine; ordinary `go build` remains available.
 For users running a prebuilt app, the engine belongs in the application bundle,
 not in a setup step. `make tui/package` builds `bin/packages/thoughts-<os>-<arch>`
 with the linked app, required private libraries, and dependency notices, then
-creates a release archive and SHA-256 file. The
+creates a release archive and SHA-256 file. Each package build rechecks the pinned
+runtime archive checksum, reconstructs the engine, and runs its native check;
+an existing `.ready` marker does not skip this. The cached archive is reused
+without downloading it again. The
 existing native CI matrix builds these bundles and executes real transcription
 after moving them out of the build directory without developer loader settings.
 The CI artifacts are candidate app releases for review, not another user setup
