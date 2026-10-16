@@ -316,8 +316,8 @@ ordinary builds do not require them. The importer re-encodes, strips unrelated
 streams/metadata, validates the output and stores both video and poster before
 committing selection. See [media policy](../../docs/media-handling-policy.md).
 
-The browser owns one selected player and an optional candidate player. Only one
-may play: preview pauses the background, and Back/Apply/disconnect retires preview
+The browser owns one selected player; a new-upload editor also owns a paused
+source element and an optional prepared candidate. Only one may play: preview pauses the background, and Back/Apply/disconnect retires preview
 resources. Saved speed/pause are separate from visibility, connection, reduced
 motion and decoder failure. Settings-only updates retain the player/time; terminal
 renders do not call `play()`. Posters are stable fallback assets, not frame copies.
