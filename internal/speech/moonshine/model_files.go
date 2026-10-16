@@ -78,7 +78,7 @@ func openModelFileForMapping(modelRoot *os.Root, relativePath string) (*os.File,
 
 func (modelFiles *mappedModelFiles) Close() error {
 	for _, modelFile := range modelFiles.files {
-		modelFiles.closeErr = errors.Join(modelFiles.closeErr, modelFile.Close())
+		modelFiles.closeErr = errors.Join(modelFiles.closeErr, modelCleanupFailure(modelFile.Close()))
 	}
 	modelFiles.files = nil
 	return modelFiles.closeErr

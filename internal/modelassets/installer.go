@@ -13,7 +13,7 @@ import (
 
 const installationLockDirectory = ".install.lock"
 
-// Installer is safe for concurrent Install and VerifyInstallation calls after
+// Installer is safe for concurrent calls after
 // construction. The caller must keep the model root open until all calls return.
 type Installer struct {
 	modelRoot  *os.Root
@@ -178,17 +178,33 @@ func (installer *Installer) InstallWithProgress(ctx context.Context, modelID Mod
 	if err = ctx.Err(); err != nil {
 		return Installation{}, err
 	}
-	if err = installer.modelRoot.Mkdir(installationLockDirectory, 0700); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return Installation{}, ErrBusy
-		}
-		return Installation{}, withErrorCategory(ErrFilesystem, err)
+	if err = installer.acquireMutationLock(); err != nil {
+		return Installation{}, err
 	}
-	defer func() {
-		if releaseErr := installer.modelRoot.Remove(installationLockDirectory); releaseErr != nil {
-			err = withErrorCategory(ErrFilesystem, errors.Join(err, releaseErr))
+	defer installer.releaseMutationLock(&err)
+	return installer.installManifestWithProgress(ctx, manifest, reportProgress)
+}
+
+func (installer *Installer) acquireMutationLock() error {
+	if err := installer.modelRoot.Mkdir(installationLockDirectory, 0700); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return ErrBusy
 		}
-	}()
+		return withErrorCategory(ErrFilesystem, err)
+	}
+	return nil
+}
+
+func (installer *Installer) releaseMutationLock(operationErr *error) {
+	if err := installer.modelRoot.Remove(installationLockDirectory); err != nil {
+		*operationErr = withErrorCategory(ErrFilesystem, errors.Join(*operationErr, err))
+	}
+}
+
+func (installer *Installer) installManifestWithProgress(ctx context.Context, manifest modelManifest, reportProgress func(DownloadProgress)) (installedModel Installation, err error) {
+	if err := ctx.Err(); err != nil {
+		return Installation{}, err
+	}
 	targetInstallation := installationForManifest(manifest)
 	_, statErr := installer.modelRoot.Lstat(targetInstallation.Directory)
 	if statErr == nil {

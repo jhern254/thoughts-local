@@ -16,10 +16,13 @@ test('model onboarding preserves writing and enables dictation after cancel and 
   await expect(page.locator('#status')).toHaveText('Connected');
   await expect(screen(page)).toContainText('Enable local speech-to-text');
   await expect(screen(page)).toContainText('Events');
-  await expect(screen(page)).toContainText('Not now (recommended to download)');
+  const repairRequired = process.env.THOUGHTS_MODELS_REPAIR_TEST === '1';
+  const initialAction = repairRequired ? 'Repair and redownload' : 'Download and enable';
+  if (repairRequired) await expect(screen(page)).toContainText('Saved model files need repair.');
+  else await expect(screen(page)).toContainText('Not now (recommended to download)');
   if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-models-onboarding.png`});
   await page.setViewportSize({width: 400, height: 600});
-  await expect(screen(page)).toContainText('Download and enable');
+  await expect(screen(page)).toContainText(initialAction);
   await expect(screen(page)).toContainText('Not now');
   if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-models-narrow.png`});
   await page.keyboard.press('ArrowDown');
@@ -36,7 +39,7 @@ test('model onboarding preserves writing and enables dictation after cancel and 
   await page.keyboard.press('Control+,');
   await expect(screen(page)).toContainText('Visual');
   await activateControl(page, 'Models');
-  await expect(screen(page)).toContainText('Download and enable');
+  await expect(screen(page)).toContainText(initialAction);
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('71.2 / 142.3 MB');
   if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-models-progress.png`});

@@ -15,6 +15,7 @@ import (
 type speechSetupStub struct {
 	status  SpeechModelSetupStatus
 	install func(context.Context, func(modelassets.DownloadProgress)) error
+	repair  func(context.Context, func(modelassets.DownloadProgress)) error
 }
 
 func (setup *speechSetupStub) Description() modelassets.ModelDescription {
@@ -24,8 +25,19 @@ func (*speechSetupStub) Directory() string { return "/home/test/Documents/Though
 func (setup *speechSetupStub) LoadInstalledSpeechModel(context.Context) (SpeechModelSetupStatus, error) {
 	return setup.status, nil
 }
-func (setup *speechSetupStub) InstallAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) error {
-	return setup.install(ctx, report)
+func (setup *speechSetupStub) InstallAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) (SpeechModelSetupStatus, error) {
+	err := setup.install(ctx, report)
+	if err != nil {
+		return setup.status, err
+	}
+	return SpeechModelSetupStatus{Ready: true}, nil
+}
+func (setup *speechSetupStub) RepairAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) (SpeechModelSetupStatus, error) {
+	err := setup.repair(ctx, report)
+	if err != nil {
+		return setup.status, err
+	}
+	return SpeechModelSetupStatus{Ready: true}, nil
 }
 func configuredSpeechSetupTestModel(setup SpeechModelSetup) Model {
 	model := newRootTestModel()
@@ -248,6 +260,57 @@ func TestSpeechSetup_SessionShutdown(t *testing.T) {
 		<-stopped
 		if session.model.(Model).speechSetup.ready {
 			t.Fatal("shutdown published readiness")
+		}
+	})
+}
+
+func TestModel_SpeechRepair(t *testing.T) {
+	t.Run("repair is explicit and selected by default", func(t *testing.T) {
+		repairs := 0
+		setup := &speechSetupStub{status: SpeechModelSetupStatus{CanRepair: true}, repair: func(ctx context.Context, report func(modelassets.DownloadProgress)) error {
+			repairs++
+			report(modelassets.DownloadProgress{DownloadedBytes: 50, TotalBytes: 100})
+			return nil
+		}}
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(setup))
+		content := ansi.Strip(model.View().Content)
+		if !strings.Contains(content, "Saved model files need repair.") || !strings.Contains(content, "Repair and redownload") || strings.Contains(content, "Download and enable") {
+			t.Fatalf("wrong repair view: %s", content)
+		}
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
+		model, _ = rootUpdate(model, enterKey())
+		if repairs != 0 || model.speechSetup.open {
+			t.Fatal("Not now performed repair")
+		}
+		model, _ = rootUpdate(model, BrowserOptionsEnabledMsg{})
+		model, _ = rootUpdate(model, BrowserOptionsMsg{Action: "open"})
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
+		model, _ = rootUpdate(model, enterKey())
+		if !model.speechSetup.open {
+			t.Fatal("Models did not reopen repair")
+		}
+		model, command := rootUpdate(model, enterKey())
+		if !model.speechSetup.busy {
+			t.Fatal("default action did not start repair")
+		}
+		batch := command().(tea.BatchMsg)
+		finished := batch[0]()
+		model, _ = rootUpdate(model, finished)
+		if repairs != 1 || !model.speechSetup.ready || model.speechSetup.canRepair {
+			t.Fatal("repair did not become ready")
+		}
+		model, _ = rootUpdate(model, speechSetupProgress{attempt: model.speechSetup.attempt - 1, progress: modelassets.DownloadProgress{DownloadedBytes: 99}})
+		if model.speechSetup.progress.DownloadedBytes == 99 {
+			t.Fatal("stale progress accepted")
+		}
+	})
+	t.Run("cancelled repair receives missing state without stale readiness", func(t *testing.T) {
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{CanRepair: true}}))
+		model, _ = rootUpdate(model, enterKey())
+		model.speechSetup.cancel()
+		model, _ = rootUpdate(model, speechSetupFinished{attempt: model.speechSetup.attempt, status: SpeechModelSetupStatus{CanDownload: true}, err: context.Canceled})
+		if model.speechSetup.ready || model.speechSetup.canRepair || !model.speechSetup.canDownload {
+			t.Fatal("cancelled repair has incoherent state")
 		}
 	})
 }

@@ -29,11 +29,11 @@ func mapModelFile(modelRoot *os.Root, relativePath string) (*mappedModelFile, er
 		if windowsMappingHandle != 0 {
 			mappingCloseErr = syscall.CloseHandle(windowsMappingHandle)
 		}
-		return nil, errors.Join(mapErr, closeErr, mappingCloseErr)
+		return nil, errors.Join(mapErr, closeErr, modelCleanupFailure(mappingCloseErr))
 	}
 	mappedAddress, err := syscall.MapViewOfFile(windowsMappingHandle, syscall.FILE_MAP_READ, 0, 0, uintptr(sizeBytes))
 	if err != nil {
-		return nil, errors.Join(err, syscall.CloseHandle(windowsMappingHandle))
+		return nil, errors.Join(err, modelCleanupFailure(syscall.CloseHandle(windowsMappingHandle)))
 	}
 	// The mapping handle and view retain stable read-only OS-owned storage
 	// until native transcriber destruction. This slice does not own Go heap memory.

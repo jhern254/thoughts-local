@@ -52,6 +52,16 @@ configured. Linux streaming was executed locally with the licensed fixture in
 recognizer. Interactive macOS/Windows microphones remain unverified; the
 Browser TUI statuses above are unchanged. iOS remains outside this desktop work.
 
+Explicit model repair uses shared/exclusive installation-use locks on the
+existing desktop targets: `flock` on Linux/macOS and `LockFileEx` on Windows.
+Loaded transcribers hold shared access until native resources close; repair
+requires exclusive access and the existing installation mutation lock.
+The portable package jobs exercise cross-process contention and process-exit
+release; the native jobs check that a loaded model blocks repair. See the
+[repair desktop checks](https://github.com/jhern254/thoughts-local/actions/workflows/modelassets.yml?query=branch%3Afeature%2Fmodel-repair)
+for execution results on each target.
+This does not add platform or microphone support.
+
 ## Browser video background processor
 
 Video import requires user-installed FFmpeg/ffprobe with `libx264`, tested on

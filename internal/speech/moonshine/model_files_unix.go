@@ -26,7 +26,7 @@ func mapModelFile(modelRoot *os.Root, relativePath string) (*mappedModelFile, er
 		if mappedBytes != nil {
 			unmapErr = syscall.Munmap(mappedBytes)
 		}
-		return nil, errors.Join(mapErr, closeErr, unmapErr)
+		return nil, errors.Join(mapErr, closeErr, modelCleanupFailure(unmapErr))
 	}
 	return &mappedModelFile{mappedBytes: mappedBytes}, nil
 }

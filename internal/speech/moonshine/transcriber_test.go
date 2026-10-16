@@ -343,3 +343,50 @@ func TestTranscriber_NativeInputLimits(t *testing.T) {
 		}
 	})
 }
+
+type installationUseProbe struct {
+	close func() error
+}
+
+func (probe installationUseProbe) Close() error { return probe.close() }
+
+func TestTranscriber_InstallationUse(t *testing.T) {
+	t.Run("native cleanup precedes releasing installation ownership exactly once", func(t *testing.T) {
+		native := &fakeNativeTranscriber{}
+		releases := 0
+		transcriber := &Transcriber{state: &transcriberState{
+			nativeBackend: native,
+			installationUse: installationUseProbe{close: func() error {
+				if native.closeCalls.Load() != 1 {
+					t.Fatal("released installation before native cleanup")
+				}
+				releases++
+				return nil
+			}},
+		}}
+		copied := *transcriber
+		if err := transcriber.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := copied.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if releases != 1 {
+			t.Fatalf("releases=%d, want 1", releases)
+		}
+	})
+	t.Run("uncertain native cleanup retains installation ownership", func(t *testing.T) {
+		native := &fakeNativeTranscriber{close: func() error { return errors.New("private mapping error") }}
+		transcriber := &Transcriber{state: &transcriberState{
+			nativeBackend:   native,
+			installationUse: installationUseProbe{close: func() error { t.Fatal("released after failed cleanup"); return nil }},
+		}}
+		err := transcriber.Close()
+		if !errors.Is(err, speech.ErrRuntime) {
+			t.Fatalf("got %v, want runtime failure", err)
+		}
+		if transcriber.Close() != err {
+			t.Fatal("close outcome changed")
+		}
+	})
+}
