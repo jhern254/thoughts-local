@@ -472,10 +472,12 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 	case 0:
 		m.options.menu = false
 		m.options.editing = false
-		m.options.hasImage = false
+		m.options.hasBackground = false
 		m.options.framing = data.DefaultBackgroundFraming()
-		m.options.focus = optionsFocusChooseImage
+		m.options.focus = optionsFocusChooseBackground
 		m.options.darkness = 70
+		m.options.speedPercent = 100
+		m.options.userPaused = false
 		m.options.status = "Loading visual…"
 		m.requestOptions("load")
 	case 1:

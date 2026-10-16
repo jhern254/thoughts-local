@@ -9,6 +9,35 @@ import (
 )
 
 func TestModel_Options(t *testing.T) {
+	t.Run("Visual and Models share Options without losing video controls", func(t *testing.T) {
+		m := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{Ready: true}}))
+		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 36})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		if !strings.Contains(m.View().Content, "Models") || m.OptionsState().Open {
+			t.Fatal("Options did not show the Visual/Models menu")
+		}
+		m, _ = rootUpdate(m, enterKey())
+		state := m.OptionsState()
+		if !state.Open || state.Request != "load" || state.SpeedPercent != 100 {
+			t.Fatalf("Visual state = %+v; want a new load request", state)
+		}
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: state.ID, Kind: "video", Background: true, Darkness: 42, SpeedPercent: 50, UserPaused: true})
+		for _, label := range []string{"Playback speed: 50%", "Play video", "Play / pause preview"} {
+			if !strings.Contains(m.View().Content, label) {
+				t.Fatalf("missing video control %q", label)
+			}
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+		if !strings.Contains(m.View().Content, "Models") || m.OptionsState().Open {
+			t.Fatal("Back did not restore the Options menu")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyDown})
+		m, _ = rootUpdate(m, enterKey())
+		if !m.speechSetup.open {
+			t.Fatal("Models no longer opens from Options")
+		}
+	})
 	t.Run("plain actions use the entity highlight and follow vertical focus", func(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
