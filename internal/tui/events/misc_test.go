@@ -5,11 +5,55 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 )
 
 func TestModel_MiscTimeline(t *testing.T) {
+	t.Run("ghost cards share one rail timestamp per minute", func(t *testing.T) {
+		for _, size := range []struct {
+			name  string
+			width int
+		}{
+			{name: "normal", width: 80},
+			{name: "narrow", width: 40},
+		} {
+			t.Run(size.name, func(t *testing.T) {
+				m, events, reader := fixture(t)
+				m.Resize(size.width, 30)
+				events.items = nil
+				at := reader.items[0].ObservedAt.Truncate(time.Minute)
+				reader.miscGroups = []data.MiscThoughtGroup{
+					{ObservedAt: at, Count: 2},
+					{ObservedAt: at.Add(45 * time.Second), Count: 1},
+					{ObservedAt: at.Add(time.Minute), Count: 1},
+				}
+				m = execute(t, m, m.loadDay(m.day))
+				for _, expanded := range []bool{false, true} {
+					if expanded {
+						m, _ = m.Update(eventKey("home"))
+						var cmd tea.Cmd
+						m, cmd = m.Update(eventKey("enter"))
+						m = execute(t, m, cmd)
+					}
+					layout := m.measureTimeline()
+					first := layout.positions[m.items[0].Key()]
+					second := layout.positions[m.items[1].Key()]
+					third := layout.positions[m.items[2].Key()]
+					if !strings.HasPrefix(layout.lines[first], "10:37 AM") || strings.TrimSpace(layout.lines[second]) != "" || !strings.HasPrefix(layout.lines[third], "10:38 AM") {
+						t.Fatalf("got rail rows %q, %q, %q, want one label per minute (expanded %v)", layout.lines[first], layout.lines[second], layout.lines[third], expanded)
+					}
+					for i, card := range layout.cards {
+						if got := strings.TrimSpace(ansi.Strip(card.content[0])); got != "Misc" {
+							t.Fatalf("got ghost card %d heading %q, want Misc without duplicate timestamp", i, got)
+						}
+					}
+				}
+			})
+		}
+	})
 	t.Run("places timestamp groups on the rail and restores the expanded card after detail", func(t *testing.T) {
 		m, events, reader := fixture(t)
 		events.items = nil
@@ -20,7 +64,7 @@ func TestModel_MiscTimeline(t *testing.T) {
 		reader.miscGroups = []data.MiscThoughtGroup{{ObservedAt: at, Count: 230}, {ObservedAt: at.Add(time.Second), Count: 1}}
 		m = execute(t, m, m.loadDay(m.day))
 		m, _ = m.Update(eventKey("home"))
-		if view := ansi.Strip(m.View()); (!strings.Contains(view, "Misc") || !strings.Contains(view, "10:37:00 AM")) || strings.Contains(view, "No events on this day") || !strings.Contains(view, "230 thoughts") {
+		if view := ansi.Strip(m.View()); (!strings.Contains(view, "Misc") || !strings.Contains(view, "10:37 AM")) || strings.Contains(view, "No events on this day") || !strings.Contains(view, "230 thoughts") {
 			t.Fatalf("got view:\n%s\nwant Misc timestamp and count", view)
 		}
 		layout := m.measureTimeline()

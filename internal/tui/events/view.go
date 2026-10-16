@@ -117,7 +117,7 @@ func (m *Model) entryContent(entry timeline.Entry) []string {
 	if entry.Event != nil {
 		return m.cardContent(*entry.Event)
 	}
-	heading := list.DefaultStyles(true).Title.Render("Misc") + " · " + displaytime.Format(entry.Misc.ObservedAt, "03:04:05 PM")
+	heading := list.DefaultStyles(true).Title.Render("Misc")
 	count := "1 thought"
 	if entry.Misc.Count != 1 {
 		count = fmt.Sprintf("%d thoughts", entry.Misc.Count)
@@ -201,6 +201,7 @@ type railEntry struct {
 	selected   bool
 	now        bool
 	end        time.Time
+	hideStart  bool
 	hideEnd    bool
 }
 
@@ -238,6 +239,8 @@ func (m *Model) measureTimeline() timelineLayout {
 		if i+1 < len(m.items) && m.items[i+1].StartedAt().Equal(end) {
 			hideEnd = true
 		}
+		hideStart := item.Misc != nil && i > 0 && m.items[i-1].Misc != nil &&
+			at.Truncate(time.Minute).Equal(m.items[i-1].StartedAt().Truncate(time.Minute))
 		count, known := int64(0), false
 		if item.Misc != nil {
 			count, known = item.Misc.Count, true
@@ -258,6 +261,7 @@ func (m *Model) measureTimeline() timelineLayout {
 			content:    m.entryContent(item),
 			selected:   i == m.position.eventIndex,
 			end:        end,
+			hideStart:  hideStart,
 			hideEnd:    hideEnd,
 		})
 	}
@@ -321,7 +325,9 @@ func (m *Model) measureTimeline() timelineLayout {
 				curves = append(curves, render.Distribution{CenterY: center, Count: entry.count})
 			}
 			labels := make([]string, height)
-			labels[0] = displaytime.Format(entry.at, "03:04 PM")
+			if !entry.hideStart {
+				labels[0] = displaytime.Format(entry.at, "03:04 PM")
+			}
 			if !entry.hideEnd {
 				labels[height-1] = displaytime.Format(entry.end, "03:04 PM")
 			}
