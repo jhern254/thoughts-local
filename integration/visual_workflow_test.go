@@ -4,10 +4,12 @@ package integration_test
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/png"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -16,6 +18,128 @@ import (
 )
 
 func TestVisualWorkflow_SQLite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Run("stores new imports in Documents Thoughts and keeps database selections independent", func(t *testing.T) {
+		_, firstDSN := openMigratedSQLite(t)
+		first, err := application.Open(t.Context(), firstDSN)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer first.Close()
+		firstVisual, err := first.BrowserVisual(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var source bytes.Buffer
+		if err := png.Encode(&source, image.NewRGBA(image.Rect(0, 0, 12, 8))); err != nil {
+			t.Fatal(err)
+		}
+		selected, warning, err := firstVisual.Import(t.Context(), bytes.NewReader(source.Bytes()), 42, data.DefaultBackgroundFraming())
+		if err != nil || warning {
+			t.Fatalf("import error = %v, warning = %v; want success", err, warning)
+		}
+		wantPath := filepath.Join(home, "Documents", "Thoughts", "backgrounds", selected.BackgroundAsset)
+		if _, err := os.Stat(wantPath); err != nil {
+			t.Fatalf("imported asset in shared application folder: %v", err)
+		}
+		_, secondDSN := openMigratedSQLite(t)
+		second, err := application.Open(t.Context(), secondDSN)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer second.Close()
+		secondVisual, err := second.BrowserVisual(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		settings, err := secondVisual.Load(t.Context())
+		if err != nil || settings.BackgroundAsset != "" {
+			t.Fatalf("second selection = %q, error = %v; want empty", settings.BackgroundAsset, err)
+		}
+		if file, _, err := secondVisual.OpenBackground(t.Context()); !errors.Is(err, os.ErrNotExist) {
+			if file != nil {
+				file.Close()
+			}
+			t.Fatalf("unselected background error = %v, want not exist", err)
+		}
+		other, warning, err := secondVisual.Import(t.Context(), bytes.NewReader(source.Bytes()), 70, data.DefaultBackgroundFraming())
+		if err != nil || warning {
+			t.Fatalf("second import error = %v, warning = %v; want success", err, warning)
+		}
+		if selected.BackgroundAsset == other.BackgroundAsset {
+			t.Fatal("independent imports share an asset identifier")
+		}
+		if _, warning, err := secondVisual.Remove(t.Context()); err != nil || warning {
+			t.Fatalf("second remove error = %v, warning = %v; want success", err, warning)
+		}
+		file, _, err := firstVisual.OpenBackground(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		file.Close()
+	})
+	t.Run("restores prepared video poster and deliberate playback preferences after restart", func(t *testing.T) {
+		if _, err := exec.LookPath("ffmpeg"); err != nil {
+			t.Skip("FFmpeg is not installed")
+		}
+		if _, err := exec.LookPath("ffprobe"); err != nil {
+			t.Skip("ffprobe is not installed")
+		}
+		_, dsn := openMigratedSQLite(t)
+		runtime, err := application.Open(t.Context(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		service, err := runtime.BrowserVisual(t.Context())
+		if err != nil {
+			runtime.Close()
+			t.Fatal(err)
+		}
+		source, err := os.Open("../internal/browserterm/client/fixtures/visual-video.mp4")
+		if err != nil {
+			runtime.Close()
+			t.Fatal(err)
+		}
+		first, warning, err := service.ImportVideo(t.Context(), source, 42, data.DefaultBackgroundFraming(), 50, true)
+		source.Close()
+		if err != nil || warning {
+			runtime.Close()
+			t.Fatalf("video import: %v warning=%v", err, warning)
+		}
+		if err := runtime.Close(); err != nil {
+			t.Fatal(err)
+		}
+		runtime, err = application.Open(t.Context(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer runtime.Close()
+		service, err = runtime.BrowserVisual(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		restored, err := service.Load(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if restored != first || restored.SpeedPercent != 50 || !restored.UserPaused {
+			t.Fatalf("restored=%+v, want %+v", restored, first)
+		}
+		poster, kind, err := service.OpenPoster(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer poster.Close()
+		config, _, err := image.DecodeConfig(poster)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kind != "image/jpeg" || config.Width != 96 || config.Height != 64 {
+			t.Fatalf("poster=%s %dx%d, want JPEG 96x64", kind, config.Width, config.Height)
+		}
+	})
 	t.Run("restores optimized background and framing after restart", func(t *testing.T) {
 		_, dsn := openMigratedSQLite(t)
 		runtime, err := application.Open(t.Context(), dsn)
@@ -64,69 +188,6 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("stored = %+v, %s, %v; want 2449x1632 PNG", config, format, err)
 		}
 	})
-	t.Run("opens the selected image from the application asset directory", func(t *testing.T) {
-		db, dsn := openMigratedSQLite(t)
-		runtime, err := application.Open(t.Context(), dsn)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer runtime.Close()
-		var filename string
-		if err := db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&filename); err != nil {
-			t.Fatal(err)
-		}
-		directory := filepath.Join(filename+".assets", "appearance")
-		if err := os.MkdirAll(directory, 0700); err != nil {
-			t.Fatal(err)
-		}
-		const asset = "0123456789abcdef0123456789abcdef.png"
-		var body bytes.Buffer
-		if err := png.Encode(&body, image.NewRGBA(image.Rect(0, 0, 8, 6))); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(directory, asset), body.Bytes(), 0600); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := db.Exec(`INSERT INTO visual
- (user_id, background_asset, darkness, fit, zoom, position_x, position_y)
- VALUES (?, ?, 42, 'fit', 175, 1200, 9000)`, runtime.LocalUser().UserID, asset); err != nil {
-			t.Fatal(err)
-		}
-		service, err := runtime.BrowserVisual(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		settings, err := service.Load(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		wantSettings := data.Visual{
-			BackgroundAsset: asset,
-			Darkness:        42,
-			Framing: data.BackgroundFraming{
-				Fit:       "fit",
-				Zoom:      175,
-				PositionX: 1200,
-				PositionY: 9000,
-			},
-		}
-		if settings != wantSettings {
-			t.Fatalf("settings = %+v, want %+v", settings, wantSettings)
-		}
-		file, _, err := service.OpenBackground(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer file.Close()
-		loaded, err := io.ReadAll(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(loaded, body.Bytes()) {
-			t.Fatal("loaded image differs from the existing background")
-		}
-	})
-
 	t.Run("restores native image and darkness after application restart", func(t *testing.T) {
 		_, dsn := openMigratedSQLite(t)
 		runtime, err := application.Open(t.Context(), dsn)

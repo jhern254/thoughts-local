@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/browserterm"
 	"github.com/jhern254/go-thoughts/internal/modelassets"
 	"github.com/jhern254/go-thoughts/internal/speech"
@@ -45,7 +46,7 @@ func resolveModelDirectory(configuredDirectory, homeDirectory string) string {
 	if configuredDirectory != "" {
 		return configuredDirectory
 	}
-	return filepath.Join(homeDirectory, "Documents", "Thoughts", "models")
+	return filepath.Join(appcore.DataDirectory(homeDirectory), "models")
 }
 func newBrowserSpeechSetup(configuredDirectory string) (*browserSpeechSetup, error) {
 	homeDirectory, err := os.UserHomeDir()

@@ -26,6 +26,23 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 	if os.Getenv("THOUGHTS_BROWSER_AUDIO_TEST") != "1" {
 		t.Skip("set THOUGHTS_BROWSER_AUDIO_TEST=1 after installing browser test dependencies")
 	}
+	for _, tool := range []string{"ffmpeg", "ffprobe"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Fatalf("browser video acceptance requires %s on PATH", tool)
+		}
+	}
+	// Keep synthetic imports out of the user's shared assets while reusing the
+	// browser binaries installed before this test changes its application home.
+	if os.Getenv("PLAYWRIGHT_BROWSERS_PATH") == "" {
+		cacheDirectory, err := os.UserCacheDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PLAYWRIGHT_BROWSERS_PATH", filepath.Join(cacheDirectory, "ms-playwright"))
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	database, dsn := openMigratedSQLite(t)
 	seed, err := os.ReadFile("../scripts/demo.sql")
 	if err != nil {

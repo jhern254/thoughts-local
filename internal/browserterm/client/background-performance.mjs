@@ -1,6 +1,7 @@
 // Opt-in local probe: imports/removes synthetic backgrounds on a disposable demo.
 // Run revisions separately; do not run builds/tests alongside measurements.
 import {chromium, expect} from '@playwright/test';
+import {fakeMicrophone} from './capture-fixture.mjs';
 import {openVisual, setDarkness, screen} from './visual-helpers.mjs';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
@@ -8,6 +9,7 @@ import {availableParallelism} from 'node:os';
 import {createHash} from 'node:crypto';
 import {Worker} from 'node:worker_threads';
 import {deflateSync} from 'node:zlib';
+import {measureVideoInteractions} from './video-interaction-performance.mjs';
 
 if (process.env.THOUGHTS_BACKGROUND_PERF_DISPOSABLE !== '1') throw new Error('Use only a disposable seeded demo; set THOUGHTS_BACKGROUND_PERF_DISPOSABLE=1.');
 const [url, appPID, output] = process.argv.slice(2);
@@ -17,6 +19,7 @@ const count = 5, rows = [];
 const fixtureRunID = Date.now(); // Avoid native file-picker deduplication between separate probe runs.
 // Privacy follow-ups measure only one-time import/activation; avoid repeating idle/navigation matrices.
 const importOnly = process.env.THOUGHTS_PERF_IMPORT_ONLY === '1';
+const videoFixturePath = process.env.THOUGHTS_PERF_VIDEO_FIXTURE;
 // Reduce only idle sampling for a quick follow-up; import/interaction runs stay five.
 const idleSamples = Number(process.env.THOUGHTS_PERF_IDLE_SAMPLES || 5);
 if (!Number.isInteger(idleSamples) || idleSamples < 1 || idleSamples > 5) throw new Error('Idle samples must be between 1 and 5.');
@@ -69,25 +72,45 @@ function syntheticPNG(width, height) {
     pngChunk('IHDR', header), pngChunk('IDAT', deflateSync(pixels)), pngChunk('IEND', Buffer.alloc(0))
   ]);
 }
-const fixtures = (importOnly ? [[1200,850],[6000,4000]] : [[1267,719],[91,4093],[4093,91],[6000,4000]]).map(([width,height]) => ({width,height,buffer:syntheticPNG(width,height)}));
+const fixtures = (videoFixturePath ? [[1200,850]] : importOnly ? [[1200,850],[6000,4000]] : [[1267,719],[91,4093],[4093,91],[6000,4000]]).map(([width,height]) => ({width,height,buffer:syntheticPNG(width,height)}));
 const browser = await chromium.launch({headless:false, executablePath:process.env.THOUGHTS_PERF_BROWSER || '/usr/bin/brave-browser'});
 try {
   const page = await browser.newPage({viewport:null});
   const cdp = await page.context().newCDPSession(page);
   const browserCDP = await browser.newBrowserCDPSession();
+  if(process.env.THOUGHTS_PERF_RECORDING==='1')await fakeMicrophone(page,.25);
+  if (process.env.THOUGHTS_PERF_INTERACTIONS === '1') await page.addInitScript(() => {
+    // Test-only arrival stamp: split application/transport waiting from xterm's
+    // queued rendering without adding instrumentation to the shipped adapter.
+    const NativeWebSocket = WebSocket;
+    window.WebSocket = class extends NativeWebSocket {
+      constructor(...args) {
+        super(...args);
+        this.addEventListener('message', event => {
+          if (event.data instanceof ArrayBuffer && new Uint8Array(event.data)[0] === 49) window.lastTerminalArrival = performance.now();
+        });
+      }
+    };
+  });
   await page.route('**/static/visual.js', async route => {
     const response = await route.fetch();
-    await route.fulfill({response,body:await response.text()+`;window.activationTimes=[];const measuredActivate=ThoughtsVisual.prototype.activate;ThoughtsVisual.prototype.activate=async function(...args){const start=performance.now();const result=await measuredActivate.apply(this,args);window.activationTimes.push(performance.now()-start);return result;};`});
+    await route.fulfill({response,body:await response.text()+`;window.activationTimes=[];const measuredActivate=ThoughtsVisual.prototype.activate;ThoughtsVisual.prototype.activate=async function(...args){window.backgroundProbe=this;const start=performance.now();const result=await measuredActivate.apply(this,args);window.activationTimes.push(performance.now()-start);return result;};`});
   });
   await page.goto(url); await page.bringToFront(); await expect(page.locator('#status')).toHaveText('Connected');
   const {windowId} = await cdp.send('Browser.getWindowForTarget');
   const fullscreen = async () => { await cdp.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'fullscreen'}}); await page.waitForTimeout(500); };
   await fullscreen();
   const metadata = {revision:process.env.THOUGHTS_PERF_REVISION || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),logicalCPUs:availableParallelism(),contentionWorkers:Math.min(4,Math.max(1,Math.floor(availableParallelism()/2))),browser:await browser.version(),go:execFileSync('go',['version'],{encoding:'utf8'}).trim(),system:await browserCDP.send('SystemInfo.getInfo'),viewport:await page.evaluate(()=>[innerWidth,innerHeight,devicePixelRatio]),count,idleSamples,importOnly,appPID};
+  metadata.decoderProperties=[];
+  await cdp.send('Media.enable');
+  cdp.on('Media.playerPropertiesChanged',event=>{
+    const properties=event.properties.filter(property=>/decoder/i.test(property.name));
+    if(properties.length)metadata.decoderProperties.push(properties);
+  });
   // Keyboard focus avoids pointer coordinates racing the desktop window manager.
   const clickControl = async (page, label) => {
     await page.locator('.xterm-helper-textarea').focus();
-    for (let step = 0; step < 7; step++) {
+    for (let step = 0; step < 10; step++) {
       const selected = page.locator('.xterm-bg-62').filter({hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')});
       if (await selected.count()) {
         await page.keyboard.press('Enter');
@@ -101,7 +124,7 @@ try {
   };
   const chooseImage = async (page, fixture) => {
     const chooser = page.waitForEvent('filechooser');
-    await clickControl(page, 'Choose image');
+    await clickControl(page, 'Choose image or video');
     await (await chooser).setFiles(fixture);
     await expect(screen(page)).toContainText('Preview only. Apply to save.', {timeout: 15000});
     await expect(page.locator('#background-preview-wrap')).toBeVisible();
@@ -120,14 +143,15 @@ try {
     const stat=readFileSync(`/proc/${appPID}/stat`,'utf8').split(') ')[1].split(' ');
     const appCPU=(Number(stat[11])+Number(stat[12]))/ticks;
     const appRSS=Number(readFileSync(`/proc/${appPID}/status`,'utf8').match(/VmRSS:\s+(\d+)/)[1]);
-    return {browserCPU,appCPU,browserRSS:browserRSS/1024,browserPSS:browserPSS/1024,appRSS:appRSS/1024};
+    return {browserCPU,appCPU,browserRSS:browserRSS/1024,browserPSS:browserPSS/1024,appRSS:appRSS/1024,processCPU:processInfo.map(({id,type,cpuTime}) => ({id,type,cpuTime}))};
   };
   const add = row => {rows.push(row);writeFileSync(output,JSON.stringify({metadata,rows},null,2));console.log(JSON.stringify(row));};
   const idle = async image => {
     await page.waitForTimeout(3000);
     for(let run=0;run<idleSamples;run++) {
       const a=await usage(),start=performance.now();await page.waitForTimeout(30000);const b=await usage();const seconds=(performance.now()-start)/1000;
-      add({phase:'idle',image,run,browserCPUPercent:100*(b.browserCPU-a.browserCPU)/seconds,appCPUPercent:100*(b.appCPU-a.appCPU)/seconds,...b});
+      const quality=await page.evaluate(()=>{const video=document.querySelector('#background-video');if(!video)return null;const quality=video.getVideoPlaybackQuality();return {paused:video.paused,currentTime:video.currentTime,frames:quality.totalVideoFrames,dropped:quality.droppedVideoFrames,visibility:document.visibilityState};});
+      add({phase:'idle',image,run,quality,browserCPUPercent:100*(b.browserCPU-a.browserCPU)/seconds,appCPUPercent:100*(b.appCPU-a.appCPU)/seconds,...b});
     }
   };
   // Measure keydown -> observed terminal row mutation, excluding automation delivery.
@@ -153,8 +177,12 @@ try {
       }
     } finally {await Promise.all(workers.map(worker=>worker.terminate()));}
   };
+  if (process.env.THOUGHTS_PERF_INTERACTIONS === '1') {
+    if (!videoFixturePath) throw new Error('Interaction mode requires THOUGHTS_PERF_VIDEO_FIXTURE.');
+    await measureVideoInteractions({page, cdp, url, videoFixturePath, output, add, usage, count, openVisual, chooseImage, clickControl});
+  } else {
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');
-  if(!importOnly)await idle('opaque');
+  if(!importOnly&&!videoFixturePath)await idle('opaque');
   await page.bringToFront();await page.locator('.xterm-helper-textarea').focus();await page.keyboard.press('Tab');await expect(screen(page)).toContainText('Tab/Q: events');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Background darkness:');await expect(screen(page)).not.toContainText('Loading visual');
   for(const fixture of fixtures) {
     const image=`${fixture.width}x${fixture.height}`;
@@ -165,7 +193,7 @@ try {
       try {
       const start=performance.now();await chooseImage(page,{name:`synthetic-${fixtureRunID}-${image}-${run}.png`,mimeType:'image/png',buffer:fixture.buffer});
       const previewMs=performance.now()-start;
-      if((await screen(page).textContent()).includes('Image fit: Fit'))await clickControl(page,'Image fit: Fit');
+      if((await screen(page).textContent()).includes('Background fit: Fit'))await clickControl(page,'Background fit: Fit');
       await setDarkness(page,30);
       await page.evaluate(()=>{window.activationTimes=[];});
       const applyStart=performance.now();
@@ -177,10 +205,69 @@ try {
       } finally {clearInterval(timer);}
     }
     if(!importOnly)await navigation(image);
-    if(!importOnly && (fixture===fixtures[0] || fixture===fixtures.at(-1)))await idle(image);
-    if(!importOnly && fixture===fixtures.at(-1))await navigation(image,true);
+    if(!importOnly && !videoFixturePath && (fixture===fixtures[0] || fixture===fixtures.at(-1)))await idle(image);
+    if(!importOnly && !videoFixturePath && fixture===fixtures.at(-1))await navigation(image,true);
   }
-  if(!importOnly) {
+  if(videoFixturePath) {
+    const fixture=readFileSync(videoFixturePath);
+    add({phase:'video-fixture',bytes:fixture.length,sha256:createHash('sha256').update(fixture).digest('hex')});
+    const events=async mode=>{
+      // Tab leaves the entity picker; day keys then exercise actual Events.
+      await page.keyboard.press('Tab');
+      for(let run=0;run<count;run++) {
+        const values=[];
+        for(let i=0;i<10;i++){values.push(await keyLatency('ArrowLeft'));values.push(await keyLatency('ArrowRight'));}
+        add({phase:'video-events',mode,run,p95Ms:percentile95(values.filter(value=>value!==null)),medianMs:median(values.filter(value=>value!==null)),timeouts:values.filter(value=>value===null).length});
+      }
+      await page.keyboard.press('Tab');
+    };
+    await idle('static-video-baseline');await events('static');
+    for(let run=0;run<count;run++) {
+      await openVisual(page);
+      const start=performance.now();
+      await chooseImage(page,{name:`synthetic-video-${fixtureRunID}-${run}.mp4`,mimeType:'video/mp4',buffer:fixture});
+      const previewMs=performance.now()-start;
+      const applyStart=performance.now();await clickControl(page,'Apply');
+      await expect(screen(page)).not.toContainText('Background darkness:',{timeout:120000});
+      await expect(page.locator('#background-video')).toBeVisible();
+      add({phase:'video-import',run,previewMs,applyMs:performance.now()-applyStart,activationMs:await page.evaluate(()=>window.activationTimes.at(-1)),...await usage()});
+    }
+    for(const percent of [100,50,25]) {
+      await openVisual(page);await clickControl(page,`Playback speed: ${percent===100?100:percent===50?100:50}%`);
+      await page.keyboard.press('Home');for(let value=25;value<percent;value+=5)await page.keyboard.press('ArrowRight');
+      await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
+      await idle(`video-${percent}`);
+      if(percent===100) {
+        await events('video');
+        if(process.env.THOUGHTS_PERF_RECORDING==='1') {
+          await page.keyboard.press('F8');await expect(screen(page)).toContainText('Create thought');
+          await page.keyboard.press('F8');await expect.poll(()=>page.evaluate(()=>window.voiceProbe.requests)).toBe(1);
+          await page.evaluate(()=>window.voiceProbe.grant(0));await expect(page.locator('#status')).toHaveText('Transcribing…');
+          await idle('video-synthetic-recording');
+          await page.keyboard.press('F8');await expect(screen(page)).toContainText('F8: Record');
+          await page.keyboard.press('Escape');await page.keyboard.press('Tab');await page.keyboard.press('q');await page.keyboard.press('Tab');
+          await expect(screen(page)).toContainText('Tab/Q: events');
+        }
+      }
+    }
+    await openVisual(page);await clickControl(page,'Pause video');await clickControl(page,'Apply');
+    await expect(screen(page)).not.toContainText('Background darkness:');await idle('video-paused');
+    await openVisual(page);await clickControl(page,'Play video');await clickControl(page,'Apply');
+    await expect(screen(page)).not.toContainText('Background darkness:');
+    await page.emulateMedia({reducedMotion:'reduce'});await idle('video-reduced-motion');
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    // A second desktop window tests real visibility rather than dispatching a
+    // fabricated event. Record document visibility so failed hiding is explicit.
+    const other=await browser.newPage();await other.goto('about:blank');await other.bringToFront();
+    await idle('video-hidden-attempt');await other.close();await page.bringToFront();
+    // Some automated desktop setups keep inactive windows visible. Exercise
+    // the real application listener with an explicitly labeled hidden state,
+    // without describing that emulation as a successful OS/tab transition.
+    await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
+    await idle('video-hidden-emulated');
+    await page.evaluate(()=>{delete document.hidden;delete document.visibilityState;document.dispatchEvent(new Event('visibilitychange'));});
+  }
+  if(!importOnly && !videoFixturePath) {
     // Keep the Events workload separate from the reported entity-picker artifact.
     await page.keyboard.press('Tab');
     for(let run=0;run<count;run++) {
@@ -203,4 +290,5 @@ try {
   }
   await page.screenshot({path:output.replace('.json','-desktop.png')});
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');
+  }
 } finally {await browser.close();}

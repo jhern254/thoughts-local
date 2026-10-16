@@ -6,7 +6,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/visual"
@@ -22,6 +25,9 @@ type visualResponse struct {
 	Framing        data.BackgroundFraming `json:"framing"`
 	Background     bool                   `json:"background"`
 	Darkness       int                    `json:"darkness"`
+	SpeedPercent   int                    `json:"speedPercent"`
+	UserPaused     bool                   `json:"userPaused"`
+	Kind           string                 `json:"kind"`
 	CleanupWarning bool                   `json:"cleanupWarning,omitempty"`
 }
 
@@ -33,7 +39,15 @@ func writeVisual(w http.ResponseWriter, settings data.Visual, warning bool) {
 		Background:     settings.BackgroundAsset != "",
 		Darkness:       settings.Darkness,
 		CleanupWarning: warning,
+		SpeedPercent:   settings.SpeedPercent, UserPaused: settings.UserPaused, Kind: backgroundKind(settings.BackgroundAsset),
 	})
+}
+
+func backgroundKind(asset string) string {
+	if filepath.Ext(asset) == ".mp4" {
+		return "video"
+	}
+	return "image"
 }
 
 func visualError(w http.ResponseWriter, err error) {
@@ -41,6 +55,15 @@ func visualError(w http.ResponseWriter, err error) {
 	message := "Could not update or load the background."
 	var tooLarge *http.MaxBytesError
 	switch {
+	case errors.Is(err, visual.ErrVideo):
+		status = http.StatusBadRequest
+		message = "Choose a self-contained SDR H.264 MP4 or MOV within the video limits."
+	case errors.Is(err, visual.ErrVideoTools):
+		status = http.StatusServiceUnavailable
+		message = "Install FFmpeg and ffprobe to import a video background."
+	case errors.Is(err, visual.ErrPlayback):
+		status = http.StatusBadRequest
+		message = "Video speed must be between 25 and 100 percent."
 	case errors.Is(err, visual.ErrImage):
 		status = http.StatusBadRequest
 		message = "Choose a valid, non-animated JPEG or PNG within the image limits."
@@ -55,7 +78,7 @@ func visualError(w http.ResponseWriter, err error) {
 		message = "A visual change is already in progress."
 	case errors.As(err, &tooLarge):
 		status = http.StatusRequestEntityTooLarge
-		message = "Image exceeds the upload limit."
+		message = "Background exceeds the upload limit."
 	}
 	http.Error(w, message, status)
 }
@@ -78,6 +101,16 @@ func (s *server) serveVisual(w http.ResponseWriter, r *http.Request) {
 			handler = s.importVisualBackground
 		case http.MethodDelete:
 			handler = s.removeVisualBackground
+		}
+	case "/visual/video":
+		allowed = "POST"
+		if r.Method == http.MethodPost {
+			handler = s.importVisualVideo
+		}
+	case "/visual/poster":
+		allowed = "GET"
+		if r.Method == http.MethodGet {
+			handler = s.serveVisualPoster
 		}
 	case "/visual/settings":
 		allowed = "PUT"
@@ -115,6 +148,15 @@ func (s *server) loadVisual(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) serveVisualBackground(w http.ResponseWriter, r *http.Request) {
 	file, contentType, err := s.visual.OpenBackground(r.Context())
+	serveVisualFile(w, r, file, contentType, err)
+}
+
+func (s *server) serveVisualPoster(w http.ResponseWriter, r *http.Request) {
+	file, contentType, err := s.visual.OpenPoster(r.Context())
+	serveVisualFile(w, r, file, contentType, err)
+}
+
+func serveVisualFile(w http.ResponseWriter, r *http.Request, file *os.File, contentType string, err error) {
 	if errors.Is(err, os.ErrNotExist) {
 		http.NotFound(w, r)
 		return
@@ -151,8 +193,10 @@ func (s *server) removeVisualBackground(w http.ResponseWriter, r *http.Request) 
 func (s *server) updateVisualSettings(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxVisualSettingsBytes)
 	var input struct {
-		Darkness *int                   `json:"darkness"`
-		Framing  data.BackgroundFraming `json:"framing"`
+		Darkness     *int                   `json:"darkness"`
+		Framing      data.BackgroundFraming `json:"framing"`
+		SpeedPercent *int                   `json:"speedPercent"`
+		UserPaused   bool                   `json:"userPaused"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -164,7 +208,11 @@ func (s *server) updateVisualSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid visual settings.", http.StatusBadRequest)
 		return
 	}
-	settings, err := s.visual.UpdateSettings(r.Context(), *input.Darkness, input.Framing)
+	speedPercent := 100
+	if input.SpeedPercent != nil {
+		speedPercent = *input.SpeedPercent
+	}
+	settings, err := s.visual.UpdateSettings(r.Context(), *input.Darkness, input.Framing, speedPercent, input.UserPaused)
 	if err != nil {
 		visualError(w, err)
 		return
@@ -216,4 +264,51 @@ func (s *server) importVisualBackground(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeVisual(w, settings, warning)
+}
+
+// Video bytes stream directly into the native private staging directory. Only
+// bounded settings travel in the header; filenames/MIME are never storage paths
+// or codec evidence. This avoids a second 128 MiB multipart buffer or temp copy.
+func (s *server) importVisualVideo(w http.ResponseWriter, r *http.Request) {
+	if !s.importMu.TryLock() {
+		visualError(w, visual.ErrBusy)
+		return
+	}
+	defer s.importMu.Unlock()
+	var settings struct {
+		Darkness     int                    `json:"darkness"`
+		Framing      data.BackgroundFraming `json:"framing"`
+		SpeedPercent int                    `json:"speedPercent"`
+		UserPaused   bool                   `json:"userPaused"`
+	}
+	headers := r.Header.Values("X-Background-Settings")
+	if len(headers) != 1 || len(headers[0]) > maxVisualSettingsBytes {
+		http.Error(w, "Invalid visual settings.", http.StatusBadRequest)
+		return
+	}
+	decoder := json.NewDecoder(strings.NewReader(headers[0]))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&settings) != nil || decoder.Decode(new(any)) != io.EOF {
+		http.Error(w, "Invalid visual settings.", http.StatusBadRequest)
+		return
+	}
+	// Request cancellation alone does not interrupt a blocked HTTP body Read.
+	// Bound staging on the connection as well as subprocess work, and honor an
+	// earlier owner deadline. Real net/http writers support this controller;
+	// recorder-only handler tests do not have a connection deadline to set.
+	deadline := time.Now().Add(visual.MaxVideoProcessingTime)
+	if ownerDeadline, ok := r.Context().Deadline(); ok && ownerDeadline.Before(deadline) {
+		deadline = ownerDeadline
+	}
+	if err := http.NewResponseController(w).SetReadDeadline(deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		visualError(w, err)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, visual.MaxVideoBytes)
+	selected, warning, err := s.visual.ImportVideo(r.Context(), r.Body, settings.Darkness, settings.Framing, settings.SpeedPercent, settings.UserPaused)
+	if err != nil {
+		visualError(w, err)
+		return
+	}
+	writeVisual(w, selected, warning)
 }

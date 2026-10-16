@@ -1,5 +1,6 @@
 import {test, expect} from '@playwright/test';
-import {screen, clickControl} from './visual-helpers.mjs';
+import {screen, clickControl, chooseImage} from './visual-helpers.mjs';
+import {readFileSync} from 'node:fs';
 import {fakeMicrophone} from './capture-fixture.mjs';
 
 async function activateControl(page, label) {
@@ -60,4 +61,40 @@ test('model onboarding preserves writing and enables dictation after cancel and 
   await expect(screen(page)).toContainText('synthetic speech');
   await page.keyboard.press('F8');
   await expect(screen(page)).toContainText('F8: Record');
+});
+
+test('model onboarding keeps Visual video controls available through the Options menu', async ({page, request, baseURL}) => {
+  const settings = await request.put('/visual/settings', {
+    headers: {Origin: new URL(baseURL).origin},
+    data: {darkness: 70, framing: {fit: 'fill', zoom: 100, positionX: 5000, positionY: 5000}, speedPercent: 100, userPaused: false},
+  });
+  expect(settings.ok()).toBe(true);
+  await page.goto('/');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await expect(screen(page)).toContainText('Enable local speech-to-text');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+,');
+  await activateControl(page, 'Visual');
+  await expect(screen(page)).toContainText('Background darkness:');
+  await expect(screen(page)).not.toContainText('Loading visual');
+  await chooseImage(page, {
+    name: 'synthetic-video.mp4', mimeType: 'video/mp4',
+    buffer: readFileSync(new URL('./fixtures/visual-video.mp4', import.meta.url)),
+  });
+  await expect(screen(page)).toContainText('Playback speed: 100%');
+  await activateControl(page, 'Playback speed: 100%');
+  await page.keyboard.press('ArrowLeft');
+  await expect(screen(page)).toContainText('Playback speed: 95%');
+  await activateControl(page, 'Apply');
+  await expect(screen(page)).not.toContainText('Background darkness:');
+  await page.keyboard.press('Control+,');
+  await activateControl(page, 'Visual');
+  await expect(screen(page)).toContainText('Playback speed: 95%');
+  await activateControl(page, 'Remove background');
+  await expect(screen(page)).not.toContainText('Background darkness:');
+  await page.keyboard.press('Control+,');
+  await activateControl(page, 'Models');
+  await expect(screen(page)).toContainText('Download and enable');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
 });

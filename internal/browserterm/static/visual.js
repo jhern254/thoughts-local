@@ -1,4 +1,4 @@
-/* Bubble Tea owns controls; the browser owns the picker, image pixels and HTTP. */
+/* Bubble Tea owns controls; the browser owns the picker, background media and HTTP. */
 // Bound the preview canvas to roughly 4 MiB of RGBA pixels without collapsing
 // thin panoramas to a single row or column merely to satisfy an axis limit.
 const backgroundPreviewMaxPixels = 1200 * 800;
@@ -14,7 +14,17 @@ class ThoughtsVisual {
     this.file = document.getElementById('background-file');
     this.preview = document.getElementById('background-preview');
     this.previewContainer = document.getElementById('background-preview-wrap');
-    this.saved = {background: false, darkness: 70, framing: defaultBackgroundFraming()};
+    this.saved = {background: false, darkness: 70, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, kind: 'image'};
+    this.connected = false;
+    this.documentVisible = !document.hidden;
+    this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+    this.playbackStatus = document.getElementById('video-status');
+    this.motionQuery.addEventListener('change', () => {
+      this.motionOverride = false;
+      if (this.motionQuery.matches) this.stopPreviewPlayback();
+      this.updatePlayback(); this.reportPlayback();
+    });
+    document.addEventListener('visibilitychange', () => { this.documentVisible = !document.hidden; this.updatePlayback(); if (document.hidden) this.stopPreviewPlayback(); });
     this.state = {open: false};
     this.previewGeneration = 0;
     this.connectionGeneration = 0;
@@ -52,6 +62,8 @@ class ThoughtsVisual {
   }
   isOpen() { return this.state.open; }
   restoreConnection() {
+    this.connected = true;
+    this.updatePlayback();
     // A busy-session retry may retire the page's initial restore. The accepted
     // session needs its own restore, without refetching on every normal open.
     if (this.restoreGeneration !== this.connectionGeneration) {
@@ -61,7 +73,7 @@ class ThoughtsVisual {
   }
   reply(action, operationID, connectionGeneration = this.connectionGeneration) {
     if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) {
-      this.sendAction({action, id: operationID, darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing});
+      this.sendAction({action, id: operationID, darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing, kind: this.candidateKind || this.saved.kind, speedPercent: this.saved.speedPercent, userPaused: this.saved.userPaused, playbackBlocked: this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride)});
     }
   }
   async receive(state) {
@@ -71,6 +83,7 @@ class ThoughtsVisual {
     this.refreshAfterClose = previousState.open && !state.open;
     if (JSON.stringify(state.preview) !== JSON.stringify(previousState.preview)) this.previewContainer.hidden = true;
     if (!state.open) {
+      if (previousState.request === 'apply') this.saveController?.abort();
       this.discardPreview();
       this.updateDarkness(this.saved.darkness);
       if (previousState.open) this.terminal.focus();
@@ -78,6 +91,8 @@ class ThoughtsVisual {
     }
     this.updateDarkness(state.request === 'load' ? this.saved.darkness : state.darkness);
     this.queuePreview();
+    this.updatePlayback();
+    if (this.previewVideo) this.previewVideo.playbackRate = this.playbackSpeed();
     if (state.id === previousState.id && state.request === previousState.request) return;
     const operationID = state.id;
     const connectionGeneration = this.connectionGeneration;
@@ -94,12 +109,21 @@ class ThoughtsVisual {
         // replacement, reconnect or microphone operation is involved.
         this.file.click();
         break;
+      case 'play':
+        this.motionOverride = !state.userPaused; this.playbackFailed = false; this.updatePlayback();
+        this.reply('played', operationID); break;
+      case 'preview':
+        await this.togglePreviewPlayback(); this.reply('previewed', operationID, connectionGeneration); break;
       case 'apply': case 'remove':
         await this.save(state.request === 'remove', operationID, state.darkness, state.framing, connectionGeneration);
         break;
     }
   }
   disconnect() {
+    this.connected = false;
+    this.motionOverride = false;
+    this.saveController?.abort();
+    this.updatePlayback();
     this.connectionGeneration++;
     this.state = {open: false};
     this.refreshAfterClose = false;
@@ -109,12 +133,15 @@ class ThoughtsVisual {
   renderBackground() {
     if (!this.saved.background || !this.image.naturalWidth) return;
     this.placeImage(this.image, window.innerWidth, window.innerHeight, this.saved.framing);
+    if (this.video) this.placeImage(this.video, window.innerWidth, window.innerHeight, this.saved.framing);
   }
   placeImage(image, width, height, framing, sourceDimensions) {
-    if (!image.naturalWidth || !image.naturalHeight) return;
+    const mediaWidth = image.naturalWidth || image.videoWidth;
+    const mediaHeight = image.naturalHeight || image.videoHeight;
+    if (!mediaWidth || !mediaHeight) return;
     const geometry = backgroundGeometry(
-      sourceDimensions?.width || image.naturalWidth,
-      sourceDimensions?.height || image.naturalHeight,
+      sourceDimensions?.width || mediaWidth,
+      sourceDimensions?.height || mediaHeight,
       width, height, safeBackgroundFraming(framing)
     );
     for (const [name, value] of Object.entries(geometry)) image.style[name] = `${value}px`;
@@ -218,9 +245,12 @@ class ThoughtsVisual {
     });
     this.previewFrameElement.dataset.editing = String(!!this.state.editing);
     this.placeImage(this.preview, width, height, this.state.framing, this.previewSourceSize);
+    if (this.previewVideo) this.placeImage(this.previewVideo, width, height, this.state.framing, this.previewSourceSize);
     this.previewContainer.hidden = false;
   }
   discardPreview() {
+    this.releasePreviewVideo();
+    this.candidateKind = undefined;
     this.cancelFramingDrag();
     cancelAnimationFrame(this.previewFrame);
     this.previewContainer.hidden = true;
@@ -230,6 +260,7 @@ class ThoughtsVisual {
     this.previewSourceSize = undefined;
     this.preview.removeAttribute('src');
     this.file.value = '';
+    this.updatePlayback();
   }
   async previewFile() {
     const operationID = this.state.id;
@@ -238,7 +269,12 @@ class ThoughtsVisual {
     const file = this.file.files[0];
     if (!file) {this.reply('cancelled', operationID); return;}
     try {
+      const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+      if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp') {
+        await this.previewVideoFile(file, operationID, previewGeneration); return;
+      }
       if (file.size > 16 * 1024 * 1024) throw new Error();
+      this.releasePreviewVideo(); this.candidateKind = 'image';
       const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
       const png = bytes.join(',') === '137,80,78,71,13,10,26,10';
       const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
@@ -284,7 +320,7 @@ class ThoughtsVisual {
     // Settings-only saves reuse the already decoded asset; identity changes
     // still fetch the authoritative selected image through the existing route.
     if (settings.background && (!this.saved.background || !settings.backgroundID || settings.backgroundID !== this.saved.backgroundID)) {
-      const response = await fetch('/visual/background', {cache: 'no-store'});
+      const response = await fetch(settings.kind === 'video' ? '/visual/poster' : '/visual/background', {cache: 'no-store'});
       if (!response.ok) throw new Error();
       const url = URL.createObjectURL(await response.blob());
       const candidate = new Image();
@@ -302,11 +338,15 @@ class ThoughtsVisual {
       candidate.id = this.image.id;
       candidate.alt = this.image.alt;
       this.placeImage(candidate, window.innerWidth, window.innerHeight, settings.framing);
+      this.retireVideo(this.video);
+      this.video = undefined;
       this.image.replaceWith(candidate);
       this.image = candidate;
       if (this.activeURL) URL.revokeObjectURL(this.activeURL);
       this.activeURL = url;
+      if (settings.kind === 'video') this.installBackgroundVideo(settings);
     } else if (!settings.background) {
+      this.retireVideo(this.video); this.video = undefined;
       if (this.activeURL) URL.revokeObjectURL(this.activeURL);
       this.activeURL = undefined;
       this.image.removeAttribute('src');
@@ -318,6 +358,7 @@ class ThoughtsVisual {
     this.overlay.hidden = !settings.background;
     this.terminal.options.theme = {...this.terminal.options.theme, background: settings.background ? '#00000000' : '#171717'};
     this.updateDarkness(settings.darkness);
+    this.updatePlayback();
     return true;
   }
   async restore() {
@@ -341,18 +382,26 @@ class ThoughtsVisual {
     }
   }
   async save(removeBackground, operationID, darkness, framing, connectionGeneration) {
+    this.saveController?.abort();
+    const controller = new AbortController();
+    this.saveController = controller;
     try {
+      this.stopPreviewPlayback();
+      const preferences = {darkness, framing, speedPercent: this.state.speedPercent || 100, userPaused: !!this.state.userPaused};
       let requestURL = '/visual/settings';
-      let requestOptions = {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({darkness, framing})};
+      let requestOptions = {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(preferences)};
       if (removeBackground) {
         requestURL = '/visual/background'; requestOptions = {method: 'DELETE'};
+      } else if (this.file.files[0] && this.candidateKind === 'video') {
+        requestURL = '/visual/video';
+        requestOptions = {method: 'POST', headers: {'X-Background-Settings': JSON.stringify(preferences)}, body: this.file.files[0]};
       } else if (this.file.files[0]) {
         const form = new FormData();
         form.append('image', this.file.files[0]); form.append('darkness', darkness);
         form.append('framing', JSON.stringify(framing));
         requestURL = '/visual/background'; requestOptions = {method: 'POST', body: form};
       }
-      const response = await fetch(requestURL, requestOptions);
+      const response = await fetch(requestURL, {...requestOptions, signal: controller.signal});
       if (!response.ok) throw new Error();
       const settings = await response.json();
       if (!await this.activate(settings, connectionGeneration)) return;
@@ -366,6 +415,146 @@ class ThoughtsVisual {
       if (connectionGeneration !== this.connectionGeneration) return;
       await this.restore();
       this.reply('failed', operationID, connectionGeneration);
+    } finally {
+      if (this.saveController === controller) this.saveController = undefined;
     }
   }
+  reportPlayback() {
+    if (this.state.open && this.sendAction) this.sendAction({action: 'playback', id: this.state.id,
+      playbackBlocked: !!(this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride))});
+  }
+  playbackSpeed() {
+    // Until the load reply arrives, the Options defaults are not user preferences.
+    const preferences = this.state.open && this.state.request !== 'load' ? this.state : this.saved;
+    const percent = preferences.speedPercent;
+    return Number.isInteger(percent) ? Math.max(25, Math.min(100, percent)) / 100 : 1;
+  }
+  shouldPlayBackground() {
+    const preferences = this.state.open && this.state.request !== 'load' ? this.state : this.saved;
+    const paused = preferences.userPaused;
+    return !!(this.video && this.saved.background && this.saved.kind === 'video' && !paused &&
+      this.connected && this.documentVisible && (!this.motionQuery?.matches || this.motionOverride) &&
+      !this.previewPlaying && !this.playbackFailed);
+  }
+  updatePlayback() {
+    const video = this.video;
+    if (!video) return;
+    video.playbackRate = this.playbackSpeed();
+    if (!this.shouldPlayBackground()) { if (this.playPending === video) this.playInterrupted = video; video.pause(); video.hidden = true; return; }
+    if (!video.paused || this.playPending) return;
+    // Call play only on eligibility transitions. A rejected promise blocks
+    // retries until an explicit Play action; automatic pauses never change SQL.
+    this.playPending = video; this.playInterrupted = undefined;
+    video.play().catch(() => {
+      if (this.video !== video || this.playInterrupted === video) return;
+      this.playbackFailed = true;
+      video.pause(); video.hidden = true;
+      this.playbackStatus.textContent = 'Video playback is unavailable. The still background remains visible.';
+      this.playbackStatus.hidden = false;
+      this.reportPlayback();
+    }).finally(() => {
+      if (this.playPending === video) this.playPending = undefined;
+      const interrupted = this.playInterrupted === video;
+      if (interrupted) this.playInterrupted = undefined;
+      if (this.video === video && !this.shouldPlayBackground()) { video.pause(); video.hidden = true; }
+      else if (interrupted) this.updatePlayback();
+    });
+  }
+  retireVideo(video) {
+    if (!video) return;
+    video.pause(); video.removeAttribute('src'); video.load(); video.remove();
+  }
+  installBackgroundVideo(settings) {
+    const video = document.createElement('video');
+    video.id = 'background-video'; video.muted = true; video.loop = true; video.playsInline = true;
+    video.preload = 'metadata'; video.hidden = true;
+    video.src = `/visual/background?id=${encodeURIComponent(settings.backgroundID)}`;
+    this.video = video; this.playbackFailed = false; this.playPending = undefined;
+    if (this.playbackStatus) {this.playbackStatus.hidden = true; this.playbackStatus.textContent = '';}
+    // The decoded poster remains underneath throughout loading/buffering and
+    // automatic pauses. Retired element events cannot publish into a new asset.
+    // The player belongs to the selected asset and survives reconnects.
+    // Connection generations fence imports/decodes; playback eligibility fences
+    // this reusable player's events during disconnect, visibility and pause.
+    const ownsVideo = () => this.video === video;
+    video.addEventListener('playing', () => { if (ownsVideo()) video.hidden = !this.shouldPlayBackground(); });
+    video.addEventListener('waiting', () => { if (ownsVideo()) video.hidden = true; });
+    video.addEventListener('error', () => {
+      if (!ownsVideo()) return;
+      this.playbackFailed = true; this.updatePlayback();
+      this.playbackStatus.textContent = 'Video playback is unavailable. The still background remains visible.';
+      this.playbackStatus.hidden = false;
+      this.reportPlayback();
+    });
+    video.addEventListener('loadedmetadata', () => { if (ownsVideo()) this.renderBackground(); });
+    this.surface.append(video);
+  }
+  releasePreviewVideo() {
+    this.stopPreviewPlayback(); this.retireVideo(this.previewVideo); this.previewVideo = undefined;
+    if (this.candidateVideoURL) URL.revokeObjectURL(this.candidateVideoURL);
+    this.candidateVideoURL = undefined;
+  }
+  stopPreviewPlayback() {
+    this.previewPlaying = false;
+    if (this.previewVideo) {this.previewVideo.pause(); this.previewVideo.hidden = true;}
+    this.updatePlayback();
+  }
+  async togglePreviewPlayback() {
+    if (this.previewPlaying) {this.stopPreviewPlayback(); return;}
+    if (!this.previewVideo && this.saved.kind === 'video') {
+      const video = document.createElement('video');
+      video.muted = true; video.loop = true; video.playsInline = true; video.hidden = true;
+      video.id = 'background-preview-video';
+      video.src = `/visual/background?id=${encodeURIComponent(this.saved.backgroundID)}`;
+      this.previewVideo = video; this.previewFrameElement.append(video);
+      video.addEventListener('loadedmetadata', () => this.queuePreview(), {once: true});
+    }
+    const video = this.previewVideo;
+    if (!video || !this.connected || !this.documentVisible) return;
+    this.previewPlaying = true; this.updatePlayback();
+    video.playbackRate = this.playbackSpeed();
+    try {
+      await video.play();
+      if (this.previewVideo !== video || !this.state.open || !this.previewPlaying) {video.pause();return;}
+      video.hidden = false; this.queuePreview();
+    } catch {
+      // Retiring an old player can reject its pending play promise after a new
+      // preview has started. That completion must not pause the new owner.
+      if (this.previewVideo === video) this.stopPreviewPlayback();
+    }
+  }
+  async previewVideoFile(file, operationID, previewGeneration) {
+    if (file.size > 128 * 1024 * 1024) throw new Error();
+    this.releasePreviewVideo();
+    const video = document.createElement('video');
+    video.id = 'background-preview-video'; video.muted = true; video.loop = true; video.playsInline = true;
+    video.hidden = true; video.preload = 'auto';
+    const url = URL.createObjectURL(file);
+    video.src = url;
+    this.previewVideo = video; this.previewFrameElement.append(video);
+    try {
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => finish(false), 10000);
+        const finish = ready => {clearTimeout(timeout);video.removeEventListener('loadeddata',loaded);video.removeEventListener('error',failed);ready ? resolve() : reject(new Error());};
+        const loaded = () => finish(true), failed = () => finish(false);
+        video.addEventListener('loadeddata',loaded,{once:true});video.addEventListener('error',failed,{once:true});video.load();
+      });
+      if (previewGeneration !== this.previewGeneration || !this.state.open || this.state.id !== operationID) {this.retireVideo(video);return;}
+      if (video.videoWidth > 4096 || video.videoHeight > 4096 || video.videoWidth * video.videoHeight > 9000000 || video.duration < 1 || video.duration > 30 || !Number.isFinite(video.duration)) throw new Error();
+      const scale = Math.min(1, 1280/Math.max(video.videoWidth,video.videoHeight), Math.sqrt(921600/(video.videoWidth*video.videoHeight)));
+      this.previewSourceSize = {width:Math.max(2,Math.floor(video.videoWidth*scale/2)*2), height:Math.max(2,Math.floor(video.videoHeight*scale/2)*2)};
+      const canvas = document.createElement('canvas');
+      canvas.width = this.previewSourceSize.width; canvas.height = this.previewSourceSize.height;
+      canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
+      const poster = await new Promise(resolve => canvas.toBlob(resolve));
+      if (!poster || previewGeneration !== this.previewGeneration || this.state.id !== operationID || !this.state.open) return;
+      if (this.previewURL) URL.revokeObjectURL(this.previewURL);
+      this.previewURL = URL.createObjectURL(poster); this.preview.src = this.previewURL;
+      this.candidateKind = 'video'; this.candidateVideoURL = url;
+      this.queuePreview(); this.reply('selected',operationID);
+    } finally {
+      if (this.candidateVideoURL !== url) {this.retireVideo(video);URL.revokeObjectURL(url);}
+    }
+  }
+
 }

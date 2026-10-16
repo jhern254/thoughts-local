@@ -348,8 +348,14 @@ func summaryText(value string) string {
 
 func (m Model) renderBrowseThoughtsView(status string) string {
 	s := m.browseThoughts
-	lines := make([]string, 0, len(s.rows)*summaryLines)
-	for index, row := range s.rows {
+	// Each preview occupies three rows including its separator. The resident
+	// paging window is larger than the viewport; formatting offscreen previews
+	// spends ANSI/Unicode layout work without contributing any displayed cells.
+	first := min(s.offset/summaryLines, len(s.rows))
+	last := min((s.offset+s.height+summaryLines-1)/summaryLines, len(s.rows))
+	lines := make([]string, 0, (last-first)*summaryLines)
+	for index := first; index < last; index++ {
+		row := s.rows[index]
 		titleStyle, descStyle := m.itemStyles.NormalTitle, m.itemStyles.NormalDesc
 		if index == s.index {
 			titleStyle, descStyle = m.itemStyles.SelectedTitle, m.itemStyles.SelectedDesc
@@ -365,7 +371,8 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		// Clip the selection rail/padding too when the terminal is only one cell wide.
 		lines = append(lines, ansi.Truncate(title, s.width, ""), ansi.Truncate(description, s.width, ""), "")
 	}
-	visible := append([]string{}, lines[min(s.offset, len(lines)):min(s.offset+s.height, len(lines))]...)
+	offset := s.offset - first*summaryLines
+	visible := append([]string{}, lines[min(offset, len(lines)):min(offset+s.height, len(lines))]...)
 	for s.eventScope == nil && len(visible) < s.height {
 		visible = append(visible, "")
 	}

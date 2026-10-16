@@ -16,7 +16,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
-func browseThoughtsModel(t *testing.T, count int) Model {
+func browseThoughtsModel(t testing.TB, count int) Model {
 	t.Helper()
 	store := testutils.NewFakeThoughtStore()
 	for id := 1; id <= count; id++ {
@@ -133,6 +133,21 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		}
 		m.Resize(0, 0)
 		_ = m.View()
+	})
+	t.Run("clips partial preview rows without moving selection or footer", func(t *testing.T) {
+		m := browseThoughtsModel(t, 3)
+		for index := 1; index < len(m.browseThoughts.rows); index++ {
+			m.browseThoughts.rows[index].item.ObservedAt = time.Date(2026, 7, 3, 0, 4, 0, 0, time.UTC)
+		}
+		m.Resize(40, 9)
+		m.browseThoughts.index, m.browseThoughts.offset = 2, 4
+		want := "  Thought 3 • Jul 2, 2026 5:04 PM PDT\n\n│  Misc  body 2\n│ Thought 2 • Jul 2, 2026 5:04 PM PDT\n3 thoughts\n\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest"
+		if got := ansi.Strip(m.View()); got != want {
+			t.Fatalf("got partial rows:\n%q\nwant:\n%q", got, want)
+		}
+		if m.browseThoughts.index != 2 || m.browseThoughts.offset != 4 {
+			t.Fatal("rendering moved the selection or viewport")
+		}
 	})
 	t.Run("styled Unicode rows stay within the viewport without altering their text", func(t *testing.T) {
 		m := browseThoughtsModel(t, 1)

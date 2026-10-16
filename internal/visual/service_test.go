@@ -106,7 +106,7 @@ func TestService_Background(t *testing.T) {
 	}
 	t.Run("replacement and removal clean selected assets", func(t *testing.T) {
 		store := &memoryStore{}
-		service := NewService(store, "user", filepath.Join(t.TempDir(), "appearance"))
+		service := NewService(store, "user", filepath.Join(t.TempDir(), "backgrounds"))
 		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
 		if err != nil {
 			t.Fatal(err)
@@ -155,7 +155,7 @@ func TestService_Background(t *testing.T) {
 
 func TestService_FilesystemFailure(t *testing.T) {
 	t.Run("failed file creation preserves persisted selection", func(t *testing.T) {
-		directory := filepath.Join(t.TempDir(), "appearance")
+		directory := filepath.Join(t.TempDir(), "backgrounds")
 		if err := os.WriteFile(directory, []byte("not a directory"), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -208,7 +208,7 @@ func TestService_Framing(t *testing.T) {
 			t.Fatal(err)
 		}
 		framing := data.BackgroundFraming{Fit: "fill", Zoom: 175, PositionX: 1200, PositionY: 9000}
-		updated, err := service.UpdateSettings(t.Context(), 69, framing)
+		updated, err := service.UpdateSettings(t.Context(), 69, framing, 100, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -216,7 +216,7 @@ func TestService_Framing(t *testing.T) {
 			t.Fatalf("updated = %+v", updated)
 		}
 		for _, invalid := range []data.BackgroundFraming{{Fit: "other", Zoom: 100}, {Fit: "fill", Zoom: 99}, {Fit: "fill", Zoom: 301}, {Fit: "fit", Zoom: 100, PositionY: 10001}} {
-			if _, err := service.UpdateSettings(t.Context(), 70, invalid); !errors.Is(err, ErrFraming) {
+			if _, err := service.UpdateSettings(t.Context(), 70, invalid, 100, false); !errors.Is(err, ErrFraming) {
 				t.Fatalf("invalid framing error = %v", err)
 			}
 			if store.settings != updated {
@@ -224,11 +224,33 @@ func TestService_Framing(t *testing.T) {
 			}
 		}
 		store.fail = true
-		if _, err := service.UpdateSettings(t.Context(), 30, data.DefaultBackgroundFraming()); err == nil {
+		if _, err := service.UpdateSettings(t.Context(), 30, data.DefaultBackgroundFraming(), 100, false); err == nil {
 			t.Fatal("expected persistence failure")
 		}
 		if store.settings != updated {
 			t.Fatal("failed update changed settings")
+		}
+	})
+}
+
+func TestService_LoadOwnership(t *testing.T) {
+	t.Run("reconciliation waits for a mutation or the caller cancellation", func(t *testing.T) {
+		service := NewService(&memoryStore{}, "user", t.TempDir())
+		service.tryAcquire()
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() { _, err := service.Load(ctx); done <- err }()
+		cancel()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Fatalf("got %v, want cancellation", err)
+		}
+		service.release()
+		settings, err := service.Load(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if settings.SpeedPercent != 100 {
+			t.Fatalf("speed=%d, want 100", settings.SpeedPercent)
 		}
 	})
 }

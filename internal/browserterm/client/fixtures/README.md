@@ -3,3 +3,24 @@
 profile bytes are included. It uses Adobe RGB primary coordinates and a 2.2
 transfer curve, with artificial identifying tags to exercise sanitization.
 It is generated project test data, with no external profile bytes.
+
+`visual-video.mp4` is project-generated synthetic test data (96×64, 24 FPS,
+two seconds). FFmpeg `testsrc2` supplies pixels and `sine` supplies audio.
+It includes a `synthetic-private-source` comment to prove removal, uses SDR
+Rec.709/yuv420p H.264, and contains no personal media or third-party source bytes.
+Generate with FFmpeg 6.1.1:
+
+```sh
+ffmpeg -v error -f lavfi -i testsrc2=size=96x64:rate=24:duration=2 \
+  -f lavfi -i sine=frequency=440:duration=2 -c:v libx264 -threads 1 \
+  -pix_fmt yuv420p -color_primaries bt709 -color_trc bt709 \
+  -colorspace bt709 -color_range tv -c:a aac \
+  -metadata comment=synthetic-private-source -movflags +faststart \
+  -y visual-video.mp4
+```
+
+`visual-video-colors.mp4` is a 320×192, two-second, 24 FPS synthetic SDR
+clip of four uniform color bands (#649832, #985c64, #536e9c, #96783f).
+FFmpeg `color`/`drawbox` filters and the same H.264/Rec.709 settings generate it.
+Uniform interiors distinguish a YCbCr matrix mismatch from JPEG edge loss or
+motion timing. It contains no personal or external source media.

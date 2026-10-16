@@ -37,10 +37,10 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 	case 'o':
 		var msg tui.BrowserOptionsMsg
 		// Options frames carry only control metadata, not image bytes: cap JSON at
-		// 256 bytes. IDs must fit JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1)
+		// 384 bytes, including video preferences. IDs must fit JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1)
 		// so browser rounding cannot break operation ownership. Darkness is overlay
 		// opacity in percent; 0–95 matches the persisted Visual settings contract.
-		if len(body) > 256 || json.Unmarshal(body, &msg) != nil || msg.ID > 9007199254740991 || msg.Darkness < 0 || msg.Darkness > 95 {
+		if len(body) > 384 || json.Unmarshal(body, &msg) != nil || msg.ID > 9007199254740991 || msg.Darkness < 0 || msg.Darkness > 95 || (msg.SpeedPercent != 0 && (msg.SpeedPercent < 25 || msg.SpeedPercent > 100)) || (msg.Kind != "" && msg.Kind != "image" && msg.Kind != "video") {
 			return nil, errInput
 		}
 		switch msg.Action {
@@ -48,11 +48,15 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 			if msg.ID != 0 {
 				return nil, errInput
 			}
+		case "playback":
+			if msg.ID == 0 {
+				return nil, errInput
+			}
 		case "reframe":
 			if msg.ID == 0 || !msg.Framing.Valid() || msg.Framing.Fit != "fill" {
 				return nil, errInput
 			}
-		case "loaded", "selected", "cancelled", "saved", "warning", "failed":
+		case "loaded", "selected", "cancelled", "saved", "warning", "failed", "played", "previewed":
 			if msg.ID == 0 {
 				return nil, errInput
 			}

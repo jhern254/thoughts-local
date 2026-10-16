@@ -143,8 +143,10 @@ npx playwright test browser.spec.mjs
 ```
 
 For the complete synthetic PCM/fake-transcript path, run from the repository
-root after installing the dependencies above. The opt-in Go host owns a
-disposable migrated, seeded app and fake consumer:
+root after installing the dependencies above and full FFmpeg/ffprobe on PATH.
+The suite includes video imports; Playwright's private FFmpeg utility is
+insufficient. The opt-in Go host owns a disposable migrated, seeded app and fake
+consumer:
 
 ```sh
 node --test internal/browserterm/client/microphone.test.mjs internal/browserterm/client/pcm*.test.mjs
@@ -236,9 +238,13 @@ Settings-only changes reuse the current decoded image. Connection and activation
 generations fence delayed loads; discarded object URLs are revoked. There is no
 recurring background rendering loop or per-key full-screen refresh.
 
-The `visual` service keeps background settings in SQLite's `visual` table and
-image files beside that database in `.assets/appearance/`. Migration 000012
-creates the complete `visual` table, including framing settings.
+The `visual` service keeps each database's selection and settings in SQLite's
+`visual` table. New image/video assets and posters use generated opaque names in
+`~/Documents/Thoughts/backgrounds` (the same application root as `models`). The
+application runtime supplies that shared directory. Replacement/removal cleans
+the previous asset after the selection is committed. Backups must include the
+database and shared background folder. Migration 000012 creates the complete `visual` table, including
+framing and deliberate playback settings.
 
 Replacing a background must not destroy the working selection if the new image
 cannot be saved. The service validates the JPEG/PNG within its size limits,
@@ -294,3 +300,27 @@ changed by explicit replacement/reimport. Orientation is normalized into pixels
 and only supported color-transform metadata is retained. See
 [the import contract and measurements](../../docs/browser-background-performance.md#import-privacy-and-color-contract)
 for profile compatibility, privacy limits and one-time processing cost.
+
+
+## Looping video ownership
+
+The Visual boundary additionally accepts self-contained SDR H.264 MP4/MOV.
+Video bytes use `POST /visual/video` with bounded `X-Background-Settings` JSON;
+`GET /visual/background` serves only the current selection with byte ranges,
+and `GET /visual/poster` serves only its generated still. Host/Origin validation,
+request ownership and cancellation remain shared with image imports. The CSP
+allows media only from this server and transient local preview blobs.
+
+FFmpeg/ffprobe are explicit native dependencies for video import; images and
+ordinary builds do not require them. The importer re-encodes, strips unrelated
+streams/metadata, validates the output and stores both video and poster before
+committing selection. See [media policy](../../docs/media-handling-policy.md).
+
+The browser owns one selected player and an optional candidate player. Only one
+may play: preview pauses the background, and Back/Apply/disconnect retires preview
+resources. Saved speed/pause are separate from visibility, connection, reduced
+motion and decoder failure. Settings-only updates retain the player/time; terminal
+renders do not call `play()`. Posters are stable fallback assets, not frame copies.
+Run `video.spec.mjs` with FFmpeg/ffprobe available, and the injected audio host for
+`audio.spec.mjs` to verify import during recording. Existing image tests remain
+required. The synthetic video fixture is documented in `client/fixtures/README.md`.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -151,7 +152,7 @@ func sqliteDSNWithForeignKeys(dsn string) string {
 }
 
 // BrowserVisual constructs browser-only persistence without changing native
-// entity services. SQLite supplies the actual filename, including URI DSNs.
+// entity services. In-memory databases do not retain a background selection.
 func (runtime *Runtime) BrowserVisual(ctx context.Context) (*visual.Service, error) {
 	rows, err := runtime.db.QueryContext(ctx, "PRAGMA database_list")
 	if err != nil {
@@ -175,5 +176,13 @@ func (runtime *Runtime) BrowserVisual(ctx context.Context) (*visual.Service, err
 	if filename == "" {
 		return nil, nil
 	}
-	return visual.NewService(data.NewSQLiteVisualStore(runtime.db), runtime.localUser.UserID, filepath.Join(filename+".assets", "appearance")), nil
+	homeDirectory, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	return visual.NewService(
+		data.NewSQLiteVisualStore(runtime.db),
+		runtime.localUser.UserID,
+		filepath.Join(DataDirectory(homeDirectory), "backgrounds"),
+	), nil
 }

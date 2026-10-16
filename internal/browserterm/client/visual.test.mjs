@@ -104,3 +104,42 @@ test('failed candidate decode leaves the working background intact', async () =>
   assert.equal(f.visual.saved.backgroundID,'first');
   assert.deepEqual(f.revoked,['blob:2']);
 });
+
+test('background playback derives from user preferences and lifecycle conditions', () => {
+ const f=activationFixture();
+ Object.assign(f.visual,{video:{},connected:true,motionQuery:{matches:false},state:{open:false},saved:{background:true,kind:'video',userPaused:false},documentVisible:true});
+ assert.equal(f.visual.shouldPlayBackground(),true);
+ for(const state of [{connected:false},{documentVisible:false},{previewPlaying:true},{playbackFailed:true}]) {
+  Object.assign(f.visual,state);assert.equal(f.visual.shouldPlayBackground(),false);for(const key of Object.keys(state))f.visual[key]=key==='connected'||key==='documentVisible';
+ }
+ f.visual.saved.userPaused=true;assert.equal(f.visual.shouldPlayBackground(),false);
+ f.visual.saved.userPaused=false;f.visual.motionQuery.matches=true;assert.equal(f.visual.shouldPlayBackground(),false);
+ f.visual.motionOverride=true;assert.equal(f.visual.shouldPlayBackground(),true);
+});
+
+test('playback updates do not retry a rejected play or persist automatic pauses', async () => {
+ const f=activationFixture();let plays=0,pauses=0;
+ Object.assign(f.visual,{video:{paused:true,hidden:true,pause(){pauses++;},play(){plays++;return Promise.reject(new Error('private decoder details'));}},connected:true,motionQuery:{matches:false},documentVisible:true,state:{open:false},saved:{background:true,kind:'video',userPaused:false,speedPercent:50},image:{hidden:false},playbackStatus:{textContent:''}});
+ f.visual.updatePlayback();await new Promise(resolve=>setImmediate(resolve));f.visual.updatePlayback();
+ assert.equal(plays,1);assert.equal(f.visual.playbackFailed,true);assert.equal(f.visual.saved.userPaused,false);
+ assert.equal(f.visual.playbackStatus.textContent,'Video playback is unavailable. The still background remains visible.');
+ f.visual.documentVisible=false;f.visual.updatePlayback();assert.ok(pauses>0);assert.equal(f.visual.saved.userPaused,false);
+});
+
+test('a retired preview play rejection cannot pause its replacement',async()=>{
+ const f=activationFixture();let rejectOld,pauses=0;
+ const old={pause(){},play(){return new Promise((resolve,reject)=>{rejectOld=reject;});}};
+ Object.assign(f.visual,{previewVideo:old,connected:true,documentVisible:true,state:{open:true,id:1,speedPercent:100},previewPlaying:false});
+ f.visual.updatePlayback=()=>{};
+ const pending=f.visual.togglePreviewPlayback();
+ f.visual.previewVideo={pause(){pauses++;}};f.visual.previewPlaying=true;
+ rejectOld(new Error('retired synthetic preview'));await pending;
+ assert.equal(f.visual.previewPlaying,true);assert.equal(pauses,0);
+});
+
+
+test('opening Options does not resume or accelerate a saved paused video while loading',()=>{
+ const f=activationFixture();
+ Object.assign(f.visual,{video:{},connected:true,documentVisible:true,motionQuery:{matches:false},state:{open:true,request:'load',speedPercent:100,userPaused:false},saved:{background:true,kind:'video',speedPercent:50,userPaused:true}});
+ assert.equal(f.visual.shouldPlayBackground(),false);assert.equal(f.visual.playbackSpeed(),.5);
+});

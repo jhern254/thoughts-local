@@ -32,7 +32,7 @@ export async function setDarkness(page, value) {
 }
 export async function chooseImage(page, image) {
   const chooser = page.waitForEvent('filechooser');
-  await clickControl(page, 'Choose image');
+  await clickControl(page, 'Choose image or video');
   await (await chooser).setFiles(image);
   await expect(screen(page)).toContainText('Preview only. Apply to save.');
   await expect(page.locator('#background-preview-wrap')).toBeVisible();
