@@ -9,10 +9,12 @@ import (
 
 	"github.com/jhern254/go-thoughts/internal/modelassets"
 	"github.com/jhern254/go-thoughts/internal/speech"
+	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 type setupTestTranscriber struct {
 	closeCalls int
+	closeErr   error
 	streams    int
 }
 
@@ -20,7 +22,10 @@ func (transcriber *setupTestTranscriber) StartRecordingStream(context.Context) (
 	transcriber.streams++
 	return &testMoonshineStream{}, nil
 }
-func (transcriber *setupTestTranscriber) Close() error { transcriber.closeCalls++; return nil }
+func (transcriber *setupTestTranscriber) Close() error {
+	transcriber.closeCalls++
+	return transcriber.closeErr
+}
 func TestBrowserSpeechSetup(t *testing.T) {
 	t.Run("default uses Documents and explicit directory wins", func(t *testing.T) {
 		home := t.TempDir()
@@ -78,7 +83,7 @@ func TestBrowserSpeechSetup(t *testing.T) {
 			t.Fatalf("got %+v, %v", status, err)
 		}
 		progress := 0
-		if err := setup.InstallAndEnableSpeechModel(t.Context(), func(modelassets.DownloadProgress) { progress++ }); err != nil {
+		if _, err := setup.InstallAndEnableSpeechModel(t.Context(), func(modelassets.DownloadProgress) { progress++ }); err != nil {
 			t.Fatal(err)
 		}
 		for range 2 {
@@ -125,7 +130,7 @@ func TestBrowserSpeechSetup(t *testing.T) {
 		if err := setup.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if err := setup.InstallAndEnableSpeechModel(t.Context(), nil); !errors.Is(err, speech.ErrClosed) {
+		if _, err := setup.InstallAndEnableSpeechModel(t.Context(), nil); !errors.Is(err, speech.ErrClosed) {
 			t.Fatalf("got %v, want closed", err)
 		}
 	})
@@ -143,8 +148,136 @@ func TestBrowserSpeechSetup(t *testing.T) {
 			t.Fatal(err)
 		}
 		status, err := setup.LoadInstalledSpeechModel(t.Context())
-		if !errors.Is(err, modelassets.ErrNotInstalled) || status.CanDownload {
+		if err != nil || !status.CanRepair || status.CanDownload {
 			t.Fatalf("got %+v, %v", status, err)
+		}
+	})
+}
+
+func TestBrowserSpeechSetup_Repair(t *testing.T) {
+	t.Run("closes old model before repair and enables replacement without restart", func(t *testing.T) {
+		setup, err := newBrowserSpeechSetup(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer setup.Close()
+		setup.checkRuntime = func(context.Context) error { return nil }
+		oldBackend := &setupTestTranscriber{}
+		replacement := &setupTestTranscriber{}
+		setup.transcriber = oldBackend
+		repairs := 0
+		setup.repairSpeechModel = func(ctx context.Context, root *os.Root, report func(modelassets.DownloadProgress)) error {
+			repairs++
+			if oldBackend.closeCalls != 1 {
+				t.Fatal("repair preceded native cleanup")
+			}
+			if _, err := setup.RecordingConsumerFactory()(ctx, voice.RecordingKey{}, nil); !errors.Is(err, speech.ErrRuntime) {
+				t.Fatalf("old consumer still available: %v", err)
+			}
+			return nil
+		}
+		setup.loadTranscriber = func(context.Context, *os.Root) (browserSpeechTranscriber, error) { return replacement, nil }
+		status, err := setup.RepairAndEnableSpeechModel(t.Context(), nil)
+		if err != nil || !status.Ready || repairs != 1 {
+			t.Fatalf("status=%+v repairs=%d err=%v", status, repairs, err)
+		}
+		if setup.transcriber != replacement {
+			t.Fatal("replacement not loaded")
+		}
+	})
+	t.Run("cancellation after deletion leaves model downloadable and unloaded", func(t *testing.T) {
+		setup, err := newBrowserSpeechSetup(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer setup.Close()
+		setup.checkRuntime = func(context.Context) error { return nil }
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		setup.repairSpeechModel = func(context.Context, *os.Root, func(modelassets.DownloadProgress)) error {
+			cancel()
+			return context.Canceled
+		}
+		setup.loadTranscriber = func(context.Context, *os.Root) (browserSpeechTranscriber, error) {
+			t.Fatal("loaded after cancellation")
+			return nil, nil
+		}
+		status, err := setup.RepairAndEnableSpeechModel(ctx, nil)
+		if !errors.Is(err, context.Canceled) || !status.CanDownload || status.Ready || setup.transcriber != nil {
+			t.Fatalf("status=%+v err=%v", status, err)
+		}
+	})
+	t.Run("failed native cleanup prevents deletion and all future setup attempts", func(t *testing.T) {
+		setup, err := newBrowserSpeechSetup(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		setup.checkRuntime = func(context.Context) error { return nil }
+		setup.transcriber = &setupTestTranscriber{closeErr: speech.ErrRuntime}
+		setup.repairSpeechModel = func(context.Context, *os.Root, func(modelassets.DownloadProgress)) error {
+			t.Fatal("repair after failed cleanup")
+			return nil
+		}
+		for range 2 {
+			if _, err := setup.RepairAndEnableSpeechModel(t.Context(), nil); !errors.Is(err, speech.ErrRuntime) {
+				t.Fatalf("got %v", err)
+			}
+		}
+	})
+}
+
+func TestBrowserSpeechSetup_RepairStatus(t *testing.T) {
+	for _, scenario := range []struct {
+		name       string
+		loadErr    error
+		wantRepair bool
+	}{
+		{"missing required file", modelassets.ErrNotInstalled, true},
+		{"wrong size or hash", modelassets.ErrIntegrity, true},
+		{"unreadable model", modelassets.ErrFilesystem, false},
+		{"native runtime failure", speech.ErrRuntime, false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			setup, err := newBrowserSpeechSetup(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer setup.Close()
+			setup.checkRuntime = func(context.Context) error { return nil }
+			setup.loadTranscriber = func(context.Context, *os.Root) (browserSpeechTranscriber, error) { return nil, scenario.loadErr }
+			revisionDirectory := filepath.Join(setup.Directory(), string(setup.description.ID), setup.description.Revision)
+			if err := os.MkdirAll(revisionDirectory+"/.complete", 0700); err != nil {
+				t.Fatal(err)
+			}
+			status, err := setup.LoadInstalledSpeechModel(t.Context())
+			if status.CanRepair != scenario.wantRepair || status.CanDownload || status.Ready {
+				t.Fatalf("status=%+v, want repair=%v", status, scenario.wantRepair)
+			}
+			if scenario.wantRepair && err != nil {
+				t.Fatal(err)
+			}
+			if !scenario.wantRepair && !errors.Is(err, scenario.loadErr) {
+				t.Fatalf("error=%v, want %v", err, scenario.loadErr)
+			}
+			if _, err := os.Stat(revisionDirectory); err != nil {
+				t.Fatal("checking removed installation")
+			}
+		})
+	}
+	t.Run("unavailable runtime rejects explicit repair without mutation", func(t *testing.T) {
+		directory := filepath.Join(t.TempDir(), "absent")
+		setup, err := newBrowserSpeechSetup(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer setup.Close()
+		setup.checkRuntime = func(context.Context) error { return speech.ErrRuntime }
+		status, err := setup.RepairAndEnableSpeechModel(t.Context(), nil)
+		if !errors.Is(err, speech.ErrRuntime) || status.CanDownload || status.CanRepair {
+			t.Fatalf("got %+v, %v", status, err)
+		}
+		if _, err := os.Stat(directory); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("unexpected directory: %v", err)
 		}
 	})
 }

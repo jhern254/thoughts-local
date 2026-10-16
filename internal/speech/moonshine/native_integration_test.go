@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -57,6 +59,62 @@ func TestMoonshineNative_PCM(t *testing.T) {
 	if _, err := installer.VerifyInstallation(ctx, modelassets.MoonshineSmallStreamingEnglish); err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("loaded model blocks repair until native resources close", func(t *testing.T) {
+		// Repair is destructive. Exercise it only on a disposable copy, never on
+		// the configured developer installation supplying this test's weights.
+		installation, err := installer.VerifyInstallation(ctx, modelassets.MoonshineSmallStreamingEnglish)
+		if err != nil {
+			t.Fatal(err)
+		}
+		repairRoot, err := os.OpenRoot(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer repairRoot.Close()
+		if err := repairRoot.MkdirAll(installation.Directory+"/.complete", 0700); err != nil {
+			t.Fatal(err)
+		}
+		for _, filename := range smallStreamingModelFilenames() {
+			source, err := modelRoot.Open(installation.Directory + "/" + filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			destination, err := repairRoot.Create(installation.Directory + "/" + filename)
+			if err != nil {
+				source.Close()
+				t.Fatal(err)
+			}
+			_, copyErr := io.Copy(destination, source)
+			if err := errors.Join(copyErr, source.Close(), destination.Close()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		repairInstaller, err := modelassets.NewInstaller(repairRoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		transcriber, err := Open(ctx, repairRoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer transcriber.Close()
+		repairCtx, cancelRepair := context.WithCancel(ctx)
+		defer cancelRepair()
+		noDownload := func(modelassets.DownloadProgress) {
+			cancelRepair()
+			t.Error("valid copied installation should not download")
+		}
+		if _, err := repairInstaller.RepairWithProgress(repairCtx, modelassets.MoonshineSmallStreamingEnglish, noDownload); !errors.Is(err, modelassets.ErrBusy) {
+			t.Fatalf("loaded model repair = %v, want busy", err)
+		}
+		if err := transcriber.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repairInstaller.RepairWithProgress(repairCtx, modelassets.MoonshineSmallStreamingEnglish, noDownload); err != nil {
+			t.Fatalf("valid installation reuse after Close: %v", err)
+		}
+	})
 
 	t.Run("recognizes licensed speech and preserves copied text after silence and closure", func(t *testing.T) {
 		workingDirectory := t.TempDir()

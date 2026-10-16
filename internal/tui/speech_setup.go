@@ -22,11 +22,13 @@ type SpeechModelSetup interface {
 	Description() modelassets.ModelDescription
 	Directory() string
 	LoadInstalledSpeechModel(context.Context) (SpeechModelSetupStatus, error)
-	InstallAndEnableSpeechModel(context.Context, func(modelassets.DownloadProgress)) error
+	InstallAndEnableSpeechModel(context.Context, func(modelassets.DownloadProgress)) (SpeechModelSetupStatus, error)
+	RepairAndEnableSpeechModel(context.Context, func(modelassets.DownloadProgress)) (SpeechModelSetupStatus, error)
 }
 type SpeechModelSetupStatus struct {
 	Ready       bool
 	CanDownload bool
+	CanRepair   bool
 	Message     string
 }
 
@@ -39,6 +41,7 @@ type speechSetupState struct {
 	checking    bool
 	ready       bool
 	canDownload bool
+	canRepair   bool
 	loadFailed  bool
 	status      string
 	notice      string
@@ -59,6 +62,7 @@ type speechSetupProgress struct {
 	progress modelassets.DownloadProgress
 }
 type speechSetupFinished struct {
+	status  SpeechModelSetupStatus
 	attempt uint64
 	err     error
 }
@@ -95,8 +99,12 @@ func (m Model) updateSpeechSetup(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.speechSetup.checking = false
 		m.speechSetup.ready = message.status.Ready
 		m.speechSetup.canDownload = message.status.CanDownload
+		m.speechSetup.canRepair = message.status.CanRepair
 		m.speechSetup.loadFailed = message.err != nil
 		m.speechSetup.status = message.status.Message
+		if message.status.CanRepair {
+			m.speechSetup.status = "Saved model files need repair."
+		}
 		if message.err != nil {
 			m.speechSetup.status = speechSetupErrorMessage(message.err)
 		}
@@ -120,6 +128,10 @@ func (m Model) updateSpeechSetup(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.speechSetup.cancel = nil
 		m.speechSetup.pendingProgress = nil
 		m.speechSetup.focus = 0
+		m.speechSetup.canDownload = message.status.CanDownload
+		m.speechSetup.canRepair = message.status.CanRepair
+		m.speechSetup.ready = false
+		m.speechSetup.loadFailed = message.err != nil || wasCancelled
 		if message.err == nil && !wasCancelled {
 			m.speechSetup.ready = true
 			m.speechSetup.canDownload = false
@@ -129,10 +141,6 @@ func (m Model) updateSpeechSetup(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.speechSetup.status = "Download cancelled. You can retry when you're ready."
 		} else {
 			m.speechSetup.status = speechSetupErrorMessage(message.err)
-			if errors.Is(message.err, modelassets.ErrIntegrity) || errors.Is(message.err, modelassets.ErrNotInstalled) {
-				m.speechSetup.canDownload = false
-				m.speechSetup.loadFailed = true
-			}
 		}
 		m.updateSpeechAvailability()
 	}
@@ -141,9 +149,9 @@ func (m Model) updateSpeechSetup(message tea.Msg) (tea.Model, tea.Cmd) {
 func speechSetupErrorMessage(err error) string {
 	switch {
 	case errors.Is(err, modelassets.ErrBusy):
-		return "Another Thoughts instance is setting up this model. Try again shortly."
+		return "This model is in use or being changed by another Thoughts instance. Close that app and retry."
 	case errors.Is(err, modelassets.ErrIntegrity), errors.Is(err, modelassets.ErrNotInstalled):
-		return "Saved model files need attention. Close Thoughts and remove this model's folder before retrying."
+		return "Saved model files need repair."
 	case errors.Is(err, modelassets.ErrFilesystem):
 		return "Could not access the models folder. Check its permissions and retry."
 	case errors.Is(err, modelassets.ErrDownload):
@@ -167,7 +175,7 @@ func (m Model) waitForSpeechModelProgress(attempt uint64, pendingProgress <-chan
 		}
 	}
 }
-func (m *Model) startSpeechModelDownload() tea.Cmd {
+func (m *Model) startSpeechModelDownload(repair bool) tea.Cmd {
 	downloadCtx, cancel := context.WithCancel(m.ctx)
 	m.speechSetup.attempt++
 	attempt := m.speechSetup.attempt
@@ -200,11 +208,15 @@ func (m *Model) startSpeechModelDownload() tea.Cmd {
 			default:
 			}
 		}
-		err := service.InstallAndEnableSpeechModel(downloadCtx, report)
+		install := service.InstallAndEnableSpeechModel
+		if repair {
+			install = service.RepairAndEnableSpeechModel
+		}
+		status, err := install(downloadCtx, report)
 		if downloadCtx.Err() != nil {
 			err = errors.Join(downloadCtx.Err(), err)
 		}
-		return speechSetupFinished{attempt: attempt, err: err}
+		return speechSetupFinished{attempt: attempt, status: status, err: err}
 	}
 	return tea.Batch(download, m.waitForSpeechModelProgress(attempt, pendingProgress))
 }
@@ -214,6 +226,7 @@ type speechSetupAction uint8
 const (
 	speechSetupClose speechSetupAction = iota
 	speechSetupDownload
+	speechSetupRepair
 	speechSetupHide
 	speechSetupCancel
 	speechSetupCheck
@@ -236,6 +249,8 @@ func (m Model) speechSetupButtons() []speechSetupButton {
 		return []speechSetupButton{{speechSetupClose, "Back"}}
 	case m.speechSetup.ready:
 		return []speechSetupButton{{speechSetupClose, "Done"}}
+	case m.speechSetup.canRepair:
+		return []speechSetupButton{{speechSetupRepair, "Repair and redownload"}, {speechSetupClose, "Not now"}}
 	case m.speechSetup.canDownload:
 		label := "Download and enable"
 		if m.speechSetup.status != "" {
@@ -258,7 +273,9 @@ func (m Model) activateSpeechSetupButton(button speechSetupButton) (tea.Model, t
 		m.options.open = false
 		m.requestOptions("")
 	case speechSetupDownload:
-		return m, m.startSpeechModelDownload()
+		return m, m.startSpeechModelDownload(false)
+	case speechSetupRepair:
+		return m, m.startSpeechModelDownload(true)
 	case speechSetupCancel:
 		m.speechSetup.cancelling = true
 		m.speechSetup.status = "Cancelling download…"

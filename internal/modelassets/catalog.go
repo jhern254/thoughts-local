@@ -6,8 +6,10 @@
 // The caller owns the root and must keep it open until all operations return.
 // Only VerifyInstallation establishes installation validity; directory existence
 // does not. After a process interruption, remove stale .install.lock, .stage-*
-// directories and incomplete revisions manually, only while no installer is
-// running. There is no automatic repair or lock takeover. Earlier revisions remain.
+// directories manually, only while no installer is running. Incomplete/corrupt
+// approved revisions can be replaced explicitly with RepairWithProgress.
+// There is no automatic repair or lock takeover. Earlier revisions remain.
+// Permanent .use-*.lock files coordinate native ownership; do not remove them.
 //
 // Downloaded file contents are integrity-verified, synced and closed before
 // publication. Directory metadata (including rename and marker creation) is not

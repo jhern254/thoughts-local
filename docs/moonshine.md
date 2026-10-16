@@ -86,9 +86,21 @@ Press F8 again to stop. T opens a draft for typing. Text remains unsaved until t
 typed drafts remain available and recording shows a fixed unavailable message.
 Missing, damaged, or inaccessible models are reported in the popup while the
 rest of the browser TUI remains available. Damaged/incomplete revisions are not
-automatically overwritten: close Thoughts, remove the affected revision folder,
-and retry setup. Stale installer locks require the same manual cleanup described
-in the modelassets package contract.
+automatically overwritten. In **Options → Models**, choose **Repair and redownload**
+when saved files need repair. This removes only the damaged approved revision,
+downloads a verified replacement, and enables speech without restarting.
+**Not now** leaves the files alone; cancelling after repair starts may leave the
+model missing, ready for another download.
+
+If another Thoughts instance has this model loaded, repair reports that the model
+is busy. Close that app and retry. Updated versions coordinate model use across
+processes; close older Thoughts versions before repairing because they do not
+participate in this protection.
+Stale installer locks still require the manual cleanup described in the
+modelassets package contract. Do not delete the small permanent `.use-*.lock`
+files: their presence does not mean the model is busy. If native resource cleanup
+fails, repair stops; restart Thoughts before retrying. No background cleanup or
+speech-engine repair is performed.
 Terminal-only mode does not initialize speech.
 
 The browser server keeps one verified transcriber loaded, then creates and

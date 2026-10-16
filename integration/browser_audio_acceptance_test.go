@@ -86,7 +86,7 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 		serverDone <- browserterm.ServeWithAudioConsumer(ctx, listener, func(session context.Context) tea.Model {
 			model := tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
 			if os.Getenv("THOUGHTS_MODELS_ONBOARDING_TEST") == "1" {
-				model.ConfigureSpeechModelSetup(&browserSpeechSetupFixture{})
+				model.ConfigureSpeechModelSetup(&browserSpeechSetupFixture{repairRequired: os.Getenv("THOUGHTS_MODELS_REPAIR_TEST") == "1"})
 			}
 			return model
 		}, logging.Nop(), consumer, visualService)
@@ -125,8 +125,9 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 // The first download is held until Cancel; the retry completes. Browser actions,
 // not elapsed-time sleeps or additional HTTP control routes, drive the fixture.
 type browserSpeechSetupFixture struct {
-	attempts int
-	ready    bool
+	attempts       int
+	ready          bool
+	repairRequired bool
 }
 
 func (*browserSpeechSetupFixture) Description() modelassets.ModelDescription {
@@ -135,17 +136,24 @@ func (*browserSpeechSetupFixture) Description() modelassets.ModelDescription {
 }
 func (*browserSpeechSetupFixture) Directory() string { return "~/Documents/Thoughts/models" }
 func (fixture *browserSpeechSetupFixture) LoadInstalledSpeechModel(context.Context) (tui.SpeechModelSetupStatus, error) {
-	return tui.SpeechModelSetupStatus{Ready: fixture.ready, CanDownload: !fixture.ready}, nil
+	return tui.SpeechModelSetupStatus{Ready: fixture.ready, CanDownload: !fixture.ready && !fixture.repairRequired, CanRepair: fixture.repairRequired}, nil
 }
-func (fixture *browserSpeechSetupFixture) InstallAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) error {
+func (fixture *browserSpeechSetupFixture) InstallAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) (tui.SpeechModelSetupStatus, error) {
 	fixture.attempts++
 	description := fixture.Description()
 	report(modelassets.DownloadProgress{DownloadedBytes: description.ExpectedSizeBytes / 2, TotalBytes: description.ExpectedSizeBytes})
 	if fixture.attempts == 1 {
 		<-ctx.Done()
-		return ctx.Err()
+		return tui.SpeechModelSetupStatus{CanDownload: true}, ctx.Err()
 	}
 	report(modelassets.DownloadProgress{DownloadedBytes: description.ExpectedSizeBytes, TotalBytes: description.ExpectedSizeBytes})
 	fixture.ready = true
-	return nil
+	return tui.SpeechModelSetupStatus{Ready: true}, nil
+}
+
+// Repair shares the cancel/retry progress fixture; no model files or public
+// downloads are needed to exercise the browser action and state transition.
+func (fixture *browserSpeechSetupFixture) RepairAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) (tui.SpeechModelSetupStatus, error) {
+	fixture.repairRequired = false
+	return fixture.InstallAndEnableSpeechModel(ctx, report)
 }

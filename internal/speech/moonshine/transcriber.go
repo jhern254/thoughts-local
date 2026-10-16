@@ -9,6 +9,7 @@ package moonshine
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
 	"os"
 	"strings"
@@ -37,7 +38,8 @@ type Transcriber struct {
 }
 
 type transcriberState struct {
-	nativeBackend nativeTranscriber
+	nativeBackend   nativeTranscriber
+	installationUse io.Closer
 	// The adapter owns one recording stream at a time so parent Close can
 	// release its native speech state before freeing the model.
 	activeStream *streamState
@@ -55,11 +57,26 @@ func Open(ctx context.Context, modelRoot *os.Root) (*Transcriber, error) {
 	if err != nil {
 		return nil, withErrorCategory(speech.ErrModelLoad, err)
 	}
-	installation, err := installer.VerifyInstallation(ctx, modelassets.MoonshineSmallStreamingEnglish)
+	installationUse, err := installer.AcquireInstallationUse(ctx, modelassets.MoonshineSmallStreamingEnglish)
 	if err != nil {
 		return nil, withLifecycleOrCategory(ctx, speech.ErrModelLoad, err)
 	}
-	return openVerifiedTranscriber(ctx, modelRoot, installation, openNativeTranscriber)
+	installation, err := installer.VerifyInstallation(ctx, modelassets.MoonshineSmallStreamingEnglish)
+	if err != nil {
+		return nil, withLifecycleOrCategory(ctx, speech.ErrModelLoad, errors.Join(err, installationUse.Close()))
+	}
+	transcriber, err := openVerifiedTranscriber(ctx, modelRoot, installation, openNativeTranscriber)
+	if err != nil {
+		var cleanupFailure *modelCleanupError
+		if errors.As(err, &cleanupFailure) {
+			// An uncertain native release must keep other processes from repairing
+			// these files. The OS releases the raw use-lock handle at process exit.
+			return nil, withLifecycleOrCategory(ctx, speech.ErrModelLoad, err)
+		}
+		return nil, withLifecycleOrCategory(ctx, speech.ErrModelLoad, errors.Join(err, installationUse.Close()))
+	}
+	transcriber.state.installationUse = installationUse
+	return transcriber, nil
 }
 
 func openVerifiedTranscriber(
@@ -81,7 +98,7 @@ func openVerifiedTranscriber(
 	}
 	if lifecycleErr := ctx.Err(); lifecycleErr != nil {
 		if closeErr := nativeBackend.Close(); closeErr != nil {
-			return nil, withErrorCategory(lifecycleErr, withErrorCategory(speech.ErrRuntime, closeErr))
+			return nil, withErrorCategory(lifecycleErr, withErrorCategory(speech.ErrRuntime, &modelCleanupError{cause: closeErr}))
 		}
 		return nil, lifecycleErr
 	}
@@ -159,6 +176,12 @@ func (transcriber *Transcriber) Close() error {
 		}
 		transcriber.state.nativeBackend = nil
 	}
+	// A failed native cleanup cannot prove that model memory is no longer used.
+	// Retain ownership and require process shutdown rather than permitting repair.
+	if transcriber.state.closeErr == nil && transcriber.state.installationUse != nil {
+		transcriber.state.closeErr = transcriber.state.installationUse.Close()
+		transcriber.state.installationUse = nil
+	}
 	return transcriber.state.closeErr
 }
 
@@ -234,4 +257,18 @@ func withLifecycleOrCategory(ctx context.Context, category, cause error) error {
 		return withErrorCategory(speech.ErrRuntime, cause)
 	}
 	return withErrorCategory(category, cause)
+}
+
+// modelCleanupError distinguishes an uncertain native/mapping lifetime from a
+// normal load failure, so installation ownership cannot be released too early.
+type modelCleanupError struct{ cause error }
+
+func (err *modelCleanupError) Error() string { return speech.ErrRuntime.Error() }
+func (err *modelCleanupError) Unwrap() error { return err.cause }
+
+func modelCleanupFailure(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &modelCleanupError{cause: err}
 }
