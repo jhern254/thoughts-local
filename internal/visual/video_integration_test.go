@@ -40,7 +40,7 @@ func syntheticVideo(t *testing.T) []byte {
 func TestService_Video(t *testing.T) {
 	t.Run("stores bounded silent video and sanitized poster before committing selection", func(t *testing.T) {
 		store := &memoryStore{}
-		service := NewService(store, "user", t.TempDir(), "")
+		service := NewService(store, "user", t.TempDir())
 		body := syntheticVideo(t)
 		settings, warning, err := service.ImportVideo(t.Context(), bytes.NewReader(body), 70, data.DefaultBackgroundFraming(), 50, false)
 		if err != nil || warning {
@@ -88,7 +88,7 @@ func TestService_Video(t *testing.T) {
 		}
 	})
 	t.Run("cancelled processing leaves selected image and no staged assets", func(t *testing.T) {
-		service := NewService(&memoryStore{}, "user", t.TempDir(), "")
+		service := NewService(&memoryStore{}, "user", t.TempDir())
 		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
 		if err != nil {
 			t.Fatal(err)

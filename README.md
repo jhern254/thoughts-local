@@ -111,8 +111,7 @@ The default darkness is 70%; the range is 0–95%.
 Imported copies live in `~/Documents/Thoughts/backgrounds` (under
 `%USERPROFILE%\Documents\Thoughts` on Windows), independently of the checkout
 and browser profile. Each database retains its own background selection.
-Back up the database and background folder together. Older backgrounds beside
-the database remain usable until replaced or removed. In-memory databases do
+Back up the database and background folder together. In-memory databases do
 not support persistent backgrounds.
 
 Every newly imported background is re-encoded into a bounded display copy, including small images. Orientation is applied to pixels, unnecessary embedded metadata such as location, device details, dates, comments, and thumbnails is removed, and supported display color information is retained. JPEG output is lossy; larger images may also be resized.

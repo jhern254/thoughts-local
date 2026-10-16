@@ -22,20 +22,18 @@ type Store interface {
 }
 
 type Service struct {
-	store           Store
-	userID          string
-	directory       string
-	legacyDirectory string
-	gate            chan struct{}
+	store     Store
+	userID    string
+	directory string
+	gate      chan struct{}
 }
 
-func NewService(store Store, userID, directory, legacyDirectory string) *Service {
+func NewService(store Store, userID, directory string) *Service {
 	return &Service{
-		store:           store,
-		userID:          userID,
-		directory:       directory,
-		legacyDirectory: legacyDirectory,
-		gate:            make(chan struct{}, 1),
+		store:     store,
+		userID:    userID,
+		directory: directory,
+		gate:      make(chan struct{}, 1),
 	}
 }
 
@@ -161,7 +159,7 @@ func (s *Service) commitBackground(ctx context.Context, previous, settings data.
 		removeAsset(root, settings.BackgroundAsset)
 		return data.Visual{}, false, err
 	}
-	return settings, s.removeBackground(previous.BackgroundAsset), nil
+	return settings, removeAsset(root, previous.BackgroundAsset), nil
 }
 
 func (s *Service) ImportVideo(ctx context.Context, input io.Reader, darkness int, framing data.BackgroundFraming, speedPercent int, userPaused bool) (data.Visual, bool, error) {
@@ -207,31 +205,6 @@ func removeAsset(root *os.Root, name string) bool {
 	return warning
 }
 
-// Older selections can still refer to files beside their database. Read and
-// remove them there, but never relocate or rewrite personal assets at startup.
-func (s *Service) removeBackground(name string) bool {
-	if name == "" {
-		return false
-	}
-	warning := false
-	for _, directory := range []string{s.directory, s.legacyDirectory} {
-		if directory == "" {
-			continue
-		}
-		root, err := os.OpenRoot(directory)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			warning = true
-			continue
-		}
-		warning = removeAsset(root, name) || warning
-		warning = root.Close() != nil || warning
-	}
-	return warning
-}
-
 func (s *Service) UpdateSettings(ctx context.Context, darkness int, framing data.BackgroundFraming, speedPercent int, userPaused bool) (data.Visual, error) {
 	if !s.tryAcquire() {
 		return data.Visual{}, ErrBusy
@@ -273,7 +246,12 @@ func (s *Service) Remove(ctx context.Context) (data.Visual, bool, error) {
 	if previous == "" {
 		return settings, false, nil
 	}
-	return settings, s.removeBackground(previous), nil
+	root, err := s.root()
+	if err != nil {
+		return settings, true, nil
+	}
+	defer root.Close()
+	return settings, removeAsset(root, previous), nil
 }
 
 func (s *Service) OpenBackground(ctx context.Context) (*os.File, string, error) {
@@ -305,7 +283,19 @@ func (s *Service) openSelectedAsset(ctx context.Context, poster bool) (*os.File,
 		}
 		settings.BackgroundAsset = posterAsset(settings.BackgroundAsset)
 	}
-	file, err := s.openAsset(settings.BackgroundAsset)
+	root, err := os.OpenRoot(s.directory)
+	if err != nil {
+		return nil, "", err
+	}
+	defer root.Close()
+	info, err := root.Lstat(settings.BackgroundAsset)
+	if err != nil {
+		return nil, "", err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, "", os.ErrNotExist
+	}
+	file, err := root.Open(settings.BackgroundAsset)
 	contentType := "image/png"
 	if filepath.Ext(settings.BackgroundAsset) == ".jpg" {
 		contentType = "image/jpeg"
@@ -313,30 +303,6 @@ func (s *Service) openSelectedAsset(ctx context.Context, poster bool) (*os.File,
 		contentType = "video/mp4"
 	}
 	return file, contentType, err
-}
-
-func (s *Service) openAsset(name string) (*os.File, error) {
-	file, err := openAssetFile(s.directory, name)
-	if errors.Is(err, os.ErrNotExist) && s.legacyDirectory != "" {
-		return openAssetFile(s.legacyDirectory, name)
-	}
-	return file, err
-}
-
-func openAssetFile(directory, name string) (*os.File, error) {
-	root, err := os.OpenRoot(directory)
-	if err != nil {
-		return nil, err
-	}
-	defer root.Close()
-	info, err := root.Lstat(name)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, os.ErrNotExist
-	}
-	return root.Open(name)
 }
 
 func (s *Service) tryAcquire() bool {
