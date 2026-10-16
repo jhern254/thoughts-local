@@ -89,10 +89,10 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 	if msg.Action == "open" {
-		if m.models.open {
+		if m.speechSetup.open {
 			return m, nil
 		}
-		if !m.options.open && m.models.service != nil {
+		if !m.options.open && m.speechSetup.service != nil {
 			m.options.open = true
 			m.options.menu = true
 			m.options.request = ""
@@ -188,7 +188,7 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			if m.options.request != "apply" && m.options.request != "remove" {
 				m.options.open = false
-				if m.models.service != nil {
+				if m.speechSetup.service != nil {
 					m.options.open = true
 					m.options.menu = true
 				}
@@ -259,7 +259,7 @@ func (m *Model) activateOption() {
 		m.requestOptions("remove")
 	case optionsFocusBack:
 		m.options.open = false
-		if m.models.service != nil {
+		if m.speechSetup.service != nil {
 			m.options.open = true
 			m.options.menu = true
 		}
@@ -392,9 +392,9 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.options.status = "Loading visual…"
 		m.requestOptions("load")
 	case 1:
-		m.models.open = true
-		m.models.offered = true
-		m.models.focus = 0
+		m.speechSetup.open = true
+		m.speechSetup.offered = true
+		m.speechSetup.focus = 0
 	case 2:
 		m.options.open = false
 	}

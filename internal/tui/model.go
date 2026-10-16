@@ -74,7 +74,7 @@ type Model struct {
 	width          int
 	height         int
 	options        optionsState
-	models         modelSetupState
+	speechSetup    speechSetupState
 	exitPromptOpen bool
 	exitYes        bool
 	events         events.Model
@@ -104,8 +104,8 @@ type homeOpened struct{}
 
 func (m Model) Init() tea.Cmd {
 	home := func() tea.Msg { return homeOpened{} }
-	if m.models.service != nil {
-		return tea.Batch(home, m.checkInstalledModel())
+	if m.speechSetup.service != nil {
+		return tea.Batch(home, m.checkInstalledSpeechModel())
 	}
 	return home
 }
@@ -121,7 +121,7 @@ func (m Model) openHome() (tea.Model, tea.Cmd) {
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.update(message)
 	next := updated.(Model)
-	next.offerModelSetup()
+	next.offerSpeechSetup()
 	if next.ctx.Err() == nil && next.browserRecordingEnabled && next.thoughts.Creating() && !next.thoughts.VoiceOpen() {
 		next.voiceDraftID++
 		name := ""
@@ -139,8 +139,8 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch message.(type) {
-	case modelSetupChecked, modelSetupProgress, modelSetupFinished:
-		return m.updateModelSetup(message)
+	case speechSetupChecked, speechSetupProgress, speechSetupFinished:
+		return m.updateSpeechSetup(message)
 	}
 	if m.exitPromptOpen {
 		switch message := message.(type) {
@@ -150,10 +150,10 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	if m.models.open && !m.exitPromptOpen {
+	if m.speechSetup.open && !m.exitPromptOpen {
 		switch msg := message.(type) {
 		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg, tea.MouseWheelMsg:
-			return m.updateModelsInput(message)
+			return m.updateSpeechSetupInput(message)
 		case thoughts.VoiceAction:
 			if msg.Action == "start" || msg.Action == "open" {
 				return m, nil
@@ -195,8 +195,8 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case thoughts.BrowserVoiceSessionMsg:
 		m.browserRecordingEnabled = true
-		if m.models.service != nil {
-			message.SpeechRecognitionAvailable = m.models.ready
+		if m.speechSetup.service != nil {
+			message.SpeechRecognitionAvailable = m.speechSetup.ready
 		}
 		m.thoughts, _ = m.thoughts.Update(message)
 		return m, nil
@@ -432,11 +432,11 @@ func (m Model) View() tea.View {
 	if m.exitPromptOpen {
 		return view
 	}
-	if m.models.open {
-		return m.overlayModelsPopup(view)
+	if m.speechSetup.open {
+		return m.overlaySpeechSetupPopup(view)
 	}
-	if m.models.notice != "" && strings.Count(view.Content, "\n")+1 < m.height {
-		view.Content += "\n" + ansi.Truncate(m.models.notice, max(1, m.width), "…")
+	if m.speechSetup.notice != "" && strings.Count(view.Content, "\n")+1 < m.height {
+		view.Content += "\n" + ansi.Truncate(m.speechSetup.notice, max(1, m.width), "…")
 	}
 	return view
 }
@@ -528,7 +528,7 @@ func (m Model) VoiceState() thoughts.VoiceState {
 	}
 	switch m.screen {
 	case screenEvents:
-		state.CanOpenThoughtDraft = m.events.CanLeave() && !m.models.open
+		state.CanOpenThoughtDraft = m.events.CanLeave() && !m.speechSetup.open
 	case screenSubjectList:
 		state.CanOpenThoughtDraft = !m.subjects.loading && !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered()
 	case screenBrowseThoughts, screenMiscThoughts, screenSubjectDetail:
@@ -540,7 +540,7 @@ func (m Model) VoiceState() thoughts.VoiceState {
 		state = m.thoughts.VoiceState()
 		state.BrowserRecordingEnabled = true
 	}
-	if m.models.open || m.options.open {
+	if m.speechSetup.open || m.options.open {
 		state.CanOpenThoughtDraft = false
 	}
 	return state

@@ -69,7 +69,7 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 		serverDone <- browserterm.ServeWithAudioConsumer(ctx, listener, func(session context.Context) tea.Model {
 			model := tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
 			if os.Getenv("THOUGHTS_MODELS_ONBOARDING_TEST") == "1" {
-				model.ConfigureModelSetup(&browserModelsSetupFixture{})
+				model.ConfigureSpeechModelSetup(&browserSpeechSetupFixture{})
 			}
 			return model
 		}, logging.Nop(), consumer, visualService)
@@ -107,20 +107,20 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 
 // The first download is held until Cancel; the retry completes. Browser actions,
 // not elapsed-time sleeps or additional HTTP control routes, drive the fixture.
-type browserModelsSetupFixture struct {
+type browserSpeechSetupFixture struct {
 	attempts int
 	ready    bool
 }
 
-func (*browserModelsSetupFixture) Description() modelassets.ModelDescription {
+func (*browserSpeechSetupFixture) Description() modelassets.ModelDescription {
 	description, _ := modelassets.DescribeModel(modelassets.MoonshineSmallStreamingEnglish)
 	return description
 }
-func (*browserModelsSetupFixture) Directory() string { return "~/Documents/Thoughts/models" }
-func (fixture *browserModelsSetupFixture) LoadInstalledModel(context.Context) (tui.ModelSetupStatus, error) {
-	return tui.ModelSetupStatus{Ready: fixture.ready, CanDownload: !fixture.ready}, nil
+func (*browserSpeechSetupFixture) Directory() string { return "~/Documents/Thoughts/models" }
+func (fixture *browserSpeechSetupFixture) LoadInstalledSpeechModel(context.Context) (tui.SpeechModelSetupStatus, error) {
+	return tui.SpeechModelSetupStatus{Ready: fixture.ready, CanDownload: !fixture.ready}, nil
 }
-func (fixture *browserModelsSetupFixture) InstallAndEnableModel(ctx context.Context, report func(modelassets.DownloadProgress)) error {
+func (fixture *browserSpeechSetupFixture) InstallAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) error {
 	fixture.attempts++
 	description := fixture.Description()
 	report(modelassets.DownloadProgress{DownloadedBytes: description.ExpectedSizeBytes / 2, TotalBytes: description.ExpectedSizeBytes})

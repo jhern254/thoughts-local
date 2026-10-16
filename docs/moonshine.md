@@ -160,6 +160,16 @@ plumbing, not a browser audio protocol or a production audio-file importer.
 
 ## Architecture and where ownership changes
 
+The Models menu is the place for model setup; its current implementation is
+speech-specific. `browserSpeechSetup` in `cmd/thoughts-tui/speech_setup.go` owns
+the installed speech model and loaded transcriber. The TUI calls it through
+`SpeechModelSetup`; recording consumers use that same loaded transcriber.
+
+`modelassets` is the shared file-installation boundary. Future embedding or LLM
+features can reuse its approved catalog and verification while owning their own
+runtime lifecycles. They should not have to implement a speech setup interface
+or create a recording consumer to appear in Models.
+
 ```mermaid
 flowchart TD
     A[Approved model ID] --> B[modelassets.Install: explicit network operation]

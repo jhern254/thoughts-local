@@ -18,12 +18,12 @@ import (
 // Setup calls are serialized by the single browser session. Only consumer
 // creation reads readiness concurrently. Serve joins setup/recording commands
 // before Close releases the model and its root.
-type browserModelSetup struct {
-	modelDirectory  string
-	description     modelassets.ModelDescription
-	checkRuntime    func(context.Context) error
-	loadTranscriber func(context.Context, *os.Root) (browserSpeechTranscriber, error)
-	installModel    func(context.Context, *os.Root, func(modelassets.DownloadProgress)) error
+type browserSpeechSetup struct {
+	modelDirectory     string
+	description        modelassets.ModelDescription
+	checkRuntime       func(context.Context) error
+	loadTranscriber    func(context.Context, *os.Root) (browserSpeechTranscriber, error)
+	installSpeechModel func(context.Context, *os.Root, func(modelassets.DownloadProgress)) error
 
 	mu          sync.Mutex
 	modelRoot   *os.Root
@@ -47,7 +47,7 @@ func resolveModelDirectory(configuredDirectory, homeDirectory string) string {
 	}
 	return filepath.Join(homeDirectory, "Documents", "Thoughts", "models")
 }
-func newBrowserModelSetup(configuredDirectory string) (*browserModelSetup, error) {
+func newBrowserSpeechSetup(configuredDirectory string) (*browserSpeechSetup, error) {
 	homeDirectory, err := os.UserHomeDir()
 	if configuredDirectory == "" && err != nil {
 		return nil, &browserSpeechError{category: errBrowserSpeechSetup, cause: err}
@@ -56,7 +56,7 @@ func newBrowserModelSetup(configuredDirectory string) (*browserModelSetup, error
 	if err != nil {
 		return nil, err
 	}
-	return &browserModelSetup{
+	return &browserSpeechSetup{
 		modelDirectory: resolveModelDirectory(configuredDirectory, homeDirectory),
 		description:    description,
 		checkRuntime:   moonshine.CheckRuntime,
@@ -67,7 +67,7 @@ func newBrowserModelSetup(configuredDirectory string) (*browserModelSetup, error
 			}
 			return loadedMoonshineTranscriber{transcriber}, nil
 		},
-		installModel: func(ctx context.Context, root *os.Root, report func(modelassets.DownloadProgress)) error {
+		installSpeechModel: func(ctx context.Context, root *os.Root, report func(modelassets.DownloadProgress)) error {
 			installer, err := modelassets.NewInstaller(root)
 			if err != nil {
 				return err
@@ -77,35 +77,35 @@ func newBrowserModelSetup(configuredDirectory string) (*browserModelSetup, error
 		},
 	}, nil
 }
-func (setup *browserModelSetup) Description() modelassets.ModelDescription { return setup.description }
-func (setup *browserModelSetup) Directory() string                         { return setup.modelDirectory }
-func (setup *browserModelSetup) LoadInstalledModel(ctx context.Context) (tui.ModelSetupStatus, error) {
+func (setup *browserSpeechSetup) Description() modelassets.ModelDescription { return setup.description }
+func (setup *browserSpeechSetup) Directory() string                         { return setup.modelDirectory }
+func (setup *browserSpeechSetup) LoadInstalledSpeechModel(ctx context.Context) (tui.SpeechModelSetupStatus, error) {
 	if err := ctx.Err(); err != nil {
-		return tui.ModelSetupStatus{}, err
+		return tui.SpeechModelSetupStatus{}, err
 	}
 	setup.mu.Lock()
 	ready := setup.transcriber != nil
 	closed := setup.closed
 	setup.mu.Unlock()
 	if closed {
-		return tui.ModelSetupStatus{}, speech.ErrClosed
+		return tui.SpeechModelSetupStatus{}, speech.ErrClosed
 	}
 	if ready {
-		return tui.ModelSetupStatus{Ready: true}, nil
+		return tui.SpeechModelSetupStatus{Ready: true}, nil
 	}
 	if err := setup.checkRuntime(ctx); err != nil {
 		if ctx.Err() != nil {
-			return tui.ModelSetupStatus{}, ctx.Err()
+			return tui.SpeechModelSetupStatus{}, ctx.Err()
 		}
-		return tui.ModelSetupStatus{Message: "Local speech isn't available in this build. You can still type and save."}, nil
+		return tui.SpeechModelSetupStatus{Message: "Local speech isn't available in this build. You can still type and save."}, nil
 	}
 	if setup.modelRoot == nil {
 		modelRoot, err := os.OpenRoot(setup.modelDirectory)
 		if errors.Is(err, os.ErrNotExist) {
-			return tui.ModelSetupStatus{CanDownload: true}, nil
+			return tui.SpeechModelSetupStatus{CanDownload: true}, nil
 		}
 		if err != nil {
-			return tui.ModelSetupStatus{}, &browserSpeechError{category: modelassets.ErrFilesystem, cause: err}
+			return tui.SpeechModelSetupStatus{}, &browserSpeechError{category: modelassets.ErrFilesystem, cause: err}
 		}
 		setup.modelRoot = modelRoot
 	}
@@ -115,14 +115,14 @@ func (setup *browserModelSetup) LoadInstalledModel(ctx context.Context) (tui.Mod
 			// be overwritten. Neither existence check establishes model validity.
 			_, statErr := setup.modelRoot.Lstat(string(setup.description.ID) + "/" + setup.description.Revision)
 			if errors.Is(statErr, os.ErrNotExist) {
-				return tui.ModelSetupStatus{CanDownload: true}, nil
+				return tui.SpeechModelSetupStatus{CanDownload: true}, nil
 			}
 		}
-		return tui.ModelSetupStatus{}, err
+		return tui.SpeechModelSetupStatus{}, err
 	}
-	return tui.ModelSetupStatus{Ready: true}, nil
+	return tui.SpeechModelSetupStatus{Ready: true}, nil
 }
-func (setup *browserModelSetup) loadInstalledTranscriber(ctx context.Context) error {
+func (setup *browserSpeechSetup) loadInstalledTranscriber(ctx context.Context) error {
 	transcriber, err := setup.loadTranscriber(ctx, setup.modelRoot)
 	if err != nil {
 		return err
@@ -135,7 +135,7 @@ func (setup *browserModelSetup) loadInstalledTranscriber(ctx context.Context) er
 	setup.transcriber = transcriber
 	return nil
 }
-func (setup *browserModelSetup) InstallAndEnableModel(ctx context.Context, report func(modelassets.DownloadProgress)) error {
+func (setup *browserSpeechSetup) InstallAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (setup *browserModelSetup) InstallAndEnableModel(ctx context.Context, repor
 		}
 		setup.modelRoot = modelRoot
 	}
-	if err := setup.installModel(ctx, setup.modelRoot, report); err != nil {
+	if err := setup.installSpeechModel(ctx, setup.modelRoot, report); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
@@ -169,7 +169,7 @@ func (setup *browserModelSetup) InstallAndEnableModel(ctx context.Context, repor
 	}
 	return setup.loadInstalledTranscriber(ctx)
 }
-func (setup *browserModelSetup) ConsumerFactory() browserterm.PCMConsumerFactory {
+func (setup *browserSpeechSetup) RecordingConsumerFactory() browserterm.PCMConsumerFactory {
 	return func(ctx context.Context, recording voice.RecordingKey, publish func(voice.TranscriptUpdate) bool) (browserterm.RecordingPCMConsumer, error) {
 		setup.mu.Lock()
 		transcriber := setup.transcriber
@@ -188,7 +188,7 @@ func (setup *browserModelSetup) ConsumerFactory() browserterm.PCMConsumerFactory
 		return &browserSpeechConsumer{moonshineStream: stream, recording: recording, publish: publish}, nil
 	}
 }
-func (setup *browserModelSetup) Close() error {
+func (setup *browserSpeechSetup) Close() error {
 	setup.mu.Lock()
 	defer setup.mu.Unlock()
 	if setup.closed {

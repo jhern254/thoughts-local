@@ -12,45 +12,45 @@ import (
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
-type modelSetupStub struct {
-	status  ModelSetupStatus
+type speechSetupStub struct {
+	status  SpeechModelSetupStatus
 	install func(context.Context, func(modelassets.DownloadProgress)) error
 }
 
-func (setup *modelSetupStub) Description() modelassets.ModelDescription {
+func (setup *speechSetupStub) Description() modelassets.ModelDescription {
 	return modelassets.ModelDescription{DisplayName: "Moonshine Small Streaming English", ExpectedSizeBytes: 142300974}
 }
-func (*modelSetupStub) Directory() string { return "/home/test/Documents/Thoughts/models" }
-func (setup *modelSetupStub) LoadInstalledModel(context.Context) (ModelSetupStatus, error) {
+func (*speechSetupStub) Directory() string { return "/home/test/Documents/Thoughts/models" }
+func (setup *speechSetupStub) LoadInstalledSpeechModel(context.Context) (SpeechModelSetupStatus, error) {
 	return setup.status, nil
 }
-func (setup *modelSetupStub) InstallAndEnableModel(ctx context.Context, report func(modelassets.DownloadProgress)) error {
+func (setup *speechSetupStub) InstallAndEnableSpeechModel(ctx context.Context, report func(modelassets.DownloadProgress)) error {
 	return setup.install(ctx, report)
 }
-func configuredModelsTestModel(setup ModelSetup) Model {
+func configuredSpeechSetupTestModel(setup SpeechModelSetup) Model {
 	model := newRootTestModel()
-	model.ConfigureModelSetup(setup)
+	model.ConfigureSpeechModelSetup(setup)
 	return model
 }
-func deliverModelsCheck(model Model) Model {
+func deliverSpeechSetupCheck(model Model) Model {
 	commands := model.Init()().(tea.BatchMsg)
 	model, _ = rootUpdate(model, commands[1]())
 	return model
 }
-func TestModel_ModelSetup(t *testing.T) {
+func TestModel_SpeechSetup(t *testing.T) {
 	t.Run("download is selected by default and Not now explains the recommendation", func(t *testing.T) {
-		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{CanDownload: true}}))
 		if !strings.Contains(ansi.Strip(model.View().Content), "Not now (recommended to download)") {
 			t.Error("missing download recommendation beside Not now")
 		}
 		model, command := rootUpdate(model, enterKey())
-		if !model.models.busy || command == nil || !model.models.open {
+		if !model.speechSetup.busy || command == nil || !model.speechSetup.open {
 			t.Fatal("Enter did not start the default download action")
 		}
-		model.models.cancel()
+		model.speechSetup.cancel()
 	})
 	t.Run("closing Options restores typed draft creation from Events", func(t *testing.T) {
-		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{Ready: true}}))
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{Ready: true}}))
 		model, _ = rootUpdate(model, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
 		model, _ = rootUpdate(model, BrowserOptionsEnabledMsg{})
 		if !model.VoiceState().CanOpenThoughtDraft {
@@ -70,18 +70,18 @@ func TestModel_ModelSetup(t *testing.T) {
 		}
 	})
 	t.Run("mouse activates Keep writing at its rendered row", func(t *testing.T) {
-		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{CanDownload: true}}))
 		model, _ = rootUpdate(model, tea.WindowSizeMsg{Width: 100, Height: 40})
-		model.models.busy = true
-		model.models.status = "Downloading speech model…"
-		model.models.progress = modelassets.DownloadProgress{DownloadedBytes: 50, TotalBytes: 100}
-		model.models.focus = 0
-		model.models.cancel = func() { t.Fatal("Keep writing cancelled the download") }
+		model.speechSetup.busy = true
+		model.speechSetup.status = "Downloading speech model…"
+		model.speechSetup.progress = modelassets.DownloadProgress{DownloadedBytes: 50, TotalBytes: 100}
+		model.speechSetup.focus = 0
+		model.speechSetup.cancel = func() { t.Fatal("Keep writing cancelled the download") }
 
 		for rowIndex, row := range strings.Split(ansi.Strip(model.View().Content), "\n") {
 			if column := strings.Index(row, "Keep writing"); column >= 0 {
 				model, _ = rootUpdate(model, tea.MouseClickMsg{X: ansi.StringWidth(row[:column]) + 2, Y: rowIndex, Button: tea.MouseLeft})
-				if model.models.open || !model.models.busy {
+				if model.speechSetup.open || !model.speechSetup.busy {
 					t.Fatal("Keep writing did not hide the active download")
 				}
 				return
@@ -90,9 +90,9 @@ func TestModel_ModelSetup(t *testing.T) {
 		t.Fatal("missing rendered Keep writing action")
 	})
 	t.Run("missing model overlays Events and Not now restores the exact view", func(t *testing.T) {
-		model := configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}})
+		model := configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{CanDownload: true}})
 		before := model.View().Content
-		model = deliverModelsCheck(model)
+		model = deliverSpeechSetupCheck(model)
 		content := ansi.Strip(model.View().Content)
 		for _, text := range []string{"Events", "Models", "Download and enable", "Not now"} {
 			if !strings.Contains(content, text) {
@@ -101,27 +101,27 @@ func TestModel_ModelSetup(t *testing.T) {
 		}
 		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
 		model, _ = rootUpdate(model, enterKey())
-		if model.models.open || model.View().Content != before {
+		if model.speechSetup.open || model.View().Content != before {
 			t.Fatal("Not now changed underlying view or focus")
 		}
-		model, _ = rootUpdate(model, modelSetupChecked{status: ModelSetupStatus{CanDownload: true}})
-		if model.models.open {
+		model, _ = rootUpdate(model, speechSetupChecked{status: SpeechModelSetupStatus{CanDownload: true}})
+		if model.speechSetup.open {
 			t.Fatal("reoffered in the same session")
 		}
-		nextLaunch := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
-		if !nextLaunch.models.open {
+		nextLaunch := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{CanDownload: true}}))
+		if !nextLaunch.speechSetup.open {
 			t.Fatal("did not offer on later launch")
 		}
 	})
 	t.Run("installed model enables speech and late session initialization cannot disable it", func(t *testing.T) {
-		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{Ready: true}}))
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{Ready: true}}))
 		model, _ = rootUpdate(model, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: false})
-		if model.models.open || !model.VoiceState().SpeechRecognitionAvailable {
+		if model.speechSetup.open || !model.VoiceState().SpeechRecognitionAvailable {
 			t.Fatal("ready state lost")
 		}
 	})
 	t.Run("Options has Visual and Models and reopens setup", func(t *testing.T) {
-		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{CanDownload: true}}))
 		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
 		model, _ = rootUpdate(model, enterKey())
 		model, _ = rootUpdate(model, BrowserOptionsEnabledMsg{})
@@ -131,17 +131,17 @@ func TestModel_ModelSetup(t *testing.T) {
 		}
 		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
 		model, _ = rootUpdate(model, enterKey())
-		if !model.models.open {
+		if !model.speechSetup.open {
 			t.Fatal("Models did not reopen popup")
 		}
 		model, command := rootUpdate(model, enterKey())
-		if !model.models.busy || command == nil {
+		if !model.speechSetup.busy || command == nil {
 			t.Fatal("reopened Models did not select Download by default")
 		}
-		model.models.cancel()
+		model.speechSetup.cancel()
 	})
 	t.Run("narrow popup keeps actions within terminal bounds", func(t *testing.T) {
-		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{CanDownload: true}}))
 		model, _ = rootUpdate(model, tea.WindowSizeMsg{Width: 40, Height: 18})
 		content := ansi.Strip(model.View().Content)
 		if !strings.Contains(content, "Download and enable") || !strings.Contains(content, "Not now") {
@@ -159,59 +159,59 @@ func TestModel_ModelSetup(t *testing.T) {
 	t.Run("hidden download reports progress and cancel waits for completion before retry", func(t *testing.T) {
 		started := make(chan struct{})
 		release := make(chan struct{})
-		setup := &modelSetupStub{status: ModelSetupStatus{CanDownload: true}, install: func(ctx context.Context, report func(modelassets.DownloadProgress)) error {
+		setup := &speechSetupStub{status: SpeechModelSetupStatus{CanDownload: true}, install: func(ctx context.Context, report func(modelassets.DownloadProgress)) error {
 			report(modelassets.DownloadProgress{DownloadedBytes: 50, TotalBytes: 100})
 			close(started)
 			<-ctx.Done()
 			<-release
 			return ctx.Err()
 		}}
-		model := deliverModelsCheck(configuredModelsTestModel(setup))
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(setup))
 		model, command := rootUpdate(model, enterKey())
 		batch := command().(tea.BatchMsg)
 		finished := make(chan tea.Msg, 1)
 		go func() { finished <- batch[0]() }()
 		<-started
 		model, _ = rootUpdate(model, batch[1]())
-		if model.models.progress.DownloadedBytes != 50 {
+		if model.speechSetup.progress.DownloadedBytes != 50 {
 			t.Fatal("missing real progress")
 		}
 		model, _ = rootUpdate(model, enterKey()) // Keep writing.
-		if model.models.open || !model.models.busy {
+		if model.speechSetup.open || !model.speechSetup.busy {
 			t.Fatal("hiding cancelled download")
 		}
-		model.models.open = true
+		model.speechSetup.open = true
 		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
 		model, _ = rootUpdate(model, enterKey())
-		if !model.models.busy || !model.models.cancelling {
+		if !model.speechSetup.busy || !model.speechSetup.cancelling {
 			t.Fatal("cancel did not await owned work")
 		}
 		close(release)
 		model, _ = rootUpdate(model, <-finished)
-		if model.models.busy || model.models.ready {
+		if model.speechSetup.busy || model.speechSetup.ready {
 			t.Fatal("cancelled operation became ready")
 		}
-		model, _ = rootUpdate(model, modelSetupFinished{attempt: model.models.attempt - 1, err: nil})
-		if model.models.ready {
+		model, _ = rootUpdate(model, speechSetupFinished{attempt: model.speechSetup.attempt - 1, err: nil})
+		if model.speechSetup.ready {
 			t.Fatal("stale completion enabled speech")
 		}
 	})
 	t.Run("raw errors never become popup text", func(t *testing.T) {
-		model := deliverModelsCheck(configuredModelsTestModel(&modelSetupStub{status: ModelSetupStatus{CanDownload: true}}))
-		model.models.busy = true
-		model, _ = rootUpdate(model, modelSetupFinished{attempt: model.models.attempt, err: errors.New("private file and content")})
+		model := deliverSpeechSetupCheck(configuredSpeechSetupTestModel(&speechSetupStub{status: SpeechModelSetupStatus{CanDownload: true}}))
+		model.speechSetup.busy = true
+		model, _ = rootUpdate(model, speechSetupFinished{attempt: model.speechSetup.attempt, err: errors.New("private file and content")})
 		if strings.Contains(model.View().Content, "private file") {
 			t.Fatal("raw error rendered")
 		}
 	})
 }
 
-func TestModelSetup_SessionShutdown(t *testing.T) {
+func TestSpeechSetup_SessionShutdown(t *testing.T) {
 	t.Run("disconnect cancels and joins download and progress commands", func(t *testing.T) {
 		started := make(chan struct{})
 		cancelSeen := make(chan struct{})
 		release := make(chan struct{})
-		setup := &modelSetupStub{status: ModelSetupStatus{CanDownload: true}, install: func(ctx context.Context, _ func(modelassets.DownloadProgress)) error {
+		setup := &speechSetupStub{status: SpeechModelSetupStatus{CanDownload: true}, install: func(ctx context.Context, _ func(modelassets.DownloadProgress)) error {
 			close(started)
 			<-ctx.Done()
 			close(cancelSeen)
@@ -221,7 +221,7 @@ func TestModelSetup_SessionShutdown(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		session := NewSession(ctx, cancel, func(ctx context.Context) tea.Model {
-			model := configuredModelsTestModel(setup)
+			model := configuredSpeechSetupTestModel(setup)
 			model.ctx = ctx
 			return model
 		})
@@ -246,7 +246,7 @@ func TestModelSetup_SessionShutdown(t *testing.T) {
 		<-downloadDone
 		<-progressDone
 		<-stopped
-		if session.model.(Model).models.ready {
+		if session.model.(Model).speechSetup.ready {
 			t.Fatal("shutdown published readiness")
 		}
 	})

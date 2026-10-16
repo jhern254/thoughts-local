@@ -44,7 +44,7 @@ type application struct {
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
-	runBrowser  func(context.Context, int, bool, string, func(context.Context, tui.ModelSetup) tea.Model, io.Writer, logging.Logger, *visual.Service) error
+	runBrowser  func(context.Context, int, bool, string, func(context.Context, tui.SpeechModelSetup) tea.Model, io.Writer, logging.Logger, *visual.Service) error
 }
 
 func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) *application {
@@ -112,10 +112,10 @@ func newTUI(app *application) *cli.Command {
 					app.failureMessage = "Could not load browser visual."
 					return err
 				}
-				newBrowserModel := func(ctx context.Context, setup tui.ModelSetup) tea.Model {
+				newBrowserModel := func(ctx context.Context, setup tui.SpeechModelSetup) tea.Model {
 					model := newModel(ctx)
 					if setup != nil {
-						model.ConfigureModelSetup(setup)
+						model.ConfigureSpeechModelSetup(setup)
 					}
 					return model
 				}
