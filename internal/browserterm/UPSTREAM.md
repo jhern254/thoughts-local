@@ -238,9 +238,16 @@ Settings-only changes reuse the current decoded image. Connection and activation
 generations fence delayed loads; discarded object URLs are revoked. There is no
 recurring background rendering loop or per-key full-screen refresh.
 
-The `visual` service keeps background settings in SQLite's `visual` table and
-image files beside that database in `.assets/appearance/`. Migration 000012
-creates the complete `visual` table, including framing settings.
+The `visual` service keeps each database's selection and settings in SQLite's
+`visual` table. New image/video assets and posters use generated opaque names in
+`~/Documents/Thoughts/backgrounds` (the same application root as `models`). The
+application runtime supplies both that directory and the database's former
+`.assets/appearance/` directory. Reads fall back to the old location only for a
+missing selected file; replacement/removal cleans the previous asset after the
+selection is committed. Startup does not move or rewrite existing files. Backups
+must include the database, shared background folder, and any retained legacy
+asset directory. Migration 000012 creates the complete `visual` table, including
+framing and deliberate playback settings.
 
 Replacing a background must not destroy the working selection if the new image
 cannot be saved. The service validates the JPEG/PNG within its size limits,

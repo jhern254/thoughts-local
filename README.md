@@ -108,10 +108,11 @@ Images must be non-animated, at most **16 MiB**, **8,192 pixels per side**, and
 **24 million pixels** total. SVG, GIF, animated PNG, and remote URLs are unsupported.
 The default darkness is 70%; the range is 0–95%.
 
-Imported copies live in
-`<database filename>.assets/appearance/` (normally
-`data/thoughts.db.assets/appearance/`), independently of the browser profile.
-Back up the database and its asset directory together. In-memory databases do
+Imported copies live in `~/Documents/Thoughts/backgrounds` (under
+`%USERPROFILE%\Documents\Thoughts` on Windows), independently of the checkout
+and browser profile. Each database retains its own background selection.
+Back up the database and background folder together. Older backgrounds beside
+the database remain usable until replaced or removed. In-memory databases do
 not support persistent backgrounds.
 
 Every newly imported background is re-encoded into a bounded display copy, including small images. Orientation is applied to pixels, unnecessary embedded metadata such as location, device details, dates, comments, and thumbnails is removed, and supported display color information is retained. JPEG output is lossy; larger images may also be resized.

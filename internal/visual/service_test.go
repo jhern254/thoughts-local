@@ -39,7 +39,7 @@ func TestService_Background(t *testing.T) {
 	for _, failure := range []string{"invalid image", "metadata failure", "cancelled request", "unsupported color profile", "malformed orientation"} {
 		t.Run(failure+" preserves previous selection", func(t *testing.T) {
 			store := &memoryStore{}
-			service := NewService(store, "user", t.TempDir())
+			service := NewService(store, "user", t.TempDir(), "")
 			first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
 			if err != nil {
 				t.Fatal(err)
@@ -106,7 +106,7 @@ func TestService_Background(t *testing.T) {
 	}
 	t.Run("replacement and removal clean selected assets", func(t *testing.T) {
 		store := &memoryStore{}
-		service := NewService(store, "user", filepath.Join(t.TempDir(), "appearance"))
+		service := NewService(store, "user", filepath.Join(t.TempDir(), "appearance"), "")
 		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
 		if err != nil {
 			t.Fatal(err)
@@ -139,7 +139,7 @@ func TestService_Background(t *testing.T) {
 	t.Run("refuses stored traversal and symlink", func(t *testing.T) {
 		store := &memoryStore{settings: data.Visual{BackgroundAsset: "../../PRIVATE"}}
 		dir := t.TempDir()
-		service := NewService(store, "user", dir)
+		service := NewService(store, "user", dir, "")
 		if _, _, err := service.OpenBackground(t.Context()); err == nil {
 			t.Fatal("accepted traversal")
 		}
@@ -161,7 +161,7 @@ func TestService_FilesystemFailure(t *testing.T) {
 		}
 		store := &memoryStore{settings: data.Visual{BackgroundAsset: "0123456789abcdef0123456789abcdef.png", Darkness: 70}}
 		before := store.settings
-		service := NewService(store, "user", directory)
+		service := NewService(store, "user", directory, "")
 		if _, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35, data.DefaultBackgroundFraming()); err == nil {
 			t.Fatal("import succeeded")
 		}
@@ -179,7 +179,7 @@ func TestService_FilesystemFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 		store := &memoryStore{settings: data.Visual{BackgroundAsset: name, Darkness: 70}}
-		service := NewService(store, "user", directory)
+		service := NewService(store, "user", directory, "")
 		got, warning, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35, data.DefaultBackgroundFraming())
 		if err != nil || !warning {
 			t.Fatalf("import = %v, cleanup warning %v; want success with warning", err, warning)
@@ -189,7 +189,7 @@ func TestService_FilesystemFailure(t *testing.T) {
 		}
 	})
 	t.Run("waiting image read respects request cancellation", func(t *testing.T) {
-		service := NewService(&memoryStore{}, "user", t.TempDir())
+		service := NewService(&memoryStore{}, "user", t.TempDir(), "")
 		service.gate <- struct{}{}
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
@@ -202,7 +202,7 @@ func TestService_FilesystemFailure(t *testing.T) {
 func TestService_Framing(t *testing.T) {
 	t.Run("updates framing without replacing the image and rejects invalid framing", func(t *testing.T) {
 		store := &memoryStore{}
-		service := NewService(store, "user", t.TempDir())
+		service := NewService(store, "user", t.TempDir(), "")
 		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
 		if err != nil {
 			t.Fatal(err)
@@ -235,7 +235,7 @@ func TestService_Framing(t *testing.T) {
 
 func TestService_LoadOwnership(t *testing.T) {
 	t.Run("reconciliation waits for a mutation or the caller cancellation", func(t *testing.T) {
-		service := NewService(&memoryStore{}, "user", t.TempDir())
+		service := NewService(&memoryStore{}, "user", t.TempDir(), "")
 		service.tryAcquire()
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
@@ -251,6 +251,96 @@ func TestService_LoadOwnership(t *testing.T) {
 		}
 		if settings.SpeedPercent != 100 {
 			t.Fatalf("speed=%d, want 100", settings.SpeedPercent)
+		}
+	})
+}
+
+func TestService_LegacyBackground(t *testing.T) {
+	for _, operation := range []string{"read", "replace", "remove", "failed replacement"} {
+		t.Run(operation+" preserves storage ownership", func(t *testing.T) {
+			legacyDirectory := t.TempDir()
+			directory := filepath.Join(t.TempDir(), "backgrounds")
+			store := &memoryStore{}
+			legacy := NewService(store, "user", legacyDirectory, "")
+			previous, _, err := legacy.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := NewService(store, "user", directory, legacyDirectory)
+			switch operation {
+			case "read":
+				settings, err := service.Load(t.Context())
+				if err != nil || settings != previous {
+					t.Fatalf("loaded = %+v, %v; want %+v", settings, err, previous)
+				}
+			case "replace":
+				next, warning, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 42, data.DefaultBackgroundFraming())
+				if err != nil || warning {
+					t.Fatalf("replacement error = %v, warning = %v; want success", err, warning)
+				}
+				if _, err := os.Stat(filepath.Join(directory, next.BackgroundAsset)); err != nil {
+					t.Fatal(err)
+				}
+			case "remove":
+				next, warning, err := service.Remove(t.Context())
+				if err != nil || warning || next.BackgroundAsset != "" {
+					t.Fatalf("remove = %+v, warning %v, error %v; want cleared selection", next, warning, err)
+				}
+			case "failed replacement":
+				store.fail = true
+				if _, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 42, data.DefaultBackgroundFraming()); err == nil {
+					t.Fatal("replacement succeeded after persistence failure")
+				}
+				if store.settings != previous {
+					t.Fatalf("selection = %+v, want %+v", store.settings, previous)
+				}
+			}
+			legacyPath := filepath.Join(legacyDirectory, previous.BackgroundAsset)
+			if operation == "replace" || operation == "remove" {
+				if _, err := os.Stat(legacyPath); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("old asset error = %v, want not exist", err)
+				}
+			} else {
+				file, _, err := service.OpenBackground(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer file.Close()
+				if file.Name() != legacyPath {
+					t.Fatalf("opened %q, want legacy asset %q", file.Name(), legacyPath)
+				}
+				if operation == "read" {
+					if _, err := os.Stat(directory); !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("read created new storage: %v", err)
+					}
+				}
+			}
+		})
+	}
+	t.Run("opens and removes a legacy video with its poster", func(t *testing.T) {
+		legacyDirectory := t.TempDir()
+		const asset = "0123456789abcdef0123456789abcdef.mp4"
+		store := &memoryStore{settings: data.Visual{BackgroundAsset: asset}}
+		for _, name := range []string{asset, posterAsset(asset)} {
+			if err := os.WriteFile(filepath.Join(legacyDirectory, name), []byte("synthetic"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		service := NewService(store, "user", filepath.Join(t.TempDir(), "backgrounds"), legacyDirectory)
+		file, kind, err := service.OpenPoster(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		file.Close()
+		if kind != "image/jpeg" {
+			t.Fatalf("poster type = %q, want image/jpeg", kind)
+		}
+		if _, warning, err := service.Remove(t.Context()); err != nil || warning {
+			t.Fatalf("remove error = %v, warning = %v; want success", err, warning)
+		}
+		entries, err := os.ReadDir(legacyDirectory)
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("legacy entries = %d, error = %v; want empty", len(entries), err)
 		}
 	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -175,5 +176,14 @@ func (runtime *Runtime) BrowserVisual(ctx context.Context) (*visual.Service, err
 	if filename == "" {
 		return nil, nil
 	}
-	return visual.NewService(data.NewSQLiteVisualStore(runtime.db), runtime.localUser.UserID, filepath.Join(filename+".assets", "appearance")), nil
+	homeDirectory, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	return visual.NewService(
+		data.NewSQLiteVisualStore(runtime.db),
+		runtime.localUser.UserID,
+		filepath.Join(DataDirectory(homeDirectory), "backgrounds"),
+		filepath.Join(filename+".assets", "appearance"),
+	), nil
 }

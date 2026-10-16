@@ -74,7 +74,7 @@ func TestVisual_Routes(t *testing.T) {
 	for _, format := range []string{"jpeg", "png"} {
 		t.Run("imports "+format+" by decoded content and serves only selected asset", func(t *testing.T) {
 			store := &visualStore{}
-			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
+			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir(), "")}
 			req, want := visualRequest(t, format)
 			w := httptest.NewRecorder()
 			s.ServeHTTP(w, req)
@@ -125,7 +125,7 @@ func TestVisual_Routes(t *testing.T) {
 	for _, kind := range []string{"missing origin", "foreign origin", "duplicate origin", "wrong host", "forwarded host", "wrong method", "invalid image", "metadata failure", "oversized request"} {
 		t.Run(kind+" is rejected with safe diagnostics", func(t *testing.T) {
 			store := &visualStore{}
-			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
+			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir(), "")}
 			req, _ := visualRequest(t, "png")
 			want := 403
 			switch kind {
@@ -172,7 +172,7 @@ func TestVisual_Routes(t *testing.T) {
 	}
 	t.Run("rejects malformed darkness and preserves settings", func(t *testing.T) {
 		store := &visualStore{settings: data.Visual{Darkness: 70}}
-		s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
+		s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir(), "")}
 		for _, body := range []string{`{}`, `{"darkness":96}`, `{"darkness":-1}`, `{"darkness":0.1}`, `{"darkness":20} {}`} {
 			req := httptest.NewRequest("PUT", "http://127.0.0.1:7777/visual/settings", strings.NewReader(body))
 			req.Header.Set("Origin", "http://127.0.0.1:7777")
@@ -207,7 +207,7 @@ func TestVisual_Shutdown(t *testing.T) {
 			t.Fatal(err)
 		}
 		store := &blockingVisualStore{entered: make(chan struct{}), cancelled: make(chan struct{}), release: make(chan struct{})}
-		service := visual.NewService(store, "user", t.TempDir())
+		service := visual.NewService(store, "user", t.TempDir(), "")
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		done := make(chan error, 1)
@@ -258,7 +258,7 @@ func TestVisual_MutationOrigins(t *testing.T) {
 		for _, origin := range []string{"", "null", "http://localhost:7777", "http://127.0.0.1:7778"} {
 			t.Run(route.method+" rejects "+origin, func(t *testing.T) {
 				store := &visualStore{}
-				s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
+				s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir(), "")}
 				request := httptest.NewRequest(route.method, "http://127.0.0.1:7777"+route.path, nil)
 				request.Header.Set("Origin", origin)
 				response := httptest.NewRecorder()
@@ -274,7 +274,7 @@ func TestVisual_MutationOrigins(t *testing.T) {
 func TestVisual_FramingSettings(t *testing.T) {
 	t.Run("persists settings together and safely rejects invalid framing", func(t *testing.T) {
 		store := &visualStore{settings: data.Visual{Darkness: 70, Framing: data.DefaultBackgroundFraming()}}
-		server := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir())}
+		server := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", t.TempDir(), "")}
 		for _, body := range []string{
 			`{"darkness":69,"framing":{"fit":"fill","zoom":150,"positionX":1200,"positionY":8500}}`,
 			`{"darkness":30,"framing":{"fit":"PRIVATE","zoom":150,"positionX":1200,"positionY":8500}}`,
@@ -314,7 +314,7 @@ func TestVisual_VideoBoundary(t *testing.T) {
 		{"invalid settings", "POST", "http://127.0.0.1:7777", "127.0.0.1:7777", 400},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(&visualStore{}, "user", t.TempDir())}
+			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(&visualStore{}, "user", t.TempDir(), "")}
 			request := httptest.NewRequest(scenario.method, "http://127.0.0.1:7777/visual/video", strings.NewReader("PRIVATE"))
 			request.Host = scenario.host
 			if scenario.origin != "" {
@@ -340,7 +340,7 @@ func TestVisual_VideoBoundary(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(directory, "0123456789abcdef0123456789abcdef.jpg"), []byte("synthetic-poster"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", directory)}
+		s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "user", directory, "")}
 		request := httptest.NewRequest("GET", "http://127.0.0.1:7777/visual/background?file=../../PRIVATE", nil)
 		request.Header.Set("Range", "bytes=0-8")
 		response := httptest.NewRecorder()
@@ -367,7 +367,7 @@ func TestVisual_VideoUploadOwnership(t *testing.T) {
 		owner, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
 		defer cancel()
 		store := &visualStore{}
-		s := &server{visual: visual.NewService(store, "user", t.TempDir())}
+		s := &server{visual: visual.NewService(store, "user", t.TempDir(), "")}
 		host := httptest.NewUnstartedServer(s)
 		s.authority = host.Listener.Addr().String()
 		host.Config.BaseContext = func(net.Listener) context.Context { return owner }

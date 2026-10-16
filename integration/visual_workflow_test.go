@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/png"
 	"io"
@@ -17,6 +18,68 @@ import (
 )
 
 func TestVisualWorkflow_SQLite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Run("stores new imports in Documents Thoughts and keeps database selections independent", func(t *testing.T) {
+		_, firstDSN := openMigratedSQLite(t)
+		first, err := application.Open(t.Context(), firstDSN)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer first.Close()
+		firstVisual, err := first.BrowserVisual(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var source bytes.Buffer
+		if err := png.Encode(&source, image.NewRGBA(image.Rect(0, 0, 12, 8))); err != nil {
+			t.Fatal(err)
+		}
+		selected, warning, err := firstVisual.Import(t.Context(), bytes.NewReader(source.Bytes()), 42, data.DefaultBackgroundFraming())
+		if err != nil || warning {
+			t.Fatalf("import error = %v, warning = %v; want success", err, warning)
+		}
+		wantPath := filepath.Join(home, "Documents", "Thoughts", "backgrounds", selected.BackgroundAsset)
+		if _, err := os.Stat(wantPath); err != nil {
+			t.Fatalf("imported asset in shared application folder: %v", err)
+		}
+		_, secondDSN := openMigratedSQLite(t)
+		second, err := application.Open(t.Context(), secondDSN)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer second.Close()
+		secondVisual, err := second.BrowserVisual(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		settings, err := secondVisual.Load(t.Context())
+		if err != nil || settings.BackgroundAsset != "" {
+			t.Fatalf("second selection = %q, error = %v; want empty", settings.BackgroundAsset, err)
+		}
+		if file, _, err := secondVisual.OpenBackground(t.Context()); !errors.Is(err, os.ErrNotExist) {
+			if file != nil {
+				file.Close()
+			}
+			t.Fatalf("unselected background error = %v, want not exist", err)
+		}
+		other, warning, err := secondVisual.Import(t.Context(), bytes.NewReader(source.Bytes()), 70, data.DefaultBackgroundFraming())
+		if err != nil || warning {
+			t.Fatalf("second import error = %v, warning = %v; want success", err, warning)
+		}
+		if selected.BackgroundAsset == other.BackgroundAsset {
+			t.Fatal("independent imports share an asset identifier")
+		}
+		if _, warning, err := secondVisual.Remove(t.Context()); err != nil || warning {
+			t.Fatalf("second remove error = %v, warning = %v; want success", err, warning)
+		}
+		file, _, err := firstVisual.OpenBackground(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		file.Close()
+	})
 	t.Run("restores prepared video poster and deliberate playback preferences after restart", func(t *testing.T) {
 		if _, err := exec.LookPath("ffmpeg"); err != nil {
 			t.Skip("FFmpeg is not installed")

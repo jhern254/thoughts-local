@@ -31,6 +31,18 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 			t.Fatalf("browser video acceptance requires %s on PATH", tool)
 		}
 	}
+	// Keep synthetic imports out of the user's shared assets while reusing the
+	// browser binaries installed before this test changes its application home.
+	if os.Getenv("PLAYWRIGHT_BROWSERS_PATH") == "" {
+		cacheDirectory, err := os.UserCacheDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PLAYWRIGHT_BROWSERS_PATH", filepath.Join(cacheDirectory, "ms-playwright"))
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	database, dsn := openMigratedSQLite(t)
 	seed, err := os.ReadFile("../scripts/demo.sql")
 	if err != nil {
