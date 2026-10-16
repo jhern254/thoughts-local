@@ -24,7 +24,19 @@ func BenchmarkPrepareVideo(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		if _, _, err := prepareVideo(b.Context(), bytes.NewReader(body)); err != nil {
+		source, err := StageVideo(b.Context(), bytes.NewReader(body))
+		if err != nil {
+			b.Fatal(err)
+		}
+		prepared, err := source.Prepare(b.Context(), VideoTrim{EndMS: min(30000, source.Info().DurationMS)})
+		if err != nil {
+			source.Close()
+			b.Fatal(err)
+		}
+		if err := prepared.Close(); err != nil {
+			b.Fatal(err)
+		}
+		if err := source.Close(); err != nil {
 			b.Fatal(err)
 		}
 	}

@@ -129,8 +129,7 @@ test('disconnect pauses without persisting pause and reconnect reuses an eligibl
 
 
 test('rejected play uses the poster and fixed feedback without retrying or reconnecting',async({page,baseURL})=>{
- const response=await page.request.post('/visual/video',{headers:{Origin:new URL(baseURL).origin,'X-Background-Settings':JSON.stringify({darkness:70,framing:{fit:'fill',zoom:100,positionX:5000,positionY:5000},speedPercent:100,userPaused:false})},data:videoFixture.buffer});
- expect(response.ok()).toBe(true);
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');await selectVideo(page);
  await page.addInitScript(()=>{window.videoPlayAttempts=0;HTMLMediaElement.prototype.play=function(){window.videoPlayAttempts++;return Promise.reject(new DOMException('synthetic blocked playback','NotAllowedError'));};});
  let sockets=0;page.on('websocket',()=>sockets++);
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');

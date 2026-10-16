@@ -131,14 +131,20 @@ Some JPEG/PNG color encodings are unsupported. When an image is rejected for com
 See [Media handling and privacy](docs/media-handling-policy.md) for the distinction between background display copies and future private media attachments. Metadata removal does not anonymize what is visible in a picture.
 
 Video imports require installed **FFmpeg and ffprobe** with H.264 encoding support.
-Clips must be 1–30 seconds, at most 128 MiB, 4,096 pixels per side, 9MP per frame,
+Sources may be up to two minutes, at most 128 MiB, 4,096 pixels per side, 9MP per frame,
 and 60 FPS. Thoughts stores a silent, bounded 720p-class display copy and a still
 poster. Under Visual, adjust **Playback speed** from 25–100% in five-point steps,
 or **Play/Pause video**; Apply saves these preferences. Slower playback can look
 less smooth. Hidden tabs, disconnected sessions and reduced-motion preferences
 pause playback automatically; a deliberate Play action can override reduced
 motion for the current session. Preview playback pauses the active background.
-Trimming, HDR/HEVC, and AI animation remain separate work.
+For a new upload, choose a 1–30 second range in the TUI trim editor. Move the
+source cursor to inspect a paused frame; Enter on Start or End uses that position.
+Arrow keys adjust by 0.01 seconds; Shift adjusts by one second. **Preview loop**
+prepares the exact clip; **Done** and **Apply** use the last successful preview,
+even if you subsequently change the cut points. Speed changes playback duration,
+not the selected footage. Saved videos cannot be re-trimmed; reimport the source.
+HDR/HEVC and AI animation remain separate work.
 
 Background assets remain local and are not cloud-uploaded.
 

@@ -42,7 +42,17 @@ func TestService_Video(t *testing.T) {
 		store := &memoryStore{}
 		service := NewService(store, "user", t.TempDir())
 		body := syntheticVideo(t)
-		settings, warning, err := service.ImportVideo(t.Context(), bytes.NewReader(body), 70, data.DefaultBackgroundFraming(), 50, false)
+		source, err := StageVideo(t.Context(), bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer source.Close()
+		prepared, err := source.Prepare(t.Context(), VideoTrim{EndMS: 2000})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer prepared.Close()
+		settings, warning, err := service.ApplyPreparedVideo(t.Context(), prepared, 70, data.DefaultBackgroundFraming(), 50, false)
 		if err != nil || warning {
 			t.Fatalf("import: warning=%v err=%v", warning, err)
 		}
@@ -70,7 +80,7 @@ func TestService_Video(t *testing.T) {
 			t.Fatalf("poster type: %s", kind)
 		}
 		before := store.settings
-		if _, _, err := service.ImportVideo(t.Context(), bytes.NewReader([]byte("PRIVATE invalid media")), 70, data.DefaultBackgroundFraming(), 100, false); !errors.Is(err, ErrVideo) {
+		if _, err := StageVideo(t.Context(), bytes.NewReader([]byte("PRIVATE invalid media"))); !errors.Is(err, ErrVideo) {
 			t.Fatalf("got %v, want ErrVideo", err)
 		}
 		if store.settings != before {
@@ -95,7 +105,7 @@ func TestService_Video(t *testing.T) {
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		if _, _, err := service.ImportVideo(ctx, bytes.NewReader(nil), 70, data.DefaultBackgroundFraming(), 100, false); !errors.Is(err, context.Canceled) {
+		if _, err := StageVideo(ctx, bytes.NewReader(nil)); !errors.Is(err, context.Canceled) {
 			t.Fatalf("got %v, want cancellation", err)
 		}
 		current, err := service.Load(t.Context())
@@ -128,11 +138,21 @@ func TestVideoOrientation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer input.Close()
-			_, poster, err := prepareVideo(t.Context(), input)
+			staged, err := StageVideo(t.Context(), input)
 			if err != nil {
 				t.Fatal(err)
 			}
-			config, _, err := image.DecodeConfig(bytes.NewReader(poster))
+			defer staged.Close()
+			prepared, err := staged.Prepare(t.Context(), VideoTrim{EndMS: 2000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer prepared.Close()
+			poster, err := prepared.Open(t.Context(), true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			config, _, err := image.DecodeConfig(poster)
 			if err != nil {
 				t.Fatal(err)
 			}

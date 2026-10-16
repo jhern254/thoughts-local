@@ -26,6 +26,7 @@ class ThoughtsVisual {
     });
     document.addEventListener('visibilitychange', () => { this.documentVisible = !document.hidden; this.updatePlayback(); if (document.hidden) this.stopPreviewPlayback(); });
     this.state = {open: false};
+    this.videoTrim = new ThoughtsVideoTrim(this);
     this.previewGeneration = 0;
     this.connectionGeneration = 0;
     // A connection owns its async work; activation generations also order
@@ -90,6 +91,7 @@ class ThoughtsVisual {
       return;
     }
     this.updateDarkness(state.request === 'load' ? this.saved.darkness : state.darkness);
+    this.videoTrim?.sync(state,previousState);
     this.queuePreview();
     this.updatePlayback();
     if (this.previewVideo) this.previewVideo.playbackRate = this.playbackSpeed();
@@ -109,6 +111,10 @@ class ThoughtsVisual {
         // replacement, reconnect or microphone operation is involved.
         this.file.click();
         break;
+      case 'prepareLoop':
+        await this.videoTrim.prepare(state); break;
+      case 'discardVideo':
+        await this.videoTrim.discard(operationID); break;
       case 'play':
         this.motionOverride = !state.userPaused; this.playbackFailed = false; this.updatePlayback();
         this.reply('played', operationID); break;
@@ -217,7 +223,7 @@ class ThoughtsVisual {
   positionPreview() {
     this.previewContainer.hidden = true;
     const previewRect = this.state.preview;
-    if (!this.state.open || !previewRect || !previewRect.Height || !this.preview.getAttribute('src')) return;
+    if (!this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth)) return;
     if (this.state.request === 'load' || this.terminal.cols < previewRect.X + previewRect.Width + 1 || this.terminal.rows < previewRect.Y + previewRect.Height + 1) return;
     // Metadata can arrive before Bubble Tea's next paint. Verify the reserved
     // cells in xterm's public buffer before placing pixels over them. Geometry
@@ -249,6 +255,7 @@ class ThoughtsVisual {
     this.previewContainer.hidden = false;
   }
   discardPreview() {
+    this.videoTrim?.close();
     this.releasePreviewVideo();
     this.candidateKind = undefined;
     this.cancelFramingDrag();
@@ -271,9 +278,14 @@ class ThoughtsVisual {
     try {
       const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
       if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp') {
-        await this.previewVideoFile(file, operationID, previewGeneration); return;
+        await this.videoTrim.stage(file, operationID); return;
       }
       if (file.size > 16 * 1024 * 1024) throw new Error();
+      if (this.videoTrim?.source) {
+        const editorID = this.videoTrim.editorID;
+        this.videoTrim.close();
+        await fetch('/visual/video/source',{method:'DELETE',headers:{'X-Visual-Editor':editorID}});
+      }
       this.releasePreviewVideo(); this.candidateKind = 'image';
       const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
       const png = bytes.join(',') === '137,80,78,71,13,10,26,10';
@@ -394,7 +406,7 @@ class ThoughtsVisual {
         requestURL = '/visual/background'; requestOptions = {method: 'DELETE'};
       } else if (this.file.files[0] && this.candidateKind === 'video') {
         requestURL = '/visual/video';
-        requestOptions = {method: 'POST', headers: {'X-Background-Settings': JSON.stringify(preferences)}, body: this.file.files[0]};
+        requestOptions = this.videoTrim.applyRequest(preferences);
       } else if (this.file.files[0]) {
         const form = new FormData();
         form.append('image', this.file.files[0]); form.append('darkness', darkness);
@@ -434,7 +446,7 @@ class ThoughtsVisual {
     const paused = preferences.userPaused;
     return !!(this.video && this.saved.background && this.saved.kind === 'video' && !paused &&
       this.connected && this.documentVisible && (!this.motionQuery?.matches || this.motionOverride) &&
-      !this.previewPlaying && !this.playbackFailed);
+      !this.previewPlaying && !this.videoTrim?.source && !this.playbackFailed);
   }
   updatePlayback() {
     const video = this.video;
@@ -491,15 +503,21 @@ class ThoughtsVisual {
   }
   releasePreviewVideo() {
     this.stopPreviewPlayback(); this.retireVideo(this.previewVideo); this.previewVideo = undefined;
-    if (this.candidateVideoURL) URL.revokeObjectURL(this.candidateVideoURL);
-    this.candidateVideoURL = undefined;
   }
   stopPreviewPlayback() {
     this.previewPlaying = false;
-    if (this.previewVideo) {this.previewVideo.pause(); this.previewVideo.hidden = true;}
+    if (this.previewVideo) {
+      this.previewVideo.pause();
+      // Source scrubbing displays a paused frame, never an eligible player.
+      this.previewVideo.hidden = this.previewVideo !== this.videoTrim?.sourceVideo;
+    }
     this.updatePlayback();
   }
   async togglePreviewPlayback() {
+    if (this.videoTrim?.source && this.previewVideo === this.videoTrim.sourceVideo) {
+      if (!this.videoTrim.acceptedVideo) return;
+      this.videoTrim.showAccepted(false);
+    }
     if (this.previewPlaying) {this.stopPreviewPlayback(); return;}
     if (!this.previewVideo && this.saved.kind === 'video') {
       const video = document.createElement('video');
@@ -521,39 +539,6 @@ class ThoughtsVisual {
       // Retiring an old player can reject its pending play promise after a new
       // preview has started. That completion must not pause the new owner.
       if (this.previewVideo === video) this.stopPreviewPlayback();
-    }
-  }
-  async previewVideoFile(file, operationID, previewGeneration) {
-    if (file.size > 128 * 1024 * 1024) throw new Error();
-    this.releasePreviewVideo();
-    const video = document.createElement('video');
-    video.id = 'background-preview-video'; video.muted = true; video.loop = true; video.playsInline = true;
-    video.hidden = true; video.preload = 'auto';
-    const url = URL.createObjectURL(file);
-    video.src = url;
-    this.previewVideo = video; this.previewFrameElement.append(video);
-    try {
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => finish(false), 10000);
-        const finish = ready => {clearTimeout(timeout);video.removeEventListener('loadeddata',loaded);video.removeEventListener('error',failed);ready ? resolve() : reject(new Error());};
-        const loaded = () => finish(true), failed = () => finish(false);
-        video.addEventListener('loadeddata',loaded,{once:true});video.addEventListener('error',failed,{once:true});video.load();
-      });
-      if (previewGeneration !== this.previewGeneration || !this.state.open || this.state.id !== operationID) {this.retireVideo(video);return;}
-      if (video.videoWidth > 4096 || video.videoHeight > 4096 || video.videoWidth * video.videoHeight > 9000000 || video.duration < 1 || video.duration > 30 || !Number.isFinite(video.duration)) throw new Error();
-      const scale = Math.min(1, 1280/Math.max(video.videoWidth,video.videoHeight), Math.sqrt(921600/(video.videoWidth*video.videoHeight)));
-      this.previewSourceSize = {width:Math.max(2,Math.floor(video.videoWidth*scale/2)*2), height:Math.max(2,Math.floor(video.videoHeight*scale/2)*2)};
-      const canvas = document.createElement('canvas');
-      canvas.width = this.previewSourceSize.width; canvas.height = this.previewSourceSize.height;
-      canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
-      const poster = await new Promise(resolve => canvas.toBlob(resolve));
-      if (!poster || previewGeneration !== this.previewGeneration || this.state.id !== operationID || !this.state.open) return;
-      if (this.previewURL) URL.revokeObjectURL(this.previewURL);
-      this.previewURL = URL.createObjectURL(poster); this.preview.src = this.previewURL;
-      this.candidateKind = 'video'; this.candidateVideoURL = url;
-      this.queuePreview(); this.reply('selected',operationID);
-    } finally {
-      if (this.candidateVideoURL !== url) {this.retireVideo(video);URL.revokeObjectURL(url);}
     }
   }
 

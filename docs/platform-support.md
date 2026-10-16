@@ -72,7 +72,9 @@ fixtures; it does not change the platform verification statuses above.
 ## Browser video background processor
 
 Video import requires user-installed FFmpeg/ffprobe with `libx264`, tested on
-Linux amd64 with FFmpeg 6.1.1. They are not bundled, auto-installed, or required
+Linux amd64 with FFmpeg 6.1.1. New-upload trimming, including late cuts,
+nonzero source timestamps and fractional frame rates, is verified on that
+processor with Chromium/Firefox Linux previews. They are not bundled, auto-installed, or required
 by ordinary app builds/image backgrounds. Keep the tools patched using the
 platform's maintained distribution. Processing uses Go subprocesses without cgo;
 this does not establish an OS sandbox. Chromium and Firefox Linux playback were

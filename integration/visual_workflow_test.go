@@ -15,6 +15,7 @@ import (
 
 	"github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
 func TestVisualWorkflow_SQLite(t *testing.T) {
@@ -102,8 +103,20 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 			runtime.Close()
 			t.Fatal(err)
 		}
-		first, warning, err := service.ImportVideo(t.Context(), source, 42, data.DefaultBackgroundFraming(), 50, true)
+		staged, err := visual.StageVideo(t.Context(), source)
 		source.Close()
+		if err != nil {
+			runtime.Close()
+			t.Fatal(err)
+		}
+		defer staged.Close()
+		prepared, err := staged.Prepare(t.Context(), visual.VideoTrim{EndMS: 2000})
+		if err != nil {
+			runtime.Close()
+			t.Fatal(err)
+		}
+		defer prepared.Close()
+		first, warning, err := service.ApplyPreparedVideo(t.Context(), prepared, 42, data.DefaultBackgroundFraming(), 50, true)
 		if err != nil || warning {
 			runtime.Close()
 			t.Fatalf("video import: %v warning=%v", err, warning)
