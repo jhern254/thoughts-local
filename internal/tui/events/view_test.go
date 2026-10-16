@@ -89,7 +89,7 @@ func TestModel_Layout(t *testing.T) {
 			}
 		}
 	})
-	t.Run("Now owns the ongoing end label and minute formatting does not merge distinct boundaries", func(t *testing.T) {
+	t.Run("Now owns the ongoing end label and repeated minute labels leave boundaries intact", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		lines, _, now := m.layout()
 		if now != len(lines)-1 || !strings.HasPrefix(timelineCardText(lines[now-1]), "          ╰") {
@@ -100,8 +100,8 @@ func TestModel_Layout(t *testing.T) {
 		m.items[0].Event.EndedAt = &end
 		m.items = append(m.items, eventEntries([]data.Event{{EventID: 2, StartedAt: next}})...)
 		lines, positions, _ := m.layout()
-		if !strings.HasPrefix(timelineCardText(lines[positions[1]+3]), "10:37 AM  ╰") || !strings.HasPrefix(timelineCardText(lines[positions[2]]), "10:37 AM  ╭") {
-			t.Fatal("distinct boundaries within one displayed minute were incorrectly merged")
+		if !strings.HasPrefix(timelineCardText(lines[positions[1]+3]), "          ╰") || !strings.HasPrefix(timelineCardText(lines[positions[2]]), "          ╭") {
+			t.Fatal("repeated minute labels should be blank while both card boundaries remain")
 		}
 	})
 	t.Run("card height follows content rather than terminal height or duration", func(t *testing.T) {

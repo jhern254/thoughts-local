@@ -201,7 +201,6 @@ type railEntry struct {
 	selected   bool
 	now        bool
 	end        time.Time
-	hideStart  bool
 	hideEnd    bool
 }
 
@@ -228,7 +227,7 @@ func (m *Model) measureTimeline() timelineLayout {
 	entries := []railEntry{}
 	until := m.day.AddDate(0, 0, 1)
 	for hour := m.day; hour.Before(until) && !hour.After(m.clock); hour = hour.Add(time.Hour) {
-		entries = append(entries, railEntry{at: hour, text: displaytime.Format(hour, "03:04 PM")})
+		entries = append(entries, railEntry{at: hour})
 	}
 	for i, item := range m.items {
 		at, end := item.StartedAt(), item.StartedAt()
@@ -239,8 +238,6 @@ func (m *Model) measureTimeline() timelineLayout {
 		if i+1 < len(m.items) && m.items[i+1].StartedAt().Equal(end) {
 			hideEnd = true
 		}
-		hideStart := item.ThoughtsOutsideEvents != nil && i > 0 && m.items[i-1].ThoughtsOutsideEvents != nil &&
-			at.Truncate(time.Minute).Equal(m.items[i-1].StartedAt().Truncate(time.Minute))
 		count, known := int64(0), false
 		if item.ThoughtsOutsideEvents != nil {
 			count, known = item.ThoughtsOutsideEvents.ThoughtCount, true
@@ -261,7 +258,6 @@ func (m *Model) measureTimeline() timelineLayout {
 			content:    m.entryContent(item),
 			selected:   i == m.position.eventIndex,
 			end:        end,
-			hideStart:  hideStart,
 			hideEnd:    hideEnd,
 		})
 	}
@@ -283,6 +279,16 @@ func (m *Model) measureTimeline() timelineLayout {
 	hourHeight := m.hourHeight()
 	previousTop := 0
 	var previousTime time.Time
+	var lastLabeledMinute time.Time
+	nextRailTimestampLabel := func(at time.Time) string {
+		// Actual minutes distinguish the two occurrences of the fall-back hour.
+		minute := at.UTC().Truncate(time.Minute)
+		if minute.Equal(lastLabeledMinute) {
+			return ""
+		}
+		lastLabeledMinute = minute
+		return displaytime.Format(at, "03:04 PM")
+	}
 	for i, entry := range entries {
 		// Covered hours are omitted; cards show only their boundaries.
 		if entry.key.IsZero() && !entry.now && !previousTime.IsZero() && !entry.at.After(previousTime) {
@@ -312,7 +318,7 @@ func (m *Model) measureTimeline() timelineLayout {
 		if entry.now {
 			lines = append(lines, timelineLabelPadding+entry.text)
 		} else if entry.key.IsZero() {
-			lines = append(lines, fmt.Sprintf("%-*s│", timelineLabelWidth, entry.text))
+			lines = append(lines, fmt.Sprintf("%-*s│", timelineLabelWidth, nextRailTimestampLabel(entry.at)))
 		} else {
 			height := len(entry.content) + 2
 			cards = append(cards, timelineCard{top: len(lines), content: entry.content, selected: entry.selected})
@@ -325,11 +331,9 @@ func (m *Model) measureTimeline() timelineLayout {
 				curves = append(curves, render.Distribution{CenterY: center, Count: entry.count})
 			}
 			labels := make([]string, height)
-			if !entry.hideStart {
-				labels[0] = displaytime.Format(entry.at, "03:04 PM")
-			}
+			labels[0] = nextRailTimestampLabel(entry.at)
 			if !entry.hideEnd {
-				labels[height-1] = displaytime.Format(entry.end, "03:04 PM")
+				labels[height-1] = nextRailTimestampLabel(entry.end)
 			}
 			for _, label := range labels {
 				lines = append(lines, fmt.Sprintf("%-*s", timelineLabelWidth, label))
