@@ -124,8 +124,8 @@ func (m *Model) renderEventCurveCells(layout timelineLayout, offset, height int)
 			reference = max(reference, count.Count)
 		}
 		for _, item := range m.items {
-			if item.Misc != nil {
-				reference = max(reference, item.Misc.Count)
+			if item.ThoughtsOutsideEvents != nil {
+				reference = max(reference, item.ThoughtsOutsideEvents.ThoughtCount)
 			}
 		}
 		shifted := make([]render.Distribution, len(layout.curves))

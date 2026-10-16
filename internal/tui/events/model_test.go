@@ -75,10 +75,10 @@ func (s *eventStub) End(_ context.Context, _ string, id, version int64, end time
 }
 
 type viewStore struct {
-	items         []data.ThoughtSummaryView
-	miscGroups    []data.MiscThoughtGroup
-	counts, reads int
-	err           error
+	items                      []data.ThoughtSummaryView
+	thoughtGroupsOutsideEvents []data.ThoughtGroupOutsideEvents
+	counts, reads              int
+	err                        error
 }
 
 func (s *viewStore) ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error) {
@@ -546,8 +546,8 @@ func eventEntries(items []data.Event) []timeline.Entry {
 	return entries
 }
 
-func (s *viewStore) MiscThoughtGroups(context.Context, string, time.Time, time.Time, time.Time) ([]data.MiscThoughtGroup, error) {
-	return s.miscGroups, nil
+func (s *viewStore) ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
+	return s.thoughtGroupsOutsideEvents, nil
 }
 
 func (m *Model) openEvent(id int64) tea.Cmd { return m.openEntry(timeline.EntryKey{EventID: id}) }

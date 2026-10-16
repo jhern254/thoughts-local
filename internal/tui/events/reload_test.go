@@ -249,7 +249,7 @@ func TestModel_CollapsedCounts(t *testing.T) {
 	})
 }
 
-func (s blockedEventRead) Day(ctx context.Context, _ string, _, _ time.Time) ([]timeline.Entry, error) {
+func (s blockedEventRead) ListEntriesInRange(ctx context.Context, _ string, _, _ time.Time) ([]timeline.Entry, error) {
 	s.started <- ctx
 	<-ctx.Done()
 	return nil, ctx.Err()

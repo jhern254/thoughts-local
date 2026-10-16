@@ -21,8 +21,8 @@ type Service interface {
 	End(context.Context, string, int64, int64, time.Time) (*data.Event, error)
 }
 type TimelineView interface {
-	Day(context.Context, string, time.Time, time.Time) ([]timeline.Entry, error)
-	OpenMiscThoughtsView(context.Context, string, time.Time) (timeline.ThoughtScope, error)
+	ListEntriesInRange(context.Context, string, time.Time, time.Time) ([]timeline.Entry, error)
+	OpenThoughtsOutsideEventsView(context.Context, string, time.Time) (timeline.ThoughtScope, error)
 	thoughts.TimelineReader
 	OpenThoughtsView(context.Context, string, int64) (timeline.ThoughtScope, error)
 	LatestThought(context.Context, string, int64) (*data.ThoughtSummaryView, error)
@@ -252,7 +252,7 @@ func (m *Model) loadDay(day time.Time) tea.Cmd {
 		if err := ctx.Err(); err != nil {
 			return listedMsg{owner: owner, request: request, err: err}
 		}
-		items, err := view.Day(ctx, user, day, day.AddDate(0, 0, 1))
+		items, err := view.ListEntriesInRange(ctx, user, day, day.AddDate(0, 0, 1))
 		return listedMsg{owner, request, items, err}
 	}, func() tea.Msg {
 		if err := ctx.Err(); err != nil {
@@ -289,7 +289,7 @@ func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
 		if key.EventID != 0 {
 			scope, err = view.OpenThoughtsView(ctx, user, key.EventID)
 		} else {
-			scope, err = view.OpenMiscThoughtsView(ctx, user, key.ObservedAt)
+			scope, err = view.OpenThoughtsOutsideEventsView(ctx, user, key.ObservedAt)
 		}
 		if ctx.Err() != nil {
 			return nil

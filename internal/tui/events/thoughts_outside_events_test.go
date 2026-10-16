@@ -11,7 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 )
 
-func TestModel_MiscTimeline(t *testing.T) {
+func TestModel_ThoughtsOutsideEventsTimeline(t *testing.T) {
 	t.Run("ghost cards share one rail timestamp per minute", func(t *testing.T) {
 		for _, size := range []struct {
 			name  string
@@ -25,10 +25,10 @@ func TestModel_MiscTimeline(t *testing.T) {
 				m.Resize(size.width, 30)
 				events.items = nil
 				at := reader.items[0].ObservedAt.Truncate(time.Minute)
-				reader.miscGroups = []data.MiscThoughtGroup{
-					{ObservedAt: at, Count: 2},
-					{ObservedAt: at.Add(45 * time.Second), Count: 1},
-					{ObservedAt: at.Add(time.Minute), Count: 1},
+				reader.thoughtGroupsOutsideEvents = []data.ThoughtGroupOutsideEvents{
+					{ObservedAt: at, ThoughtCount: 2},
+					{ObservedAt: at.Add(45 * time.Second), ThoughtCount: 1},
+					{ObservedAt: at.Add(time.Minute), ThoughtCount: 1},
 				}
 				m = execute(t, m, m.loadDay(m.day))
 				for _, expanded := range []bool{false, true} {
@@ -61,7 +61,7 @@ func TestModel_MiscTimeline(t *testing.T) {
 		for i := range reader.items {
 			reader.items[i].ObservedAt = at
 		}
-		reader.miscGroups = []data.MiscThoughtGroup{{ObservedAt: at, Count: 230}, {ObservedAt: at.Add(time.Second), Count: 1}}
+		reader.thoughtGroupsOutsideEvents = []data.ThoughtGroupOutsideEvents{{ObservedAt: at, ThoughtCount: 230}, {ObservedAt: at.Add(time.Second), ThoughtCount: 1}}
 		m = execute(t, m, m.loadDay(m.day))
 		m, _ = m.Update(eventKey("home"))
 		if view := ansi.Strip(m.View()); (!strings.Contains(view, "Misc") || !strings.Contains(view, "10:37 AM")) || strings.Contains(view, "No events on this day") || !strings.Contains(view, "230 thoughts") {
@@ -109,7 +109,7 @@ func TestModel_MiscTimeline(t *testing.T) {
 		m, events, reader := fixture(t)
 		events.items = nil
 		at := reader.items[0].ObservedAt
-		reader.miscGroups = []data.MiscThoughtGroup{{ObservedAt: at, Count: 1}}
+		reader.thoughtGroupsOutsideEvents = []data.ThoughtGroupOutsideEvents{{ObservedAt: at, ThoughtCount: 1}}
 		m = execute(t, m, m.loadDay(m.day))
 		m, _ = m.Update(eventKey("home"))
 		m, cmd := m.Update(eventKey("enter"))
@@ -123,12 +123,12 @@ func TestModel_MiscTimeline(t *testing.T) {
 		m, cmd = m.Update(eventKey("enter"))
 		m = execute(t, m, cmd)
 		selected := m.expanded
-		reader.miscGroups = append([]data.MiscThoughtGroup{{ObservedAt: at.Add(-time.Second), Count: 1}}, reader.miscGroups...)
+		reader.thoughtGroupsOutsideEvents = append([]data.ThoughtGroupOutsideEvents{{ObservedAt: at.Add(-time.Second), ThoughtCount: 1}}, reader.thoughtGroupsOutsideEvents...)
 		m = execute(t, m, m.loadDay(m.day))
 		if m.expanded != selected || m.items[m.position.eventIndex].Key() != selected {
 			t.Fatal("refresh changed selected Misc identity")
 		}
-		reader.miscGroups = nil
+		reader.thoughtGroupsOutsideEvents = nil
 		m = execute(t, m, m.loadDay(m.day))
 		if !m.expanded.IsZero() || !strings.Contains(m.View(), "No events on this day") {
 			t.Fatal("removed group retained its picker")

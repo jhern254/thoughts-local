@@ -119,8 +119,8 @@ func (m *Model) entryContent(entry timeline.Entry) []string {
 	}
 	heading := list.DefaultStyles(true).Title.Render("Misc")
 	count := "1 thought"
-	if entry.Misc.Count != 1 {
-		count = fmt.Sprintf("%d thoughts", entry.Misc.Count)
+	if entry.ThoughtsOutsideEvents.ThoughtCount != 1 {
+		count = fmt.Sprintf("%d thoughts", entry.ThoughtsOutsideEvents.ThoughtCount)
 	}
 	return m.cardRows(heading, entry.Key(), count, false)
 }
@@ -239,11 +239,11 @@ func (m *Model) measureTimeline() timelineLayout {
 		if i+1 < len(m.items) && m.items[i+1].StartedAt().Equal(end) {
 			hideEnd = true
 		}
-		hideStart := item.Misc != nil && i > 0 && m.items[i-1].Misc != nil &&
+		hideStart := item.ThoughtsOutsideEvents != nil && i > 0 && m.items[i-1].ThoughtsOutsideEvents != nil &&
 			at.Truncate(time.Minute).Equal(m.items[i-1].StartedAt().Truncate(time.Minute))
 		count, known := int64(0), false
-		if item.Misc != nil {
-			count, known = item.Misc.Count, true
+		if item.ThoughtsOutsideEvents != nil {
+			count, known = item.ThoughtsOutsideEvents.ThoughtCount, true
 		} else if m.load.countErr == nil {
 			for _, value := range m.counts {
 				if value.EventID == item.Event.EventID {

@@ -20,7 +20,7 @@ import (
 	"strings"
 )
 
-func TestMiscTimelineWorkflow_SQLite(t *testing.T) {
+func TestThoughtsOutsideEventsWorkflow_SQLite(t *testing.T) {
 	t.Run("groups uncovered timestamps independently of subject and explicit event links", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u", "other", "deleted")
@@ -37,13 +37,13 @@ func TestMiscTimelineWorkflow_SQLite(t *testing.T) {
 		}
 		store := data.NewSQLiteMetricsStore(db)
 		for _, user := range []string{"u", "other", "deleted", "missing"} {
-			groups, err := store.MiscThoughtGroups(t.Context(), user, time.Unix(50, 0), time.Unix(500, 0), time.Unix(401, 0))
+			thoughtGroupsOutsideEvents, err := store.ListThoughtGroupsOutsideEvents(t.Context(), user, time.Unix(50, 0), time.Unix(500, 0), time.Unix(401, 0))
 			if err != nil {
 				t.Fatal(err)
 			}
 			var got [][2]int64
-			for _, group := range groups {
-				got = append(got, [2]int64{group.ObservedAt.Unix(), group.Count})
+			for _, group := range thoughtGroupsOutsideEvents {
+				got = append(got, [2]int64{group.ObservedAt.Unix(), group.ThoughtCount})
 			}
 			var want [][2]int64
 			if user == "u" {
@@ -67,24 +67,24 @@ func TestMiscTimelineWorkflow_SQLite(t *testing.T) {
 		events := event.NewService(data.NewSQLiteEventStore(db))
 		service := timeline.NewService(events, thoughts, metrics.NewService(data.NewSQLiteMetricsStore(db)))
 		from, until := time.Unix(50, 0), time.Unix(300, 0)
-		entries, err := service.Day(t.Context(), "u", from, until)
+		entries, err := service.ListEntriesInRange(t.Context(), "u", from, until)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(entries) != 2 || entries[0].Misc == nil || entries[0].Misc.Count != 2 || entries[1].Misc.ObservedAt.Unix() != 200 {
-			t.Fatalf("day: got %+v, want two Misc groups", entries)
+		if len(entries) != 2 || entries[0].ThoughtsOutsideEvents == nil || entries[0].ThoughtsOutsideEvents.ThoughtCount != 2 || entries[1].ThoughtsOutsideEvents.ObservedAt.Unix() != 200 {
+			t.Fatalf("timeline entries: got %+v, want two thought groups outside events", entries)
 		}
-		scope, err := service.OpenMiscThoughtsView(t.Context(), "u", time.Unix(100, 0))
+		scope, err := service.OpenThoughtsOutsideEventsView(t.Context(), "u", time.Unix(100, 0))
 		if err != nil {
 			t.Fatal(err)
 		}
 		page, err := service.BrowseThoughtsView(t.Context(), "u", scope, data.ThoughtSummaryViewRequest{})
 		if err != nil || len(page.Items) != 2 {
-			t.Fatalf("Misc page: got %+v, %v, want two thoughts", page, err)
+			t.Fatalf("thoughts outside events page: got %+v, %v, want two thoughts", page, err)
 		}
 		stats, err := service.ThoughtStats(t.Context(), "u", scope)
 		if err != nil || stats.Count != 2 {
-			t.Fatalf("Misc stats: got %+v, %v, want count 2", stats, err)
+			t.Fatalf("thoughts outside events stats: got %+v, %v, want count 2", stats, err)
 		}
 		if _, err := service.BrowseThoughtsView(t.Context(), "other", scope, data.ThoughtSummaryViewRequest{}); err != data.ErrRecordNotFound {
 			t.Fatalf("foreign scope: got %v, want record not found", err)
@@ -100,27 +100,27 @@ func TestMiscTimelineWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		entries, err = service.Day(t.Context(), "u", from, until)
+		entries, err = service.ListEntriesInRange(t.Context(), "u", from, until)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(entries) != 2 || entries[0].Event == nil || entries[0].Event.EventID != real.EventID || entries[1].Misc == nil {
-			t.Fatalf("regrouped day: got %+v, want real event then Misc", entries)
+		if len(entries) != 2 || entries[0].Event == nil || entries[0].Event.EventID != real.EventID || entries[1].ThoughtsOutsideEvents == nil {
+			t.Fatalf("regrouped timeline entries: got %+v, want real event then thoughts outside events", entries)
 		}
-		if _, err := service.OpenMiscThoughtsView(t.Context(), "u", time.Unix(100, 0)); err != data.ErrRecordNotFound {
-			t.Fatalf("covered Misc: got %v, want record not found", err)
+		if _, err := service.OpenThoughtsOutsideEventsView(t.Context(), "u", time.Unix(100, 0)); err != data.ErrRecordNotFound {
+			t.Fatalf("covered thought group: got %v, want record not found", err)
 		}
 		if _, err := db.Exec(`UPDATE events SET deleted_at=updated_at WHERE event_id=?`, real.EventID); err != nil {
 			t.Fatal(err)
 		}
-		entries, err = service.Day(t.Context(), "u", from, until)
-		if err != nil || len(entries) != 2 || entries[0].Misc == nil {
-			t.Fatalf("after deletion: got %+v, %v, want two Misc groups", entries, err)
+		entries, err = service.ListEntriesInRange(t.Context(), "u", from, until)
+		if err != nil || len(entries) != 2 || entries[0].ThoughtsOutsideEvents == nil {
+			t.Fatalf("after deletion: got %+v, %v, want two thought groups outside events", entries, err)
 		}
 	})
 }
 
-func TestMiscTimelineTUIWorkflow_SQLite(t *testing.T) {
+func TestThoughtsOutsideEventsTUIWorkflow_SQLite(t *testing.T) {
 	t.Run("opens a thought on an event-free day through root dispatch", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u")

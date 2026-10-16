@@ -131,7 +131,7 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 					}
 					// Same launch order and independent commands as loadDay's batch.
 					launch(func() tea.Msg {
-						items, err := view.Day(ctx, "demo", day, day.AddDate(0, 0, 1))
+						items, err := view.ListEntriesInRange(ctx, "demo", day, day.AddDate(0, 0, 1))
 						return listedMsg{items: items, err: err}
 					})
 					pending := 1
@@ -211,9 +211,9 @@ type countedEventReads struct {
 	calls atomic.Int64
 }
 
-func (s *countedEventReads) Day(ctx context.Context, user string, from, until time.Time) ([]timeline.Entry, error) {
+func (s *countedEventReads) ListEntriesInRange(ctx context.Context, user string, from, until time.Time) ([]timeline.Entry, error) {
 	s.calls.Add(1)
-	return s.TimelineView.Day(ctx, user, from, until)
+	return s.TimelineView.ListEntriesInRange(ctx, user, from, until)
 }
 
 // Each burst launches ordinary List/Counts batches concurrently, but postpones

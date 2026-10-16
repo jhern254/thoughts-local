@@ -565,12 +565,12 @@ func (*homeTimelineStub) ThoughtStats(context.Context, string, timeline.ThoughtS
 	panic("unexpected event stats")
 }
 
-func (*homeTimelineStub) Day(context.Context, string, time.Time, time.Time) ([]timeline.Entry, error) {
+func (*homeTimelineStub) ListEntriesInRange(context.Context, string, time.Time, time.Time) ([]timeline.Entry, error) {
 	return nil, nil
 }
-func (*homeTimelineStub) OpenMiscThoughtsView(context.Context, string, time.Time) (timeline.ThoughtScope, error) {
-	panic("unexpected Misc expansion")
+func (*homeTimelineStub) OpenThoughtsOutsideEventsView(context.Context, string, time.Time) (timeline.ThoughtScope, error) {
+	panic("unexpected thoughts outside events expansion")
 }
-func (s homeThoughtStore) MiscThoughtGroups(context.Context, string, time.Time, time.Time, time.Time) ([]data.MiscThoughtGroup, error) {
+func (s homeThoughtStore) ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
 	return nil, nil
 }

@@ -78,6 +78,6 @@ func (s *storeStub) ThoughtStatsInRange(ctx context.Context, u string, from, unt
 	return data.ThoughtIntervalStats{Count: 2, MaxCharacters: 320}, s.err
 }
 
-func (s *storeStub) MiscThoughtGroups(context.Context, string, time.Time, time.Time, time.Time) ([]data.MiscThoughtGroup, error) {
+func (s *storeStub) ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
 	return nil, s.err
 }
