@@ -3,6 +3,7 @@ package events
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -16,12 +17,39 @@ import (
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
-type blockedEventRead struct {
+type blockedEntriesRead struct {
 	TimelineView
 	started chan context.Context
 }
 
 func TestModel_DayTransition(t *testing.T) {
+	t.Run("thought-group read failures use timeline feedback and safe operation metadata", func(t *testing.T) {
+		m, _, reader := fixture(t)
+		defer m.Close()
+		var logs bytes.Buffer
+		logger, err := logging.New(&logs, "test", "info")
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.logger = logger
+		private := errors.New("PRIVATE_THOUGHT_GROUP_READ")
+		reader.thoughtGroupsErr = private
+		selected, day := m.entries[m.position.entryIndex].Key(), m.day
+		m = execute(t, m, m.loadDay(m.day))
+		if m.err != private || m.entries[m.position.entryIndex].Key() != selected || !m.day.Equal(day) || !strings.Contains(m.View(), "Could not load timeline for September 11, 2026.") {
+			t.Fatal("thought-group failure lost the accepted timeline, original error, or safe feedback")
+		}
+		var logged map[string]any
+		if err := json.Unmarshal(logs.Bytes(), &logged); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := logged["operation"], "timeline_list"; got != want {
+			t.Fatalf("got operation %v, want %s", got, want)
+		}
+		if len(logged) != 7 || logged["category"] != "unexpected_failure" || strings.Contains(logs.String()+m.View(), private.Error()) {
+			t.Fatalf("unexpected or private failure metadata: %v", logged)
+		}
+	})
 	t.Run("retains the displayed day until the list arrives without waiting for counts or preview", func(t *testing.T) {
 		m, s, _ := fixture(t)
 		before, day := m.View(), m.day
@@ -35,7 +63,7 @@ func TestModel_DayTransition(t *testing.T) {
 		batch := cmd().(tea.BatchMsg)
 		m, latest := m.Update(batch[0]())
 		view := m.View()
-		if !m.day.Equal(displaytime.Day(start)) || !strings.Contains(view, label) || strings.Contains(view, "Loading events") || !m.load.countsPending || !m.load.latestPending || latest == nil {
+		if !m.day.Equal(displaytime.Day(start)) || !strings.Contains(view, label) || strings.Contains(view, "Loading timeline") || !m.load.countsPending || !m.load.latestPending || latest == nil {
 			t.Fatalf("got %q, want new day immediately while counts and preview remain pending", view)
 		}
 		m = execute(t, m, batch[1])
@@ -81,7 +109,7 @@ func TestModel_DayTransition(t *testing.T) {
 	})
 	t.Run("failure retains the visible day and original error without exposing its text", func(t *testing.T) {
 		m, s, _ := fixture(t)
-		day, selected := m.day, m.items[m.position.eventIndex].Event.EventID
+		day, selected := m.day, m.entries[m.position.entryIndex].Event.EventID
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")
 		if err != nil {
@@ -91,10 +119,10 @@ func TestModel_DayTransition(t *testing.T) {
 		s.listErr = errors.New("PRIVATE_DAY_READ_MARKER")
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
-		if m.err != s.listErr || !m.day.Equal(day) || m.items[m.position.eventIndex].Event.EventID != selected || !strings.Contains(m.View(), "Could not load events for September 10, 2026") {
+		if m.err != s.listErr || !m.day.Equal(day) || m.entries[m.position.entryIndex].Event.EventID != selected || !strings.Contains(m.View(), "Could not load timeline for September 10, 2026") {
 			t.Fatal("failure lost the displayed day, selection, original error, or safe feedback")
 		}
-		if strings.Contains(m.View()+logs.String(), "PRIVATE_DAY_READ_MARKER") || strings.Contains(m.View(), "Loading events") {
+		if strings.Contains(m.View()+logs.String(), "PRIVATE_DAY_READ_MARKER") || strings.Contains(m.View(), "Loading timeline") {
 			t.Fatal("failure exposed private text or left loading feedback visible")
 		}
 		s.listErr = nil
@@ -109,11 +137,11 @@ func TestModel_DayTransition(t *testing.T) {
 		m, s, _ := fixture(t)
 		s.items = nil
 		m, cmd := m.Update(eventKey("left"))
-		if strings.Contains(m.View(), "No events on this day") {
+		if strings.Contains(m.View(), "No events or thoughts on this day") {
 			t.Fatal("pending read was presented as an empty day")
 		}
 		m = execute(t, m, cmd)
-		if !strings.Contains(m.View(), "No events on this day") || strings.Contains(m.View(), "Loading events") {
+		if !strings.Contains(m.View(), "No events or thoughts on this day") || strings.Contains(m.View(), "Loading timeline") {
 			t.Fatal("completed empty day was not presented normally")
 		}
 		m.Close()
@@ -210,13 +238,13 @@ func TestModel_CollapsedCounts(t *testing.T) {
 		if got := m.count(1); got != "" {
 			t.Fatalf("got pending count %q, want an empty reserved row", got)
 		}
-		before := strings.Count(m.card(*m.items[0].Event, true), "\n")
+		before := strings.Count(m.card(*m.entries[0].Event, true), "\n")
 		m, _ = m.Update(loadDelayedMsg{m.owner, m.load.generation})
-		if m.count(1) != "Counting thoughts…" || strings.Contains(m.View(), "Loading events") {
+		if m.count(1) != "Counting thoughts…" || strings.Contains(m.View(), "Loading timeline") {
 			t.Fatal("slow count did not show its own feedback independently of events")
 		}
 		m = execute(t, m, batch[1])
-		if m.count(1) != "1 thought" || strings.Count(m.card(*m.items[0].Event, true), "\n") != before {
+		if m.count(1) != "1 thought" || strings.Count(m.card(*m.entries[0].Event, true), "\n") != before {
 			t.Fatal("ready count did not replace feedback without changing card height")
 		}
 		m.Close()
@@ -249,7 +277,7 @@ func TestModel_CollapsedCounts(t *testing.T) {
 	})
 }
 
-func (s blockedEventRead) ListEntriesInRange(ctx context.Context, _ string, _, _ time.Time) ([]timeline.Entry, error) {
+func (s blockedEntriesRead) ListEntriesInRange(ctx context.Context, _ string, _, _ time.Time) ([]timeline.Entry, error) {
 	s.started <- ctx
 	<-ctx.Done()
 	return nil, ctx.Err()
@@ -262,11 +290,11 @@ func TestModel_ReloadCancellation(t *testing.T) {
 		old := m.loadDay(m.day)
 		current := m.loadDay(m.day)
 		m = execute(t, m, old)
-		if s.lists != lists || v.counts != counts || !m.load.eventsPending {
+		if s.lists != lists || v.counts != counts || !m.load.entriesPending {
 			t.Fatal("obsolete commands invoked services or cleared current loading")
 		}
 		m = execute(t, m, current)
-		if m.load.eventsPending || m.err != nil || s.lists != lists+1 || v.counts != counts+1 {
+		if m.load.entriesPending || m.err != nil || s.lists != lists+1 || v.counts != counts+1 {
 			t.Fatal("current reload did not complete normally")
 		}
 		m.Close()
@@ -275,7 +303,7 @@ func TestModel_ReloadCancellation(t *testing.T) {
 		for _, closeView := range []bool{false, true} {
 			m, _, _ := fixture(t)
 			started := make(chan context.Context, 1)
-			m.timelineView = blockedEventRead{TimelineView: m.timelineView, started: started}
+			m.timelineView = blockedEntriesRead{TimelineView: m.timelineView, started: started}
 			cmd := m.loadDay(m.day)().(tea.BatchMsg)[0]
 			reply := make(chan tea.Msg, 1)
 			go func() { reply <- cmd() }()
@@ -303,7 +331,7 @@ func TestModel_ReloadCancellation(t *testing.T) {
 		batch := m.loadDay(m.day)().(tea.BatchMsg)
 		m, latest := m.Update(batch[0]())
 		_ = m.loadDay(m.day)
-		result := latest().(latestMsg)
+		result := latest().(latestEventThoughtMsg)
 		if !errors.Is(result.err, context.Canceled) {
 			t.Fatalf("got latest error %v, want canceled", result.err)
 		}

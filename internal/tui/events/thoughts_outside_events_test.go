@@ -39,9 +39,9 @@ func TestModel_ThoughtsOutsideEventsTimeline(t *testing.T) {
 						m = execute(t, m, cmd)
 					}
 					layout := m.measureTimeline()
-					first := layout.positions[m.items[0].Key()]
-					second := layout.positions[m.items[1].Key()]
-					third := layout.positions[m.items[2].Key()]
+					first := layout.positions[m.entries[0].Key()]
+					second := layout.positions[m.entries[1].Key()]
+					third := layout.positions[m.entries[2].Key()]
 					if !strings.HasPrefix(layout.lines[first], "10:37 AM") || strings.TrimSpace(layout.lines[second]) != "" || !strings.HasPrefix(layout.lines[third], "10:38 AM") {
 						t.Fatalf("got rail rows %q, %q, %q, want one label per minute (expanded %v)", layout.lines[first], layout.lines[second], layout.lines[third], expanded)
 					}
@@ -64,11 +64,11 @@ func TestModel_ThoughtsOutsideEventsTimeline(t *testing.T) {
 		reader.thoughtGroupsOutsideEvents = []data.ThoughtGroupOutsideEvents{{ObservedAt: at, ThoughtCount: 230}, {ObservedAt: at.Add(time.Second), ThoughtCount: 1}}
 		m = execute(t, m, m.loadDay(m.day))
 		m, _ = m.Update(eventKey("home"))
-		if view := ansi.Strip(m.View()); (!strings.Contains(view, "Misc") || !strings.Contains(view, "10:37 AM")) || strings.Contains(view, "No events on this day") || !strings.Contains(view, "230 thoughts") {
+		if view := ansi.Strip(m.View()); (!strings.Contains(view, "Misc") || !strings.Contains(view, "10:37 AM")) || strings.Contains(view, "No events or thoughts on this day") || !strings.Contains(view, "230 thoughts") {
 			t.Fatalf("got view:\n%s\nwant Misc timestamp and count", view)
 		}
 		layout := m.measureTimeline()
-		first, second := layout.positions[m.items[0].Key()], layout.positions[m.items[1].Key()]
+		first, second := layout.positions[m.entries[0].Key()], layout.positions[m.entries[1].Key()]
 		if first >= second || !strings.HasPrefix(ansi.Strip(layout.lines[first]), "10:37 AM") {
 			t.Fatalf("got card positions %d,%d, want chronological cards anchored at their start", first, second)
 		}
@@ -125,12 +125,12 @@ func TestModel_ThoughtsOutsideEventsTimeline(t *testing.T) {
 		selected := m.expanded
 		reader.thoughtGroupsOutsideEvents = append([]data.ThoughtGroupOutsideEvents{{ObservedAt: at.Add(-time.Second), ThoughtCount: 1}}, reader.thoughtGroupsOutsideEvents...)
 		m = execute(t, m, m.loadDay(m.day))
-		if m.expanded != selected || m.items[m.position.eventIndex].Key() != selected {
+		if m.expanded != selected || m.entries[m.position.entryIndex].Key() != selected {
 			t.Fatal("refresh changed selected Misc identity")
 		}
 		reader.thoughtGroupsOutsideEvents = nil
 		m = execute(t, m, m.loadDay(m.day))
-		if !m.expanded.IsZero() || !strings.Contains(m.View(), "No events on this day") {
+		if !m.expanded.IsZero() || !strings.Contains(m.View(), "No events or thoughts on this day") {
 			t.Fatal("removed group retained its picker")
 		}
 	})

@@ -80,10 +80,10 @@ func TestModel_TimelineTimestampLabels(t *testing.T) {
 			for _, width := range []int{80, 40} {
 				m, _, _ := fixture(t)
 				m.Resize(width, 30)
-				m.items = tc.entries
+				m.entries = tc.entries
 				for _, expanded := range []bool{false, true} {
 					if expanded {
-						m.expanded = m.items[0].Key()
+						m.expanded = m.entries[0].Key()
 						m.opening = true
 					}
 					layout := m.measureTimeline()
@@ -119,7 +119,7 @@ func TestModel_TimelineTimestampLabels(t *testing.T) {
 		m, _, _ := fixture(t)
 		end := start.Add(time.Hour)
 		m.day, m.clock = displaytime.Day(start), end.Add(time.Hour)
-		m.items = []timeline.Entry{completedEvent(1, start, end)}
+		m.entries = []timeline.Entry{completedEvent(1, start, end)}
 		layout := m.measureTimeline()
 		card := layout.cards[0]
 		for _, row := range []int{card.top, card.top + len(card.content) + 1} {

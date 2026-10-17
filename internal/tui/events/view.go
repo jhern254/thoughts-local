@@ -45,11 +45,11 @@ func singleLine(value string) string {
 	}, value)
 }
 func (m *Model) count(id int64) string {
-	pending := m.load.countsPending && !m.load.eventsPending && m.load.pendingDay.Equal(m.day)
+	pending := m.load.countsPending && !m.load.entriesPending && m.load.pendingDay.Equal(m.day)
 	if m.load.countErr != nil {
 		return "Thought count unavailable"
 	}
-	for _, item := range m.counts {
+	for _, item := range m.eventCounts {
 		if item.EventID == id {
 			label := "1 thought"
 			if item.Count != 1 {
@@ -164,7 +164,7 @@ func (m *Model) cardRows(heading string, key timeline.EntryKey, count string, on
 func (m *Model) paintCard(content []string, selected bool) []string {
 	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(m.cardWidth() + cardBorderColumns)
 	if selected && !m.blurred {
-		style = style.BorderForeground(lipgloss.Color(selectedEventColor))
+		style = style.BorderForeground(lipgloss.Color(selectedEntryColor))
 	}
 	return strings.Split(style.Render(strings.Join(content, "\n")), "\n")
 }
@@ -229,21 +229,21 @@ func (m *Model) measureTimeline() timelineLayout {
 	for hour := m.day; hour.Before(until) && !hour.After(m.clock); hour = hour.Add(time.Hour) {
 		entries = append(entries, railEntry{at: hour})
 	}
-	for i, item := range m.items {
-		at, end := item.StartedAt(), item.StartedAt()
-		if item.Event != nil {
-			at, end = m.interval(*item.Event)
+	for i, entry := range m.entries {
+		at, end := entry.StartedAt(), entry.StartedAt()
+		if entry.Event != nil {
+			at, end = m.interval(*entry.Event)
 		}
 		hideEnd := at.Equal(end) || (end.Equal(m.clock) && m.clock.Before(until))
-		if i+1 < len(m.items) && m.items[i+1].StartedAt().Equal(end) {
+		if i+1 < len(m.entries) && m.entries[i+1].StartedAt().Equal(end) {
 			hideEnd = true
 		}
 		count, known := int64(0), false
-		if item.ThoughtsOutsideEvents != nil {
-			count, known = item.ThoughtsOutsideEvents.ThoughtCount, true
+		if entry.ThoughtsOutsideEvents != nil {
+			count, known = entry.ThoughtsOutsideEvents.ThoughtCount, true
 		} else if m.load.countErr == nil {
-			for _, value := range m.counts {
-				if value.EventID == item.Event.EventID {
+			for _, value := range m.eventCounts {
+				if value.EventID == entry.Event.EventID {
 					count, known = value.Count, true
 					break
 				}
@@ -254,9 +254,9 @@ func (m *Model) measureTimeline() timelineLayout {
 			countKnown: known,
 			at:         at,
 			priority:   1,
-			key:        item.Key(),
-			content:    m.entryContent(item),
-			selected:   i == m.position.eventIndex,
+			key:        entry.Key(),
+			content:    m.entryContent(entry),
+			selected:   i == m.position.entryIndex,
 			end:        end,
 			hideEnd:    hideEnd,
 		})
@@ -294,7 +294,7 @@ func (m *Model) measureTimeline() timelineLayout {
 		if entry.key.IsZero() && !entry.now && !previousTime.IsZero() && !entry.at.After(previousTime) {
 			continue
 		}
-		// An event starting on the hour owns that label's row, not a row below it.
+		// An entry starting on the hour owns that label's row, not a row below it.
 		if entry.key.IsZero() && !entry.now && i+1 < len(entries) && !entries[i+1].key.IsZero() && entry.at.Equal(entries[i+1].at) {
 			continue
 		}
@@ -381,8 +381,8 @@ func (m *Model) paintTimeline(layout timelineLayout, offset, height int) []strin
 func (m *Model) bodyHeight() int { return max(1, m.height-4) }
 func (m *Model) revealSelected() {
 	layout := m.measureTimeline()
-	if len(m.items) > 0 {
-		top := layout.positions[m.items[m.position.eventIndex].Key()]
+	if len(m.entries) > 0 {
+		top := layout.positions[m.entries[m.position.entryIndex].Key()]
 		m.position.showSelected(top, m.bodyHeight(), !m.expanded.IsZero())
 	}
 	m.position.clamp(len(layout.lines))
@@ -419,7 +419,7 @@ func (m Model) View() string {
 	styles := list.DefaultStyles(true)
 	heading := styles.Title.Render("Events") + " " + displaytime.Format(m.day, "January 2, 2006")
 	if m.width < 24 || m.height < 14 {
-		return heading + "\nResize terminal to view events."
+		return heading + "\nResize terminal to view timeline."
 	}
 	if m.form.open {
 		return heading + "\n" + m.formView()
@@ -428,17 +428,17 @@ func (m Model) View() string {
 		return styles.Title.Render(m.picker.SelectedSubjectName()) + "\n\n" + m.picker.View()
 	}
 	body := m.load.retainedBody
-	if !m.load.eventsPending || body == "" {
+	if !m.load.entriesPending || body == "" {
 		body = m.timelineBody()
 	}
 	status := m.message
 	if status == "" {
 		status = "d: distribution settings"
 	}
-	if m.load.eventsPending && m.load.showStatus {
-		status = "Loading events for " + displaytime.Format(m.load.pendingDay, "January 2, 2006") + "…"
-	} else if !m.load.eventsPending && len(m.items) == 0 && m.message == "" {
-		status = "No events on this day. n: start event • d: distributions"
+	if m.load.entriesPending && m.load.showStatus {
+		status = "Loading timeline for " + displaytime.Format(m.load.pendingDay, "January 2, 2006") + "…"
+	} else if !m.load.entriesPending && len(m.entries) == 0 && m.message == "" {
+		status = "No events or thoughts on this day. n: start event • d: distributions"
 	}
 	if !m.expanded.IsZero() {
 		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
@@ -455,7 +455,7 @@ func (m Model) View() string {
 		if m.width < distributionMinWidth {
 			status = "Distributions hidden below 60 columns"
 		}
-		if m.load.eventsPending && m.load.showStatus {
+		if m.load.entriesPending && m.load.showStatus {
 			status = "Loading… " + status
 		}
 		help = "←/→ boost ↑/↓ size f mode [0 Reset to default] Q/Esc done"

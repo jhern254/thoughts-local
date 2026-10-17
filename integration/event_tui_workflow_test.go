@@ -86,7 +86,7 @@ func TestEventTUIWorkflow_SQLite(t *testing.T) {
 		if err := db.QueryRow("SELECT COUNT(*) FROM events WHERE ended_at IS NOT NULL").Scan(&completed); err != nil {
 			t.Fatal(err)
 		}
-		if completed != 1 || strings.Contains(m.View().Content, "Loading events") || db.Stats().InUse != 0 {
+		if completed != 1 || strings.Contains(m.View().Content, "Loading timeline") || db.Stats().InUse != 0 {
 			t.Fatalf("got completed %d, in-use %d, view %q; want one completed event, no held connection or pending load", completed, db.Stats().InUse, m.View().Content)
 		}
 	})

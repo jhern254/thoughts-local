@@ -8,15 +8,15 @@ import (
 )
 
 // dayLoad owns one requested day's reads and feedback. Accepted timeline data
-// stays on Model until the matching event list establishes the displayed day.
+// stays on Model until the matching entry list establishes the displayed day.
 type dayLoad struct {
 	ctx            context.Context
 	cancelRead     context.CancelFunc
 	cancelFeedback context.CancelFunc
 	generation     uint64
 	pendingDay     time.Time
-	pendingCounts  countsMsg
-	eventsPending  bool
+	pendingCounts  eventCountsMsg
+	entriesPending bool
 	countsPending  bool
 	latestPending  bool
 	retainedBody   string
@@ -40,8 +40,8 @@ func (l *dayLoad) begin(parent context.Context, day time.Time, owner *int) tea.C
 	l.ctx, l.cancelRead = context.WithCancel(parent)
 	feedbackCtx, cancel := context.WithCancel(l.ctx)
 	l.cancelFeedback = cancel
-	l.eventsPending, l.countsPending, l.latestPending = true, true, false
-	l.pendingDay, l.pendingCounts, l.showStatus = day, countsMsg{}, false
+	l.entriesPending, l.countsPending, l.latestPending = true, true, false
+	l.pendingDay, l.pendingCounts, l.showStatus = day, eventCountsMsg{}, false
 	generation := l.generation
 	return func() tea.Msg {
 		// Delay only feedback, never the reads or application of their results.
@@ -60,25 +60,25 @@ func (l *dayLoad) begin(parent context.Context, day time.Time, owner *int) tea.C
 }
 
 func (l *dayLoad) delayFeedback(generation uint64) {
-	if l.owns(generation) && (l.eventsPending || l.countsPending) {
+	if l.owns(generation) && (l.entriesPending || l.countsPending) {
 		l.showStatus = true
 	}
 }
 
-func (l *dayLoad) finishEvents() {
-	l.eventsPending = false
+func (l *dayLoad) finishEntries() {
+	l.entriesPending = false
 	l.retainedBody = ""
 	l.finishFeedback()
 }
 
-func (l *dayLoad) finishCounts(result countsMsg) {
+func (l *dayLoad) finishCounts(result eventCountsMsg) {
 	l.countsPending = false
 	l.pendingCounts = result
 	l.finishFeedback()
 }
 
 func (l *dayLoad) finishFeedback() {
-	if !l.eventsPending && !l.countsPending {
+	if !l.entriesPending && !l.countsPending {
 		l.cancelFeedback()
 		l.showStatus = false
 	}

@@ -41,8 +41,8 @@ func TestModel_Distributions(t *testing.T) {
 		m, _, _ := fixture(t)
 		start := m.day.Add(8 * time.Hour)
 		end := start.Add(time.Hour)
-		m.items = append(eventEntries([]data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}), m.items...)
-		m.counts = append(m.counts, data.EventThoughtCountView{EventID: 2, Count: 20})
+		m.entries = append(eventEntries([]data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}), m.entries...)
+		m.eventCounts = append(m.eventCounts, data.EventThoughtCountView{EventID: 2, Count: 20})
 		for _, width := range []int{80, 60, 59, 40} {
 			m.Resize(width, 27)
 			for _, expanded := range []bool{false, true} {
@@ -78,7 +78,7 @@ func TestModel_Distributions(t *testing.T) {
 
 	t.Run("live controls change only curves and restore defaults without reads", func(t *testing.T) {
 		m, service, store := fixture(t)
-		m.counts[0].Count = 10
+		m.eventCounts[0].Count = 10
 		before, positions, _ := m.layout()
 		position, day := m.position, m.day
 		lists, counts, reads := service.lists, store.counts, store.reads
@@ -202,7 +202,7 @@ func TestModel_Distributions(t *testing.T) {
 	})
 	t.Run("unknown counts reserve the lane and known zero has a mound", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		m.counts = nil
+		m.eventCounts = nil
 		missing, positions, now := m.layout()
 		if hasDistribution(strings.Join(missing, "\n")) {
 			t.Fatal("unknown counts invented activity")
@@ -210,7 +210,7 @@ func TestModel_Distributions(t *testing.T) {
 		if ansi.Cut(ansi.Strip(missing[positions[1]]), 24, 25) != "╭" {
 			t.Fatal("unknown count removed reserved lane")
 		}
-		m.counts = []data.EventThoughtCountView{{EventID: 1, Count: 0}}
+		m.eventCounts = []data.EventThoughtCountView{{EventID: 1, Count: 0}}
 		zero, got, end := m.layout()
 		if !hasDistribution(strings.Join(zero, "\n")) || !reflect.DeepEqual(positions, got) || now != end {
 			t.Fatal("zero mound absent or moved cards")
@@ -253,7 +253,7 @@ func TestModel_Distributions(t *testing.T) {
 		m, _, _ := fixture(t)
 		previous, maximum := "", ""
 		for _, count := range []int64{0, 1, 10, 20, 230} {
-			m.counts = []data.EventThoughtCountView{{EventID: 1, Count: count}}
+			m.eventCounts = []data.EventThoughtCountView{{EventID: 1, Count: count}}
 			lines, _, _ := m.layout()
 			lane := distributionLane(lines)
 			if count <= 20 && lane == previous {
@@ -278,14 +278,14 @@ func TestModel_Distributions(t *testing.T) {
 	t.Run("expanded and offscreen maximum still sets the day scale", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.day = m.day.AddDate(0, 0, -1)
-		m.items = nil
-		m.counts = nil
+		m.entries = nil
+		m.eventCounts = nil
 		for i, count := range []int64{20, 100, 200} {
 			start := m.day.Add(time.Duration(3+i*6) * time.Hour)
 			end := start.Add(time.Hour)
 			id := int64(i + 1)
-			m.items = append(m.items, eventEntries([]data.Event{{EventID: id, StartedAt: start, EndedAt: &end}})...)
-			m.counts = append(m.counts, data.EventThoughtCountView{EventID: id, Count: count})
+			m.entries = append(m.entries, eventEntries([]data.Event{{EventID: id, StartedAt: start, EndedAt: &end}})...)
+			m.eventCounts = append(m.eventCounts, data.EventThoughtCountView{EventID: id, Count: count})
 		}
 		before, positions, _ := m.layout()
 		widths := []int{}
@@ -313,9 +313,9 @@ func TestModel_Distributions(t *testing.T) {
 
 	t.Run("highlight follows event identity when an earlier event has no count", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		end := m.items[0].Event.StartedAt
-		m.items = append(eventEntries([]data.Event{{EventID: 2, StartedAt: end.Add(-time.Hour), EndedAt: &end}}), m.items...)
-		m.position.eventIndex = 1
+		end := m.entries[0].Event.StartedAt
+		m.entries = append(eventEntries([]data.Event{{EventID: 2, StartedAt: end.Add(-time.Hour), EndedAt: &end}}), m.entries...)
+		m.position.entryIndex = 1
 		lines, positions, _ := m.layout()
 		row := positions[1] + 2
 		selected := ansi.Cut(lines[row], 12, 22)
@@ -328,7 +328,7 @@ func TestModel_Distributions(t *testing.T) {
 			t.Fatal("blur changed geometry or retained highlight")
 		}
 		m.SetFocused(true)
-		m.position.eventIndex = 0
+		m.position.entryIndex = 0
 		other, _, _ := m.layout()
 		if distributionLane(lines) != distributionLane(other) || !strings.Contains(ansi.Cut(other[row], 12, 22), "38;5;245") {
 			t.Fatal("selection changed geometry or failed to dull the curve")
@@ -339,15 +339,15 @@ func TestModel_Distributions(t *testing.T) {
 		m.day = m.day.AddDate(0, 0, -1)
 		start := m.day.Add(9 * time.Hour)
 		middle, end := start.Add(time.Hour), start.Add(2*time.Hour)
-		m.items = eventEntries([]data.Event{{EventID: 1, StartedAt: start, EndedAt: &middle}, {EventID: 2, StartedAt: middle, EndedAt: &end}})
-		m.counts = []data.EventThoughtCountView{{EventID: 1, Count: 20}, {EventID: 2, Count: 20}}
+		m.entries = eventEntries([]data.Event{{EventID: 1, StartedAt: start, EndedAt: &middle}, {EventID: 2, StartedAt: middle, EndedAt: &end}})
+		m.eventCounts = []data.EventThoughtCountView{{EventID: 1, Count: 20}, {EventID: 2, Count: 20}}
 		combined, positions, _ := m.layout()
 		row := positions[2] - 1
 		if positions[2]-positions[1] != 5 || strings.TrimSpace(timelineCardText(combined[row])) != "" {
 			t.Fatal("curve moved or filled the card separator")
 		}
 		both := ansi.Cut(ansi.Strip(combined[row]), 12, 22)
-		m.counts = m.counts[:1]
+		m.eventCounts = m.eventCounts[:1]
 		single, _, _ := m.layout()
 		if !hasDistribution(both) || both == ansi.Cut(ansi.Strip(single[row]), 12, 22) {
 			t.Fatal("neighboring tails did not combine in the separator")
@@ -361,7 +361,7 @@ func TestModel_Distributions(t *testing.T) {
 		if hasDistribution(strings.Join(expanded, "\n")) {
 			t.Fatal("expanded event or unknown count contributed a curve")
 		}
-		m.counts = []data.EventThoughtCountView{{EventID: 2, Count: 20}}
+		m.eventCounts = []data.EventThoughtCountView{{EventID: 2, Count: 20}}
 		expanded, _, _ = m.layout()
 		if !hasDistribution(strings.Join(expanded, "\n")) {
 			t.Fatal("expansion removed another collapsed event's curve")
@@ -402,8 +402,8 @@ func TestModel_Distributions(t *testing.T) {
 		m, _, _ := fixture(t)
 		start := m.day.Add(9 * time.Hour)
 		end := start.Add(time.Hour)
-		m.items = eventEntries([]data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}, *m.items[0].Event})
-		m.counts = []data.EventThoughtCountView{{EventID: 1, Count: 10}, {EventID: 2, Count: 20}}
+		m.entries = eventEntries([]data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}, *m.entries[0].Event})
+		m.eventCounts = []data.EventThoughtCountView{{EventID: 1, Count: 10}, {EventID: 2, Count: 20}}
 		m.position.followNow = false
 		lines, positions, _ := m.layout()
 		for _, offset := range []int{positions[2] - 2, positions[2] + 2, positions[1]} {
@@ -415,9 +415,9 @@ func TestModel_Distributions(t *testing.T) {
 				}
 			}
 		}
-		before := m.position.eventIndex
+		before := m.position.entryIndex
 		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgUp}))
-		if m.position.eventIndex != before {
+		if m.position.entryIndex != before {
 			t.Fatal("paging changed selection")
 		}
 	})

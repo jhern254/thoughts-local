@@ -328,7 +328,7 @@ func TestModel_EventsHome(t *testing.T) {
 		m, _ = rootUpdate(m, lateList)
 		m, _ = rootUpdate(m, lateCounts)
 		m = runHomeData(t, m, lateLatest)
-		if m.View().Content != before || strings.Contains(before, "Loading events") || service.lists != calls+1 {
+		if m.View().Content != before || strings.Contains(before, "Loading timeline") || service.lists != calls+1 {
 			t.Fatalf("obsolete batches affected current screen or reads: got %d new reads, want 1", service.lists-calls)
 		}
 	})
@@ -342,7 +342,7 @@ func TestModel_EventsHome(t *testing.T) {
 		}
 		delayed := batch[2]() // Actual timer; the independent count is deliberately held.
 		m, _ = rootUpdate(m, delayed)
-		if !strings.Contains(m.View().Content, "1 thought · refreshing…") || strings.Contains(m.View().Content, "Loading events") {
+		if !strings.Contains(m.View().Content, "1 thought · refreshing…") || strings.Contains(m.View().Content, "Loading timeline") {
 			t.Fatal("slow count did not get independent feedback through root dispatch")
 		}
 		lateCount := batch[1]()
@@ -367,7 +367,7 @@ func TestModel_EventsHome(t *testing.T) {
 		delayed := cmd().(tea.BatchMsg)[2]()
 		m, _ = rootUpdate(m, delayed)
 		view := m.View().Content
-		if !strings.Contains(view, "Loading events for") || !strings.Contains(view, "bounded preview") || !strings.Contains(view, displaytime.Format(time.Now(), "January 2, 2006")) {
+		if !strings.Contains(view, "Loading timeline for") || !strings.Contains(view, "bounded preview") || !strings.Contains(view, displaytime.Format(time.Now(), "January 2, 2006")) {
 			t.Fatal("slow read lost the displayed date/cards or failed to show feedback")
 		}
 		start := displaytime.Day(time.Now()).AddDate(0, 0, -2).Add(9 * time.Hour)
@@ -375,18 +375,18 @@ func TestModel_EventsHome(t *testing.T) {
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end, ActivityType: &label}}
 		m, cmd = rootUpdate(m, runeKey('h'))
 		m, _ = rootUpdate(m, delayed)
-		if strings.Contains(m.View().Content, "Loading events") {
+		if strings.Contains(m.View().Content, "Loading timeline") {
 			t.Fatal("old timer enabled feedback on a newer request")
 		}
 		batch := cmd().(tea.BatchMsg)
 		m = runHomeData(t, m, batch[0])
 		view = m.View().Content
-		if !strings.Contains(view, label) || !strings.Contains(view, displaytime.Format(start, "January 2, 2006")) || strings.Contains(view, "Loading events") || m.entityFocused {
+		if !strings.Contains(view, label) || !strings.Contains(view, displaytime.Format(start, "January 2, 2006")) || strings.Contains(view, "Loading timeline") || m.entityFocused {
 			t.Fatal("ready list waited for counts/timer or lost its date or calendar focus")
 		}
 		m = runHomeData(t, m, batch[1])
 		m, _ = rootUpdate(m, delayed)
-		if strings.Contains(m.View().Content, "Loading events") {
+		if strings.Contains(m.View().Content, "Loading timeline") {
 			t.Fatal("old timer restored feedback after completion")
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))

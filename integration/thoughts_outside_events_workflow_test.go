@@ -138,7 +138,7 @@ func TestThoughtsOutsideEventsTUIWorkflow_SQLite(t *testing.T) {
 		m = executeEventData(t, m, cmd().(tea.BatchMsg)[0])
 		m, cmd = m.Update(tuiKey(tea.KeyLeft))
 		m = executeEventData(t, m, cmd)
-		if view := m.View().Content; !strings.Contains(view, "Misc") || !strings.Contains(view, "1 thought") || strings.Contains(view, "No events on this day") {
+		if view := m.View().Content; !strings.Contains(view, "Misc") || !strings.Contains(view, "1 thought") || strings.Contains(view, "No events or thoughts on this day") {
 			t.Fatalf("got timeline %q, want a Misc card with one thought", view)
 		}
 		m, cmd = m.Update(tuiKey(tea.KeyEnter))

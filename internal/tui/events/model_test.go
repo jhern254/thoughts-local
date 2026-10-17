@@ -77,6 +77,7 @@ func (s *eventStub) End(_ context.Context, _ string, id, version int64, end time
 type viewStore struct {
 	items                      []data.ThoughtSummaryView
 	thoughtGroupsOutsideEvents []data.ThoughtGroupOutsideEvents
+	thoughtGroupsErr           error
 	counts, reads              int
 	err                        error
 }
@@ -133,7 +134,7 @@ func TestModel_DayArrival(t *testing.T) {
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
-		if !m.expanded.IsZero() || m.position.eventIndex != 0 || !strings.HasPrefix(timelineCardText(strings.Split(m.View(), "\n")[2]), "09:00 PM  ╭") {
+		if !m.expanded.IsZero() || m.position.entryIndex != 0 || !strings.HasPrefix(timelineCardText(strings.Split(m.View(), "\n")[2]), "09:00 PM  ╭") {
 			t.Fatalf("got day view %q, want first event visible with calendar focus", ansi.Strip(m.View()))
 		}
 	})
@@ -300,14 +301,14 @@ func TestModel_ClockAndOwnership(t *testing.T) {
 	t.Run("next day stops at today without fetching future data", func(t *testing.T) {
 		m, s, _ := fixture(t)
 		today, calls := m.day, s.lists
-		items := m.items
-		m.items = nil
+		entries := m.entries
+		m.entries = nil
 		before := m.View()
 		m, cmd := m.Update(eventKey("right"))
 		if cmd != nil || m.View() != before || s.lists != calls {
 			t.Fatal("next day changed today's view or requested future data")
 		}
-		m.items = items
+		m.entries = entries
 		m, cmd = m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
 		if !m.day.Equal(today.AddDate(0, 0, -1)) {
@@ -412,17 +413,17 @@ func TestModel_EventForms(t *testing.T) {
 		m.form.fields[0].SetValue("new activity")
 		m.now = func() time.Time { return openedAt.Add(10 * time.Second) }
 		m, cmd := m.Update(eventKey("enter"))
-		saved := cmd().(savedMsg)
-		saved.item.ActivityType = &s.label
+		saved := cmd().(eventSavedMsg)
+		saved.event.ActivityType = &s.label
 		// Supply the persisted list returned after the existing Create call.
-		s.items[0].EndedAt = &saved.item.StartedAt
-		s.items = append(s.items, *saved.item)
+		s.items[0].EndedAt = &saved.event.StartedAt
+		s.items = append(s.items, *saved.event)
 		m, cmd = m.Update(saved)
 		m = execute(t, m, cmd)
 		view := ansi.Strip(m.View())
 		box, now := strings.Index(view, "new activity"), strings.Index(view, "Now ·")
-		if box < 0 || now < box || !m.position.followNow || m.items[m.position.eventIndex].Event.EventID != saved.item.EventID || !m.clock.Equal(m.now()) {
-			t.Fatalf("got selection %d and view:\n%s\nwant new event selected and visible above Now", m.items[m.position.eventIndex].Event.EventID, view)
+		if box < 0 || now < box || !m.position.followNow || m.entries[m.position.entryIndex].Event.EventID != saved.event.EventID || !m.clock.Equal(m.now()) {
+			t.Fatalf("got selection %d and view:\n%s\nwant new event selected and visible above Now", m.entries[m.position.entryIndex].Event.EventID, view)
 		}
 	})
 	t.Run("friendly input is converted before calling the existing service", func(t *testing.T) {
@@ -451,8 +452,8 @@ func TestModel_EventForms(t *testing.T) {
 			t.Fatal("End form wrote before save")
 		}
 		m, cmd := m.Update(eventKey("enter"))
-		result := cmd().(savedMsg)
-		if s.ends != 1 || !result.ending || result.item.Version != 2 {
+		result := cmd().(eventSavedMsg)
+		if s.ends != 1 || !result.ending || result.event.Version != 2 {
 			t.Fatal("End lost version or called wrong operation")
 		}
 		_, quit := m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
@@ -480,7 +481,7 @@ func TestModel_EventForms(t *testing.T) {
 		if duplicate != nil {
 			t.Fatal("duplicate submission")
 		}
-		result := cmd().(savedMsg)
+		result := cmd().(eventSavedMsg)
 		if s.creates != 1 || !s.start.Equal(at) || s.label != "q" || result.err != nil {
 			t.Fatal("Save lost original timestamp")
 		}
@@ -547,7 +548,7 @@ func eventEntries(items []data.Event) []timeline.Entry {
 }
 
 func (s *viewStore) ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
-	return s.thoughtGroupsOutsideEvents, nil
+	return s.thoughtGroupsOutsideEvents, s.thoughtGroupsErr
 }
 
 func (m *Model) openEvent(id int64) tea.Cmd { return m.openEntry(timeline.EntryKey{EventID: id}) }
