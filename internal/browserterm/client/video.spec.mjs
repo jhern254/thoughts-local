@@ -6,7 +6,7 @@ const videoFixture = {name:'synthetic.mp4', mimeType:'video/mp4', buffer:readFil
 
 test.beforeEach(async ({request, baseURL}) => {
  const response=await request.put('/visual/settings',{headers:{Origin:new URL(baseURL).origin},data:{darkness:70,framing:{fit:'fill',zoom:100,positionX:5000,positionY:5000},speedPercent:100,userPaused:false}});
- expect(response.ok()).toBe(true);
+ expect(response.ok(),`reset visual settings returned HTTP ${response.status()}`).toBe(true);
 });
 
 async function selectVideo(page) {
@@ -45,7 +45,28 @@ test('video preserves draft, connection, framing and player across settings-only
  await page.setViewportSize({width:650,height:600});await openVisual(page);
  await expect(screen(page)).toContainText('Playback speed: 95%');
  await page.screenshot({path:`/tmp/video-${testInfo.project.name}-narrow-options.png`});
- await clickControl(page,'Pause video');await clickControl(page,'Apply');
+ // Preview pause is immediate; only closing Options confirms the save completed.
+ // Hold the write so an already-paused player cannot stand in for persistence.
+ let releasePauseSave;
+ const pauseSaveGate = new Promise(resolve => {releasePauseSave = resolve;});
+ let pauseSaveStarted = false;
+ await page.route('**/visual/settings', async route => {
+  if (route.request().method() === 'PUT' && route.request().postDataJSON().userPaused) {
+   pauseSaveStarted = true;
+   await pauseSaveGate;
+  }
+  await route.continue();
+ });
+ await clickControl(page,'Pause video');
+ await expect(screen(page)).toContainText('Play video');
+ await clickControl(page,'Apply');
+ try {
+  await expect.poll(()=>pauseSaveStarted).toBe(true);
+  await expect(screen(page)).toContainText('Background darkness:');
+  expect((await (await page.request.get('/visual')).json()).userPaused).toBe(false);
+ } finally {releasePauseSave();}
+ await expect(screen(page)).not.toContainText('Background darkness:');
+ expect((await (await page.request.get('/visual')).json()).userPaused).toBe(true);
  await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
  await expect(page.locator('#background-image')).toBeVisible();
  await page.reload();await expect(page.locator('#status')).toHaveText('Connected');
@@ -53,6 +74,7 @@ test('video preserves draft, connection, framing and player across settings-only
  await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
  const settings=await (await page.request.get('/visual')).json();expect(settings.speedPercent).toBe(95);expect(settings.userPaused).toBe(true);
  await openVisual(page);await clickControl(page,'Remove background');
+ await expect(screen(page)).not.toContainText('Background darkness:');
  await expect(page.locator('#background-video')).toHaveCount(0);await expect(page.locator('#background-image')).toBeHidden();
 });
 
@@ -81,6 +103,7 @@ test('reduced motion and blocked playback keep a stable poster without changing 
  await expect(page.locator('#video-status')).toHaveText('Video playback is unavailable. The still background remains visible.');
  await expect(page.locator('#background-video')).toBeHidden();await expect(page.locator('#background-image')).toBeVisible();
  await openVisual(page);await clickControl(page,'Remove background');
+ await expect(screen(page)).not.toContainText('Background darkness:');
 });
 
 
@@ -101,6 +124,7 @@ test('disconnect pauses without persisting pause and reconnect reuses an eligibl
  await expect(page.locator('#background-video')).toBeVisible();
  expect(await page.locator('#background-video').getAttribute('data-identity')).toBe('connection-owned');
  await openVisual(page);await clickControl(page,'Remove background');
+ await expect(screen(page)).not.toContainText('Background darkness:');
 });
 
 
@@ -117,12 +141,13 @@ test('rejected play uses the poster and fixed feedback without retrying or recon
  expect(await page.evaluate(()=>window.videoPlayAttempts)).toBe(1);expect(sockets).toBe(socketsAtStart);
  expect((await (await page.request.get('/visual')).json()).userPaused).toBe(false);
  await openVisual(page);await clickControl(page,'Remove background');
+ await expect(screen(page)).not.toContainText('Background darkness:');
 });
 
 test('poster colors match the presented SDR frame within JPEG tolerance',async({page})=>{
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
  await openVisual(page);await chooseImage(page,{name:'synthetic-colors.mp4',mimeType:'video/mp4',buffer:readFileSync(new URL('./fixtures/visual-video-colors.mp4',import.meta.url))});
- await clickControl(page,'Apply');await expect(page.locator('#background-video')).toBeVisible();
+ await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');await expect(page.locator('#background-video')).toBeVisible();
  const samples=await page.evaluate(async()=>{
   const video=document.querySelector('#background-video');video.pause();
   // Every frame has the same uniform bands; sampling avoids JPEG edge loss and seek timing.
@@ -135,4 +160,5 @@ test('poster colors match the presented SDR frame within JPEG tolerance',async({
  });
  for(let pixel=0;pixel<samples.frame.length;pixel++)for(let channel=0;channel<3;channel++)expect(Math.abs(samples.frame[pixel][channel]-samples.poster[pixel][channel])).toBeLessThanOrEqual(8);
  await openVisual(page);await clickControl(page,'Remove background');
+ await expect(screen(page)).not.toContainText('Background darkness:');
 });
