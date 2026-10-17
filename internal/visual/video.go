@@ -19,12 +19,14 @@ import (
 )
 
 const (
-	MaxVideoBytes           = 128 << 20
-	MaxStoredVideoBytes     = 16 << 20
-	MaxVideoDimension       = 4096
-	MaxVideoPixels          = 9_000_000
-	MaxVideoFPS             = 60
+	MaxVideoBytes       = 128 << 20
+	MaxStoredVideoBytes = 16 << 20
+	MaxVideoDimension   = 4096
+	MaxVideoPixels      = 9_000_000
+	MaxVideoFPS         = 60
+	// Duration bounds are source footage seconds, independent of playbackRate.
 	MaxVideoDuration        = 30
+	MaxVideoSourceDuration  = 120
 	maxVideoStreams         = 4
 	maxVideoDecodedPixels   = 4_000_000_000
 	MaxStoredVideoDimension = 1280
@@ -105,9 +107,13 @@ func (info videoProbe) validate(prepared bool) error {
 		return ErrVideo
 	}
 	duration, err := strconv.ParseFloat(stream.Duration, 64)
+	maxDuration := MaxVideoSourceDuration
+	if prepared {
+		maxDuration = MaxVideoDuration
+	}
 	if info.Format.Duration != "" {
 		containerDuration, parseErr := strconv.ParseFloat(info.Format.Duration, 64)
-		if parseErr != nil || !finitePositive(containerDuration) || containerDuration < 1 || containerDuration > MaxVideoDuration {
+		if parseErr != nil || !finitePositive(containerDuration) || containerDuration < 1 || containerDuration > float64(maxDuration) {
 			return ErrVideo
 		}
 	}
@@ -116,7 +122,7 @@ func (info videoProbe) validate(prepared bool) error {
 	if stream.SampleAspectRatio == "N/A" || stream.SampleAspectRatio == "" {
 		sar = 1
 	}
-	if err != nil || !finitePositive(duration) || duration < 1 || duration > MaxVideoDuration || !finitePositive(fps) || fps > MaxVideoFPS || !finitePositive(sar) || sar < .25 || sar > 4 {
+	if err != nil || !finitePositive(duration) || duration < 1 || duration > float64(maxDuration) || !finitePositive(fps) || fps > MaxVideoFPS || !finitePositive(sar) || sar < .25 || sar > 4 {
 		return ErrVideo
 	}
 	if stream.CodecName != "h264" || (stream.PixFmt != "yuv420p" && stream.PixFmt != "yuvj420p") || stream.Width < 2 || stream.Height < 2 || stream.Width > MaxVideoDimension || stream.Height > MaxVideoDimension || int64(stream.Width)*int64(stream.Height) > MaxVideoPixels {
@@ -276,50 +282,7 @@ func (source videoSourceReader) Read(body []byte) (int, error) {
 	return source.input.Read(body)
 }
 
-// prepareVideo owns its staging directory until every subprocess has joined.
-// Outputs are bounded display derivatives, not archives of the uploaded source.
-func prepareVideo(ctx context.Context, input io.Reader) ([]byte, []byte, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	ffmpeg, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		return nil, nil, ErrVideoTools
-	}
-	ffprobe, err := exec.LookPath("ffprobe")
-	if err != nil {
-		return nil, nil, ErrVideoTools
-	}
-	ctx, cancel := context.WithTimeout(ctx, MaxVideoProcessingTime)
-	defer cancel()
-	directory, err := os.MkdirTemp("", "thoughts-video-")
-	if err != nil {
-		return nil, nil, err
-	}
-	defer os.RemoveAll(directory)
-	source := filepath.Join(directory, "source.mp4")
-	file, err := os.OpenFile(source, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
-	if err != nil {
-		return nil, nil, err
-	}
-	size, copyErr := io.Copy(file, videoSourceReader{ctx: ctx, input: io.LimitReader(input, MaxVideoBytes+1)})
-	if copyErr == nil {
-		copyErr = ctx.Err()
-	}
-	if copyErr == nil {
-		copyErr = validateVideoContainer(file, size)
-	}
-	closeErr := file.Close()
-	if err := errors.Join(copyErr, closeErr); err != nil {
-		return nil, nil, err
-	}
-	info, err := probeVideo(ctx, ffprobe, source)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err = info.validate(false); err != nil {
-		return nil, nil, err
-	}
+func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory string, info videoProbe, trim VideoTrim) (*PreparedVideo, error) {
 	stream, _ := info.video()
 	rotation, _ := stream.displayRotation()
 	sar := videoRatio(stream.SampleAspectRatio, ":")
@@ -332,9 +295,13 @@ func prepareVideo(ctx context.Context, input io.Reader) ([]byte, []byte, error) 
 	}
 	width, height = storedVideoDimensions(width, height)
 	fps := math.Min(MaxStoredVideoFPS, videoRatio(stream.AvgFrameRate, "/"))
+	// Input seeking decodes/discards the preceding GOP (accurate seek); PTS
+	// normalization makes the prepared file start at zero. Whole-frame output
+	// rounds the requested span by at most one frame without exceeding 30s.
+	frameCount := max(int(math.Ceil(fps)), int(math.Floor(float64(trim.EndMS-trim.StartMS)*fps/1000)))
 	output := filepath.Join(directory, "display.mp4")
 	if err := os.WriteFile(output, nil, 0600); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	// All arguments and paths are application-controlled. Explicit MOV input,
 	// disabled external references and the preflight dref check complement the
@@ -343,10 +310,10 @@ func prepareVideo(ctx context.Context, input io.Reader) ([]byte, []byte, error) 
 		"-nostdin", "-hide_banner", "-loglevel", "error",
 		"-max_alloc", strconv.Itoa(maxVideoAllocation), "-threads", "1", "-filter_threads", "1",
 		"-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-export_all", "0",
-		"-max_pixels", strconv.Itoa(MaxVideoPixels), "-i", source,
+		"-max_pixels", strconv.Itoa(MaxVideoPixels), "-ss", videoSeconds(trim.StartMS), "-i", source,
 		"-map", fmt.Sprintf("0:%d", stream.Index), "-an", "-sn", "-dn",
-		"-map_metadata", "-1", "-map_metadata:s:v", "-1", "-map_chapters", "-1", "-t", "30",
-		"-vf", fmt.Sprintf("scale=%d:%d:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,setsar=1,fps=%.8f", width, height, fps),
+		"-map_metadata", "-1", "-map_metadata:s:v", "-1", "-map_chapters", "-1", "-t", videoSeconds(trim.EndMS - trim.StartMS), "-frames:v", strconv.Itoa(frameCount),
+		"-vf", fmt.Sprintf("setpts=PTS-STARTPTS,scale=%d:%d:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,setsar=1,fps=%.8f", width, height, fps),
 		// Level 3.2 accommodates macroblock padding for non-16-aligned
 		// shapes within the same 720p pixel budget; output limits remain stricter.
 		"-c:v", "libx264", "-threads", "1", "-pix_fmt", "yuv420p", "-profile:v", "baseline", "-level:v", "3.2",
@@ -356,31 +323,57 @@ func prepareVideo(ctx context.Context, input io.Reader) ([]byte, []byte, error) 
 		"-fs", strconv.Itoa(MaxStoredVideoBytes), "-y", output,
 	}
 
-	if err = runVideoTool(ctx, ffmpeg, io.Discard, args...); err != nil {
-		return nil, nil, err
+	if err := runVideoTool(ctx, ffmpeg, io.Discard, args...); err != nil {
+		return nil, err
 	}
 	prepared, err := probeVideo(ctx, ffprobe, output)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if err = prepared.validate(true); err != nil {
-		return nil, nil, err
+	if err = prepared.validateLoop(trim); err != nil {
+		return nil, err
 	}
-	body, err := readBoundedVideoAsset(output, MaxStoredVideoBytes)
+	file, err := os.Open(output)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if err = inspectVideoContainer(bytes.NewReader(body), int64(len(body)), true); err != nil {
-		return nil, nil, err
+	stat, err := file.Stat()
+	if err == nil && stat.Size() > MaxStoredVideoBytes {
+		err = ErrVideo
+	}
+	if err == nil {
+		err = inspectVideoContainer(file, stat.Size(), true)
+	}
+	err = errors.Join(err, file.Close())
+	if err != nil {
+		return nil, err
 	}
 	if err = runVideoTool(ctx, ffmpeg, io.Discard, "-nostdin", "-v", "error", "-xerror", "-max_alloc", strconv.Itoa(maxVideoAllocation), "-threads", "1", "-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-max_pixels", strconv.Itoa(MaxStoredVideoPixels), "-i", output, "-map", "0:v:0", "-an", "-sn", "-dn", "-f", "null", "-"); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	poster, err := prepareVideoPoster(ctx, ffmpeg, output, directory, prepared)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return body, poster, ctx.Err()
+	if err := os.WriteFile(filepath.Join(directory, "poster.jpg"), poster, 0600); err != nil {
+		return nil, err
+	}
+	if err := os.Remove(filepath.Join(directory, "poster.rgb")); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	duration, _ := strconv.ParseFloat(prepared.Streams[0].Duration, 64)
+	return &PreparedVideo{
+		directory: directory,
+		info: PreparedVideoInfo{
+			Trim:       trim,
+			DurationMS: int64(math.Round(duration * 1000)),
+			Width:      width,
+			Height:     height,
+		},
+	}, nil
 }
 
 func prepareVideoPoster(ctx context.Context, ffmpeg, videoPath, directory string, info videoProbe) ([]byte, error) {

@@ -258,8 +258,8 @@ The browser changes only the image layer, black overlay, and xterm theme
 background. `allowTransparency` must be set before `Terminal.open`; the
 application CSS also clears the outer viewport's black fallback. Terminal
 foreground opacity, input transport, and microphone ownership remain unchanged.
-The image layer can later be replaced with a video element without changing
-the overlay or terminal layers; no playback infrastructure is implemented.
+Images and native video elements share the overlay and terminal layers.
+Playback ownership is described below.
 
 The browser can request the selected image through specific visual routes;
 it cannot browse the image directory. Importing or removing a background, or
@@ -305,7 +305,7 @@ for profile compatibility, privacy limits and one-time processing cost.
 ## Looping video ownership
 
 The Visual boundary additionally accepts self-contained SDR H.264 MP4/MOV.
-Video bytes use `POST /visual/video` with bounded `X-Background-Settings` JSON;
+New uploads use the staged trimming routes below;
 `GET /visual/background` serves only the current selection with byte ranges,
 and `GET /visual/poster` serves only its generated still. Host/Origin validation,
 request ownership and cancellation remain shared with image imports. The CSP
@@ -316,11 +316,34 @@ ordinary builds do not require them. The importer re-encodes, strips unrelated
 streams/metadata, validates the output and stores both video and poster before
 committing selection. See [media policy](../../docs/media-handling-policy.md).
 
-The browser owns one selected player and an optional candidate player. Only one
-may play: preview pauses the background, and Back/Apply/disconnect retires preview
+The browser owns one selected player; a new-upload editor also owns a paused
+source element and an optional prepared candidate. Only one may play: preview pauses the background, and Back/Apply/disconnect retires preview
 resources. Saved speed/pause are separate from visibility, connection, reduced
 motion and decoder failure. Settings-only updates retain the player/time; terminal
 renders do not call `play()`. Posters are stable fallback assets, not frame copies.
 Run `video.spec.mjs` with FFmpeg/ffprobe available, and the injected audio host for
 `audio.spec.mjs` to verify import during recording. Existing image tests remain
 required. The synthetic video fixture is documented in `client/fixtures/README.md`.
+
+### New-upload video trimming
+
+`videoEditor` belongs to one WebSocket. A fresh Visual opening issues an opaque
+editor capability; video HTTP operations require it in `X-Visual-Editor` as well
+as the existing Host/Origin checks. Closing Visual cancels admitted operations,
+then joins processing/streaming before deleting their files. The source and at
+most one accepted plus one pending loop are file-backed temporary handles, not
+a playback cache or an original archive.
+
+`/visual/video/source` stages or discards a bounded source. Explicit
+`/visual/video/preview` preparation returns opaque IDs; GET retrieves only that
+editor's accepted/pending video or poster, and PUT acknowledges a decoded loop.
+The previous accepted loop survives failed preparation/decode. `/visual/video`
+applies only the acknowledged loop with current settings, without re-encoding.
+Apply and editor close retire temporary files. Failed pre-commit saves retain
+the selected background; post-commit cleanup failures remain warnings.
+
+Bubble Tea owns millisecond cut controls and reserved preview cells. Browser
+source scrubbing is paused, coalesces seeks, and never invokes FFmpeg. Only the
+prepared native clip loops; cut edits leave it intact until explicit Preview.
+One active background and candidate cannot play together. Closing/canceling
+releases candidate URLs/players and restores eligible selected playback.

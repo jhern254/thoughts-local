@@ -143,3 +143,34 @@ test('opening Options does not resume or accelerate a saved paused video while l
  Object.assign(f.visual,{video:{},connected:true,documentVisible:true,motionQuery:{matches:false},state:{open:true,request:'load',speedPercent:100,userPaused:false},saved:{background:true,kind:'video',speedPercent:50,userPaused:true}});
  assert.equal(f.visual.shouldPlayBackground(),false);assert.equal(f.visual.playbackSpeed(),.5);
 });
+
+test('failed preview playback keeps a prepared loop usable and reports the still fallback',async()=>{
+ const {visual}=activationFixture();
+ const accepted={hidden:false,pause(){},play(){return Promise.reject(new Error('private decoder details'));}};
+ Object.assign(visual,{previewVideo:accepted,videoTrim:{acceptedVideo:accepted,accepted:{previewID:'accepted'}},connected:true,documentVisible:true,state:{open:true,id:1,speedPercent:100},playbackStatus:{hidden:true,textContent:''}});
+ visual.updatePlayback=()=>{};
+ await visual.togglePreviewPlayback();
+ assert.equal(visual.previewPlaying,false);assert.equal(accepted.hidden,true);
+ assert.equal(visual.videoTrim.accepted.previewID,'accepted');
+ assert.equal(visual.playbackStatus.hidden,false);
+ assert.equal(visual.playbackStatus.textContent,'Preview playback is unavailable. The prepared loop is still ready to apply.');
+});
+
+test('authoritative paused restore never starts playback before or after connection readiness',async()=>{
+ const {visual,context,pending,settings}=activationFixture();let plays=0;
+ const video={paused:true,style:{},addEventListener(){},pause(){},play(){plays++;return Promise.resolve();}};
+ context.document={createElement:()=>video};
+ visual.surface.append=()=>{};
+ Object.assign(visual,{state:{open:false},connected:false,documentVisible:true,motionQuery:{matches:false},playbackStatus:{},restoreGeneration:0});
+ const fetch=context.fetch;
+ context.fetch=path=>path==='/visual'
+  ? Promise.resolve({ok:true,json:async()=>({...settings('paused'),kind:'video',speedPercent:95,userPaused:true})})
+  : fetch(path);
+ const restore=visual.restore();
+ await new Promise(resolve=>setImmediate(resolve));
+ visual.restoreConnection();
+ pending.shift()();await restore;
+ visual.restoreConnection();visual.updatePlayback();
+ assert.equal(visual.saved.userPaused,true);assert.equal(video.playbackRate,.95);
+ assert.equal(video.paused,true);assert.equal(plays,0);
+});

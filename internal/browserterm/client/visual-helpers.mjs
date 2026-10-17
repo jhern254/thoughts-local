@@ -2,6 +2,8 @@ import {expect} from '@playwright/test';
 export const screen = page => page.locator('.xterm-rows');
 export async function openVisual(page) {
   await page.keyboard.press('Control+,');
+  await expect(screen(page)).toContainText(/Background darkness:|Models/);
+  if (!(await screen(page).textContent()).includes('Background darkness:')) await clickControl(page,'Visual');
   await expect(screen(page)).toContainText('Background darkness:');
   await expect(screen(page)).not.toContainText('Loading visual');
 }
@@ -34,6 +36,14 @@ export async function chooseImage(page, image) {
   const chooser = page.waitForEvent('filechooser');
   await clickControl(page, 'Choose image or video');
   await (await chooser).setFiles(image);
-  await expect(screen(page)).toContainText('Preview only. Apply to save.');
+  if (image.mimeType?.startsWith('video/')) {
+    await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
+    await clickControl(page,'Preview loop');
+    await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+    await clickControl(page,'Done — use previewed loop');
+    await expect(screen(page)).toContainText('Background darkness:');
+  } else {
+    await expect(screen(page)).toContainText('Preview only. Apply to save.');
+  }
   await expect(page.locator('#background-preview-wrap')).toBeVisible();
 }
