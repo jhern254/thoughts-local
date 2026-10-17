@@ -52,3 +52,18 @@ test('closing cancels processing and releases source and accepted URLs',()=>{
   assert.equal(editor.accepted,undefined);
   assert.deepEqual(revoked,['blob:source','blob:loop','blob:poster']);
 });
+
+for (const preferences of [{reducedMotion:true,userPaused:false},{reducedMotion:false,userPaused:true}]) {
+  test(`automatic prepared preview stays still for ${JSON.stringify(preferences)}`,()=>{
+    const {editor,visual}=fixture();let plays=0;
+    visual.motionQuery={matches:preferences.reducedMotion};
+    visual.state.userPaused=preferences.userPaused;
+    visual.togglePreviewPlayback=()=>{plays++;};
+    visual.preview={};editor.acceptedPosterURL='blob:poster';editor.acceptedVideo={};
+    editor.attach=()=>{};
+    editor.showAccepted(true);
+    assert.equal(plays,0);
+    assert.equal(visual.preview.src,'blob:poster');
+    assert.ok(editor.acceptedVideo);
+  });
+}

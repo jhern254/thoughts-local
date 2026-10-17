@@ -153,7 +153,10 @@ class ThoughtsVideoTrim {
     const visual = this.visual;
     this.attach(this.acceptedVideo);
     visual.preview.src = this.acceptedPosterURL;
-    if (play) visual.togglePreviewPlayback();
+    // Decoding/acknowledgement makes a loop applicable, independently of motion
+    // preferences. Automatic preview must not override a deliberate still view.
+    const motionPermitted = !visual.motionQuery?.matches || visual.motionOverride;
+    if (play && !visual.state.userPaused && motionPermitted) visual.togglePreviewPlayback();
   }
   async discard(operationID) {
     const editorID = this.editorID;

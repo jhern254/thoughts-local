@@ -6,6 +6,12 @@ import {join} from 'node:path';
 import {openVisual, clickControl, screen} from './visual-helpers.mjs';
 
 let source;
+// The native settings outlive each browser context. Give motion assertions an
+// explicit user preference rather than inheriting the preceding test's pause.
+test.beforeEach(async({request,baseURL})=>{
+  const response=await request.put('/visual/settings',{headers:{Origin:new URL(baseURL).origin},data:{darkness:70,framing:{fit:'fill',zoom:100,positionX:5000,positionY:5000},speedPercent:100,userPaused:false}});
+  expect(response.ok()).toBe(true);
+});
 test.beforeAll(() => {
   const directory = mkdtempSync(join(tmpdir(),'thoughts-trim-fixture-'));
   try {
@@ -61,6 +67,7 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   // A failed explicit replacement must leave both native acknowledgement and
   // browser player on the previously reviewed loop.
   await clickControl(page,'Start: 57.00s');await page.keyboard.press('ArrowRight');
+  await expect(screen(page)).toContainText('Start: 57.10s');
   expect(prepares).toBe(1);
   await page.route('**/visual/video/preview',async route=>{
     if(route.request().method()==='POST')await route.fulfill({status:500,body:'Could not prepare loop.'});else await route.continue();
@@ -123,4 +130,40 @@ test('disconnect retires an editor and its prepared URLs without changing the se
   expect(retired.status()).toBe(403);
   expect(await (await page.request.get('/visual')).json()).toEqual(before);
   await page.locator('#reconnect').click();await expect(page.locator('#status')).toHaveText('Connected');
+});
+
+
+test('a decoded loop stays applicable with reduced motion or rejected preview playback',async({page})=>{
+  await page.addInitScript(()=>{
+    window.previewPlayAttempts=0;
+    const play=HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play=function(...args){
+      if(this.id==='background-preview-video'){
+        window.previewPlayAttempts++;
+        return Promise.reject(new DOMException('synthetic blocked preview','NotAllowedError'));
+      }
+      return play.apply(this,args);
+    };
+  });
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+  await openVisual(page);await stageSource(page);
+  await clickControl(page,'End: 30.00s');await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
+  await clickControl(page,'Preview loop');
+  await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+  await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(true);
+  expect(await page.evaluate(()=>window.previewPlayAttempts)).toBe(0);
+  await clickControl(page,'Done — use previewed loop');
+  await expect(screen(page)).toContainText('Background darkness:');
+  await clickControl(page,'Play / pause preview');
+  await expect(page.locator('#video-status')).toHaveText('Preview playback is unavailable. The prepared loop is still ready to apply.');
+  await expect(page.locator('#background-preview-video')).toBeHidden();
+  await expect(page.locator('#background-preview')).toBeVisible();
+  expect(await page.evaluate(()=>window.previewPlayAttempts)).toBe(1);
+  await clickControl(page,'Apply');
+  await expect(screen(page)).not.toContainText('Background darkness:');
+  const settings=await (await page.request.get('/visual')).json();
+  expect(settings.kind).toBe('video');expect(settings.userPaused).toBe(false);
+  await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
+  await expect(page.locator('#background-image')).toBeVisible();
 });

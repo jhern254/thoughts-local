@@ -535,10 +535,22 @@ class ThoughtsVisual {
       await video.play();
       if (this.previewVideo !== video || !this.state.open || !this.previewPlaying) {video.pause();return;}
       video.hidden = false; this.queuePreview();
+      if (!this.playbackFailed) {
+        this.playbackStatus.hidden = true;
+        this.playbackStatus.textContent = '';
+      }
     } catch {
       // Retiring an old player can reject its pending play promise after a new
       // preview has started. That completion must not pause the new owner.
-      if (this.previewVideo === video) this.stopPreviewPlayback();
+      if (this.previewVideo === video && this.previewPlaying) {
+        this.stopPreviewPlayback();
+        // Playback is optional after decode/acknowledgement. Keep the accepted
+        // cut applicable while explaining why the poster is showing instead.
+        this.playbackStatus.textContent = this.videoTrim?.acceptedVideo === video
+          ? 'Preview playback is unavailable. The prepared loop is still ready to apply.'
+          : 'Preview playback is unavailable. The still preview remains visible.';
+        this.playbackStatus.hidden = false;
+      }
     }
   }
 

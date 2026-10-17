@@ -11,6 +11,49 @@ import (
 )
 
 func TestModel_VideoTrim(t *testing.T) {
+	t.Run("cut and source arrows nudge by a tenth of a second without rounding milliseconds", func(t *testing.T) {
+		for _, focus := range []int{trimFocusSource, trimFocusStart, trimFocusEnd} {
+			m := newRootTestModel()
+			m.browserOptionsEnabled = true
+			m.width, m.height = 80, 36
+			m.options = optionsState{
+				open:             true,
+				trimming:         true,
+				trimFocus:        focus,
+				sourceDurationMS: 60000,
+				sourcePositionMS: 1251,
+				trim:             visual.VideoTrim{StartMS: 1251, EndMS: 1251},
+			}
+			position := func() int64 {
+				switch focus {
+				case trimFocusStart:
+					return m.options.trim.StartMS
+				case trimFocusEnd:
+					return m.options.trim.EndMS
+				default:
+					return m.options.sourcePositionMS
+				}
+			}
+			for _, action := range []struct {
+				code rune
+				mod  tea.KeyMod
+				want int64
+			}{
+				{tea.KeyRight, 0, 1351}, {tea.KeyLeft, 0, 1251},
+				{tea.KeyRight, tea.ModShift, 2251}, {tea.KeyLeft, tea.ModShift, 1251},
+				{tea.KeyHome, 0, 0}, {tea.KeyLeft, 0, 0},
+				{tea.KeyEnd, 0, 60000}, {tea.KeyRight, 0, 60000},
+			} {
+				m, _ = rootUpdate(m, tea.KeyPressMsg{Code: action.code, Mod: action.mod})
+				if got := position(); got != action.want {
+					t.Fatalf("focus %d key %d: got %d ms, want %d", focus, action.code, got, action.want)
+				}
+			}
+			if !strings.Contains(m.View().Content, "←/→: 0.1s · Shift: 1s") {
+				t.Fatal("help does not describe the arrow increments")
+			}
+		}
+	})
 	t.Run("unpreviewed cut edits preserve the accepted loop used by Done and Apply", func(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
@@ -29,7 +72,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", ID: id, Trim: accepted, DurationMS: 30000})
 		m.options.trimFocus = trimFocusStart
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
-		if m.OptionsState().Trim.StartMS != 10 || m.options.acceptedTrim != accepted || !m.options.loopReady {
+		if m.OptionsState().Trim.StartMS != 100 || m.options.acceptedTrim != accepted || !m.options.loopReady {
 			t.Fatal("draft edit lost accepted loop")
 		}
 		if !strings.Contains(m.View().Content, "Previewed: 0.00–30.00s") {

@@ -91,7 +91,7 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 			if value == nil {
 				return m, nil
 			}
-			step := int64(10)
+			step := int64(100)
 			if strings.HasPrefix(key, "shift+") {
 				step = 1000
 			}
@@ -183,7 +183,7 @@ func (m Model) viewVideoTrim() tea.View {
 	} else {
 		lines = append(lines, "No prepared loop yet.")
 	}
-	lines = append(lines, muted.Render(m.options.status), muted.Render("←/→: 0.01s · Shift: 1s · ↑/↓: focus"), muted.Render("Enter on Start/End: use source position"))
+	lines = append(lines, muted.Render(m.options.status), muted.Render("←/→: 0.1s · Shift: 1s · ↑/↓: focus"), muted.Render("Enter on Start/End: use source position"))
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")
 	}

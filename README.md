@@ -140,7 +140,7 @@ pause playback automatically; a deliberate Play action can override reduced
 motion for the current session. Preview playback pauses the active background.
 For a new upload, choose a 1–30 second range in the TUI trim editor. Move the
 source cursor to inspect a paused frame; Enter on Start or End uses that position.
-Arrow keys adjust by 0.01 seconds; Shift adjusts by one second. **Preview loop**
+Arrow keys adjust by 0.1 seconds; Shift adjusts by one second. **Preview loop**
 prepares the exact clip; **Done** and **Apply** use the last successful preview,
 even if you subsequently change the cut points. Speed changes playback duration,
 not the selected footage. Saved videos cannot be re-trimmed; reimport the source.

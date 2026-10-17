@@ -1,4 +1,4 @@
-import {readFileSync} from 'node:fs';
+import {readFileSync, writeFileSync} from 'node:fs';
 import {test, expect} from '@playwright/test';
 import {openVisual, clickControl, chooseImage, screen} from './visual-helpers.mjs';
 
@@ -45,34 +45,58 @@ test('video preserves draft, connection, framing and player across settings-only
  await page.setViewportSize({width:650,height:600});await openVisual(page);
  await expect(screen(page)).toContainText('Playback speed: 95%');
  await page.screenshot({path:`/tmp/video-${testInfo.project.name}-narrow-options.png`});
- // Preview pause is immediate; only closing Options confirms the save completed.
- // Hold the write so an already-paused player cannot stand in for persistence.
+ // A draft pause precedes persistence. Hold the save so an already-paused
+ // player cannot stand in for Apply completing and closing Options.
  let releasePauseSave;
  const pauseSaveGate = new Promise(resolve => {releasePauseSave = resolve;});
  let pauseSaveStarted = false;
- await page.route('**/visual/settings', async route => {
+ const pauseSaveRoute = async route => {
   if (route.request().method() === 'PUT' && route.request().postDataJSON().userPaused) {
    pauseSaveStarted = true;
    await pauseSaveGate;
   }
   await route.continue();
- });
- await clickControl(page,'Pause video');
- await expect(screen(page)).toContainText('Play video');
- await clickControl(page,'Apply');
+ };
+ await page.route('**/visual/settings',pauseSaveRoute);
+ let pendingSettings;
  try {
+  await clickControl(page,'Pause video');
+  await expect(screen(page)).toContainText('Play video');
+  await clickControl(page,'Apply');
   await expect.poll(()=>pauseSaveStarted).toBe(true);
   await expect(screen(page)).toContainText('Background darkness:');
-  expect((await (await page.request.get('/visual')).json()).userPaused).toBe(false);
- } finally {releasePauseSave();}
+  await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
+  await expect(page.locator('#background-image')).toBeVisible();
+  pendingSettings=await (await page.request.get('/visual')).json();
+  expect(pendingSettings.userPaused).toBe(false);
+ } finally {
+  releasePauseSave();
+  // Join the released handler before removing interception; unroute alone can
+  // resume its request while the handler is still about to call continue().
+  await page.unrouteAll({behavior:'wait'});
+ }
  await expect(screen(page)).not.toContainText('Background darkness:');
- expect((await (await page.request.get('/visual')).json()).userPaused).toBe(true);
+ const beforeReload=await (await page.request.get('/visual')).json();
+ expect(beforeReload.userPaused).toBe(true);expect(beforeReload.speedPercent).toBe(95);
  await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
  await expect(page.locator('#background-image')).toBeVisible();
+ await page.addInitScript(()=>{
+  window.backgroundPlayAttempts=0;
+  const play=HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play=function(...args){
+   if(this.id==='background-video')window.backgroundPlayAttempts++;
+   return play.apply(this,args);
+  };
+ });
  await page.reload();await expect(page.locator('#status')).toHaveText('Connected');
  await expect.poll(()=>page.locator('#background-image').evaluate(image=>image.naturalWidth)).toBe(96);
  await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
- const settings=await (await page.request.get('/visual')).json();expect(settings.speedPercent).toBe(95);expect(settings.userPaused).toBe(true);
+ const afterReload=await (await page.request.get('/visual')).json();
+ expect(afterReload).toEqual(beforeReload);
+ expect(await page.evaluate(()=>window.backgroundPlayAttempts)).toBe(0);
+ const settingsEvidence=testInfo.outputPath('persisted-pause-settings.json');
+ writeFileSync(settingsEvidence,JSON.stringify({pendingSettings,beforeReload,afterReload},null,2));
+ await testInfo.attach('persisted-pause-settings',{path:settingsEvidence,contentType:'application/json'});
  await openVisual(page);await clickControl(page,'Remove background');
  await expect(screen(page)).not.toContainText('Background darkness:');
  await expect(page.locator('#background-video')).toHaveCount(0);await expect(page.locator('#background-image')).toBeHidden();
