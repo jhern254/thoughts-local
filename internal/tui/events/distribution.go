@@ -16,7 +16,7 @@ const (
 	distributionGutter   = "  "
 	distributionMinWidth = 60   // Below this panel width, return the lane to the cards.
 	cardBorderColumns    = 2    // Left and right borders.
-	selectedEventColor   = "62" // Xterm 256-color purple, shared by card and curve.
+	selectedEntryColor   = "62" // Xterm 256-color purple, shared by card and curve.
 
 	// Percent controls mirror the renderer's supported Size range [0.5, 1.25].
 	distributionMinSize     = 50
@@ -110,18 +110,23 @@ func (m *Model) cardColumn() int {
 
 func (m *Model) cardWidth() int { return max(1, m.width-m.cardColumn()-cardBorderColumns) }
 
-// renderEventCurveCells draws visible rows using the whole day's contributions.
+// renderEntryCurveCells draws visible rows using the whole day's contributions.
 // Translating centers by whole cells preserves the dot grid and mixture gain;
 // neither selection nor scrolling changes scale.
-func (m *Model) renderEventCurveCells(layout timelineLayout, offset, height int) [][]render.Cell {
+func (m *Model) renderEntryCurveCells(layout timelineLayout, offset, height int) [][]render.Cell {
 	var cells [][]render.Cell
 	height = min(height, max(0, layout.curveEnd-offset)) // Never draw over the ending marker.
 	if height > 0 && len(layout.curves) > 0 {
 		// Include expanded cards in the count reference even though their curves
 		// are hidden, and retain offscreen inputs for normalization and overlap.
 		var reference int64
-		for _, count := range m.counts {
+		for _, count := range m.eventCounts {
 			reference = max(reference, count.Count)
+		}
+		for _, entry := range m.entries {
+			if entry.ThoughtsOutsideEvents != nil {
+				reference = max(reference, entry.ThoughtsOutsideEvents.ThoughtCount)
+			}
 		}
 		shifted := make([]render.Distribution, len(layout.curves))
 		for i, curve := range layout.curves {
@@ -145,7 +150,7 @@ func (m *Model) renderExpandedThoughtPlotCells(layout timelineLayout, offset, he
 	// Paint only the visible intersection; the picker supplies its own scroll mapping.
 	thoughtPlotTop, thoughtPlotEnd, selectedThoughtPlot := -1, -1, -1
 	var thoughtPlotCells [][]render.Cell
-	if top, ok := layout.positions[m.expanded]; ok && m.expanded != 0 {
+	if top, ok := layout.positions[m.expanded]; ok && !m.expanded.IsZero() {
 		for _, card := range layout.cards {
 			if card.top != top {
 				continue
@@ -155,7 +160,7 @@ func (m *Model) renderExpandedThoughtPlotCells(layout timelineLayout, offset, he
 			if thoughtPlotTop >= thoughtPlotEnd || m.opening || m.err != nil {
 				break
 			}
-			previews, reference := m.picker.EventThoughtPlots()
+			previews, reference := m.picker.TimelineEntryThoughtPlots()
 			bars := make([]render.ThoughtLengthBar, 0, len(previews))
 			for _, preview := range previews {
 				// Border, heading and blank line precede the picker; its count row is
@@ -189,7 +194,7 @@ func (m *Model) paintDistributionLane(lines []string, layout timelineLayout, off
 	if m.cardColumn() == timelineLabelWidth {
 		return lines
 	}
-	cells := m.renderEventCurveCells(layout, offset, len(lines))
+	cells := m.renderEntryCurveCells(layout, offset, len(lines))
 	thoughtPlotCells, thoughtPlotTop, thoughtPlotEnd, selectedThoughtPlot := m.renderExpandedThoughtPlotCells(layout, offset, len(lines))
 
 	// Indexes identify style runs, not curve ownership or palette numbers.
@@ -201,7 +206,7 @@ func (m *Model) paintDistributionLane(lines []string, layout timelineLayout, off
 	)
 	styles := [...]lipgloss.Style{
 		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("245")), // Muted gray.
-		selectedStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(selectedEventColor)),
+		selectedStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(selectedEntryColor)),
 		baselineStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("240")), // Darker connecting rail.
 	}
 	for y, line := range lines {

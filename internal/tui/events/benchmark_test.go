@@ -15,20 +15,20 @@ func BenchmarkTimeline(b *testing.B) {
 		for _, mode := range []string{"Render", "Navigate", "Expanded"} {
 			b.Run(fmt.Sprintf("%dx%d/%s", size[0], size[1], mode), func(b *testing.B) {
 				m, _, _ := fixture(b)
-				current := m.items[0]
-				m.items = nil
+				current := m.entries[0]
+				m.entries = nil
 				for i := 0; i < 23; i++ {
 					start := m.day.Add(time.Duration(i) * 20 * time.Minute)
 					end := start.Add(20 * time.Minute)
-					m.items = append(m.items, data.Event{EventID: int64(i + 2), StartedAt: start, EndedAt: &end})
-					m.counts = append(m.counts, data.EventThoughtCountView{EventID: int64(i + 2), Count: int64(i)})
+					m.entries = append(m.entries, eventEntries([]data.Event{{EventID: int64(i + 2), StartedAt: start, EndedAt: &end}})...)
+					m.eventCounts = append(m.eventCounts, data.EventThoughtCountView{EventID: int64(i + 2), Count: int64(i)})
 				}
-				m.items = append(m.items, current)
-				m.position.eventIndex = len(m.items) - 1
+				m.entries = append(m.entries, current)
+				m.position.entryIndex = len(m.entries) - 1
 				m.Resize(size[0], size[1])
 				keys := [2]string{"up", "down"}
 				if mode == "Expanded" {
-					m = execute(b, m, m.openEvent(current.EventID))
+					m = execute(b, m, m.openEvent(current.Event.EventID))
 					keys = [2]string{"down", "up"}
 				}
 				key := 0

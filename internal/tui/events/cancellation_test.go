@@ -74,7 +74,7 @@ func TestModel_RequestCancellation(t *testing.T) {
 			t.Fatal("save did not produce a command")
 		}
 		m.Close()
-		got, ok := cmd().(savedMsg)
+		got, ok := cmd().(eventSavedMsg)
 		if !ok || got.err != nil || s.creates != 1 {
 			t.Fatalf("got %#v, creates %d, want successful session-owned save", got, s.creates)
 		}

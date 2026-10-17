@@ -62,6 +62,13 @@ release; the native jobs check that a loaded model blocks repair. See the
 for execution results on each target.
 This does not add platform or microphone support.
 
+Browser startup recognizes Unix `EADDRINUSE` and Windows `WSAEADDRINUSE`
+(10048) when reporting an occupied port. Bind failures retain the original
+error through successful cleanup; public messages contain the configured port
+and recovery guidance rather than raw OS errors. A real occupied-port launch
+was exercised on Linux amd64. Windows error-code coverage uses controlled
+fixtures; it does not change the platform verification statuses above.
+
 ## Browser video background processor
 
 Video import requires user-installed FFmpeg/ffprobe with `libx264`, tested on

@@ -7,14 +7,18 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 )
 
-// ThoughtScope freezes an owned event's interval for one browsing session.
+// ThoughtScope freezes an owned timeline entry's interval for one browsing session.
 // Only this service constructs scopes. Refresh resolves a new scope; paging
 // neither changes its ongoing cutoff nor recounts the interval.
 type ThoughtScope struct {
 	userID string
 	event  data.Event
+	key    EntryKey
+	from   time.Time
 	until  time.Time
 }
+
+func (s ThoughtScope) Key() EntryKey { return s.key }
 
 func (s ThoughtScope) Event() data.Event { return s.event }
 
@@ -27,14 +31,20 @@ func (s *Service) OpenThoughtsView(ctx context.Context, userID string, eventID i
 	if item.EndedAt != nil {
 		until = *item.EndedAt
 	}
-	return ThoughtScope{userID: userID, event: *item, until: until}, nil
+	return ThoughtScope{
+		userID: userID,
+		event:  *item,
+		key:    EntryKey{EventID: item.EventID},
+		from:   item.StartedAt,
+		until:  until,
+	}, nil
 }
 
 func (s *Service) BrowseThoughtsView(ctx context.Context, userID string, scope ThoughtScope, request data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	if scope.userID == "" || scope.userID != userID {
 		return data.ThoughtSummaryViewResult{}, data.ErrRecordNotFound
 	}
-	return s.thoughts.BrowseThoughtsViewInRange(ctx, userID, scope.event.StartedAt, scope.until, request)
+	return s.thoughts.BrowseThoughtsViewInRange(ctx, userID, scope.from, scope.until, request)
 }
 
 func (s *Service) LatestThought(ctx context.Context, userID string, eventID int64) (*data.ThoughtSummaryView, error) {
@@ -42,7 +52,7 @@ func (s *Service) LatestThought(ctx context.Context, userID string, eventID int6
 	if err != nil {
 		return nil, err
 	}
-	return s.thoughts.LatestThoughtInRange(ctx, userID, scope.event.StartedAt, scope.until)
+	return s.thoughts.LatestThoughtInRange(ctx, userID, scope.from, scope.until)
 }
 
 func (s *Service) ThoughtCounts(ctx context.Context, userID string, from, until time.Time) ([]data.EventThoughtCountView, error) {
@@ -54,5 +64,5 @@ func (s *Service) ThoughtStats(ctx context.Context, userID string, scope Thought
 	if scope.userID == "" || scope.userID != userID {
 		return data.ThoughtIntervalStats{}, data.ErrRecordNotFound
 	}
-	return s.metrics.ThoughtStatsInRange(ctx, userID, scope.event.StartedAt, scope.until)
+	return s.metrics.ThoughtStatsInRange(ctx, userID, scope.from, scope.until)
 }

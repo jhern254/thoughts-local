@@ -75,3 +75,7 @@ func TestService_ThoughtView(t *testing.T) {
 func (s metricsStub) ThoughtStatsInRange(ctx context.Context, u string, from, until time.Time) (data.ThoughtIntervalStats, error) {
 	return data.ThoughtIntervalStats{Count: 230, MaxCharacters: 320}, s.err
 }
+
+func (s metricsStub) ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
+	return nil, s.err
+}

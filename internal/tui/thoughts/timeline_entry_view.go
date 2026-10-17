@@ -8,22 +8,22 @@ import (
 	"github.com/jhern254/go-thoughts/internal/timeline"
 )
 
-// Fixed presentation label until selectable event-thought ordering is implemented.
-const eventThoughtOrderLabel = "Newest first"
+// Fixed presentation label until selectable timeline-thought ordering is implemented.
+const timelineThoughtOrderLabel = "Newest first"
 
-// TimelineReader supplies a resolved event interval; the thought picker owns the
+// TimelineReader supplies a resolved timeline-entry interval; the thought picker owns the
 // same summary window, selection, and detail behavior as the Browse Thoughts view.
 type TimelineReader interface {
 	BrowseThoughtsView(context.Context, string, timeline.ThoughtScope, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	ThoughtStats(context.Context, string, timeline.ThoughtScope) (data.ThoughtIntervalStats, error)
 }
 
-func (m *Model) OpenEventView(scope timeline.ThoughtScope, reader TimelineReader) tea.Cmd {
+func (m *Model) OpenTimelineEntryView(scope timeline.ThoughtScope, reader TimelineReader) tea.Cmd {
 	previous := m.browseThoughts
-	retain := previous.eventScope != nil && previous.eventScope.Event().EventID == scope.Event().EventID
+	retain := previous.timelineEntryScope != nil && previous.timelineEntryScope.Key() == scope.Key()
 	m.Reset()
 	m.browsingThoughtsView = true
-	m.browseThoughts.eventScope, m.browseThoughts.timelineView = &scope, reader
+	m.browseThoughts.timelineEntryScope, m.browseThoughts.timelineView = &scope, reader
 	cmd := m.reloadBrowseThoughtsView()
 	// Retain the usable window during refresh. The replacement latest batch
 	// preserves selection by ID when present, otherwise selects its newest row.
@@ -35,8 +35,8 @@ func (m *Model) OpenEventView(scope timeline.ThoughtScope, reader TimelineReader
 	return cmd
 }
 
-// ResizeEventView budgets complete rows, leaving detail rendering unchanged.
-func (m *Model) ResizeEventView(width, rows int) {
+// ResizeTimelineEntryView budgets complete rows, leaving detail rendering unchanged.
+func (m *Model) ResizeTimelineEntryView(width, rows int) {
 	m.browseThoughts.width, m.browseThoughts.height = max(1, width), max(1, rows)*summaryLines
 	m.browseThoughts.keepVisible()
 }
@@ -49,9 +49,9 @@ type ThoughtPlot struct {
 	Selected       bool
 }
 
-func (m Model) EventThoughtPlots() ([]ThoughtPlot, int64) {
+func (m Model) TimelineEntryThoughtPlots() ([]ThoughtPlot, int64) {
 	s := m.browseThoughts
-	if s.eventScope == nil || m.ShowingDetail() || s.statsPending || s.statsErr != nil || !s.summariesCurrent {
+	if s.timelineEntryScope == nil || m.ShowingDetail() || s.statsPending || s.statsErr != nil || !s.summariesCurrent {
 		return nil, 0
 	}
 	var plots []ThoughtPlot

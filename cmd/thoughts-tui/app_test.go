@@ -349,7 +349,18 @@ func TestTUI_NativeSessionCleanup(t *testing.T) {
 		closed := make(chan struct{})
 		app := newApplication(strings.NewReader(""), io.Discard, io.Discard, logging.Nop())
 		app.openRuntime = func(context.Context, string) (runtime, error) {
-			return &runtimeStub{localUser: &data.User{UserID: "u"}, events: event.NewService(store), close: func() error { close(closed); return nil }}, nil
+			events := event.NewService(store)
+			// Cancellation ends Day's event read before either later reader is used.
+			unread := struct {
+				timeline.ThoughtReader
+				timeline.MetricsReader
+			}{}
+			return &runtimeStub{
+				events:       events,
+				timelineView: timeline.NewService(events, unread, unread),
+				localUser:    &data.User{UserID: "u"},
+				close:        func() error { close(closed); return nil },
+			}, nil
 		}
 		app.runProgram = func(_ context.Context, model tea.Model, _ io.Reader, _ io.Writer) error {
 			_, cmd := model.Update(model.Init()())

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
 )
@@ -142,6 +143,13 @@ func TestRunBrowser(t *testing.T) {
 		}, &out, logging.Nop(), nil)
 		if err == nil || out.Len() != 0 {
 			t.Fatalf("got err %v, output %q; want bind failure and no address", err, out.String())
+		}
+		if diagnostics.SingleError(err) == nil {
+			t.Fatal("successful speech cleanup turned the bind failure into an ambiguous aggregate")
+		}
+		var listenErr *net.OpError
+		if !errors.As(err, &listenErr) || listenErr.Op != "listen" {
+			t.Fatalf("got %T, want original listen failure", err)
 		}
 	})
 	t.Run("output failure releases the bound listener", func(t *testing.T) {

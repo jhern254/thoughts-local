@@ -1,9 +1,9 @@
 package events
 
-// timelinePosition separates Event selection from the first visible rendered
+// timelinePosition separates timeline-entry selection from the first visible rendered
 // line. Layout supplies row positions because cards have variable heights.
 type timelinePosition struct {
-	eventIndex int
+	entryIndex int
 	topLine    int
 	followNow  bool
 }
@@ -13,19 +13,19 @@ func (p *timelinePosition) clamp(lineCount int) {
 	p.topLine = min(max(0, p.topLine), max(0, lineCount-1))
 }
 
-func (p *timelinePosition) clampSelection(eventCount int) {
-	p.eventIndex = min(max(0, p.eventIndex), max(0, eventCount-1))
+func (p *timelinePosition) clampSelection(entryCount int) {
+	p.entryIndex = min(max(0, p.entryIndex), max(0, entryCount-1))
 }
 
-func (p *timelinePosition) moveEvent(delta, eventCount int) {
+func (p *timelinePosition) moveEntry(delta, entryCount int) {
 	p.followNow = false
-	p.eventIndex += delta
-	p.clampSelection(eventCount)
+	p.entryIndex += delta
+	p.clampSelection(entryCount)
 }
 
 func (p *timelinePosition) first() {
 	p.followNow = false
-	p.eventIndex, p.topLine = 0, 0
+	p.entryIndex, p.topLine = 0, 0
 }
 
 func (p *timelinePosition) scrollPage(direction, height, lineCount int) {

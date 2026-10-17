@@ -31,8 +31,15 @@ func (s labeledThoughtService) BrowseView(ctx context.Context, userID string, re
 }
 
 func TestModel_SharedThoughtDetail(t *testing.T) {
-	for _, scope := range []string{"subject", "Misc"} {
-		t.Run(scope+" and the thought browse view show identical detail and restore their lists", func(t *testing.T) {
+	for _, scenario := range []struct {
+		scope string
+		back  tea.KeyPressMsg
+	}{
+		{"subject", escapeKey()}, {"Misc", escapeKey()},
+		{"subject", tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft})}, {"Misc", tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft})},
+	} {
+		scope := scenario.scope
+		t.Run(scope+" and browse restore their lists with "+scenario.back.String(), func(t *testing.T) {
 			subjects := subject.NewService(testutils.NewFakeSubjectStore())
 			parent, err := subjects.Create(t.Context(), "u", "Writing")
 			if err != nil {
@@ -83,7 +90,7 @@ func TestModel_SharedThoughtDetail(t *testing.T) {
 				}
 				details = append(details, m.View().Content)
 				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
-				m, _ = rootUpdate(m, escapeKey())
+				m, _ = rootUpdate(m, scenario.back)
 				if m.screen != origin || m.View().Content != listView {
 					t.Fatal("detail return changed the originating list, selection or scroll position")
 				}

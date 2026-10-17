@@ -81,9 +81,9 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
 		m, cmd := rootUpdate(m, enterKey())
 		old := cmd().(tea.BatchMsg)[0]() // Actual page reply held across navigation.
-		m, _ = rootUpdate(m, escapeKey())
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
 		if m.screen != screenEvents {
-			t.Fatal("Escape did not leave pending list")
+			t.Fatal("Left did not leave pending list")
 		}
 		if _, err := service.Create(t.Context(), "u", "newer observation", nil, time.Now().Add(time.Hour)); err != nil {
 			t.Fatal(err)
@@ -132,6 +132,30 @@ func TestModel_BrowseThoughtsView(t *testing.T) {
 		_, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
 		if cmd != nil {
 			t.Fatal("Ctrl+C should do nothing in the editor")
+		}
+	})
+}
+
+func TestModel_LeftFromThoughts(t *testing.T) {
+	t.Run("returns the main Thoughts list to Events", func(t *testing.T) {
+		m := newRootTestModel()
+		m.selectedEntity = entityThoughts
+		m = runModelCommand(t, m, enterKey())
+		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+		if m.screen != screenEvents || !m.entityFocused || m.exitPromptOpen || cmd == nil {
+			t.Fatal("Left did not return to Events with its original entity focus")
+		}
+	})
+	t.Run("keeps Left available for editing thought text", func(t *testing.T) {
+		m := newRootTestModel()
+		m.selectedEntity = entityThoughts
+		m = runModelCommand(t, m, enterKey())
+		m = runModelCommand(t, m, enterKey())
+		m, _ = rootUpdate(m, tea.PasteMsg{Content: "ab"})
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+		m, _ = rootUpdate(m, runeKey('x'))
+		if m.screen != screenBrowseThoughts || !m.thoughts.Creating() || !strings.Contains(ansi.Strip(m.View().Content), "axb") {
+			t.Fatalf("got editor %q, want Left to move the text cursor", m.View().Content)
 		}
 	})
 }

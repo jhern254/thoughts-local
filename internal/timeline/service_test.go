@@ -74,3 +74,7 @@ func timePointer(second int64) *time.Time {
 	value := time.Unix(second, 0).UTC()
 	return &value
 }
+
+func (f eventReaderStub) List(context.Context, string, time.Time, time.Time) ([]data.Event, error) {
+	panic("unexpected event list")
+}

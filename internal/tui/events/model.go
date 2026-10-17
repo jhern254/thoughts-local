@@ -3,6 +3,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
@@ -17,11 +18,12 @@ import (
 )
 
 type Service interface {
-	List(context.Context, string, time.Time, time.Time) ([]data.Event, error)
 	Create(context.Context, string, string, time.Time, *int64) (*data.Event, error)
 	End(context.Context, string, int64, int64, time.Time) (*data.Event, error)
 }
 type TimelineView interface {
+	ListEntriesInRange(context.Context, string, time.Time, time.Time) ([]timeline.Entry, error)
+	OpenThoughtsOutsideEventsView(context.Context, string, time.Time) (timeline.ThoughtScope, error)
 	thoughts.TimelineReader
 	OpenThoughtsView(context.Context, string, int64) (timeline.ThoughtScope, error)
 	LatestThought(context.Context, string, int64) (*data.ThoughtSummaryView, error)
@@ -35,44 +37,44 @@ type tickMsg struct {
 	session uint64
 	at      time.Time
 }
-type listedMsg struct {
+type entriesListedMsg struct {
 	owner   *int
 	request uint64
-	items   []data.Event
+	entries []timeline.Entry
 	err     error
 }
 type loadDelayedMsg struct {
 	owner   *int
 	request uint64
 }
-type countsMsg struct {
+type eventCountsMsg struct {
 	owner   *int
 	request uint64
-	items   []data.EventThoughtCountView
+	counts  []data.EventThoughtCountView
 	err     error
 }
-type latestMsg struct {
+type latestEventThoughtMsg struct {
 	owner   *int
 	request uint64
-	item    *data.ThoughtSummaryView
+	thought *data.ThoughtSummaryView
 	err     error
 }
-type openedMsg struct {
+type entryOpenedMsg struct {
 	owner   *int
 	request uint64
 	scope   timeline.ThoughtScope
 	err     error
 }
-type savedMsg struct {
+type eventSavedMsg struct {
 	owner   *int
 	request uint64
-	item    *data.Event
+	event   *data.Event
 	ending  bool
 	err     error
 }
 
-// Owns identifies Events-only messages. Instance and generation checks still
-// happen in Update; shared Thought replies keep their existing root routing.
+// Owns identifies messages owned by the Events screen. Instance and generation
+// checks still happen in Update; shared Thought replies keep their root routing.
 func Owns(msg tea.Msg) bool {
 	_, ok := msg.(message)
 	return ok
@@ -80,13 +82,13 @@ func Owns(msg tea.Msg) bool {
 
 type message interface{ eventMessage() }
 
-func (tickMsg) eventMessage()        {}
-func (listedMsg) eventMessage()      {}
-func (countsMsg) eventMessage()      {}
-func (latestMsg) eventMessage()      {}
-func (loadDelayedMsg) eventMessage() {}
-func (openedMsg) eventMessage()      {}
-func (savedMsg) eventMessage()       {}
+func (tickMsg) eventMessage()               {}
+func (entriesListedMsg) eventMessage()      {}
+func (eventCountsMsg) eventMessage()        {}
+func (latestEventThoughtMsg) eventMessage() {}
+func (loadDelayedMsg) eventMessage()        {}
+func (entryOpenedMsg) eventMessage()        {}
+func (eventSavedMsg) eventMessage()         {}
 
 type Model struct {
 	ctx           context.Context
@@ -109,12 +111,12 @@ type Model struct {
 	err     error
 	message string
 
-	// day and items are the accepted timeline. load.pendingDay is not presented as the
-	// current day until its matching listedMsg reply succeeds.
-	clock, day time.Time
-	items      []data.Event
-	counts     []data.EventThoughtCountView
-	latest     *data.ThoughtSummaryView
+	// day and entries are the accepted chronological timeline. load.pendingDay is not
+	// presented as the current day until its matching entriesListedMsg reply succeeds.
+	clock, day  time.Time
+	entries     []timeline.Entry
+	eventCounts []data.EventThoughtCountView
+	latest      *data.ThoughtSummaryView
 
 	distributions distributionSettings
 	position      timelinePosition
@@ -122,7 +124,7 @@ type Model struct {
 	width, height int
 
 	// expanded delegates keys and rendering to picker without replacing the day.
-	expanded int64
+	expanded timeline.EntryKey
 	opening  bool
 	picker   thoughts.Model
 	form     eventForm
@@ -182,7 +184,7 @@ func (m *Model) Close() {
 	m.stopExpansion()
 	m.expansion++
 	m.picker.Reset()
-	m.expanded = 0
+	m.expanded = timeline.EntryKey{}
 }
 func (m *Model) SetFocused(focused bool) {
 	blurred := !focused
@@ -201,14 +203,14 @@ func (m Model) FormOpen() bool { return m.form.open }
 
 // AtTopLevel excludes the nested views and controls owned by Events.
 func (m Model) AtTopLevel() bool {
-	return m.CanLeave() && m.expanded == 0 && !m.distributions.open
+	return m.CanLeave() && m.expanded.IsZero() && !m.distributions.open
 }
 func (m *Model) Resize(width, height int) {
 	m.load.retainedBody = ""
 	m.width, m.height = max(1, width), max(1, height)
 	m.picker.Resize(max(1, width-12), max(1, height-2))
 	// Leave calendar context around the expanded box, not just room for the picker.
-	m.picker.ResizeEventView(m.cardWidth(), max(1, (height-14)/3))
+	m.picker.ResizeTimelineEntryView(m.cardWidth(), max(1, (height-14)/3))
 	if m.form.open {
 		m.resizeForm()
 	}
@@ -237,7 +239,7 @@ func (m Model) tick() tea.Cmd {
 func (m *Model) loadDay(day time.Time) tea.Cmd {
 	// Hold only the visible body during this read, not data for other days.
 	// Rapid keys and obsolete replies must not repeatedly format unchanged cards.
-	if !m.load.eventsPending || m.load.retainedBody == "" {
+	if !m.load.entriesPending || m.load.retainedBody == "" {
 		m.load.retainedBody = m.timelineBody()
 	}
 	feedback := m.load.begin(m.ctx, day, m.owner)
@@ -246,19 +248,19 @@ func (m *Model) loadDay(day time.Time) tea.Cmd {
 	m.opening = false
 	m.err = nil
 	m.message = ""
-	owner, request, ctx, user, service, view := m.owner, m.load.generation, m.load.ctx, m.userID, m.service, m.timelineView
+	owner, request, ctx, user, view := m.owner, m.load.generation, m.load.ctx, m.userID, m.timelineView
 	return tea.Batch(func() tea.Msg {
 		if err := ctx.Err(); err != nil {
-			return listedMsg{owner: owner, request: request, err: err}
+			return entriesListedMsg{owner: owner, request: request, err: err}
 		}
-		items, err := service.List(ctx, user, day, day.AddDate(0, 0, 1))
-		return listedMsg{owner, request, items, err}
+		entries, err := view.ListEntriesInRange(ctx, user, day, day.AddDate(0, 0, 1))
+		return entriesListedMsg{owner, request, entries, err}
 	}, func() tea.Msg {
 		if err := ctx.Err(); err != nil {
-			return countsMsg{owner: owner, request: request, err: err}
+			return eventCountsMsg{owner: owner, request: request, err: err}
 		}
-		items, err := view.ThoughtCounts(ctx, user, day, day.AddDate(0, 0, 1))
-		return countsMsg{owner, request, items, err}
+		counts, err := view.ThoughtCounts(ctx, user, day, day.AddDate(0, 0, 1))
+		return eventCountsMsg{owner, request, counts, err}
 	}, feedback)
 }
 func (m *Model) stopExpansion() {
@@ -267,13 +269,13 @@ func (m *Model) stopExpansion() {
 	}
 }
 
-func (m *Model) openEvent(id int64) tea.Cmd {
-	if m.expanded != id {
+func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
+	if m.expanded != key {
 		m.picker.Reset()
 	}
 	m.stopExpansion()
 	m.expansion++
-	m.expanded = id
+	m.expanded = key
 	m.opening = true
 	m.position.followNow = false
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -283,11 +285,17 @@ func (m *Model) openEvent(id int64) tea.Cmd {
 		if ctx.Err() != nil {
 			return nil
 		}
-		scope, err := view.OpenThoughtsView(ctx, user, id)
+		var scope timeline.ThoughtScope
+		var err error
+		if key.EventID != 0 {
+			scope, err = view.OpenThoughtsView(ctx, user, key.EventID)
+		} else {
+			scope, err = view.OpenThoughtsOutsideEventsView(ctx, user, key.ObservedAt)
+		}
 		if ctx.Err() != nil {
 			return nil
 		}
-		return openedMsg{owner, request, scope, err}
+		return entryOpenedMsg{owner, request, scope, err}
 	}
 }
 func (m *Model) fail(operation logging.Operation, err error) {
@@ -303,176 +311,188 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		return m, nil
 	}
-	switch result := msg.(type) {
+	switch reply := msg.(type) {
 	case subjectsLoaded:
-		m.acceptSubjects(result)
+		m.acceptSubjects(reply)
 		return m, nil
 	case tickMsg:
-		if result.owner != m.owner || result.session != m.session {
+		if reply.owner != m.owner || reply.session != m.session {
 			return m, nil
 		}
-		m.clock = result.at
+		m.clock = reply.at
 		m.load.retainedBody = ""
 		var reload tea.Cmd
-		if m.position.followNow && !m.day.Equal(displaytime.Day(m.clock)) && (!m.load.eventsPending || !m.load.pendingDay.Equal(displaytime.Day(m.clock))) {
+		if m.position.followNow && !m.day.Equal(displaytime.Day(m.clock)) && (!m.load.entriesPending || !m.load.pendingDay.Equal(displaytime.Day(m.clock))) {
 			reload = m.loadDay(displaytime.Day(m.clock))
 		}
 		m.anchor()
 		return m, tea.Batch(reload, m.tick())
 	case loadDelayedMsg:
-		if result.owner == m.owner {
-			m.load.delayFeedback(result.request)
+		if reply.owner == m.owner {
+			m.load.delayFeedback(reply.request)
 		}
 		return m, nil
-	case listedMsg:
+	case entriesListedMsg:
 		// The current model instance and newest day request exclusively own this reply.
-		if result.owner != m.owner || !m.load.owns(result.request) || !m.load.eventsPending {
+		if reply.owner != m.owner || !m.load.owns(reply.request) || !m.load.entriesPending {
 			return m, nil
 		}
-		m.load.finishEvents()
-		m.err = result.err
-		m.fail(logging.EventList, result.err)
-		if result.err != nil {
-			m.message = "Could not load events for " + displaytime.Format(m.load.pendingDay, "January 2, 2006") + "."
+		m.load.finishEntries()
+		m.err = reply.err
+		m.fail(logging.TimelineList, reply.err)
+		if reply.err != nil {
+			m.message = "Could not load timeline for " + displaytime.Format(m.load.pendingDay, "January 2, 2006") + "."
 			return m, nil
 		}
 		if !m.day.Equal(m.load.pendingDay) {
 			m.day = m.load.pendingDay
-			m.position.eventIndex, m.position.topLine, m.expanded = 0, 0, 0
-			m.items = nil
+			m.position.entryIndex, m.position.topLine, m.expanded = 0, 0, timeline.EntryKey{}
+			m.entries = nil
 			m.picker.Reset()
 		}
 		if m.load.countsPending {
 			// Only retain successful counts for unchanged displayed intervals.
-			sameIntervals := slices.EqualFunc(m.items, result.items, func(a, b data.Event) bool {
-				sameEnd := a.EndedAt == nil && b.EndedAt == nil
-				if a.EndedAt != nil && b.EndedAt != nil {
-					sameEnd = a.EndedAt.Equal(*b.EndedAt)
+			sameIntervals := slices.EqualFunc(m.entries, reply.entries, func(a, b timeline.Entry) bool {
+				if a.Event == nil || b.Event == nil {
+					return a.Key() == b.Key()
 				}
-				return a.EventID == b.EventID && a.StartedAt.Equal(b.StartedAt) && sameEnd
+				left, right := a.Event, b.Event
+				sameEnd := left.EndedAt == nil && right.EndedAt == nil
+				if left.EndedAt != nil && right.EndedAt != nil {
+					sameEnd = left.EndedAt.Equal(*right.EndedAt)
+				}
+				return left.EventID == right.EventID && left.StartedAt.Equal(right.StartedAt) && sameEnd
 			})
 			if !sameIntervals || m.load.countErr != nil {
-				m.counts = nil
+				m.eventCounts = nil
 			}
 			m.load.countErr = nil
 		} else {
-			m.counts, m.load.countErr = m.load.pendingCounts.items, m.load.pendingCounts.err
+			m.eventCounts, m.load.countErr = m.load.pendingCounts.counts, m.load.pendingCounts.err
 		}
-		selected := int64(0)
-		if len(m.items) > 0 {
-			selected = m.items[m.position.eventIndex].EventID
+		selected := timeline.EntryKey{}
+		if len(m.entries) > 0 {
+			selected = m.entries[m.position.entryIndex].Key()
 		}
-		m.items = result.items
-		m.position.clampSelection(len(m.items))
+		m.entries = reply.entries
+		m.position.clampSelection(len(m.entries))
 		var latest, open tea.Cmd
+		if m.position.followNow && len(m.entries) > 0 {
+			m.position.entryIndex = len(m.entries) - 1
+		}
 		foundExpanded := false
 		m.latest = nil
 		m.load.latestErr = nil
-		for i, item := range m.items {
-			if item.EventID == selected {
-				m.position.eventIndex = i
+		for i, entry := range m.entries {
+			if !m.position.followNow && entry.Key() == selected {
+				m.position.entryIndex = i
 			}
-			if item.EventID == m.expanded {
+			if entry.Key() == m.expanded {
 				foundExpanded = true
-				open = m.openEvent(item.EventID)
+				open = m.openEntry(entry.Key())
 			}
-			if item.EndedAt == nil {
+			if entry.Event != nil && entry.Event.EndedAt == nil {
 				if m.position.followNow {
-					m.position.eventIndex = i
+					m.position.entryIndex = i
 				}
 				m.load.latestPending = true
-				owner, request, ctx, user, view, id := m.owner, m.load.generation, m.load.ctx, m.userID, m.timelineView, item.EventID
+				owner, request, ctx, user, view, id := m.owner, m.load.generation, m.load.ctx, m.userID, m.timelineView, entry.Event.EventID
 				latest = func() tea.Msg {
 					if err := ctx.Err(); err != nil {
-						return latestMsg{owner: owner, request: request, err: err}
+						return latestEventThoughtMsg{owner: owner, request: request, err: err}
 					}
-					item, err := view.LatestThought(ctx, user, id)
-					return latestMsg{owner, request, item, err}
+					thought, err := view.LatestThought(ctx, user, id)
+					return latestEventThoughtMsg{owner, request, thought, err}
 				}
 			}
 		}
 		if !foundExpanded {
-			m.expanded = 0
+			m.expanded = timeline.EntryKey{}
 			m.picker.Reset()
 		}
 		m.anchor()
-		if selected == 0 && !m.position.followNow && len(m.items) > 0 {
+		if selected.IsZero() && !m.position.followNow && len(m.entries) > 0 {
 			layout := m.measureTimeline()
-			m.position.topLine = layout.positions[m.items[0].EventID]
+			m.position.topLine = layout.positions[m.entries[0].Key()]
 			m.position.clamp(len(layout.lines))
 		}
 		return m, tea.Batch(latest, open)
-	case countsMsg:
-		// Counts share the day-request generation but may arrive before its event list.
-		if result.owner != m.owner || !m.load.owns(result.request) {
+	case eventCountsMsg:
+		// Counts share the day-request generation but may arrive before its entry list.
+		if reply.owner != m.owner || !m.load.owns(reply.request) {
 			return m, nil
 		}
-		m.load.finishCounts(result)
-		m.fail(logging.EventThoughtCount, result.err)
-		if m.load.eventsPending || !m.load.pendingDay.Equal(m.day) {
+		m.load.finishCounts(reply)
+		m.fail(logging.EventThoughtCount, reply.err)
+		if m.load.entriesPending || !m.load.pendingDay.Equal(m.day) {
 			return m, nil
 		}
-		m.counts, m.load.countErr = result.items, result.err
+		m.eventCounts, m.load.countErr = reply.counts, reply.err
 		m.anchor()
 		return m, nil
-	case latestMsg:
+	case latestEventThoughtMsg:
 		// The latest preview inherits the accepted list's generation.
-		if result.owner != m.owner || !m.load.owns(result.request) {
+		if reply.owner != m.owner || !m.load.owns(reply.request) {
 			return m, nil
 		}
 		m.load.latestPending = false
-		m.latest, m.load.latestErr = result.item, result.err
-		m.fail(logging.EventThoughtList, result.err)
+		m.latest, m.load.latestErr = reply.thought, reply.err
+		m.fail(logging.EventThoughtList, reply.err)
 		m.anchor()
 		return m, nil
-	case openedMsg:
+	case entryOpenedMsg:
 		// Expansion has its own generation so changing/collapsing cards invalidates it.
-		if result.owner != m.owner || result.request != m.expansion {
+		if reply.owner != m.owner || reply.request != m.expansion {
 			return m, nil
 		}
 		m.opening = false
 		m.load.retainedBody = ""
-		m.err = result.err
-		m.fail(logging.EventGet, result.err)
-		if result.err != nil {
-			m.message = diagnostics.EventMessage(result.err, "Could not open event.")
+		m.err = reply.err
+		m.fail(logging.TimelineEntryOpen, reply.err)
+		if reply.err != nil {
+			m.message = "Could not open timeline entry."
+			if errors.Is(diagnostics.SingleError(reply.err), data.ErrRecordNotFound) {
+				m.message = "The requested timeline entry was not found."
+			}
 			return m, nil
 		}
-		item := result.scope.Event()
-		for i := range m.items {
-			if m.items[i].EventID == item.EventID {
-				m.items[i] = item
+		if reply.scope.Key().EventID != 0 {
+			event := reply.scope.Event()
+			for i := range m.entries {
+				if m.entries[i].Key() == reply.scope.Key() {
+					m.entries[i].Event = &event
+				}
 			}
 		}
-		cmd := m.picker.OpenEventView(result.scope, m.timelineView)
+		cmd := m.picker.OpenTimelineEntryView(reply.scope, m.timelineView)
 		m.anchor()
 		return m, cmd
-	case savedMsg:
+	case eventSavedMsg:
 		// Save ownership prevents an abandoned or replaced form from handling a reply.
-		if result.owner != m.owner || result.request != m.save {
+		if reply.owner != m.owner || reply.request != m.save {
 			return m, nil
 		}
 		m.form.saving = false
-		m.form.err = result.err
+		m.form.err = reply.err
 		op := logging.EventCreate
-		if result.ending {
+		if reply.ending {
 			op = logging.EventEnd
 		}
-		m.fail(op, result.err)
-		if result.err != nil {
-			m.form.message = diagnostics.EventMessage(result.err, "Could not save event.")
+		m.fail(op, reply.err)
+		if reply.err != nil {
+			m.form.message = diagnostics.EventMessage(reply.err, "Could not save event.")
 			cmd := m.focusForm()
 			return m, cmd
 		}
 		mutation := logging.EventCreated
-		if result.ending {
+		if reply.ending {
 			mutation = logging.EventEnded
 		}
-		m.logger.Mutation(mutation, result.item.EventID)
+		m.logger.Mutation(mutation, reply.event.EventID)
 		m.form.stopReads()
 		m.form = eventForm{}
 		day := m.day
-		if !result.ending {
+		if !reply.ending {
 			m.clock = m.now()
 			day = displaytime.Day(m.clock)
 			m.position.followNow = true
@@ -514,18 +534,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.load.retainedBody = ""
 		return m, nil
 	}
-	if m.expanded != 0 {
+	if !m.expanded.IsZero() {
 		if key.String() == "esc" || key.String() == "left" || key.String() == "h" {
 			m.stopExpansion()
 			m.expansion++
-			m.expanded = 0
+			m.expanded = timeline.EntryKey{}
 			m.opening = false
 			m.picker.Reset()
 			m.revealSelected()
 			return m, nil
 		}
 		if key.String() == "r" {
-			cmd := m.openEvent(m.expanded)
+			cmd := m.openEntry(m.expanded)
 			return m, cmd
 		}
 		if key.String() == "right" || key.String() == "l" {
@@ -536,18 +556,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 	}
 	day := m.day
-	if m.load.eventsPending {
+	if m.load.entriesPending {
 		day = m.load.pendingDay
 	}
 	navigation := key.String()
 	if (navigation == "right" || navigation == "l") && day.Equal(displaytime.Day(m.now())) {
-		if m.load.eventsPending && !day.Equal(m.day) {
+		if m.load.entriesPending && !day.Equal(m.day) {
 			return m, nil
 		}
 		navigation = "enter"
 	}
 	// Do not act on the previous day's cards while navigation is pending.
-	if m.load.eventsPending && !m.load.pendingDay.Equal(m.day) {
+	if m.load.entriesPending && !m.load.pendingDay.Equal(m.day) {
 		switch navigation {
 		case "left", "right", "h", "l", "end", "r", "n":
 		default:
@@ -564,7 +584,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.position.followNow = true
 		m.clock = m.now()
 		day := displaytime.Day(m.clock)
-		if !day.Equal(m.day) || m.load.eventsPending {
+		if !day.Equal(m.day) || m.load.entriesPending {
 			cmd := m.loadDay(day)
 			return m, cmd
 		}
@@ -592,7 +612,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if key.String() == "up" || key.String() == "k" {
 			delta = -1
 		}
-		m.position.moveEvent(delta, len(m.items))
+		m.position.moveEntry(delta, len(m.entries))
 		m.revealSelected()
 	case "pgup", "pgdown":
 		direction := 1
@@ -602,14 +622,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		layout := m.measureTimeline()
 		m.position.scrollPage(direction, m.height, len(layout.lines))
 	case "enter":
-		if len(m.items) > 0 {
-			cmd := m.openEvent(m.items[m.position.eventIndex].EventID)
+		if len(m.entries) > 0 {
+			cmd := m.openEntry(m.entries[m.position.entryIndex].Key())
 			return m, cmd
 		}
 	case "esc":
 		m.stopExpansion()
 		m.expansion++
-		m.expanded = 0
+		m.expanded = timeline.EntryKey{}
 		m.opening = false
 		m.picker.Reset()
 		layout := m.measureTimeline()
@@ -618,7 +638,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		cmd := m.startForm(false)
 		return m, cmd
 	case "e":
-		if len(m.items) > 0 && m.items[m.position.eventIndex].EndedAt == nil {
+		if len(m.entries) > 0 && m.entries[m.position.entryIndex].Event != nil && m.entries[m.position.entryIndex].Event.EndedAt == nil {
 			cmd := m.startForm(true)
 			return m, cmd
 		}

@@ -34,7 +34,7 @@ func Classify(operation logging.Operation, err error) (logging.FailureCategory, 
 		return logging.DatabaseReadOnly, true
 	case (operation == logging.EventCreate || operation == logging.EventEnd) && (errors.As(err, &eventValidation) || errors.Is(err, data.ErrEventOverlap) || errors.Is(err, data.ErrInvalidEventInterval) || errors.Is(err, data.ErrEventVersionConflict) || errors.Is(err, data.ErrEventStateConflict) || errors.Is(err, data.ErrRecordNotFound)):
 		return logging.UnexpectedFailure, false
-	case (operation == logging.EventGet || operation == logging.EventThoughtList) && errors.Is(err, data.ErrRecordNotFound):
+	case (operation == logging.EventGet || operation == logging.EventThoughtList || operation == logging.TimelineEntryOpen || operation == logging.TimelineThoughtList) && errors.Is(err, data.ErrRecordNotFound):
 		return logging.UnexpectedFailure, false
 	case (operation == logging.SubjectCreate || operation == logging.SubjectUpdate) && subject.IsExpectedError(err):
 		return logging.UnexpectedFailure, false

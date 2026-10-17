@@ -47,6 +47,10 @@ const (
 	EventEnd
 	EventThoughtCount
 	EventThoughtList
+	TimelineList
+	TimelineEntryOpen
+	TimelineThoughtList
+	TimelineThoughtStats
 )
 
 type FailureCategory uint8
@@ -59,6 +63,14 @@ const (
 
 func (operation Operation) name() string {
 	switch operation {
+	case TimelineList:
+		return "timeline_list"
+	case TimelineEntryOpen:
+		return "timeline_entry_open"
+	case TimelineThoughtList:
+		return "timeline_thought_list"
+	case TimelineThoughtStats:
+		return "timeline_thought_stats"
 	case EventList:
 		return "event_list"
 	case EventGet:

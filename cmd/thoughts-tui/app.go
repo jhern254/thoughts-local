@@ -133,10 +133,7 @@ func newTUI(app *application) *cli.Command {
 			if err != nil {
 				app.failureMessage = "Could not run the terminal interface."
 				if cmd.Bool("browser") {
-					app.failureMessage = "Could not run the browser interface."
-					if errors.Is(err, errBrowserSpeechSetup) {
-						app.failureMessage = errBrowserSpeechSetup.Error()
-					}
+					app.failureMessage = browserStartupMessage(err, cmd.Int("browser-port"))
 				}
 				if category, emit := failure.Classify(logging.TUIRun, err); emit {
 					app.logger.Failure(logging.TUIRun, category)

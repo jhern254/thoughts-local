@@ -101,6 +101,8 @@ func TestLogger_Events(t *testing.T) {
 			logging.ApplicationStart: "application_start", logging.ApplicationClose: "application_close",
 			logging.TUIRun: "tui_run", logging.SubjectCreate: "subject_create",
 			logging.SubjectGet: "subject_get", logging.SubjectList: "subject_list",
+			logging.TimelineList: "timeline_list", logging.TimelineEntryOpen: "timeline_entry_open",
+			logging.TimelineThoughtList: "timeline_thought_list", logging.TimelineThoughtStats: "timeline_thought_stats",
 		} {
 			var output bytes.Buffer
 			logger, err := logging.New(&output, "test", "")

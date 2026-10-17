@@ -23,6 +23,11 @@ func TestClassify(t *testing.T) {
 		category logging.FailureCategory
 		emit     bool
 	}{
+		{"ignores missing timeline entry", logging.TimelineEntryOpen, data.ErrRecordNotFound, logging.UnexpectedFailure, false},
+		{"ignores missing timeline thought scope", logging.TimelineThoughtList, data.ErrRecordNotFound, logging.UnexpectedFailure, false},
+		{"retains busy timeline read", logging.TimelineList, data.ErrDatabaseBusy, logging.DatabaseBusy, true},
+		{"retains read-only timeline stats", logging.TimelineThoughtStats, data.ErrDatabaseReadOnly, logging.DatabaseReadOnly, true},
+		{"retains unexpected timeline read", logging.TimelineList, errors.New("PRIVATE"), logging.UnexpectedFailure, true},
 		{"ignores update validation", logging.SubjectUpdate, &subject.ValidationError{}, logging.UnexpectedFailure, false},
 		{"ignores duplicate update", logging.SubjectUpdate, data.ErrDuplicateRecord, logging.UnexpectedFailure, false},
 		{"ignores missing update", logging.SubjectUpdate, data.ErrRecordNotFound, logging.UnexpectedFailure, false},

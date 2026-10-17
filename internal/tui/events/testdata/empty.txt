@@ -23,5 +23,5 @@
 04:00 AM                │
                         │
                         │
-No events on this day. n: start event • d: distributions
+No events or thoughts on this day. n: start event • d: distributions
 ← day / → open • Home/End: first/now • r: refresh • n: start • e: end

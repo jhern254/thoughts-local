@@ -23,7 +23,11 @@ func (m *Model) card(item data.Event, selected bool) string {
 // viewport or asking navigation to paint it.
 func (m *Model) layout() ([]string, map[int64]int, int) {
 	layout := m.measureTimeline()
-	return m.paintTimeline(layout, 0, len(layout.lines)), layout.positions, layout.nowLine
+	positions := make(map[int64]int)
+	for key, row := range layout.positions {
+		positions[key.EventID] = row
+	}
+	return m.paintTimeline(layout, 0, len(layout.lines)), positions, layout.nowLine
 }
 
 func TestModel_Layout(t *testing.T) {
@@ -43,7 +47,7 @@ func TestModel_Layout(t *testing.T) {
 		start := m.day.Add(21*time.Hour + 7*time.Minute)
 		end := start.Add(time.Hour)
 		nextEnd := end.Add(time.Hour)
-		m.items = []data.Event{{EventID: 1, StartedAt: start, EndedAt: &end}, {EventID: 2, StartedAt: end, EndedAt: &nextEnd}}
+		m.entries = eventEntries([]data.Event{{EventID: 1, StartedAt: start, EndedAt: &end}, {EventID: 2, StartedAt: end, EndedAt: &nextEnd}})
 		lines, positions, _ := m.layout()
 		first, second := positions[1], positions[2]
 		if second-first != 5 || strings.TrimSpace(timelineCardText(lines[second-1])) != "" || !strings.HasPrefix(timelineCardText(lines[second-2]), "          ╰") || !strings.HasPrefix(timelineCardText(lines[second]), "10:07 PM  ╭") {
@@ -53,7 +57,7 @@ func TestModel_Layout(t *testing.T) {
 		if hour != -1 {
 			t.Fatalf("got covered hour at row %d, want no intermediate label", hour)
 		}
-		m.items[1].StartedAt = end.Add(30 * time.Minute)
+		m.entries[1].Event.StartedAt = end.Add(30 * time.Minute)
 		lines, positions, _ = m.layout()
 		bottom := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(timelineCardText(line), "10:07 PM  ╰") })
 		if bottom < 0 || positions[2] <= bottom+1 {
@@ -69,7 +73,7 @@ func TestModel_Layout(t *testing.T) {
 			}
 			m.day = displaytime.Day(end)
 			m.clock = end.Add(time.Hour)
-			m.items = []data.Event{{EventID: 1, StartedAt: m.day, EndedAt: &end}}
+			m.entries = eventEntries([]data.Event{{EventID: 1, StartedAt: m.day, EndedAt: &end}})
 			lines, positions, _ := m.layout()
 			top := positions[1]
 			bottom := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(timelineCardText(line), "12:00 PM  ╰") })
@@ -85,33 +89,33 @@ func TestModel_Layout(t *testing.T) {
 			}
 		}
 	})
-	t.Run("Now owns the ongoing end label and minute formatting does not merge distinct boundaries", func(t *testing.T) {
+	t.Run("Now owns the ongoing end label and repeated minute labels leave boundaries intact", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		lines, _, now := m.layout()
 		if now != len(lines)-1 || !strings.HasPrefix(timelineCardText(lines[now-1]), "          ╰") {
 			t.Fatal("Now should appear below an unlabeled ongoing bottom border")
 		}
-		end := m.items[0].StartedAt.Add(10 * time.Second)
+		end := m.entries[0].Event.StartedAt.Add(10 * time.Second)
 		next := end.Add(10 * time.Second)
-		m.items[0].EndedAt = &end
-		m.items = append(m.items, data.Event{EventID: 2, StartedAt: next})
+		m.entries[0].Event.EndedAt = &end
+		m.entries = append(m.entries, eventEntries([]data.Event{{EventID: 2, StartedAt: next}})...)
 		lines, positions, _ := m.layout()
-		if !strings.HasPrefix(timelineCardText(lines[positions[1]+3]), "10:37 AM  ╰") || !strings.HasPrefix(timelineCardText(lines[positions[2]]), "10:37 AM  ╭") {
-			t.Fatal("distinct boundaries within one displayed minute were incorrectly merged")
+		if !strings.HasPrefix(timelineCardText(lines[positions[1]+3]), "          ╰") || !strings.HasPrefix(timelineCardText(lines[positions[2]]), "          ╭") {
+			t.Fatal("repeated minute labels should be blank while both card boundaries remain")
 		}
 	})
 	t.Run("card height follows content rather than terminal height or duration", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		for _, height := range []int{20, 50} {
 			m.Resize(80, height)
-			item := m.items[0]
+			item := *m.entries[0].Event
 			end := m.clock
 			item.StartedAt = m.day
 			item.EndedAt = &end
 			if got := len(strings.Split(m.card(item, true), "\n")); got != 4 {
 				t.Fatalf("got completed card height %d, want 4 at terminal height %d", got, height)
 			}
-			if got := len(strings.Split(m.card(m.items[0], true), "\n")); got != 6 {
+			if got := len(strings.Split(m.card(*m.entries[0].Event, true), "\n")); got != 6 {
 				t.Fatalf("got ongoing card height %d, want 6 including latest preview", got)
 			}
 		}
@@ -125,7 +129,7 @@ func TestModel_Layout(t *testing.T) {
 			if count == 0 {
 				want = 6
 			}
-			if got := len(strings.Split(m.card(m.items[0], true), "\n")); got != want {
+			if got := len(strings.Split(m.card(*m.entries[0].Event, true), "\n")); got != want {
 				t.Fatalf("got %d rows for %d thoughts, want %d without empty slots", got, count, want)
 			}
 		}
@@ -135,10 +139,10 @@ func TestModel_Layout(t *testing.T) {
 		for _, span := range []time.Duration{0, time.Minute, 3 * time.Hour} {
 			start := m.day.Add(8 * time.Hour)
 			end := start.Add(span)
-			m.items = []data.Event{{EventID: 1, StartedAt: start, EndedAt: &end}}
+			m.entries = eventEntries([]data.Event{{EventID: 1, StartedAt: start, EndedAt: &end}})
 			lines, positions, _ := m.layout()
 			top := positions[1]
-			bottom := top + len(strings.Split(m.card(m.items[0], true), "\n")) - 1
+			bottom := top + len(strings.Split(m.card(*m.entries[0].Event, true), "\n")) - 1
 			endLabel := displaytime.Format(end, "03:04 PM")
 			if span == 0 {
 				endLabel = "        " // The start already labels this exact instant.
@@ -147,8 +151,8 @@ func TestModel_Layout(t *testing.T) {
 				t.Fatalf("got span %s rows %q, want readable card ending at its timestamp", span, lines[top:bottom+1])
 			}
 		}
-		m.items[0].StartedAt = m.day.Add(-time.Hour)
-		m.items[0].EndedAt = nil
+		m.entries[0].Event.StartedAt = m.day.Add(-time.Hour)
+		m.entries[0].Event.EndedAt = nil
 		m.day = m.day.AddDate(0, 0, -1)
 		lines, positions, now := m.layout()
 		if now != -1 || !strings.HasPrefix(timelineCardText(lines[len(lines)-2]), "12:00 AM  ╰") || positions[1] >= len(lines)-2 || strings.TrimSpace(lines[len(lines)-1]) != "..." {
@@ -161,7 +165,7 @@ func TestModel_Layout(t *testing.T) {
 			if expanded {
 				m = execute(t, m, m.openEvent(1))
 			}
-			card := ansi.Strip(m.card(m.items[0], true))
+			card := ansi.Strip(m.card(*m.entries[0].Event, true))
 			if expanded && strings.Trim(strings.Split(card, "\n")[2], "│ ") != "" {
 				t.Fatal("expanded header should have a blank row before the thought list")
 			}
@@ -186,7 +190,7 @@ func TestModel_Layout(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				item := m.items[0]
+				item := *m.entries[0].Event
 				item.StartedAt, item.EndedAt = start, &end
 				card := m.card(item, true)
 				if !strings.Contains(card, list.DefaultStyles(true).Title.Render("Reading")) || !strings.Contains(ansi.Strip(strings.Split(card, "\n")[1]), tc.want) {
@@ -197,9 +201,9 @@ func TestModel_Layout(t *testing.T) {
 	})
 	t.Run("event expands beside its time and pushes later hours down", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		m.items[0].StartedAt = m.day.Add(10 * time.Hour)
+		m.entries[0].Event.StartedAt = m.day.Add(10 * time.Hour)
 		end := m.day.Add(10*time.Hour + 30*time.Minute)
-		m.items[0].EndedAt = &end
+		m.entries[0].Event.EndedAt = &end
 		lines, positions, _ := m.layout()
 		top := positions[1]
 		if !strings.HasPrefix(timelineCardText(lines[top]), "10:00 AM  ╭") {
@@ -218,7 +222,7 @@ func TestModel_Layout(t *testing.T) {
 	})
 	t.Run("default viewport spaces hours and shows only recent hours", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		m.items = nil
+		m.entries = nil
 		m.anchor()
 		view := ansi.Strip(m.View())
 		if strings.Contains(view, "12:00 AM") || strings.Contains(view, "06:00 AM") || !strings.Contains(view, "11:00 AM") {
@@ -246,13 +250,13 @@ func TestModel_Layout(t *testing.T) {
 			t.Fatalf("unexpected offset or 24-hour label: %s", view)
 		}
 		m = execute(t, m, m.openEvent(1))
-		if !strings.Contains(ansi.Strip(m.View()), "Started at 10:37 AM PDT · ongoing") {
-			t.Fatal("expanded event lost Pacific timestamp")
+		if !strings.Contains(ansi.Strip(m.View()), "Started at 10:37 AM · ongoing") {
+			t.Fatal("expanded event start should use Pacific time without a timezone suffix")
 		}
 	})
 	t.Run("current day ends at Now and completed days retain every hour", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		m.items = nil
+		m.entries = nil
 		lines, _, now := m.layout()
 		if now != len(lines)-1 || strings.TrimSpace(lines[now]) != "── Now · 11:37 AM ──" || strings.Contains(strings.Join(lines, "\n"), "...") {
 			t.Fatalf("got current rail %q, want midnight through 11 AM ending at Now", lines)
@@ -284,7 +288,7 @@ func TestModel_Layout(t *testing.T) {
 				m.Resize(40, 20)
 			}
 			if name == "empty" {
-				m.items = nil
+				m.entries = nil
 				m.position.followNow = false
 				m.position.topLine = 0
 			}
@@ -300,7 +304,7 @@ func TestModel_Layout(t *testing.T) {
 	}
 	t.Run("hour rail handles missing and repeated hours", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		m.items = nil
+		m.entries = nil
 		for _, date := range []string{"2026-03-08 12:00:00 PM", "2026-11-01 12:00:00 PM"} {
 			at, err := displaytime.ParseInput(date)
 			if err != nil {
@@ -320,7 +324,7 @@ func TestModel_Layout(t *testing.T) {
 	})
 	t.Run("completed and cross-midnight cards keep counts without a collapsed preview", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		item := m.items[0]
+		item := *m.entries[0].Event
 		end := item.StartedAt.Add(time.Hour)
 		item.EndedAt = &end
 		card := ansi.Strip(m.card(item, false))
@@ -340,7 +344,7 @@ func TestModel_Layout(t *testing.T) {
 		m, _, _ := fixture(t)
 		oldDay := m.day
 		m, cmd := m.Update(tickMsg{m.owner, m.session, m.day.AddDate(0, 0, 1).Add(time.Minute)})
-		if !m.day.Equal(oldDay) || cmd == nil || !m.load.eventsPending {
+		if !m.day.Equal(oldDay) || cmd == nil || !m.load.entriesPending {
 			t.Fatal("midnight did not retain the displayed day while loading")
 		}
 		request := m.load.generation
@@ -359,4 +363,36 @@ func TestModel_Layout(t *testing.T) {
 			t.Fatal("paused timeline changed date")
 		}
 	})
+}
+
+func TestModel_EventStartLabel(t *testing.T) {
+	t.Run("omits the timezone suffix in winter and summer while expanded", func(t *testing.T) {
+		for _, month := range []time.Month{time.January, time.July} {
+			m, _, _ := fixture(t)
+			item := *m.entries[0].Event
+			item.StartedAt = time.Date(2026, month, 11, 18, 37, 0, 0, time.UTC)
+			m.clock = item.StartedAt.Add(time.Hour)
+			m.day = displaytime.Day(item.StartedAt)
+			m.expanded.EventID = item.EventID
+			heading := ansi.Strip(m.cardContent(item)[0])
+			want := "Started at " + displaytime.Format(item.StartedAt, "03:04 PM") + " · ongoing"
+			if !strings.Contains(heading, want) || strings.Contains(heading, "PDT") || strings.Contains(heading, "PST") {
+				t.Fatalf("got heading %q, want %q without timezone suffix", heading, want)
+			}
+		}
+	})
+	t.Run("retains timezone distinctions for completed intervals across fall back", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		item := *m.entries[0].Event
+		item.StartedAt = time.Date(2026, time.November, 1, 8, 30, 0, 0, time.UTC)
+		end := item.StartedAt.Add(time.Hour)
+		item.EndedAt = &end
+		m.day = displaytime.Day(end)
+		m.expanded.EventID = item.EventID
+		heading := ansi.Strip(m.cardContent(item)[0])
+		if !strings.Contains(heading, "01:30 AM PDT - 01:30 AM PST") {
+			t.Fatalf("got heading %q, want both offsets for repeated hour", heading)
+		}
+	})
+
 }

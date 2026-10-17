@@ -74,7 +74,7 @@ func (m *Model) startForm(ending bool) tea.Cmd {
 	m.form.fields[1].Placeholder = "Search subjects"
 	m.form.fields[2].SetValue(displaytime.FormatInput(m.now()))
 	if ending {
-		m.form.event = m.items[m.position.eventIndex]
+		m.form.event = *m.entries[m.position.entryIndex].Event
 		m.form.index = 2
 	}
 	m.resizeForm()
@@ -176,7 +176,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 					if ctx.Err() != nil {
 						return nil
 					}
-					return savedMsg{owner, save, saved, true, err}
+					return eventSavedMsg{owner, save, saved, true, err}
 				}
 			}
 			subjectID := m.form.subjects.selected
@@ -188,7 +188,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 				if ctx.Err() != nil {
 					return nil
 				}
-				return savedMsg{owner, save, saved, false, err}
+				return eventSavedMsg{owner, save, saved, false, err}
 			}
 		}
 		if key.Matches(input, m.form.fields[m.form.index].KeyMap.Paste) {
