@@ -79,6 +79,17 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   await page.unroute('**/visual/video/preview');
   await page.setViewportSize({width:650,height:600});
   await expect(screen(page)).toContainText('Done — use previewed loop');
+  // The old view already contains Done. Wait for the resized native frame and
+  // browser preview to agree before using terminal mouse coordinates.
+  await expect.poll(()=>page.locator('#background-preview-wrap').evaluate(element=>{
+    const preview=element.getBoundingClientRect();
+    const rows=[...document.querySelectorAll('.xterm-rows > div')];
+    const top=rows.find(row=>row.textContent.includes('╭'))?.getBoundingClientRect();
+    const bottom=rows.find(row=>row.textContent.includes('╰'))?.getBoundingClientRect();
+    return !element.hidden && preview.left>=0 && preview.right<=innerWidth &&
+      preview.top>=0 && preview.bottom<=innerHeight &&
+      Math.abs(preview.top-top?.bottom)<1 && Math.abs(preview.bottom-bottom?.top)<1;
+  })).toBe(true);
   await page.screenshot({path:`/tmp/trim-${testInfo.project.name}-narrow.png`});
   await clickControl(page,'Done — use previewed loop');
   await expect(screen(page)).toContainText('Background darkness:');
