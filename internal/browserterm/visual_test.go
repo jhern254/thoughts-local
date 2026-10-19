@@ -314,9 +314,12 @@ func TestVisual_VideoBoundary(t *testing.T) {
 		{"invalid settings", "POST", "http://127.0.0.1:7777", "127.0.0.1:7777", 400},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(&visualStore{}, "user", t.TempDir())}
+			s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(&visualStore{}, "user", t.TempDir()), videoEditor: newVideoEditor(t.Context())}
+			editorID, _ := s.videoEditor.setOpen(true)
+			defer s.videoEditor.Close()
 			request := httptest.NewRequest(scenario.method, "http://127.0.0.1:7777/visual/video", strings.NewReader("PRIVATE"))
 			request.Host = scenario.host
+			request.Header.Set("X-Visual-Editor", editorID)
 			if scenario.origin != "" {
 				request.Header.Set("Origin", scenario.origin)
 			}
@@ -367,7 +370,9 @@ func TestVisual_VideoUploadOwnership(t *testing.T) {
 		owner, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
 		defer cancel()
 		store := &visualStore{}
-		s := &server{visual: visual.NewService(store, "user", t.TempDir())}
+		s := &server{visual: visual.NewService(store, "user", t.TempDir()), videoEditor: newVideoEditor(owner)}
+		editorID, _ := s.videoEditor.setOpen(true)
+		defer s.videoEditor.Close()
 		host := httptest.NewUnstartedServer(s)
 		s.authority = host.Listener.Addr().String()
 		host.Config.BaseContext = func(net.Listener) context.Context { return owner }
@@ -381,8 +386,7 @@ func TestVisual_VideoUploadOwnership(t *testing.T) {
 		if err := connection.SetDeadline(time.Now().Add(time.Second)); err != nil {
 			t.Fatal(err)
 		}
-		settings := `{"darkness":70,"framing":{"fit":"fill","zoom":100,"positionX":5000,"positionY":5000},"speedPercent":100,"userPaused":false}`
-		_, err = fmt.Fprintf(connection, "POST /visual/video HTTP/1.1\r\nHost: %s\r\nOrigin: http://%s\r\nX-Background-Settings: %s\r\nContent-Length: 1000\r\n\r\nPRIVATE partial body", s.authority, s.authority, settings)
+		_, err = fmt.Fprintf(connection, "POST /visual/video/source HTTP/1.1\r\nHost: %s\r\nOrigin: http://%s\r\nX-Visual-Editor: %s\r\nContent-Length: 1000\r\n\r\nPRIVATE partial body", s.authority, s.authority, editorID)
 		if err != nil {
 			t.Fatal(err)
 		}

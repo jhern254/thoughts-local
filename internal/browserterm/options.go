@@ -11,6 +11,7 @@ type optionsBridgeModel struct {
 	tea.Model
 	writer      *terminalWriter
 	lastOptions tui.BrowserOptionsState
+	videoEditor *videoEditor
 }
 
 func (m optionsBridgeModel) Init() tea.Cmd {
@@ -25,7 +26,18 @@ func (m optionsBridgeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		state := model.OptionsState()
 		if state != m.lastOptions {
 			m.lastOptions = state
-			data, _ := json.Marshal(state)
+			editorID := ""
+			if m.videoEditor != nil {
+				var cleanup func() error
+				editorID, cleanup = m.videoEditor.setOpen(state.Open)
+				if cleanup != nil {
+					cmd = tea.Batch(cmd, func() tea.Msg { _ = cleanup(); return nil })
+				}
+			}
+			data, _ := json.Marshal(struct {
+				tui.BrowserOptionsState
+				EditorID string `json:"editorID"`
+			}{state, editorID})
 			_ = m.writer.writeFrame(append([]byte{'o'}, data...))
 		}
 	}

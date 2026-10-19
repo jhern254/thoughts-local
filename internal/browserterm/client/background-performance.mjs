@@ -110,7 +110,7 @@ try {
   // Keyboard focus avoids pointer coordinates racing the desktop window manager.
   const clickControl = async (page, label) => {
     await page.locator('.xterm-helper-textarea').focus();
-    for (let step = 0; step < 10; step++) {
+    for (let step = 0; step < 16; step++) {
       const selected = page.locator('.xterm-bg-62').filter({hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')});
       if (await selected.count()) {
         await page.keyboard.press('Enter');
@@ -126,7 +126,13 @@ try {
     const chooser = page.waitForEvent('filechooser');
     await clickControl(page, 'Choose image or video');
     await (await chooser).setFiles(fixture);
-    await expect(screen(page)).toContainText('Preview only. Apply to save.', {timeout: 15000});
+    if(fixture.mimeType?.startsWith('video/')) {
+      await expect(screen(page)).toContainText('Set cut points, then Preview loop.',{timeout:15000});
+      await clickControl(page,'Preview loop');
+      await expect(screen(page)).toContainText('Preview ready. Done uses this loop.',{timeout:120000});
+      await clickControl(page,'Done — use previewed loop');
+      await expect(screen(page)).toContainText('Background darkness:');
+    } else await expect(screen(page)).toContainText('Preview only. Apply to save.', {timeout: 15000});
     await expect(page.locator('#background-preview-wrap')).toBeVisible();
   };
   const usage = async () => {
@@ -221,17 +227,30 @@ try {
       }
       await page.keyboard.press('Tab');
     };
-    await idle('static-video-baseline');await events('static');
+    if(!importOnly){await idle('static-video-baseline');await events('static');}
     for(let run=0;run<count;run++) {
       await openVisual(page);
       const start=performance.now();
       await chooseImage(page,{name:`synthetic-video-${fixtureRunID}-${run}.mp4`,mimeType:'video/mp4',buffer:fixture});
       const previewMs=performance.now()-start;
+      // The same cut reuses acknowledged native files, while the browser may
+      // re-show its already decoded player. This must not launch FFmpeg.
+      await clickControl(page,'Edit loop');
+      await expect(screen(page)).toContainText('Previewed:');
+      const reuseStart=performance.now();
+      const reused=page.waitForResponse(response=>new URL(response.url()).pathname==='/visual/video/preview'&&response.request().method()==='POST');
+      await clickControl(page,'Preview loop');await reused;
+      await page.waitForFunction(()=>window.backgroundProbe.state.request==='');
+      await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+      const reuseMs=performance.now()-reuseStart;
+      await clickControl(page,'Done — use previewed loop');
+      await expect(screen(page)).toContainText('Background darkness:');
       const applyStart=performance.now();await clickControl(page,'Apply');
       await expect(screen(page)).not.toContainText('Background darkness:',{timeout:120000});
       await expect(page.locator('#background-video')).toBeVisible();
-      add({phase:'video-import',run,previewMs,applyMs:performance.now()-applyStart,activationMs:await page.evaluate(()=>window.activationTimes.at(-1)),...await usage()});
+      add({phase:'video-import',run,previewMs,reuseMs,applyMs:performance.now()-applyStart,activationMs:await page.evaluate(()=>window.activationTimes.at(-1)),...await usage()});
     }
+    if(!importOnly) {
     for(const percent of [100,50,25]) {
       await openVisual(page);await clickControl(page,`Playback speed: ${percent===100?100:percent===50?100:50}%`);
       await page.keyboard.press('Home');for(let value=25;value<percent;value+=5)await page.keyboard.press('ArrowRight');
@@ -266,6 +285,7 @@ try {
     await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
     await idle('video-hidden-emulated');
     await page.evaluate(()=>{delete document.hidden;delete document.visibilityState;document.dispatchEvent(new Event('visibilitychange'));});
+    }
   }
   if(!importOnly && !videoFixturePath) {
     // Keep the Events workload separate from the reported entity-picker artifact.

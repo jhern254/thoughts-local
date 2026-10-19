@@ -11,15 +11,17 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
+	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
 const (
 	// Frame bounds limit transport/parser work; the TUI still validates authored
 	// text. Geometry bounds match the browser client and bound terminal rendering.
-	maxPasteBytes = 1 << 20
-	maxKeyBytes   = 4096
-	maxCols       = 512
-	maxRows       = 128
+	maxPasteBytes   = 1 << 20
+	maxKeyBytes     = 4096
+	maxCols         = 512
+	maxRows         = 128
+	maxOptionsBytes = 1024
 )
 
 var errInput = errors.New("invalid browser terminal input")
@@ -37,10 +39,13 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 	case 'o':
 		var msg tui.BrowserOptionsMsg
 		// Options frames carry only control metadata, not image bytes: cap JSON at
-		// 384 bytes, including video preferences. IDs must fit JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1)
+		// 1024 bytes, including video preferences. IDs must fit JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1)
 		// so browser rounding cannot break operation ownership. Darkness is overlay
 		// opacity in percent; 0–95 matches the persisted Visual settings contract.
-		if len(body) > 384 || json.Unmarshal(body, &msg) != nil || msg.ID > 9007199254740991 || msg.Darkness < 0 || msg.Darkness > 95 || (msg.SpeedPercent != 0 && (msg.SpeedPercent < 25 || msg.SpeedPercent > 100)) || (msg.Kind != "" && msg.Kind != "image" && msg.Kind != "video") {
+		if len(body) > maxOptionsBytes || json.Unmarshal(body, &msg) != nil || msg.ID > 9007199254740991 || msg.Darkness < 0 || msg.Darkness > 95 || (msg.SpeedPercent != 0 && (msg.SpeedPercent < 25 || msg.SpeedPercent > 100)) || (msg.Kind != "" && msg.Kind != "image" && msg.Kind != "video") {
+			return nil, errInput
+		}
+		if msg.DurationMS < 0 || msg.DurationMS > visual.MaxVideoSourceDuration*1000 || msg.Trim.StartMS < 0 || msg.Trim.EndMS < 0 || msg.Trim.StartMS > visual.MaxVideoSourceDuration*1000 || msg.Trim.EndMS > visual.MaxVideoSourceDuration*1000 {
 			return nil, errInput
 		}
 		switch msg.Action {
@@ -56,7 +61,7 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 			if msg.ID == 0 || !msg.Framing.Valid() || msg.Framing.Fit != "fill" {
 				return nil, errInput
 			}
-		case "loaded", "selected", "cancelled", "saved", "warning", "failed", "played", "previewed":
+		case "loaded", "selected", "cancelled", "saved", "warning", "failed", "played", "previewed", "staged", "loopReady", "discarded":
 			if msg.ID == 0 {
 				return nil, errInput
 			}

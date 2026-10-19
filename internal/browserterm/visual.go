@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/visual"
@@ -105,7 +103,27 @@ func (s *server) serveVisual(w http.ResponseWriter, r *http.Request) {
 	case "/visual/video":
 		allowed = "POST"
 		if r.Method == http.MethodPost {
-			handler = s.importVisualVideo
+			handler = s.applyVisualVideoLoop
+		}
+	case "/visual/video/source":
+		allowed = "POST, DELETE"
+		switch r.Method {
+		case http.MethodPost:
+			handler = s.stageVisualVideoSource
+		case http.MethodDelete:
+			handler = s.discardVisualVideoSource
+		}
+	case "/visual/video/preview":
+		allowed = "GET, POST, PUT, DELETE"
+		switch r.Method {
+		case http.MethodGet:
+			handler = s.serveVisualVideoPreview
+		case http.MethodPost:
+			handler = s.prepareVisualVideoLoop
+		case http.MethodPut:
+			handler = s.acceptVisualVideoLoop
+		case http.MethodDelete:
+			handler = s.discardVisualVideoPreview
 		}
 	case "/visual/poster":
 		allowed = "GET"
@@ -264,51 +282,4 @@ func (s *server) importVisualBackground(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeVisual(w, settings, warning)
-}
-
-// Video bytes stream directly into the native private staging directory. Only
-// bounded settings travel in the header; filenames/MIME are never storage paths
-// or codec evidence. This avoids a second 128 MiB multipart buffer or temp copy.
-func (s *server) importVisualVideo(w http.ResponseWriter, r *http.Request) {
-	if !s.importMu.TryLock() {
-		visualError(w, visual.ErrBusy)
-		return
-	}
-	defer s.importMu.Unlock()
-	var settings struct {
-		Darkness     int                    `json:"darkness"`
-		Framing      data.BackgroundFraming `json:"framing"`
-		SpeedPercent int                    `json:"speedPercent"`
-		UserPaused   bool                   `json:"userPaused"`
-	}
-	headers := r.Header.Values("X-Background-Settings")
-	if len(headers) != 1 || len(headers[0]) > maxVisualSettingsBytes {
-		http.Error(w, "Invalid visual settings.", http.StatusBadRequest)
-		return
-	}
-	decoder := json.NewDecoder(strings.NewReader(headers[0]))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&settings) != nil || decoder.Decode(new(any)) != io.EOF {
-		http.Error(w, "Invalid visual settings.", http.StatusBadRequest)
-		return
-	}
-	// Request cancellation alone does not interrupt a blocked HTTP body Read.
-	// Bound staging on the connection as well as subprocess work, and honor an
-	// earlier owner deadline. Real net/http writers support this controller;
-	// recorder-only handler tests do not have a connection deadline to set.
-	deadline := time.Now().Add(visual.MaxVideoProcessingTime)
-	if ownerDeadline, ok := r.Context().Deadline(); ok && ownerDeadline.Before(deadline) {
-		deadline = ownerDeadline
-	}
-	if err := http.NewResponseController(w).SetReadDeadline(deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
-		visualError(w, err)
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, visual.MaxVideoBytes)
-	selected, warning, err := s.visual.ImportVideo(r.Context(), r.Body, settings.Darkness, settings.Framing, settings.SpeedPercent, settings.UserPaused)
-	if err != nil {
-		visualError(w, err)
-		return
-	}
-	writeVisual(w, selected, warning)
 }

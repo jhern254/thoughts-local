@@ -162,7 +162,10 @@ func (s *Service) commitBackground(ctx context.Context, previous, settings data.
 	return settings, removeAsset(root, previous.BackgroundAsset), nil
 }
 
-func (s *Service) ImportVideo(ctx context.Context, input io.Reader, darkness int, framing data.BackgroundFraming, speedPercent int, userPaused bool) (data.Visual, bool, error) {
+// ApplyPreparedVideo commits the exact validated preview bytes without invoking
+// media tools. The editor retains the temporary handle through the save, then
+// closes it; failed saves leave both it and the selected background usable.
+func (s *Service) ApplyPreparedVideo(ctx context.Context, prepared *PreparedVideo, darkness int, framing data.BackgroundFraming, speedPercent int, userPaused bool) (data.Visual, bool, error) {
 	if !s.tryAcquire() {
 		return data.Visual{}, false, ErrBusy
 	}
@@ -180,7 +183,14 @@ func (s *Service) ImportVideo(ctx context.Context, input io.Reader, darkness int
 	if err != nil {
 		return data.Visual{}, false, err
 	}
-	body, poster, err := prepareVideo(ctx, input)
+	if prepared == nil || prepared.directory == "" {
+		return data.Visual{}, false, ErrVideo
+	}
+	body, err := readBoundedVideoAsset(filepath.Join(prepared.directory, "display.mp4"), MaxStoredVideoBytes)
+	if err != nil {
+		return data.Visual{}, false, err
+	}
+	poster, err := readBoundedVideoAsset(filepath.Join(prepared.directory, "poster.jpg"), MaxImageBytes)
 	if err != nil {
 		return data.Visual{}, false, err
 	}

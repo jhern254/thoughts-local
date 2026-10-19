@@ -6,12 +6,10 @@ import {createHash} from 'node:crypto';
 
 export async function measureVideoInteractions({page, cdp, url, videoFixturePath, output, add, usage, count, openVisual, chooseImage, clickControl}) {
   const source = readFileSync(videoFixturePath);
-  const framing = {fit:'fill', zoom:100, positionX:5000, positionY:5000};
-  const origin = new URL(url).origin;
-  const imported = await page.request.post(`${url}/visual/video`, {
-    headers:{Origin:origin, 'X-Background-Settings':JSON.stringify({darkness:70, framing, speedPercent:100, userPaused:false})}, data:source
-  });
-  if (!imported.ok()) throw new Error(`Synthetic video import failed: HTTP ${imported.status()}`);
+  await openVisual(page);
+  await chooseImage(page,{name:'synthetic-interaction.mp4',mimeType:'video/mp4',buffer:source});
+  await clickControl(page,'Apply');
+  await expect(page.locator('.xterm-rows')).not.toContainText('Background darkness:');
   const prepared = await (await page.request.get(`${url}/visual/background`)).body();
   const poster = await (await page.request.get(`${url}/visual/poster`)).body();
   add({phase:'interaction-fixture', sourceBytes:source.length, sourceSHA256:createHash('sha256').update(source).digest('hex'), preparedSHA256:createHash('sha256').update(prepared).digest('hex')});

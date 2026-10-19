@@ -35,6 +35,7 @@ const (
 
 type server struct {
 	audioSession         *audioSession
+	videoEditor          *videoEditor
 	audioConsumerFactory PCMConsumerFactory
 	newModel             func(context.Context) tea.Model
 	visual               *visual.Service
@@ -42,7 +43,7 @@ type server struct {
 	authority            string
 	ctx                  context.Context
 	mu                   sync.Mutex
-	// importMu admits one image import at a time to bound parsing/decoding memory;
+	// importMu admits one media import/preparation at a time to bound decoding work;
 	// handlers use TryLock to reject concurrent imports rather than queue them.
 	importMu sync.Mutex
 	closing  bool
@@ -137,7 +138,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
-	if r.URL.Path == "/visual" || r.URL.Path == "/visual/background" || r.URL.Path == "/visual/settings" || r.URL.Path == "/visual/video" || r.URL.Path == "/visual/poster" {
+	if r.URL.Path == "/visual" || r.URL.Path == "/visual/background" || r.URL.Path == "/visual/settings" || r.URL.Path == "/visual/video" || r.URL.Path == "/visual/poster" || r.URL.Path == "/visual/video/source" || r.URL.Path == "/visual/video/preview" {
 		s.mu.Lock()
 		if s.closing {
 			s.mu.Unlock()
@@ -239,8 +240,10 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	size := messages[0].(tea.WindowSizeMsg)
 	audioSession := newAudioSessionWithFactory(ctx, s.audioConsumerFactory)
+	videoEditor := newVideoEditor(ctx)
 	s.mu.Lock()
 	s.audioSession = audioSession
+	s.videoEditor = videoEditor
 	s.mu.Unlock()
 	writer := &terminalWriter{ctx: ctx, conn: conn, cancel: cancel}
 	guard := tui.NewSession(ctx, cancel, func(ctx context.Context) tea.Model {
@@ -248,7 +251,7 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 		if _, ok := model.(interface{ VoiceState() thoughts.VoiceState }); ok {
 			model = voiceBridgeModel{Model: model, writer: writer, audioSession: audioSession}
 		}
-		return optionsBridgeModel{Model: model, writer: writer}
+		return optionsBridgeModel{Model: model, writer: writer, videoEditor: videoEditor}
 	})
 	program := newProgram(ctx, guard, writer, size)
 	audioSession.startDelivery(program.Send)
@@ -278,9 +281,15 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 	cancel()
 	guard.Stop()
 	audioSession.close()
+	if cleanupErr := videoEditor.Close(); cleanupErr != nil {
+		if category, emit := failure.Classify(logging.TUIRun, cleanupErr); emit {
+			s.logger.Failure(logging.TUIRun, category)
+		}
+	}
 	s.mu.Lock()
 	if s.audioSession == audioSession {
 		s.audioSession = nil
+		s.videoEditor = nil
 	}
 	s.mu.Unlock()
 	// Editing has stopped. Release admission before announcing quit so a client

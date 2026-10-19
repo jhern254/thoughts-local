@@ -584,3 +584,150 @@ geometry/frame counters, so future 1080p work can reuse it. Current stored bound
 remain 720p-class; an uploaded 1080p source still becomes a bounded 720p-class
 derivative. These results do not establish 1080p readiness. No long one-time
 import benchmark was repeated because the media pipeline did not change.
+
+## New-upload trimming (2026-10-16)
+
+The trimming implementation is `0b70c98bd5f0b8e7cdbde7017bd75443401ee5fb`,
+on merge-base `357737d`. Native timing used the same implementation before its
+commit; subsequent changes concerned control/ownership checks and documentation,
+not the measured encoder or persistence pipeline. These are one-time import
+measurements, not recurring playback or 1080p evidence.
+
+A source can be 1–120 seconds; selected footage remains 1–30 seconds. The existing
+128 MiB / 4096-axis / 9MP / 60 FPS / four-billion whole-source pixel budget still
+applies. Stored quality, 720p-class bounds and 24 FPS cap are unchanged. Only an
+explicit Preview loop encodes. Draft cut changes keep the last acknowledged loop;
+Done/Apply use that loop, not unpreviewed markers. Apply copies its exact video
+and poster bytes, without starting FFmpeg. An identical Preview request reuses
+that editor's acknowledged files and decoded player. This is temporary edit
+ownership, not an application playback cache or an original archive.
+
+### Native import phases
+
+Reference machine: Intel i5-8250U, eight logical CPUs, Linux amd64, Go 1.25.14,
+FFmpeg/ffprobe 6.1.1. Synthetic `testsrc2`, 1280×720, 24 FPS, SDR Rec.709 sources
+were generated before timing. The 30-second fixture is 8,913,407 bytes (SHA-256
+`670bbb738fe532b2175d95eb9fe5b61503c2b98f31eb700c9d4237a27ff16b23`);
+the two-minute source is 35,503,362 bytes. No other test/build/probe ran during
+these measurements. Each revision was compiled separately; timing used the test
+binaries, excluding Go compilation. Medians of three one-iteration runs:
+
+| Same 30-second full preparation | ns/op | Go B/op | Go allocs/op |
+| --- | ---: | ---: | ---: |
+| Merge-base | 9,748,841,364 | 73,217,488 | 769 |
+| Trimming pipeline | 9,271,491,610 | 20,958,744 | 762 |
+| Observed change | −4.9% | −71.4% | −0.9% |
+
+The retained result is file-backed rather than a pair of Go byte slices. FFmpeg
+still performs essentially the same encoding work. Do not interpret three runs
+as statistical significance or a general CPU speedup. GNU time maximum RSS was
+119,928 versus 119,940 KiB: effectively unchanged. This is the largest individual
+process peak reported for the command, not summed simultaneous app/child memory.
+Go allocation figures do not include FFmpeg allocations.
+
+| Two-minute source; ten-second prepared loops | ns/op | Go B/op | Go allocs/op |
+| --- | ---: | ---: | ---: |
+| Stage/validate once | 88,247,937 | 110,472 | 301 |
+| Preview 0–10s | 3,380,172,890 | 20,844,392 | 464 |
+| Preview 60–70s | 3,780,644,832 | 20,844,632 | 460 |
+| Preview 110–120s | 3,624,381,809 | 20,843,160 | 456 |
+| Apply prepared 0–10s | 25,761,488 | 17,004,696 | 81 |
+
+Apply uses the existing file-write/fsync boundary and an in-memory settings store
+in this native benchmark; real SQLite/UI persistence is included below. It still
+uses bounded transient buffers to call that boundary. Phase-command maximum RSS
+was 120,072 KiB. Late seeking decodes a bounded preceding GOP; it does not encode
+the preceding source footage. No processor runs while merely moving cut points.
+
+Reproduce with synthetic fixtures of the stated geometry/duration:
+
+```sh
+THOUGHTS_VIDEO_BENCH_FIXTURE=/tmp/source-30.mp4 go test ./internal/visual \
+  -run '^$' -bench '^BenchmarkPrepareVideo$' -benchmem -count=3 -benchtime=1x
+THOUGHTS_VIDEO_BENCH_FIXTURE=/tmp/source-120.mp4 go test ./internal/visual \
+  -run '^$' -bench '^BenchmarkVideoTrim$' -benchmem -count=3 -benchtime=1x
+```
+
+### Browser import and reuse
+
+The existing disposable stress host (721 Events / 20,000 Thoughts) and headed
+Brave 148.0.7778.217 at 1920×1080 measured five imports of the same 30-second clip.
+The imported image control remains the existing synthetic 1200×850 PNG. The
+probe's import-only mode now skips the unrelated long idle/navigation matrix for
+video as well as images. Medians:
+
+| Operation | ms |
+| --- | ---: |
+| Choose/upload + first explicit preparation + return to Visual | 12,927.8 |
+| Explicit identical-cut preview reuse | 631.4 |
+| Apply → returned TUI and visible selected player | 353.2 |
+| Decoded-poster activation within Apply | 11.5 |
+
+These include picker/control automation and terminal repaint. They are not raw
+HTTP or decoder timings. Preview now includes the native encode that older
+versions deferred to Apply; the old raw-file preview is not an equivalent task.
+Settings-only reuse remains separate from import. Browser summed RSS/PSS at the
+five video completions had medians 962.7/460.4 MiB (RSS range 916.2–993.8 MiB);
+app RSS median was 57.3 MiB. Shared browser pages are counted in RSS. This is not
+a claim of constant memory or a leak proof; the focused tests independently
+check URL/player retirement.
+
+Use the existing probe with `THOUGHTS_PERF_IMPORT_ONLY=1` and
+`THOUGHTS_PERF_VIDEO_FIXTURE=/tmp/source-30.mp4`. It records identical-cut reuse
+separately. Transient fixtures, raw native results, JSON, host source and logs
+are under `/tmp/thoughts-trim-measurements`; visual captures are under `/tmp`.
+The previously recorded recurring playback budgets and missed targets above
+remain prior evidence, not new guarantees from these import measurements.
+
+### Recurring interaction smoke
+
+A **single** existing interaction-probe run at `0b70c98` used a synthetic
+1280×720 / 24 FPS / 8.083-second clip, static control from its exact poster,
+paused video, and playing video. Desktop 1200×850 and narrow 650×600 traversed
+the full day's Events and all 200 Thoughts in the ongoing Event, in both
+directions, plus expansion/collapse and day navigation. The selected file's
+identity is recorded in `interactions-smoke.json`. This is workload validation,
+not a repeated before/after comparison or a statistical regression conclusion.
+
+| Desktop p95, ms | Static | Paused | Playing 100% |
+| --- | ---: | ---: | ---: |
+| Full-day Event selection | 27.3 | 28.4 | 24.2 |
+| Expansion/collapse | 40.6 | 30.7 | 42.3 |
+| Full 200-Thought traversal | 45.4 | 31.0 | 34.2 |
+| Day navigation | 32.2 | 31.4 | 48.6 |
+| All Thoughts round trip | 32.0 | 29.7 | 15.1 |
+
+Eight-second idle windows reported browser CPU 1.49% static, 1.61% paused and
+27.30% playing; native CPU was 2.11%, 1.98% and 2.11%, respectively, relative to
+one logical CPU. **The additional CPU target below 10% was missed** (+25.81
+points). The day-navigation p95 difference also exceeded 10 ms in this one pass;
+it does not establish that the difference is repeatable or caused by trimming.
+The earlier five-run evidence and its variability above remain relevant.
+Brave reported `VaapiVideoDecoder` / platform decoding; this does not attribute
+all CPU to decoding or prove GPU activity from browser capability alone. The
+playing sequence's frame counters reported 701 frames and zero dropped frames.
+
+This follow-up did not change encoding quality, playback speed defaults or
+terminal rendering to chase those numbers. Pausing, selecting a smaller or
+lower-FPS source, slower playback, or retaining an image remain the simple
+tradeoffs. It does not establish 1080p readiness. Desktop/narrow trim and main
+UI captures were inspected; no compositor fix is claimed. Chromium/Firefox
+image, voice, clipboard, framing and video acceptance passed (70 cases, four
+fixture-specific onboarding skips), followed by two onboarding-enabled Visual
+cases and a fresh four-case trim/retirement check. Those checks are functional
+acceptance, not CPU benchmarks.
+
+The same single-pass narrow p95s were:
+
+| 650×600 p95, ms | Static | Paused | Playing 100% |
+| --- | ---: | ---: | ---: |
+| Full-day Event selection | 21.0 | 41.8 | 27.5 |
+| Expansion/collapse | 41.3 | 32.3 | 41.4 |
+| Full 200-Thought traversal | 26.8 | 41.2 | 27.6 |
+| Day navigation | 26.9 | 46.9 | 32.4 |
+
+After measurement, `ab79197` added a constant-time output postcondition: a valid
+prepared file must also match the requested span within one frame (plus timestamp
+rounding). This rejects incomplete processor output; it does not change the
+encoder, scaling, seeking, file copies or playback. Its focused native timing
+regressions pass; the long benchmarks were not repeated for that comparison.

@@ -1,6 +1,6 @@
 # Media handling and privacy policy
 
-**Status:** Agreed architectural direction. Image background implementation originated in PR #72; bounded looping video extends the same display-copy policy. General attachments, trimming, vault encryption, sync, and external AI disclosure remain future work.
+**Status:** Agreed architectural direction. Image background implementation originated in PR #72; bounded looping video extends the same display-copy policy. General attachments, vault encryption, sync, and external AI disclosure remain future work.
 
 **Decision date:** 2026-10-13
 
@@ -89,9 +89,9 @@ data streams, chapters, source location/device/date metadata and comments are
 not retained. Display rotation is normalized into frames; only supported SDR
 color interpretation and necessary playback/container information remain.
 
-Source limits are 128 MiB, 1–30 seconds, 4,096 pixels per axis, 9 million pixels
+Source limits are 128 MiB, 1–120 seconds, 4,096 pixels per axis, 9 million pixels
 per frame and 60 FPS, with an aggregate four-billion-pixel processing budget.
-Stored output uses even dimensions, square pixels, at most 1,280 pixels per axis,
+Selected footage is 1–30 seconds. Stored output uses even dimensions, square pixels, at most 1,280 pixels per axis,
 921,600 pixels per frame, 24 FPS and 16 MiB. Re-encoding is lossy. Untagged SDR
 is interpreted as Rec.709; explicit incompatible primaries/transfer, ICC video
 profiles, HDR/HEVC, encrypted/fragmented/reference movies, arbitrary display
@@ -109,8 +109,15 @@ preview exclusivity and playback failure are browser lifecycle conditions, never
 saved pause preferences. A stable poster covers loading, buffering, pause and
 failure. No frames travel through the terminal or WebSocket. Local video/poster
 assets and staging files are not encrypted; crashes can leave unselected files.
-Future vault work must include these assets. No attachment originals or video
-trimming are introduced by this background feature.
+Future vault work must include these assets. New-upload trimming temporarily
+retains one privately staged source while Visual is open; Apply, Cancel, closing
+Visual, disconnect and orderly shutdown remove it after joining processing.
+It is not an archive; saved clips have no retained source or re-trim metadata.
+A crash can leave staging files, as with other incomplete filesystem operations.
+Only explicit Preview loop encodes; Apply saves the last acknowledged prepared
+video and poster unchanged. Draft cut edits do not replace that accepted loop.
+At 25% speed, a 30-second clip plays for 120 seconds without storing more frames.
+No attachment originals are introduced by this feature.
 
 ## Storage, processing, and replacement safety
 
