@@ -291,7 +291,7 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 	// disabled external references and the preflight dref check complement the
 	// protocol allowlist; none of them constitute OS-level filesystem isolation.
 	args := []string{
-		"-nostdin", "-hide_banner", "-loglevel", "error",
+		"-nostdin", "-hide_banner", "-loglevel", "error", "-xerror",
 		"-max_alloc", strconv.Itoa(maxVideoAllocation), "-threads", "1", "-filter_threads", "1",
 		"-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-export_all", "0",
 		"-max_pixels", strconv.Itoa(videoDecoderPixelLimit(stream.Width, stream.Height)), "-ss", videoSeconds(trim.StartMS), "-noaccurate_seek", "-i", source,
