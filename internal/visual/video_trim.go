@@ -133,6 +133,7 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 // Trim records the requested source interval; DurationMS records the validated
 // whole-frame output duration, which can differ by at most one frame.
 type PreparedVideoInfo struct {
+	FrameCount   int64          `json:"frameCount"`
 	VideoQuality VideoQuality   `json:"videoQuality"`
 	FrameRate    VideoFrameRate `json:"frameRate"`
 	Trim         VideoTrim      `json:"trim"`

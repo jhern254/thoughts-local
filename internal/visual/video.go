@@ -280,10 +280,9 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 	}
 	limits := plan.Limits
 	width, height := plan.Width, plan.Height
-	// Keep preroll visible to the first filter. Its frame counter precedes timestamp
-	// trimming and FPS reduction, so inaccurate/VFR timestamps cannot evade the work
-	// budget. Exhausting it produces incomplete output, rejected below.
-	sourceFrameLimit := int64(maxVideoDecodedPixels) / (int64(stream.Width) * int64(stream.Height))
+	// Both pixel work and frame count remain finite even for tiny frames or
+	// malformed timestamps. The first filter counts preroll before trimming.
+	sourceFrameLimit := min(int64(maxVideoDecodedPixels)/(int64(stream.Width)*int64(stream.Height)), int64(MaxVideoSourceDuration*MaxVideoFPS))
 	output := filepath.Join(directory, "display.mp4")
 	if err := os.WriteFile(output, nil, 0600); err != nil {
 		return nil, err
@@ -295,10 +294,10 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 		"-nostdin", "-hide_banner", "-loglevel", "error",
 		"-max_alloc", strconv.Itoa(maxVideoAllocation), "-threads", "1", "-filter_threads", "1",
 		"-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-export_all", "0",
-		"-max_pixels", strconv.Itoa(MaxVideoPixels), "-ss", videoSeconds(trim.StartMS), "-noaccurate_seek", "-i", source,
+		"-max_pixels", strconv.Itoa(videoDecoderPixelLimit(stream.Width, stream.Height)), "-ss", videoSeconds(trim.StartMS), "-noaccurate_seek", "-i", source,
 		"-map", fmt.Sprintf("0:%d", stream.Index), "-an", "-sn", "-dn",
 		"-map_metadata", "-1", "-map_metadata:s:v", "-1", "-map_chapters", "-1", "-t", videoSeconds(trim.EndMS - trim.StartMS), "-frames:v", strconv.FormatInt(plan.FrameCount, 10),
-		"-vf", fmt.Sprintf("trim=end_frame=%d,trim=start=0:end=%s,setpts=PTS-STARTPTS,scale=%d:%d:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,setsar=1,fps=%s", sourceFrameLimit, videoSeconds(trim.EndMS-trim.StartMS), width, height, plan.FrameRate.String()),
+		"-vf", fmt.Sprintf("metadata=mode=add:key=thoughts.frame:value=1,metadata=mode=print:key=thoughts.frame:file='pipe\\:1':direct=1,trim=start=0:end=%s,setpts=PTS-STARTPTS,scale=%d:%d:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,setsar=1,fps=%s", videoSeconds(trim.EndMS-trim.StartMS), width, height, plan.FrameRate.String()),
 		"-c:v", "libx264", "-threads", "1", "-pix_fmt", "yuv420p", "-profile:v", "baseline", "-level:v", fmt.Sprintf("%d.%d", plan.Level/10, plan.Level%10), "-refs", "1", "-bf", "0",
 		"-preset", "veryfast", "-crf", "23", "-maxrate", strconv.FormatInt(limits.MaxBitrate, 10), "-bufsize", strconv.FormatInt(limits.MaxBitrate*2, 10), "-g", strconv.FormatInt((plan.FrameRate.Numerator*2+plan.FrameRate.Denominator-1)/plan.FrameRate.Denominator, 10),
 		"-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv",
@@ -306,8 +305,20 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 		"-fs", strconv.Itoa(limits.MaxBytes), "-y", output,
 	}
 
-	if err := runVideoTool(ctx, ffmpeg, io.Discard, args...); err != nil {
+	encodeCtx, cancelEncode := context.WithCancel(ctx)
+	defer cancelEncode()
+	budget := videoDecodeBudget{cancel: cancelEncode, maxFrames: sourceFrameLimit}
+	if err := runVideoTool(encodeCtx, ffmpeg, &budget, args...); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if budget.err != nil {
+			return nil, budget.err
+		}
 		return nil, err
+	}
+	if budget.frames == 0 || len(budget.line) != 0 || budget.wantValue {
+		return nil, ErrVideo
 	}
 	prepared, err := probeVideo(ctx, ffprobe, output)
 	if err != nil {
@@ -331,10 +342,10 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 	if err != nil {
 		return nil, err
 	}
-	if err = runVideoTool(ctx, ffmpeg, io.Discard, "-nostdin", "-v", "error", "-xerror", "-max_alloc", strconv.Itoa(maxVideoAllocation), "-threads", "1", "-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-max_pixels", strconv.Itoa(videoDecoderPixelLimit(width, height)), "-i", output, "-map", "0:v:0", "-an", "-sn", "-dn", "-f", "null", "-"); err != nil {
+	if err := validateVideoPackets(ctx, ffprobe, output, plan); err != nil {
 		return nil, err
 	}
-	if err := validateVideoPackets(ctx, ffprobe, output, plan); err != nil {
+	if err := validateVideoDecode(ctx, ffmpeg, output, plan); err != nil {
 		return nil, err
 	}
 	poster, err := prepareVideoPoster(ctx, ffmpeg, output, directory, prepared)
@@ -355,6 +366,7 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 		directory: directory,
 		info: PreparedVideoInfo{
 			Trim:         trim,
+			FrameCount:   plan.FrameCount,
 			DurationMS:   int64(math.Round(duration * 1000)),
 			VideoQuality: quality,
 			FrameRate:    plan.FrameRate,

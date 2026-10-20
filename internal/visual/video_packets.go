@@ -69,3 +69,28 @@ func validatePreparedPackets(packets string, plan videoOutputPlan) error {
 	}
 	return nil
 }
+
+// Count frames from the full independent decode, bounded one frame beyond the
+// admitted packet count. This also catches truncated data or a misleading MP4
+// sample count without allowing verification to become an unbounded decode.
+func validateVideoDecode(ctx context.Context, ffmpeg, path string, plan videoOutputPlan) error {
+	var progress videoProbeBuffer
+	args := []string{"-nostdin", "-v", "error", "-xerror", "-max_alloc", strconv.Itoa(maxVideoAllocation), "-threads", "1", "-filter_threads", "1", "-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-max_pixels", strconv.Itoa(videoDecoderPixelLimit(plan.Width, plan.Height)), "-i", path, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", "trim=end_frame=" + strconv.FormatInt(plan.FrameCount+1, 10), "-progress", "pipe:1", "-nostats", "-f", "null", "-"}
+	if err := runVideoTool(ctx, ffmpeg, &progress, args...); err != nil {
+		return err
+	}
+	count := int64(-1)
+	for _, line := range strings.Split(progress.String(), "\n") {
+		if value, ok := strings.CutPrefix(line, "frame="); ok {
+			parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+			if err != nil {
+				return ErrVideo
+			}
+			count = parsed
+		}
+	}
+	if count != plan.FrameCount {
+		return ErrVideo
+	}
+	return nil
+}

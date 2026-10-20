@@ -2,6 +2,7 @@ package visual
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"os"
 	"os/exec"
@@ -29,11 +30,19 @@ func TestVideoQuality_EncodedStreams(t *testing.T) {
 		{"1080p60", "1920x1080", "60", VideoQualityMaximum, 1920, 1080, 42},
 		{"portrait", "1080x1920", "30", VideoQualityHigh, 1080, 1920, 40},
 		{"efficient ceiling", "1920x1080", "60", VideoQualityEfficient, 1280, 720, 31},
+		{"fractional without upscaling", "1280x720", "24000/1001", VideoQualityMaximum, 1280, 720, 32},
+		{"odd display width", "854x480", "24", VideoQualityEfficient, 852, 480, 31},
+		{"padded macroblock rate", "1228x750", "60", VideoQualityMaximum, 1228, 750, 40},
+		{"padded macroblock frame", "1846x1122", "30", VideoQualityHigh, 1846, 1122, 42},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "source.mp4")
-			command := exec.CommandContext(t.Context(), "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size="+tc.size+":rate="+tc.rate+":duration=1.25", "-c:v", "libx264", "-threads", "1", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv", "-movflags", "+faststart", "-y", path)
+			aspect := "1"
+			if tc.name == "odd display width" {
+				aspect = "1000/1001"
+			}
+			command := exec.CommandContext(t.Context(), "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size="+tc.size+":rate="+tc.rate+":duration=1.25", "-vf", "setsar="+aspect+":max=10000", "-c:v", "libx264", "-threads", "1", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv", "-movflags", "+faststart", "-y", path)
 			if output, err := command.CombinedOutput(); err != nil {
 				t.Fatalf("fixture: %v %s", err, output)
 			}
@@ -93,6 +102,49 @@ func TestVideoQuality_EncodedStreams(t *testing.T) {
 }
 
 func TestVideoQuality_LongSource(t *testing.T) {
+	t.Run("excessive preroll cannot bypass the frame decoding budget", func(t *testing.T) {
+		for _, tool := range []string{"ffmpeg", "ffprobe"} {
+			if _, err := exec.LookPath(tool); err != nil {
+				t.Skip("video tools not installed")
+			}
+		}
+		scratch := t.TempDir()
+		t.Setenv("TMPDIR", scratch)
+		path := filepath.Join(t.TempDir(), "long-gop.mp4")
+		args := []string{"-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=1920x1080:r=60:d=35", "-c:v", "libx264", "-threads", "1", "-preset", "ultrafast", "-g", "2100", "-keyint_min", "2100", "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-y", path}
+		if output, err := exec.CommandContext(t.Context(), "ffmpeg", args...).CombinedOutput(); err != nil {
+			t.Fatalf("fixture: %v %s", err, output)
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		source, err := StageVideo(t.Context(), file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer source.Close()
+		if prepared, err := source.Prepare(t.Context(), VideoTrim{StartMS: 33000, EndMS: 34500}, VideoQualityMaximum); !errors.Is(err, ErrVideo) {
+			if prepared != nil {
+				prepared.Close()
+			}
+			t.Fatalf("unbounded preroll: got %v, want rejection", err)
+		}
+		entries, err := os.ReadDir(scratch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 {
+			t.Fatalf("staged directories after failed preview=%d, want only retained source", len(entries))
+		}
+		accepted, err := source.Prepare(t.Context(), VideoTrim{EndMS: 1000}, VideoQualityEfficient)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer accepted.Close()
+	})
+
 	t.Run("stages two minute 1080p60 source and prepares late short interval", func(t *testing.T) {
 		for _, tool := range []string{"ffmpeg", "ffprobe"} {
 			if _, err := exec.LookPath(tool); err != nil {
