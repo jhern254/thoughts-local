@@ -22,7 +22,7 @@ const (
 	aliasRemove
 )
 
-// Reserve the title/primary block, section heading, feedback, and wrapped help;
+// Reserve the heading/Subject block, section heading, feedback, and wrapped help;
 // the Bubbles list pages aliases within the remaining terminal rows.
 const subjectAliasReservedRows = 9
 
@@ -289,10 +289,9 @@ func (m Model) updateSubjectAliases(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) viewSubjectAliases() string {
 	state := m.subjects.aliases
 	width := max(1, m.width)
-	titleStyle := m.subjects.list.Styles.Title
-	heading := titleStyle.Render(ansi.Truncate("Names & Aliases — "+m.subjects.selected.SubjectName, max(1, width-titleStyle.GetHorizontalFrameSize()), "…"))
-	primaryLabel := "  Primary"
-	primary := ansi.Truncate(m.subjects.selected.SubjectName, max(1, width-ansi.StringWidth(primaryLabel)), "…") + primaryLabel
+	heading := ansi.Truncate("Names & Aliases", width, "…")
+	subjectStyle := m.subjects.list.Styles.Title
+	subjectName := subjectStyle.Render(ansi.Truncate(m.subjects.selected.SubjectName, max(1, width-subjectStyle.GetHorizontalFrameSize()), "…"))
 	status := ""
 	if state.loading {
 		status = "Loading…"
@@ -300,7 +299,7 @@ func (m Model) viewSubjectAliases() string {
 	if state.err != nil {
 		status = state.errMessage
 	}
-	content, help := "Aliases\n"+state.list.View(), "Enter: add/edit • d: remove • Q/Esc: back"
+	content, help := "Aliases for subject:\n"+state.list.View(), "Enter: add/edit • d: remove • Q/Esc: back"
 	switch state.mode {
 	case aliasEdit:
 		label := "Add alias"
@@ -316,5 +315,5 @@ func (m Model) viewSubjectAliases() string {
 	// Wrap feedback/help independently of the paged list so narrow terminals
 	// retain the same vertical controls without overflowing long names.
 	style := lipgloss.NewStyle().Width(width)
-	return heading + "\n\n" + primary + "\n\n" + style.Render(content) + "\n" + style.Render(status) + "\n" + style.Render(help)
+	return heading + "\n\n" + subjectName + "\n\n" + style.Render(content) + "\n" + style.Render(status) + "\n" + style.Render(help)
 }

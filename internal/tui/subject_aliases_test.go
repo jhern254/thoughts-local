@@ -53,7 +53,7 @@ func aliasTestModel(t *testing.T) Model {
 }
 
 func TestSubjectModel_Aliases(t *testing.T) {
-	t.Run("opens the primary and empty alias list and returns without resetting thoughts", func(t *testing.T) {
+	t.Run("highlights the Subject below the heading and returns without resetting thoughts", func(t *testing.T) {
 		model := aliasTestModel(t)
 		thoughtService := thought.NewService(testutils.NewFakeThoughtStore())
 		subjectID := model.subjects.selected.SubjectID
@@ -72,13 +72,21 @@ func TestSubjectModel_Aliases(t *testing.T) {
 		before := model.thoughts.View()
 		model = runAliasDataCommand(t, model, runeKey('a'))
 		view := ansi.Strip(model.View().Content)
-		for _, label := range []string{"Names & Aliases", "Go Programming", "Primary", "+ Add alias"} {
+		for _, label := range []string{"Names & Aliases", "Go Programming", "Aliases for subject:", "+ Add alias"} {
 			if !strings.Contains(view, label) {
 				t.Fatalf("alias view: got %q, want %q", view, label)
 			}
 		}
-		if lines := strings.Split(view, "\n"); len(lines) < 5 || strings.TrimSpace(lines[4]) != "Aliases" {
-			t.Fatalf("alias section: got %q, want a distinct Aliases heading", view)
+		lines := strings.Split(view, "\n")
+		if len(lines) < 6 || strings.TrimSpace(lines[0]) != "Names & Aliases" || strings.TrimSpace(lines[2]) != "Go Programming" || strings.TrimSpace(lines[4]) != "Aliases for subject:" {
+			t.Fatalf("alias layout: got %q, want heading, Subject, then alias section on separate rows", view)
+		}
+		if strings.Contains(view, "Primary") {
+			t.Fatalf("alias layout: got %q, want no Primary label", view)
+		}
+		styledSubject := model.subjects.list.Styles.Title.Render("Go Programming")
+		if styledSubject == ansi.Strip(styledSubject) || !strings.Contains(model.View().Content, styledSubject) {
+			t.Fatalf("Subject style: got %q, want the existing title color block %q", model.View().Content, styledSubject)
 		}
 		if model.screen != screenSubjectAliases {
 			t.Fatalf("screen: got %v, want aliases", model.screen)
