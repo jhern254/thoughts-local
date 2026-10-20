@@ -57,7 +57,7 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   await clickControl(page,'Start: 0.00s');await page.keyboard.press('Enter');
   await clickControl(page,'End: 30.00s');await page.keyboard.press('End');
   await clickControl(page,'Preview loop');
-  await expect(screen(page)).toContainText('Previewed: 57.00–60.00s');
+  await expect(screen(page)).toContainText('Range: 57.00–60.00s');
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(false);
   expect(await page.locator('#background-preview-video').evaluate(video=>video.duration)).toBe(3);
   // Capture the actual fetched bytes before they become a media blob.
@@ -74,7 +74,7 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   });
   await clickControl(page,'Preview loop');
   await expect(screen(page)).toContainText('Could not load or apply.');
-  await expect(screen(page)).toContainText('Previewed: 57.00–60.00s');
+  await expect(screen(page)).toContainText('Range: 57.00–60.00s');
   expect(await page.locator('#background-preview-video').evaluate(video=>video.duration)).toBe(3);
   await page.unroute('**/visual/video/preview');
   await page.setViewportSize({width:650,height:600});
@@ -130,7 +130,7 @@ test('disconnect retires an editor and its prepared URLs without changing the se
   const editorID=(await staged).headers()['x-visual-editor'];
   // Keep the initial preview short; no source is retained once the session ends.
   await clickControl(page,'End: 30.00s');await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
-  await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Previewed: 0.00–1.00s');
+  await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Range: 0.00–1.00s');
   await page.emulateMedia({reducedMotion:'reduce'});
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(true);
   await page.evaluate(()=>window.trimSocket.close());

@@ -44,7 +44,7 @@ func TestModel_Options(t *testing.T) {
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Darkness: 70})
-		for _, label := range []string{"Choose image or video", "Background fit: Fill", "Adjust framing", "Background darkness: 70%", "Apply", "Remove background", "Back"} {
+		for _, label := range []string{"Choose image or video", "Background fit: Fill", "Adjust framing", "Background darkness: 70%", "Video quality: Efficient (720p30)", "Apply", "Remove background", "Back"} {
 			if !strings.Contains(m.View().Content, m.subjects.list.Styles.Title.Render(label)) {
 				t.Fatalf("%q does not use the entity highlight", label)
 			}
@@ -52,8 +52,8 @@ func TestModel_Options(t *testing.T) {
 		}
 		rows := strings.Split(ansi.Strip(m.View().Content), "\n")
 		for i, label := range []string{"Apply", "Remove background", "Back"} {
-			if got := strings.TrimSpace(rows[22+i]); got != label {
-				t.Fatalf("row %d = %q, want %q", 22+i, got, label)
+			if got := strings.TrimSpace(rows[23+i]); got != label {
+				t.Fatalf("row %d = %q, want %q", 23+i, got, label)
 			}
 		}
 		if strings.Contains(ansi.Strip(m.View().Content), "[") {
@@ -106,6 +106,7 @@ func TestModel_Options(t *testing.T) {
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Darkness: 70})
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
@@ -173,7 +174,7 @@ func TestModel_VideoOptions(t *testing.T) {
 				t.Fatalf("row %d got %q, want %q", 19+index, got, text)
 			}
 		}
-		for range 4 {
+		for range 5 {
 			m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyDown})
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyLeft})

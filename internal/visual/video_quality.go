@@ -6,13 +6,15 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/jhern254/go-thoughts/internal/data"
 )
 
 // VideoQuality selects preparation ceilings, never the properties of an existing asset.
 type VideoQuality string
 
 const (
-	VideoQualityEfficient VideoQuality = "efficient"
+	VideoQualityEfficient VideoQuality = data.DefaultVideoQuality
 	VideoQualityHigh      VideoQuality = "high"
 	VideoQualityMaximum   VideoQuality = "maximum"
 )
@@ -30,16 +32,37 @@ type videoQualityLimits struct {
 func (quality VideoQuality) limits() (videoQualityLimits, error) {
 	switch quality {
 	case VideoQualityEfficient:
-		return videoQualityLimits{1280, 1280 * 720, 30, 16 << 20, 3_000_000}, nil
+		return videoQualityLimits{
+			MaxDimension: 1280,
+			MaxPixels:    1280 * 720,
+			MaxFPS:       30,
+			MaxBytes:     16 << 20,
+			MaxBitrate:   3_000_000,
+		}, nil
 	case VideoQualityHigh:
-		return videoQualityLimits{1920, 1920 * 1080, 30, 32 << 20, 6_000_000}, nil
+		return videoQualityLimits{
+			MaxDimension: 1920,
+			MaxPixels:    1920 * 1080,
+			MaxFPS:       30,
+			MaxBytes:     32 << 20,
+			MaxBitrate:   6_000_000,
+		}, nil
 	case VideoQualityMaximum:
-		return videoQualityLimits{1920, 1920 * 1080, 60, 64 << 20, 10_000_000}, nil
+		return videoQualityLimits{
+			MaxDimension: 1920,
+			MaxPixels:    1920 * 1080,
+			MaxFPS:       60,
+			MaxBytes:     64 << 20,
+			MaxBitrate:   10_000_000,
+		}, nil
 	default:
 		return videoQualityLimits{}, ErrVideoQuality
 	}
 }
-func (quality VideoQuality) Valid() bool { _, err := quality.limits(); return err == nil }
+func (quality VideoQuality) Valid() bool {
+	_, err := quality.limits()
+	return err == nil
+}
 func (quality VideoQuality) Label() string {
 	switch quality {
 	case VideoQualityEfficient:
@@ -177,7 +200,15 @@ func planVideoOutput(stream videoStream, trim VideoTrim, quality VideoQuality) (
 	if err != nil {
 		return videoOutputPlan{}, err
 	}
-	return videoOutputPlan{width, height, rate, frames, level, quality, limits}, nil
+	return videoOutputPlan{
+		Width:      width,
+		Height:     height,
+		FrameRate:  rate,
+		FrameCount: frames,
+		Level:      level,
+		Quality:    quality,
+		Limits:     limits,
+	}, nil
 }
 
 func fitVideoDimensions(width, height int, limits videoQualityLimits) (int, int) {
@@ -213,4 +244,13 @@ func videoH264Level(width, height int, rate VideoFrameRate, bitrate, buffer int6
 // the tier's stricter geometry limit, and raw poster bytes use visible pixels.
 func videoDecoderPixelLimit(width, height int) int {
 	return ((width + 63) / 64 * 64) * ((height + 63) / 64 * 64)
+}
+
+// Description names a tier's ceilings; actual prepared geometry/rate may be lower.
+func (quality VideoQuality) Description() string {
+	limits, err := quality.limits()
+	if err != nil {
+		return quality.Label()
+	}
+	return fmt.Sprintf("%s (%dp%d)", quality.Label(), limits.MaxPixels/limits.MaxDimension, limits.MaxFPS)
 }

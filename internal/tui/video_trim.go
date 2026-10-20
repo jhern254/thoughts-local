@@ -13,6 +13,7 @@ const (
 	trimFocusSource = iota
 	trimFocusStart
 	trimFocusEnd
+	trimFocusQuality
 	trimFocusSpeed
 	trimFocusPreview
 	trimFocusDone
@@ -28,6 +29,8 @@ func (m *Model) activateVideoTrim() {
 		m.options.trim.StartMS = m.options.sourcePositionMS
 	case trimFocusEnd:
 		m.options.trim.EndMS = m.options.sourcePositionMS
+	case trimFocusQuality:
+		m.cycleVideoQuality()
 	case trimFocusPreview:
 		if !m.options.trim.Valid(m.options.sourceDurationMS) {
 			m.options.status = "Choose 1–30 seconds within the source."
@@ -67,6 +70,10 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", "space":
 			m.activateVideoTrim()
 		case "left", "right", "shift+left", "shift+right", "home", "end":
+			if m.options.trimFocus == trimFocusQuality {
+				m.setVideoQuality(key)
+				return m, nil
+			}
 			if m.options.trimFocus == trimFocusSpeed {
 				if strings.Contains(key, "left") {
 					m.options.speedPercent = max(25, m.options.speedPercent-5)
@@ -130,14 +137,14 @@ func (m *Model) clickVideoTrim(x, y int, activate bool) {
 	if rect.Height > 0 {
 		top = rect.Y + rect.Height + 2
 	}
-	if m.options.request != "" && (!activate || y != top+7) {
+	if m.options.request != "" && (!activate || y != top+8) {
 		return
 	}
 	if y == top+1 {
 		m.options.trimFocus = trimFocusSource
 		m.options.sourceFrame = true
 		m.options.sourcePositionMS = int64(max(0, min(width-1, x-left))) * m.options.sourceDurationMS / int64(max(1, width-1))
-	} else if activate && y >= top+2 && y <= top+7 {
+	} else if activate && y >= top+2 && y <= top+8 {
 		m.options.trimFocus = trimFocusStart + y - (top + 2)
 		if m.options.trimFocus >= trimFocusPreview {
 			m.activateVideoTrim()
@@ -176,10 +183,11 @@ func (m Model) viewVideoTrim() tea.View {
 		label(trimFocusSource, "Source: "+trimSeconds(m.options.sourcePositionMS)+" / "+trimSeconds(m.options.sourceDurationMS)+"s"), muted.Render(rail),
 		label(trimFocusStart, "Start: "+trimSeconds(m.options.trim.StartMS)+"s"),
 		label(trimFocusEnd, "End: "+trimSeconds(m.options.trim.EndMS)+"s"),
+		label(trimFocusQuality, "Video quality: "+m.options.videoQuality.Description()),
 		label(trimFocusSpeed, fmt.Sprintf("Playback speed: %d%%", m.options.speedPercent)),
 		label(trimFocusPreview, "Preview loop"), label(trimFocusDone, "Done — use previewed loop"), label(trimFocusCancel, "Cancel upload"))
 	if m.options.loopReady {
-		lines = append(lines, fmt.Sprintf("Previewed: %s–%ss · plays %.2fs", trimSeconds(m.options.acceptedTrim.StartMS), trimSeconds(m.options.acceptedTrim.EndMS), float64(m.options.loopDurationMS)/float64(max(25, m.options.speedPercent)*10)))
+		lines = append(lines, m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
 	} else {
 		lines = append(lines, "No prepared loop yet.")
 	}

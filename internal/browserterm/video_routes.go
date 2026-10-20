@@ -171,25 +171,33 @@ func (s *server) prepareVisualVideoLoop(w http.ResponseWriter, r *http.Request) 
 	}
 	defer finish()
 	var input struct {
-		SourceID string           `json:"sourceID"`
-		Trim     visual.VideoTrim `json:"trim"`
+		SourceID     string              `json:"sourceID"`
+		VideoQuality visual.VideoQuality `json:"videoQuality"`
+		Trim         visual.VideoTrim    `json:"trim"`
 	}
 	if !readVideoEditJSON(w, r, &input) {
+		return
+	}
+	if input.VideoQuality == "" {
+		input.VideoQuality = visual.VideoQualityEfficient
+	}
+	if !input.VideoQuality.Valid() {
+		visualError(w, visual.ErrVideoQuality)
 		return
 	}
 	if editor.source == nil || editor.sourceID != input.SourceID {
 		http.Error(w, "Video source unavailable.", http.StatusConflict)
 		return
 	}
-	if editor.accepted != nil && editor.accepted.Info().Trim == input.Trim {
+	if editor.accepted != nil && editor.accepted.Info().Trim == input.Trim && editor.accepted.Info().VideoQuality == input.VideoQuality {
 		writeVideoPreview(w, editor.acceptedID, editor.accepted)
 		return
 	}
-	if editor.pending != nil && editor.pending.Info().Trim == input.Trim {
+	if editor.pending != nil && editor.pending.Info().Trim == input.Trim && editor.pending.Info().VideoQuality == input.VideoQuality {
 		writeVideoPreview(w, editor.pendingID, editor.pending)
 		return
 	}
-	prepared, err := editor.source.Prepare(ctx, input.Trim, visual.VideoQualityEfficient)
+	prepared, err := editor.source.Prepare(ctx, input.Trim, input.VideoQuality)
 	if err != nil {
 		visualError(w, err)
 		return

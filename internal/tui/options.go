@@ -16,6 +16,10 @@ type BrowserOptionsEnabledMsg struct{}
 // BrowserOptionsMsg carries only bounded visual controls. Media bytes use
 // validated HTTP routes; no frames or authored content travel in these messages.
 type BrowserOptionsMsg struct {
+	VideoQuality    visual.VideoQuality    `json:"videoQuality"`
+	FrameRate       visual.VideoFrameRate  `json:"frameRate"`
+	Width           int                    `json:"width"`
+	Height          int                    `json:"height"`
 	Action          string                 `json:"action"`
 	ID              uint64                 `json:"id"`
 	DurationMS      int64                  `json:"durationMS"`
@@ -34,6 +38,7 @@ type PreviewRect struct{ X, Y, Width, Height int }
 // BrowserOptionsState exposes the reserved terminal cells, not pixel geometry.
 // ID changes for each browser operation so late results cannot affect a new page.
 type BrowserOptionsState struct {
+	VideoQuality     visual.VideoQuality    `json:"videoQuality"`
 	Open             bool                   `json:"open"`
 	ID               uint64                 `json:"id"`
 	Request          string                 `json:"request"`
@@ -54,6 +59,7 @@ const (
 	optionsFocusFit
 	optionsFocusAdjust
 	optionsFocusDarkness
+	optionsFocusQuality
 	optionsFocusSpeed
 	optionsFocusPlayback
 	optionsFocusPreview
@@ -75,6 +81,7 @@ type optionsState struct {
 	status            string
 	hasBackground     bool
 	video             bool
+	videoQuality      visual.VideoQuality
 	speedPercent      int
 	userPaused        bool
 	playbackBlocked   bool
@@ -92,6 +99,10 @@ type optionsState struct {
 	sourceDurationMS int64
 	sourcePositionMS int64
 	trim             visual.VideoTrim
+	acceptedQuality  visual.VideoQuality
+	acceptedWidth    int
+	acceptedHeight   int
+	acceptedRate     visual.VideoFrameRate
 	acceptedTrim     visual.VideoTrim
 	loopDurationMS   int64
 	loopReady        bool
@@ -109,6 +120,7 @@ func (m Model) OptionsState() BrowserOptionsState {
 	_, rect := m.optionsLayout()
 	return BrowserOptionsState{
 		Open:             m.options.open,
+		VideoQuality:     m.options.videoQuality,
 		ID:               m.options.id,
 		Request:          m.options.request,
 		Editing:          m.options.editing,
@@ -149,6 +161,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			m.options.focus = optionsFocusChooseBackground
 			m.options.darkness = 70
 			m.options.speedPercent = 100
+			m.options.videoQuality = visual.VideoQualityEfficient
 			m.options.userPaused = false
 			m.options.status = "Loading visual…"
 			m.requestOptions("load")
@@ -194,6 +207,12 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if m.options.request != "prepareLoop" || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
 			return m, nil
 		}
+		if !msg.VideoQuality.Valid() || !msg.FrameRate.Valid() || msg.Width < 2 || msg.Width > 1920 || msg.Height < 2 || msg.Height > 1920 || msg.Width*msg.Height > 1920*1080 {
+			return m, nil
+		}
+		m.options.acceptedQuality = msg.VideoQuality
+		m.options.acceptedWidth, m.options.acceptedHeight = msg.Width, msg.Height
+		m.options.acceptedRate = msg.FrameRate
 		m.options.acceptedTrim = msg.Trim
 		m.options.loopDurationMS = msg.DurationMS
 		m.options.loopReady = true
@@ -212,6 +231,9 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 	case "loaded":
 		if m.options.request != "load" {
 			return m, nil
+		}
+		if msg.VideoQuality.Valid() {
+			m.options.videoQuality = msg.VideoQuality
 		}
 		m.options.darkness = max(0, min(95, msg.Darkness))
 		m.options.hasBackground = msg.Background
@@ -253,6 +275,9 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		m.options.newVideo = false
 		m.options.loopReady = false
 		m.options.trimming = false
+		if msg.VideoQuality.Valid() {
+			m.options.videoQuality = msg.VideoQuality
+		}
 		m.options.darkness = max(0, min(95, msg.Darkness))
 		m.options.hasBackground = msg.Background
 		m.options.video = msg.Kind == "video"
@@ -325,6 +350,9 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.options.focus = m.nextOptionsFocus(-1)
 			}
 		case "left", "right", "home", "end":
+			if !busy && m.options.focus == optionsFocusQuality {
+				m.setVideoQuality(msg.String())
+			}
 			if !busy && m.options.focus == optionsFocusSpeed && m.options.video {
 				switch msg.String() {
 				case "left":
@@ -374,6 +402,8 @@ func (m *Model) activateOption() {
 	case optionsFocusChooseBackground:
 		m.options.status = "Choose a JPEG/PNG image or SDR H.264 MP4/MOV…"
 		m.requestOptions("choose")
+	case optionsFocusQuality:
+		m.cycleVideoQuality()
 	case optionsFocusFit:
 		m.toggleBackgroundFit()
 	case optionsFocusAdjust:
@@ -424,7 +454,7 @@ func (m *Model) activateOption() {
 func (m Model) optionsLayout() (int, PreviewRect) {
 	if m.options.trimming {
 		width := max(10, min(80, m.width-4))
-		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-21))}
+		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-24))}
 	}
 	if m.options.editing {
 		width := max(10, min(80, m.width-4))
@@ -432,7 +462,10 @@ func (m Model) optionsLayout() (int, PreviewRect) {
 	}
 	width := max(10, min(60, m.width-4))
 	x := max(0, (m.width-width)/2)
-	reserved := 23
+	reserved := 24
+	if m.options.newVideo && m.options.loopReady {
+		reserved += 3
+	}
 	if m.options.video {
 		reserved += m.videoOptionRows()
 	}
@@ -465,16 +498,19 @@ func (m *Model) clickOption(x, y int, activate bool) {
 	case y == 10+shift:
 		m.options.focus = optionsFocusDarkness
 		m.options.darkness = max(0, min(95, (x-left)*95/max(1, width-1)))
-	case m.options.newVideo && y == 14+shift && activate:
+	case y == 11+shift && activate:
+		m.options.focus = optionsFocusQuality
+		m.cycleVideoQuality()
+	case m.options.newVideo && y == 15+shift && activate:
 		m.options.focus = optionsFocusTrim
 		m.activateOption()
-	case m.options.video && y >= 11+shift && y <= 13+shift && activate:
-		m.options.focus = optionsFocusSpeed + y - (11 + shift)
+	case m.options.video && y >= 12+shift && y <= 14+shift && activate:
+		m.options.focus = optionsFocusSpeed + y - (12 + shift)
 		if m.options.focus != optionsFocusSpeed {
 			m.activateOption()
 		}
-	case y >= 12+shift+m.videoOptionRows() && y <= 14+shift+m.videoOptionRows() && activate:
-		m.options.focus = optionsFocusApply + y - (12 + shift + m.videoOptionRows())
+	case y >= 13+shift+m.videoOptionRows() && y <= 15+shift+m.videoOptionRows() && activate:
+		m.options.focus = optionsFocusApply + y - (13 + shift + m.videoOptionRows())
 		m.activateOption()
 	}
 }
@@ -515,6 +551,7 @@ func (m Model) viewOptions() tea.View {
 		fitLabel = "Fit"
 	}
 	lines = append(lines, label(optionsFocusFit, "Background fit: "+fitLabel), label(optionsFocusAdjust, "Adjust framing"), label(optionsFocusDarkness, fmt.Sprintf("Background darkness: %d%%", m.options.darkness)), slider)
+	lines = append(lines, label(optionsFocusQuality, "Video quality: "+m.options.videoQuality.Description()))
 	if m.options.video {
 		playbackLabel := "Pause video"
 		if m.options.userPaused || m.options.playbackBlocked {
@@ -526,8 +563,11 @@ func (m Model) viewOptions() tea.View {
 		lines = append(lines, label(optionsFocusTrim, "Edit loop"))
 	}
 	lines = append(lines, "", label(optionsFocusApply, "Apply"), label(optionsFocusRemoveBackground, "Remove background"), label(optionsFocusBack, "Back"))
+	if m.options.newVideo && m.options.loopReady {
+		lines = append(lines, m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
+	}
 	if rect.Height == 0 && m.height < 20 {
-		lines = append(lines, muted.Render(m.options.status), muted.Render("↑/↓/Tab: focus · ←/→: value"), muted.Render("Enter: activate · Q/Esc: back"))
+		lines = append(lines, muted.Render(m.options.status), muted.Render("↑/↓: focus · ←/→: value · Enter: activate · Q/Esc: back"))
 	} else {
 		lines = append(lines, "", muted.Render(m.options.status), "", muted.Render("↑/↓/Tab: focus · ←/→: value"), muted.Render("Enter: activate · Q/Esc: back"))
 	}
@@ -626,4 +666,38 @@ func (m Model) nextOptionsFocus(direction int) int {
 			return focus
 		}
 	}
+}
+
+func (m *Model) setVideoQuality(key string) {
+	m.options.status = "Quality applies to new video previews."
+	switch key {
+	case "left":
+		m.options.videoQuality = m.options.videoQuality.Step(-1)
+	case "right":
+		m.options.videoQuality = m.options.videoQuality.Step(1)
+	case "home":
+		m.options.videoQuality = visual.VideoQualityEfficient
+	case "end":
+		m.options.videoQuality = visual.VideoQualityMaximum
+	}
+}
+func (m *Model) cycleVideoQuality() {
+	m.options.status = "Quality applies to new video previews."
+	if m.options.videoQuality == visual.VideoQualityMaximum {
+		m.options.videoQuality = visual.VideoQualityEfficient
+	} else {
+		m.options.videoQuality = m.options.videoQuality.Step(1)
+	}
+}
+func (m Model) acceptedVideoLabel() string {
+	return fmt.Sprintf("Previewed: %s · %d×%d · %s FPS", m.options.acceptedQuality.Label(), m.options.acceptedWidth, m.options.acceptedHeight, m.options.acceptedRate.Display())
+}
+func (m Model) acceptedVideoRangeLabel() string {
+	return fmt.Sprintf("Range: %s–%ss · plays %.2fs", trimSeconds(m.options.acceptedTrim.StartMS), trimSeconds(m.options.acceptedTrim.EndMS), float64(m.options.loopDurationMS)/float64(max(25, m.options.speedPercent)*10))
+}
+func (m Model) draftVideoQualityLabel() string {
+	if m.options.videoQuality != m.options.acceptedQuality {
+		return "Preview loop to use " + m.options.videoQuality.Label() + ". Apply uses " + m.options.acceptedQuality.Label() + "."
+	}
+	return "Quality applies to new previews."
 }

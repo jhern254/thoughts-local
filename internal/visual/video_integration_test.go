@@ -99,7 +99,7 @@ func TestService_Video(t *testing.T) {
 	})
 	t.Run("cancelled processing leaves selected image and no staged assets", func(t *testing.T) {
 		service := NewService(&memoryStore{}, "user", t.TempDir())
-		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
+		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming(), VideoQualityEfficient)
 		if err != nil {
 			t.Fatal(err)
 		}

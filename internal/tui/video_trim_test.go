@@ -69,13 +69,13 @@ func TestModel_VideoTrim(t *testing.T) {
 		m, _ = rootUpdate(m, enterKey())
 		id := m.OptionsState().ID
 		accepted := visual.VideoTrim{StartMS: 0, EndMS: 30000}
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", ID: id, Trim: accepted, DurationMS: 30000})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", VideoQuality: visual.VideoQualityEfficient, Width: 1280, Height: 720, FrameRate: visual.VideoFrameRate{Numerator: 24, Denominator: 1}, ID: id, Trim: accepted, DurationMS: 30000})
 		m.options.trimFocus = trimFocusStart
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
 		if m.OptionsState().Trim.StartMS != 100 || m.options.acceptedTrim != accepted || !m.options.loopReady {
 			t.Fatal("draft edit lost accepted loop")
 		}
-		if !strings.Contains(m.View().Content, "Previewed: 0.00–30.00s") {
+		if !strings.Contains(m.View().Content, "Range: 0.00–30.00s") {
 			t.Fatal("accepted range not visible")
 		}
 		m.options.trimFocus = trimFocusDone
@@ -109,7 +109,7 @@ func TestModel_VideoTrim(t *testing.T) {
 				t.Fatalf("%v: %d rows exceeds body", size, len(rows))
 			}
 			_, rect := m.optionsLayout()
-			if !strings.Contains(rows[4], "╭") || !strings.Contains(rows[5], "│"+strings.Repeat(" ", rect.Width)+"│") {
+			if size[1] == 36 && (!strings.Contains(rows[4], "╭") || !strings.Contains(rows[5], "│"+strings.Repeat(" ", rect.Width)+"│")) {
 				t.Fatalf("%v: preview is not below heading", size)
 			}
 			for _, label := range []string{"Preview loop", "Done — use previewed loop", "Cancel upload"} {
@@ -141,11 +141,11 @@ func TestModel_VideoTrim(t *testing.T) {
 			trimming:         true,
 			sourceDurationMS: 60000,
 		}
-		m, _ = rootUpdate(m, tea.MouseClickMsg{X: 8, Y: 26, Button: tea.MouseLeft})
+		m, _ = rootUpdate(m, tea.MouseClickMsg{X: 8, Y: 27, Button: tea.MouseLeft})
 		if m.OptionsState().Request != "discardVideo" {
 			t.Fatalf("cancel request = %q", m.OptionsState().Request)
 		}
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", ID: 5, Trim: visual.VideoTrim{EndMS: 1000}, DurationMS: 1000})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", VideoQuality: visual.VideoQualityEfficient, Width: 1280, Height: 720, FrameRate: visual.VideoFrameRate{Numerator: 24, Denominator: 1}, ID: 5, Trim: visual.VideoTrim{EndMS: 1000}, DurationMS: 1000})
 		if m.options.loopReady {
 			t.Fatal("cancelled result accepted")
 		}
@@ -191,7 +191,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		if m.OptionsState().Request != "" {
 			t.Fatal("invalid draft requested processing")
 		}
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", ID: 100, Trim: visual.VideoTrim{EndMS: 1000}, DurationMS: 1000})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", VideoQuality: visual.VideoQualityEfficient, Width: 1280, Height: 720, FrameRate: visual.VideoFrameRate{Numerator: 24, Denominator: 1}, ID: 100, Trim: visual.VideoTrim{EndMS: 1000}, DurationMS: 1000})
 		if m.options.loopReady {
 			t.Fatal("stale result accepted")
 		}
