@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
 const (
@@ -23,12 +24,17 @@ const (
 
 func trimSeconds(milliseconds int64) string { return fmt.Sprintf("%.2f", float64(milliseconds)/1000) }
 
+func (m Model) videoTrimEndLimit() int64 {
+	return min(m.options.sourceDurationMS, m.options.trim.StartMS+visual.MaxVideoDuration*1000)
+}
+
 func (m *Model) activateVideoTrim() {
 	switch m.options.trimFocus {
 	case trimFocusStart:
 		m.options.trim.StartMS = m.options.sourcePositionMS
+		m.options.trim.EndMS = min(m.options.trim.EndMS, m.videoTrimEndLimit())
 	case trimFocusEnd:
-		m.options.trim.EndMS = m.options.sourcePositionMS
+		m.options.trim.EndMS = min(m.options.sourcePositionMS, m.videoTrimEndLimit())
 	case trimFocusQuality:
 		m.cycleVideoQuality()
 	case trimFocusPreview:
@@ -114,6 +120,9 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 					*value = min(m.options.sourceDurationMS, *value+step)
 				}
 			}
+			if m.options.trimFocus == trimFocusStart || m.options.trimFocus == trimFocusEnd {
+				m.options.trim.EndMS = min(m.options.trim.EndMS, m.videoTrimEndLimit())
+			}
 		}
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
@@ -182,7 +191,7 @@ func (m Model) viewVideoTrim() tea.View {
 	lines = append(lines,
 		label(trimFocusSource, "Source: "+trimSeconds(m.options.sourcePositionMS)+" / "+trimSeconds(m.options.sourceDurationMS)+"s"), muted.Render(rail),
 		label(trimFocusStart, "Start: "+trimSeconds(m.options.trim.StartMS)+"s"),
-		label(trimFocusEnd, "End: "+trimSeconds(m.options.trim.EndMS)+"s"),
+		label(trimFocusEnd, "End: "+trimSeconds(m.options.trim.EndMS)+"s (max "+trimSeconds(m.videoTrimEndLimit())+"s)"),
 		label(trimFocusQuality, "Video quality: "+m.options.videoQuality.Description()),
 		label(trimFocusSpeed, fmt.Sprintf("Playback speed: %d%%", m.options.speedPercent)),
 		label(trimFocusPreview, "Preview loop"), label(trimFocusDone, "Done — use previewed loop"), label(trimFocusCancel, "Cancel upload"))

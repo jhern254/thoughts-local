@@ -45,13 +45,68 @@ func TestModel_VideoTrim(t *testing.T) {
 				{tea.KeyEnd, 0, 60000}, {tea.KeyRight, 0, 60000},
 			} {
 				m, _ = rootUpdate(m, tea.KeyPressMsg{Code: action.code, Mod: action.mod})
-				if got := position(); got != action.want {
-					t.Fatalf("focus %d key %d: got %d ms, want %d", focus, action.code, got, action.want)
+				want := action.want
+				if focus == trimFocusEnd && want == 60000 {
+					want = 31251
+				}
+				if got := position(); got != want {
+					t.Fatalf("focus %d key %d: got %d ms, want %d", focus, action.code, got, want)
 				}
 			}
 			if !strings.Contains(m.View().Content, "←/→: 0.1s · Shift: 1s") {
 				t.Fatal("help does not describe the arrow increments")
 			}
+		}
+	})
+	t.Run("end stays within thirty seconds of start and the source boundary", func(t *testing.T) {
+		for _, tc := range []struct {
+			name       string
+			focus      int
+			trim       visual.VideoTrim
+			positionMS int64
+			key        tea.KeyPressMsg
+			want       visual.VideoTrim
+			wantMax    string
+		}{
+			{"right at maximum", trimFocusEnd, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, 0, tea.KeyPressMsg{Code: tea.KeyRight}, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
+			{"shift right crossing maximum", trimFocusEnd, visual.VideoTrim{StartMS: 1251, EndMS: 31000}, 0, tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift}, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
+			{"end key uses relative maximum", trimFocusEnd, visual.VideoTrim{StartMS: 1251, EndMS: 5000}, 0, tea.KeyPressMsg{Code: tea.KeyEnd}, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
+			{"source position cannot bypass maximum", trimFocusEnd, visual.VideoTrim{StartMS: 1251, EndMS: 5000}, 60000, enterKey(), visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
+			{"late cut ends at source boundary", trimFocusEnd, visual.VideoTrim{StartMS: 57000, EndMS: 58000}, 60000, tea.KeyPressMsg{Code: tea.KeyEnd}, visual.VideoTrim{StartMS: 57000, EndMS: 60000}, "60.00"},
+			{"moving start earlier bounds end", trimFocusStart, visual.VideoTrim{StartMS: 10000, EndMS: 40000}, 0, tea.KeyPressMsg{Code: tea.KeyLeft}, visual.VideoTrim{StartMS: 9900, EndMS: 39900}, "39.90"},
+			{"start home bounds end", trimFocusStart, visual.VideoTrim{StartMS: 10000, EndMS: 40000}, 0, tea.KeyPressMsg{Code: tea.KeyHome}, visual.VideoTrim{EndMS: 30000}, "30.00"},
+			{"start at source position bounds end", trimFocusStart, visual.VideoTrim{StartMS: 10000, EndMS: 40000}, 1251, enterKey(), visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
+			{"source cursor still reaches full source", trimFocusSource, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, 0, tea.KeyPressMsg{Code: tea.KeyEnd}, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				m := newRootTestModel()
+				m.browserOptionsEnabled = true
+				m.width, m.height = 80, 36
+				accepted := visual.VideoTrim{StartMS: 10000, EndMS: 40000}
+				m.options = optionsState{
+					open:             true,
+					trimming:         true,
+					trimFocus:        tc.focus,
+					sourceDurationMS: 60000,
+					sourcePositionMS: tc.positionMS,
+					trim:             tc.trim,
+					loopReady:        true,
+					acceptedTrim:     accepted,
+				}
+				m, _ = rootUpdate(m, tc.key)
+				if got := m.OptionsState().Trim; got != tc.want {
+					t.Fatalf("trim = %+v, want %+v", got, tc.want)
+				}
+				if got := m.options.acceptedTrim; got != accepted || !m.options.loopReady || m.OptionsState().Request != "" {
+					t.Fatalf("draft edit changed accepted loop or requested preparation: %+v", m.OptionsState())
+				}
+				if tc.focus == trimFocusSource && m.options.sourcePositionMS != 60000 {
+					t.Fatalf("source cursor = %d, want 60000", m.options.sourcePositionMS)
+				}
+				if !strings.Contains(ansi.Strip(m.View().Content), "End: "+trimSeconds(tc.want.EndMS)+"s (max "+tc.wantMax+"s)") {
+					t.Fatalf("End control does not show current maximum:\n%s", m.View().Content)
+				}
+			})
 		}
 	})
 	t.Run("unpreviewed cut edits preserve the accepted loop used by Done and Apply", func(t *testing.T) {

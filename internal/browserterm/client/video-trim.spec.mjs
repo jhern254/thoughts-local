@@ -50,12 +50,23 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   const connectedSockets=sockets;
   await page.keyboard.press('t');await page.keyboard.insertText('Keep this trim draft 界');
   await openVisual(page);await stageSource(page);
-  await clickControl(page,'Source: 0.00 / 60.00s');
+  await clickControl(page,'End: 30.00s (max 30.00s)');
   await page.keyboard.press('End');
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect(screen(page)).toContainText('End: 30.00s (max 30.00s)');
+  await page.keyboard.press('Shift+Tab');await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('End');
+  await expect(screen(page)).toContainText('Source: 60.00 / 60.00s');
+  await clickControl(page,'End: 30.00s (max 30.00s)');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('End: 30.00s (max 30.00s)');
+  await page.screenshot({path:`/tmp/trim-${testInfo.project.name}-end-limit.png`});
+  await page.keyboard.press('Shift+Tab');await page.keyboard.press('Shift+Tab');
   for(let i=0;i<3;i++)await page.keyboard.press('Shift+ArrowLeft');
   await expect(screen(page)).toContainText('Source: 57.00 / 60.00s');
   await clickControl(page,'Start: 0.00s');await page.keyboard.press('Enter');
-  await clickControl(page,'End: 30.00s');await page.keyboard.press('End');
+  await expect(screen(page)).toContainText('End: 30.00s (max 60.00s)');
+  await page.keyboard.press('Tab');await page.keyboard.press('End');
   await clickControl(page,'Preview loop');
   await expect(screen(page)).toContainText('Range: 57.00–60.00s');
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(false);
@@ -64,6 +75,14 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   // CSP deliberately permits blob playback, not arbitrary blob fetch requests.
   const previewBytes=Buffer.from(await page.evaluate(()=>window.trimPreviewBytes));
   await page.screenshot({path:`/tmp/trim-${testInfo.project.name}-desktop.png`});
+  await clickControl(page,'Start: 57.00s');await page.keyboard.press('Home');
+  await expect(screen(page)).toContainText('End: 30.00s (max 30.00s)');
+  await expect(screen(page)).toContainText('Range: 57.00–60.00s');
+  expect(prepares).toBe(1);
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Start: 57.00s');
+  await page.keyboard.press('Tab');await page.keyboard.press('End');
+  await expect(screen(page)).toContainText('End: 60.00s (max 60.00s)');
   // A failed explicit replacement must leave both native acknowledgement and
   // browser player on the previously reviewed loop.
   await clickControl(page,'Start: 57.00s');await page.keyboard.press('ArrowRight');
@@ -129,7 +148,7 @@ test('disconnect retires an editor and its prepared URLs without changing the se
   await stageSource(page);
   const editorID=(await staged).headers()['x-visual-editor'];
   // Keep the initial preview short; no source is retained once the session ends.
-  await clickControl(page,'End: 30.00s');await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
+  await clickControl(page,'End: 30.00s (max 30.00s)');await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
   await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Range: 0.00–1.00s');
   await page.emulateMedia({reducedMotion:'reduce'});
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(true);
@@ -159,7 +178,7 @@ test('a decoded loop stays applicable with reduced motion or rejected preview pl
   await page.emulateMedia({reducedMotion:'reduce'});
   await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
   await openVisual(page);await stageSource(page);
-  await clickControl(page,'End: 30.00s');await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
+  await clickControl(page,'End: 30.00s (max 30.00s)');await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
   await clickControl(page,'Preview loop');
   await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(true);
