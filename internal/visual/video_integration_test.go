@@ -47,7 +47,7 @@ func TestService_Video(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer source.Close()
-		prepared, err := source.Prepare(t.Context(), VideoTrim{EndMS: 2000})
+		prepared, err := source.Prepare(t.Context(), VideoTrim{EndMS: 2000}, VideoQualityEfficient)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,7 +143,7 @@ func TestVideoOrientation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer staged.Close()
-			prepared, err := staged.Prepare(t.Context(), VideoTrim{EndMS: 2000})
+			prepared, err := staged.Prepare(t.Context(), VideoTrim{EndMS: 2000}, VideoQualityEfficient)
 			if err != nil {
 				t.Fatal(err)
 			}

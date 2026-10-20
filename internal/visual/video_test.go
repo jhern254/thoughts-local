@@ -75,13 +75,14 @@ func TestVideoLimits(t *testing.T) {
 			t.Fatal("prepared duration exceeded thirty seconds")
 		}
 		stream.Width, stream.Height, stream.AvgFrameRate = 4096, 2160, "60/1"
-		if err := (videoProbe{Streams: []videoStream{stream}}).validate(false); !errors.Is(err, ErrVideo) {
-			t.Fatal("whole-source decoded-work bound was bypassed")
+		if err := (videoProbe{Streams: []videoStream{stream}}).validate(false); err != nil {
+			t.Fatal("bounded long source must stage before selecting a decode window:", err)
 		}
 	})
 	t.Run("keeps even dimensions within pixel and axis budgets without upscaling", func(t *testing.T) {
 		for _, size := range [][2]int{{4096, 2160}, {1080, 1920}, {4096, 100}, {101, 99}, {320, 240}} {
-			width, height := storedVideoDimensions(size[0], size[1])
+			limits, _ := VideoQualityEfficient.limits()
+			width, height := fitVideoDimensions(size[0], size[1], limits)
 			if width%2 != 0 || height%2 != 0 || width > 1280 || height > 1280 || width*height > 921600 || width > size[0] || height > size[1] {
 				t.Fatalf("%v -> %dx%d violates budget", size, width, height)
 			}

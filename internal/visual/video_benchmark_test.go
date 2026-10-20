@@ -28,7 +28,7 @@ func BenchmarkPrepareVideo(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		prepared, err := source.Prepare(b.Context(), VideoTrim{EndMS: min(30000, source.Info().DurationMS)})
+		prepared, err := source.Prepare(b.Context(), VideoTrim{EndMS: min(30000, source.Info().DurationMS)}, VideoQualityEfficient)
 		if err != nil {
 			source.Close()
 			b.Fatal(err)

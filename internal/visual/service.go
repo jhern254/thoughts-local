@@ -186,7 +186,11 @@ func (s *Service) ApplyPreparedVideo(ctx context.Context, prepared *PreparedVide
 	if prepared == nil || prepared.directory == "" {
 		return data.Visual{}, false, ErrVideo
 	}
-	body, err := readBoundedVideoAsset(filepath.Join(prepared.directory, "display.mp4"), MaxStoredVideoBytes)
+	limits, err := prepared.info.VideoQuality.limits()
+	if err != nil {
+		return data.Visual{}, false, err
+	}
+	body, err := readBoundedVideoAsset(filepath.Join(prepared.directory, "display.mp4"), limits.MaxBytes)
 	if err != nil {
 		return data.Visual{}, false, err
 	}

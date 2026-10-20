@@ -65,7 +65,7 @@ func TestVideoSource_Prepare(t *testing.T) {
 		if got := source.Info().DurationMS; got != 60000 {
 			t.Fatalf("duration = %d, want 60000", got)
 		}
-		prepared, err := source.Prepare(t.Context(), VideoTrim{StartMS: 57250, EndMS: 59500})
+		prepared, err := source.Prepare(t.Context(), VideoTrim{StartMS: 57250, EndMS: 59500}, VideoQualityEfficient)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -155,7 +155,7 @@ func TestVideoSource_CutTiming(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer source.Close()
-			prepared, err := source.Prepare(t.Context(), VideoTrim{StartMS: 6250, EndMS: 7500})
+			prepared, err := source.Prepare(t.Context(), VideoTrim{StartMS: 6250, EndMS: 7500}, VideoQualityEfficient)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +201,7 @@ func TestVideoSource_CutTiming(t *testing.T) {
 		}
 		defer source.Close()
 		for _, trim := range []VideoTrim{{StartMS: 1250, EndMS: 2250}, {StartMS: 1250, EndMS: 31250}} {
-			loop, err := source.Prepare(t.Context(), trim)
+			loop, err := source.Prepare(t.Context(), trim, VideoQualityEfficient)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -221,6 +221,8 @@ func TestVideoProbe_ValidateLoop(t *testing.T) {
 			CodecType:         "video",
 			Profile:           "Constrained Baseline",
 			Level:             32,
+			Refs:              1,
+			FrameCount:        "24",
 			Width:             1280,
 			Height:            720,
 			PixFmt:            "yuv420p",
@@ -235,10 +237,18 @@ func TestVideoProbe_ValidateLoop(t *testing.T) {
 		if err := info.validate(true); err != nil {
 			t.Fatal(err)
 		}
-		if err := info.validateLoop(VideoTrim{EndMS: 2000}); !errors.Is(err, ErrVideo) {
+		plan, err := planVideoOutput(info.Streams[0], VideoTrim{EndMS: 2000}, VideoQualityMaximum)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := info.validateLoop(VideoTrim{EndMS: 2000}, plan); !errors.Is(err, ErrVideo) {
 			t.Fatalf("partial output = %v, want ErrVideo", err)
 		}
-		if err := info.validateLoop(VideoTrim{EndMS: 1000}); err != nil {
+		plan, err = planVideoOutput(info.Streams[0], VideoTrim{EndMS: 1000}, VideoQualityMaximum)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := info.validateLoop(VideoTrim{EndMS: 1000}, plan); err != nil {
 			t.Fatal(err)
 		}
 	})

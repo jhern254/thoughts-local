@@ -189,7 +189,7 @@ func (s *server) prepareVisualVideoLoop(w http.ResponseWriter, r *http.Request) 
 		writeVideoPreview(w, editor.pendingID, editor.pending)
 		return
 	}
-	prepared, err := editor.source.Prepare(ctx, input.Trim)
+	prepared, err := editor.source.Prepare(ctx, input.Trim, visual.VideoQualityEfficient)
 	if err != nil {
 		visualError(w, err)
 		return

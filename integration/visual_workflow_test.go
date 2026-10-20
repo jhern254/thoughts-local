@@ -110,7 +110,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer staged.Close()
-		prepared, err := staged.Prepare(t.Context(), visual.VideoTrim{EndMS: 2000})
+		prepared, err := staged.Prepare(t.Context(), visual.VideoTrim{EndMS: 2000}, visual.VideoQualityEfficient)
 		if err != nil {
 			runtime.Close()
 			t.Fatal(err)
