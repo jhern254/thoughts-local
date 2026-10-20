@@ -7,7 +7,7 @@ upscaling. All new imports re-encode to remove private metadata and normalize
 orientation into pixels. JPEG uses quality 85; PNG retains transparency. Existing
 assets are unchanged; reimporting applies the budget and sanitization policy.
 
-The durable product policy is documented in [Media handling and privacy](media-handling-policy.md). This document records implementation details, measurements, and limitations for specific revisions; historical benchmark results are not current privacy guarantees.
+The durable product policy is documented in [Media handling and privacy](media-handling-policy.md). This document records implementation details, measurements, and limitations for specific revisions; historical benchmark results are not current privacy guarantees. For current video limits and the 1080p qualification, see [Video quality through 1080p60](#video-quality-through-1080p60); earlier video sections retain the limits of their measured revisions.
 
 This bounds the asset used during normal operation, not source decoding during
 preview and native validation. Resizing spends CPU once to reduce subsequent
@@ -580,8 +580,8 @@ and `make ci` passed with the native processor enabled; the latter includes
 fresh unit/integration tests, build, pinned migration CLI and the race detector.
 
 The probe accepts an external synthetic clip and records actual prepared
-geometry/frame counters, so future 1080p work can reuse it. Current stored bounds
-remain 720p-class; an uploaded 1080p source still becomes a bounded 720p-class
+geometry/frame counters, so later 1080p work can reuse it. At this revision, stored bounds
+remained 720p-class; an uploaded 1080p source still becomes a bounded 720p-class
 derivative. These results do not establish 1080p readiness. No long one-time
 import benchmark was repeated because the media pipeline did not change.
 
@@ -731,3 +731,254 @@ prepared file must also match the requested span within one frame (plus timestam
 rounding). This rejects incomplete processor output; it does not change the
 encoder, scaling, seeking, file copies or playback. Its focused native timing
 regressions pass; the long benchmarks were not repeated for that comparison.
+
+## Video quality through 1080p60
+
+The quality extension keeps **Efficient** as the initial preference (720p30,
+3 Mbps VBV / 16 MiB stored video). High quality permits 1080p30 at 6 Mbps /
+32 MiB; Maximum permits 1080p60 at 10 Mbps / 64 MiB. These are ceilings, not
+upscaling targets. Portrait footage uses the same longest-axis/pixel budget.
+Lower and fractional source rates stay exact through preparation. Playback
+speed remains a separate native browser control; changing it does not encode.
+The [media policy](media-handling-policy.md#looping-video-backgrounds) describes
+source-window work limits, H.264 levels, independent validation and privacy.
+
+### Qualification fixtures and method
+
+Measurements use the reference ThinkPad T480s, i5-8250U / UHD Graphics 620,
+eight logical CPUs, Linux 6.18.7, Go 1.25.14 and FFmpeg 6.1.1. Sources are
+generated/downloaded before timing; test binaries and the disposable browser
+host are compiled separately. No concurrent Go tests, asset builds or other
+performance probes run during the timed samples. CPU percentages below are relative to **one logical CPU**.
+
+The ambient fixture comes from [NPS Video: Michael Quinn, scarlet monkey
+flowers at Hermit Creek](https://www.nps.gov/media/video/view.htm?id=39E50741-155D-451F-67CACF2694A2F3E7).
+That page explicitly identifies the unmarked NPS work as public domain. Credit
+does not imply endorsement. The source is 1920×1080, 24000/1001 FPS, 32.198833s,
+25,459,672 bytes, SHA-256
+`0caaa644b7662938d0ed0cdfc32621962fa824c955ae01f3aa098c880c1ecac1`.
+
+Matched 30-second 1920×1080/60 input fixtures make resolution/rate costs
+comparable:
+
+| Input | Bytes | Frames | SHA-256 |
+| --- | ---: | ---: | --- |
+| Synthetic `testsrc2` motion | 49,075,969 | 1800 | `dad50816e87fa6267ea0a2f9bb3841d37bbae77efbaea3dd5ec7a95de9e4b791` |
+| Ambient, controlled 60 FPS copy | 41,720,954 | 1800 | `f72eb14e82a9f09a7246b5e16a6a172c00717dfa11ade7276687950ab2946d2f` |
+
+The ambient copy **repeats native 23.976 FPS frames only for the benchmark**;
+it neither interpolates motion nor establishes natural 60 FPS capture quality.
+Production preparation never raises a source's declared FPS. Native/browser
+tests separately cover native 23.976/29.97/59.94 streams. The reproducible recipe
+is `sh scripts/video-quality-fixtures.sh /tmp/new-quality-fixtures`; generated
+binary media stays outside Git. FFmpeg/version differences can change hashes.
+
+`BenchmarkPrepareVideo` accepts `THOUGHTS_VIDEO_BENCH_QUALITY` and records actual
+encoded dimensions, exact FPS, frame count, bytes and SHA-256. The browser probe
+accepts `THOUGHTS_PERF_VIDEO_QUALITY` and
+`THOUGHTS_PERF_QUALITY_STUDY=1` with the existing interaction mode. That mode
+measures static/paused/playing repetitions with the same prepared bytes, then
+normal/50%-speed playback, synthetic microphone capture, pause, reduced motion
+and typing. `THOUGHTS_PERF_SAMPLES` selects 1–5 repetitions (default five). This
+study uses three repetitions; the already-completed motion/Efficient navigation
+series retains its five runs. `THOUGHTS_PERF_CONDITIONS_ONLY=1` reuses that
+completed navigation series for a conditions-only follow-up. Only the first
+import in each probe invocation encodes; subsequent Apply interaction samples
+are explicitly labeled settings-only. It retains the full Event and
+200-Thought traversals, day navigation, All Thoughts round trip, resource and
+native-player counters. Navigation uses a 1200×850 viewport, plus a 650×600
+pass for each mode; these are not full-HD-viewport composition measurements.
+Decoder properties are observations, not inferred from codec capability.
+
+For example, after generating the fixtures and starting a disposable migrated
+stress host (never the personal app on port 7777):
+
+```sh
+go test -c -o /tmp/visual-quality-bench ./internal/visual
+THOUGHTS_VIDEO_BENCH_FIXTURE=/tmp/new-quality-fixtures/motion60.mp4 \
+THOUGHTS_VIDEO_BENCH_QUALITY=maximum \
+  /usr/bin/time -v /tmp/visual-quality-bench -test.run '^$' \
+  -test.bench '^BenchmarkPrepareVideo$' -test.benchmem -test.count=3 -test.benchtime=1x
+
+THOUGHTS_BACKGROUND_PERF_DISPOSABLE=1 THOUGHTS_PERF_INTERACTIONS=1 \
+THOUGHTS_PERF_QUALITY_STUDY=1 THOUGHTS_PERF_PREVIOUS_DAY=1 \
+THOUGHTS_PERF_SAMPLES=3 \
+THOUGHTS_PERF_VIDEO_QUALITY=maximum \
+THOUGHTS_PERF_VIDEO_FIXTURE=/tmp/new-quality-fixtures/motion60.mp4 \
+  node internal/browserterm/client/background-performance.mjs \
+  http://127.0.0.1:PORT APP_PID /tmp/quality-maximum.json
+```
+
+Repeat each tier with both fixture files. The browser study passes a local file
+path to the real picker; it avoids including Playwright's large in-memory file
+transfer in import timing. Timing is keydown to the matching terminal render,
+with animation-opportunity timing separately retained; it excludes automation
+key delivery and is not a physical-keyboard-to-GPU-presentation measurement.
+
+The disposable host uses UTC and a fixed preceding-day stress seed, selected
+through the real Left key with `THOUGHTS_PERF_PREVIOUS_DAY=1`. This prevents
+midnight changing the workload during the study. Reduced-motion samples start
+a fresh page to clear the deliberately supported session Play override. Other
+condition changes stay in one terminal connection; the synthetic audio stream
+uses its separate existing connection. Personal app/data processes are untouched.
+To reproduce that fixed seed, create `TEMP demo_clock(at INTEGER NOT NULL)` and
+insert `unixepoch('now','start of day','-30 minutes')` before executing
+`scripts/demo_stress.sql` in the **same SQLite connection**, then run the host
+with `TZ=UTC`. The seed owns and drops that temporary clock. The resulting
+selected day contains 24 Event entries, including the ongoing Event with 200
+Thoughts; All Thoughts contains 20,000 records. The disposable host discards
+synthetic PCM through the existing injected consumer, so microphone numbers
+include capture/transport but **exclude speech recognition**.
+
+### Native preparation and encoded results
+
+The processor measured is `09d8302`, including active decoded-frame budget
+cancellation, packet-envelope checks and full output decoding. Each cell is the
+median of three one-iteration compiled-binary runs. Preparation includes staging,
+probing, encoding, independent verification, poster generation and cleanup;
+fixture loading and artifact capture are outside the benchmark timer. GNU time
+CPU includes those extra command phases and all child processes. FFmpeg peak RSS
+is sampled every 100 ms across its sequential phases, **not** combined app/child
+memory or a hard memory limit. The machine was on AC with the powersave governor.
+
+| Footage | Tier | Preparation seconds | Command CPU seconds | FFmpeg peak RSS MiB |
+| --- | --- | ---: | ---: | ---: |
+| Motion | Efficient | 21.04 | 21.18 | 128.18 |
+| Motion | High quality | 28.27 | 28.56 | 187.90 |
+| Motion | Maximum | 43.12 | 43.46 | 190.70 |
+| Ambient | Efficient | 24.81 | 25.02 | 130.80 |
+| Ambient | High quality | 36.38 | 36.65 | 190.54 |
+| Ambient | Maximum | 49.58 | 49.87 | 193.11 |
+
+Every run completed below the existing two-minute per-operation deadline; it
+was not increased. Three samples are qualification evidence, not a timing
+guarantee for other machines or a claim of statistical significance. The test
+process's sampled peak RSS medians were 70.5–77.1 MiB at Efficient,
+90.5–118.5 MiB at High quality and 118.4–125.5 MiB at Maximum. Those include
+the benchmark's loaded fixture and untimed artifact copies; they are separate
+from FFmpeg memory and are not an estimate of the streaming app's import RSS.
+
+All outputs independently probe as Constrained Baseline H.264, one reference,
+`yuv420p`, square pixels and limited-range Rec.709, one video stream with no
+audio. They are exactly 30 seconds. Efficient is 1280×720/30 FPS/900 frames at
+Level 3.1; High quality is 1920×1080/30 FPS/900 frames at Level 4.0; Maximum is
+1920×1080/60 FPS/1800 frames at Level 4.2. All three repetitions produced the
+same SHA-256 for each derivative:
+
+| Footage | Tier | Video bytes | SHA-256 |
+| --- | --- | ---: | --- |
+| Motion | Efficient | 5,549,435 | `792acfaa5f64fabfe7ec56d35815c794e7d766a2c4aceb4b4a2d63950a58b346` |
+| Motion | High quality | 21,822,744 | `1fa6ae2390a156320f58da2e54e1326f27bc046af77a2076a20f387bd3bd0de1` |
+| Motion | Maximum | 29,135,633 | `3634d259d314991a84fed2a7eed11c6ad62c2860af954cccc743c3fde2cbb1b7` |
+| Ambient | Efficient | 11,551,092 | `10a7f425947400394276eb60c32605ea47e4feaa3eb84b9be8cea94829be5418` |
+| Ambient | High quality | 23,099,214 | `36354dc5384e1bb5b81308eb23aaa81bab398788616b1c182656a574d3b2c8f9` |
+| Ambient | Maximum | 29,336,681 | `01e27f30d4d655f680c96f63bff5681890f660bcdcf56380a17e2d611f2df743` |
+
+The starting 3/6/10 Mbps VBV and 16/32/64 MiB budgets are retained. CRF does not
+fill the budget: motion Efficient averages about 1.48 Mbps. VBV permits bounded
+bursts from its two-second reservoir; a short clip's average can therefore be
+slightly above the named maximum rate. Validation checks that actual packet
+envelope and stored bytes, not a strict average-rate assumption. A fully used
+10 Mbps/20 Mbit envelope over 30 seconds also explains why Maximum needs more
+headroom than the old 16 MiB cap.
+
+SSIM against each corresponding **pre-encode scaled/rate-limited** reference is
+0.993723/0.995164/0.991909 for motion and 0.953872/0.974124/0.980777 for ambient,
+in tier order. This measures re-encoding loss, not the detail removed by scaling
+or temporal samples removed by FPS reduction, and cannot rank perceptual quality
+across resolutions. Textured footage remains lossy, especially at Efficient.
+These two clips are a bounded qualification set, not broad codec-quality proof.
+
+### Browser playback and interaction
+
+Brave 148.0.7778.217 ran headed on the same T480s. Each condition below is the
+median of three eight-second samples. Browser CPU covers the processes reported
+by CDP; memory is their summed PSS, avoiding the double counting in summed RSS.
+Native CPU is the app host. Synthetic microphone capture includes transport but
+not speech recognition. Values describe these fixtures and viewports, not a
+guarantee for other media, desktop activity or machines.
+
+| Footage | Tier | Normal CPU | Half-speed CPU | With microphone CPU | Browser PSS MiB | Native CPU |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Motion | Efficient | 23.8% | 15.9% | 40.0% | 291.8 | 2.0% |
+| Motion | High quality | 26.9% | 16.2% | 41.5% | 379.2 | 2.2% |
+| Motion | Maximum | 41.6% | 25.5% | 58.1% | 344.4 | 1.9% |
+| Ambient | Efficient | 26.2% | 14.5% | 42.1% | 359.0 | 2.1% |
+| Ambient | High quality | 28.8% | 15.1% | 42.7% | 391.5 | 2.1% |
+| Ambient | Maximum | 51.3% | 26.1% | 56.8% | 348.9 | 2.1% |
+
+The table below gives median/p95 **milliseconds**, taking the median of each
+run’s median and p95. Playing-mode navigation covers the full stress workloads;
+normal-speed typing uses three eleven-character sequences. These are render
+latencies, not physical-keyboard-to-screen presentation measurements.
+
+| Footage | Tier | Event selection | Expand/collapse | 200 Thoughts | Day changes | All Thoughts | Typing |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Motion | Efficient | 15.0/30.1 | 18.6/34.4 | 17.5/31.2 | 166.8/185.5 | 17.0/29.9 | 14.0/14.8 |
+| Motion | High quality | 18.0/28.0 | 21.5/31.1 | 21.4/31.2 | 169.8/186.3 | 19.7/30.1 | 19.9/27.9 |
+| Motion | Maximum | 19.9/30.7 | 23.2/31.9 | 22.7/30.5 | 174.3/195.8 | 14.9/28.2 | 16.1/30.1 |
+| Ambient | Efficient | 15.9/28.2 | 19.2/36.9 | 18.2/30.5 | 169.4/185.2 | 18.6/38.1 | 13.9/25.4 |
+| Ambient | High quality | 17.2/28.1 | 20.3/31.6 | 19.7/30.1 | 169.2/185.2 | 18.8/39.2 | 17.4/30.5 |
+| Ambient | Maximum | 19.9/27.2 | 25.7/32.2 | 22.0/32.9 | 181.1/210.5 | 14.7/27.6 | 13.7/27.9 |
+
+Native player counters also retain the drops instead of equating successful
+playback with perfect delivery. Entries below are **dropped/total frames**;
+paused and reduced-motion samples advanced no frames.
+
+| Footage | Tier | Normal samples | Microphone samples | Half-speed samples | Playing navigation |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Motion | Efficient | 0/727 | 1/726 | 0/364 | 3/5178 |
+| Motion | High quality | 0/725 | 1/725 | 0/363 | 10/3088 |
+| Motion | Maximum | 0/1453 | 1/1450 | 1/726 | 15/6174 |
+| Ambient | Efficient | 0/727 | 2/727 | 1/364 | 3/3146 |
+| Ambient | High quality | 0/726 | 1/725 | 3/364 | 12/3116 |
+| Ambient | Maximum | 0/1452 | 1/1450 | 0/725 | 16/6254 |
+
+The last column uses each navigation pass's cumulative player counters, including
+startup and settling. It is not a count restricted to timed keystrokes. No
+normal-speed steady sample dropped a frame; small drops occurred during some
+microphone, slow-speed and navigation passes.
+
+The static/paused controls put these latencies in context. Their expanded-Thought
+p95 medians ranged from 27.3–33.1 ms; playing medians were 30.1–32.9 ms. Day
+changes were slower with video: Maximum reached 195.8/210.5 ms p95 for
+motion/ambient, versus its static controls' 175.2/174.4 ms and Efficient's playing
+185.5/185.2 ms. These runs do not show a broad typing/selection failure, but they
+do show additional day-navigation cost. No unrelated rendering optimization was
+introduced. Higher tiers remain opt-in, and the quality control explains their
+potential CPU cost.
+
+Pause/reduced-motion median browser CPU was 0.7–1.5%, with no advancing video
+frames. During repeated playing-navigation passes, browser PSS ranged from
+376.9–405.1 MiB and native RSS from 38.4–46.4 MiB. Browser series did not grow
+monotonically; the largest native increase was approximately 43.1 → 46.3 →
+46.4 MiB. This short qualification is not a long-duration leak test. Fresh
+condition-only follow-ups and browser caches affect the table's PSS medians;
+they do not establish a monotonic memory ranking among tiers. Terminal connection
+counts stayed at one throughout each condition page, including microphone and
+settings transitions; reduced motion deliberately uses a fresh page.
+
+CDP reported `VaapiVideoDecoder` and `kIsPlatformVideoDecoder=true` for the
+observed Brave players at all tiers. This is observed decoder evidence, not an
+inference from codec support and not a claim about every Linux configuration.
+Firefox 151.0 also decoded the ambient 1080p60 derivative in a headless 31-second
+check spanning the 30-second loop boundary: 1,863 additional frames, zero reported
+drops, and successful reduced-motion pause. Its hardware-decoder path and steady
+CPU were not measured. macOS/Windows runtime video compatibility remains
+unverified.
+
+All six browser-prepared MP4 hashes matched the native derivatives above, with
+actual width/height, exact FPS, duration and frame counts checked from preparation
+replies. Desktop/narrow captures and the ambient posters were inspected. Earlier
+benchmark-driver setup/focus failures are excluded from condition timings;
+completed navigation series were retained instead of repeated. The driver now
+waits for speed-label changes and playback acknowledgments before navigating.
+Raw records, captures and fixture manifests remain under
+`/tmp/thoughts-video-quality-review`; the tracked harness and fixture recipe allow
+new measurements without personal media or app data.
+
+The Maximum-import recording regression uses the real local-file picker path.
+Playwright's in-memory multi-megabyte injection reproducibly blocked Chromium
+long enough to exhaust the bounded worklet credits; the local-file path passed
+with the same track, draft and connection assertions. Audio queue limits and
+production capture behavior were not relaxed.

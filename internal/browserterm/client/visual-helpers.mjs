@@ -35,7 +35,7 @@ export async function setDarkness(page, value) {
 export async function chooseImage(page, image) {
   const chooser = page.waitForEvent('filechooser');
   await clickControl(page, 'Choose image or video');
-  await (await chooser).setFiles(image);
+  await (await chooser).setFiles(image.path || image);
   if (image.mimeType?.startsWith('video/')) {
     await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
     await clickControl(page,'Preview loop');

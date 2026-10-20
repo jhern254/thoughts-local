@@ -90,9 +90,27 @@ not retained. Display rotation is normalized into frames; only supported SDR
 color interpretation and necessary playback/container information remain.
 
 Source limits are 128 MiB, 1–120 seconds, 4,096 pixels per axis, 9 million pixels
-per frame and 60 FPS, with an aggregate four-billion-pixel processing budget.
-Selected footage is 1–30 seconds. Stored output uses even dimensions, square pixels, at most 1,280 pixels per axis,
-921,600 pixels per frame, 24 FPS and 16 MiB. Re-encoding is lossy. Untagged SDR
+per frame and 60 FPS. Selected footage is 1–30 seconds. Import quality is a
+persisted preference, initially Efficient, with these output ceilings:
+
+| Quality | Longest axis | Pixels/frame | FPS | Video bytes | VBV maximum rate / buffer |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Efficient | 1280 | 921,600 | 30 | 16 MiB | 3 Mbps / 6 Mbit |
+| High quality | 1920 | 2,073,600 | 30 | 32 MiB | 6 Mbps / 12 Mbit |
+| Maximum | 1920 | 2,073,600 | 60 | 64 MiB | 10 Mbps / 20 Mbit |
+
+Portrait footage uses the same dimension/pixel budget. Output uses even
+dimensions and square pixels, preserves display aspect ratio after supported
+rotation/sample-aspect correction, and never enlarges source samples. Frame
+rates remain exact rationals, capped only when above the selected tier's ceiling.
+No interpolation is performed. H.264 Constrained Baseline, one reference frame,
+no B frames, CRF 23 and bounded VBV are retained; a still scene need not fill its
+bitrate budget. Level 3.1, 3.2, 4.0 or 4.2 is selected from padded 16×16
+macroblocks/frame, macroblocks/second, reference-picture, axis and bitrate/buffer
+bounds, following the H.264 Annex A limits also used by
+[FFmpeg's level selection](https://github.com/FFmpeg/FFmpeg/blob/n6.1/libavcodec/h264_levels.c).
+Visible even dimensions alone do not establish level compatibility.
+Re-encoding is lossy. Untagged SDR
 is interpreted as Rec.709; explicit incompatible primaries/transfer, ICC video
 profiles, HDR/HEVC, encrypted/fragmented/reference movies, arbitrary display
 transforms and unsupported encodings are rejected rather than silently relabeled.
@@ -102,7 +120,22 @@ arrays and a local-file protocol allowlist, validates self-contained container
 references, limits work and joins canceled subprocesses before cleanup. FFmpeg
 and ffprobe are installed separately and must be maintained by the user. This
 boundary is not an OS sandbox; protocol restrictions alone do not confine files.
-Prepared output is probed and fully decoded before selection is committed.
+Staging bounds the source bytes/container/stream declarations without rejecting
+a two-minute 1080p60 source merely because its full duration exceeds a decoded
+pixel budget. Each preparation instead counts decoded frames before timestamp
+trimming and FPS reduction, including preceding-keyframe seek preroll. Exceeding
+four billion nominal source pixels or 7,200 frames cancels and joins FFmpeg.
+Decoder and pipe read-ahead can occur; this is an application work budget, not
+a hard CPU, process-memory or OS sandbox limit. Extremely long GOPs can make
+a late cut exceed it; choose an earlier/shorter cut or export a source with more
+frequent keyframes. Finite two-minute operation deadlines remain unchanged.
+
+Prepared output has its own tier-size limit, container/stream checks, actual
+packet cadence/count and VBV-envelope validation, and a bounded full independent
+decode before selection is committed. Poster geometry uses the same output plan.
+Decoder allocation permits small SIMD padding around the stricter visible-pixel
+limits; padding does not permit larger stored dimensions. Frame-aware duration
+checks allow fractional-FPS rounding while retaining a 1–30-second prepared loop.
 
 Speed and deliberate pause persist. Visibility, connection, reduced-motion,
 preview exclusivity and playback failure are browser lifecycle conditions, never
@@ -115,7 +148,11 @@ Visual, disconnect and orderly shutdown remove it after joining processing.
 It is not an archive; saved clips have no retained source or re-trim metadata.
 A crash can leave staging files, as with other incomplete filesystem operations.
 Only explicit Preview loop encodes; Apply saves the last acknowledged prepared
-video and poster unchanged. Draft cut edits do not replace that accepted loop.
+video and poster unchanged. Draft cut or quality edits do not replace that
+accepted loop. Its quality, dimensions, rational FPS and interval belong to the
+accepted bytes. Apply saves its quality preference too; settings-only quality
+changes affect future imports without changing the selected file. Playback
+speed, framing and darkness never encode video.
 At 25% speed, a 30-second clip plays for 120 seconds without storing more frames.
 No attachment originals are introduced by this feature.
 

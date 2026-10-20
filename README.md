@@ -140,8 +140,21 @@ See [Media handling and privacy](docs/media-handling-policy.md) for the distinct
 
 Video imports require installed **FFmpeg and ffprobe** with H.264 encoding support.
 Sources may be up to two minutes, at most 128 MiB, 4,096 pixels per side, 9MP per frame,
-and 60 FPS. Thoughts stores a silent, bounded 720p-class display copy and a still
-poster. Under Visual, adjust **Playback speed** from 25–100% in five-point steps,
+and 60 FPS. Choose **Video quality** before preparing a loop:
+
+| Quality | Resolution ceiling | FPS ceiling |
+| --- | --- | --- |
+| Efficient (default) | 1280×720 | 30 |
+| High quality | 1920×1080 | 30 |
+| Maximum | 1920×1080 | 60 |
+
+These ceilings also support portrait footage and intermediate sizes/rates,
+including 23.976, 29.97 and 59.94 FPS. Smaller/slower sources stay smaller/slower;
+Thoughts preserves aspect ratio without upscaling or interpolating frames.
+Higher quality takes more import time, storage and playback resources; see the
+[T480s measurements](docs/browser-background-performance.md#video-quality-through-1080p60).
+Thoughts stores a silent display copy and a still poster. Under Visual, adjust
+**Playback speed** from 25–100% in five-point steps,
 or **Play/Pause video**; Apply saves these preferences. Slower playback can look
 less smooth. Hidden tabs, disconnected sessions and reduced-motion preferences
 pause playback automatically; a deliberate Play action can override reduced
@@ -150,7 +163,11 @@ For a new upload, choose a 1–30 second range in the TUI trim editor. Move the
 source cursor to inspect a paused frame; Enter on Start or End uses that position.
 Arrow keys adjust by 0.1 seconds; Shift adjusts by one second. **Preview loop**
 prepares the exact clip; **Done** and **Apply** use the last successful preview,
-even if you subsequently change the cut points. Speed changes playback duration,
+even if you subsequently change the cut points or quality. The editor shows the
+previewed quality and actual dimensions/FPS; preview again to accept a new quality.
+Apply saves those exact previewed bytes and their quality preference. With no
+pending import, changing quality only changes the preference for future imports.
+Speed changes playback duration,
 not the selected footage. Saved videos cannot be re-trimmed; reimport the source.
 HDR/HEVC and AI animation remain separate work.
 

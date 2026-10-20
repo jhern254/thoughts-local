@@ -669,7 +669,7 @@ func (m Model) nextOptionsFocus(direction int) int {
 }
 
 func (m *Model) setVideoQuality(key string) {
-	m.options.status = "Quality applies to new video previews."
+	m.options.status = "New previews only. Higher tiers can use more CPU."
 	switch key {
 	case "left":
 		m.options.videoQuality = m.options.videoQuality.Step(-1)
@@ -682,7 +682,7 @@ func (m *Model) setVideoQuality(key string) {
 	}
 }
 func (m *Model) cycleVideoQuality() {
-	m.options.status = "Quality applies to new video previews."
+	m.options.status = "New previews only. Higher tiers can use more CPU."
 	if m.options.videoQuality == visual.VideoQualityMaximum {
 		m.options.videoQuality = visual.VideoQualityEfficient
 	} else {

@@ -4,12 +4,16 @@ import {expect} from '@playwright/test';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 
-export async function measureVideoInteractions({page, cdp, url, videoFixturePath, output, add, usage, count, openVisual, chooseImage, clickControl}) {
+export async function measureVideoInteractions({page, cdp, url, videoFixturePath, output, add, usage, count, qualityStudy, openVisual, chooseImage, clickControl}) {
   const source = readFileSync(videoFixturePath);
   await openVisual(page);
-  await chooseImage(page,{name:'synthetic-interaction.mp4',mimeType:'video/mp4',buffer:source});
+  const previewStart = performance.now();
+  await chooseImage(page,{name:'synthetic-interaction.mp4',mimeType:'video/mp4',...(qualityStudy ? {path:videoFixturePath} : {buffer:source})});
+  const previewMs = performance.now() - previewStart;
+  const applyStart = performance.now();
   await clickControl(page,'Apply');
   await expect(page.locator('.xterm-rows')).not.toContainText('Background darkness:');
+  add({phase:'video-import', fixtureInput:qualityStudy ? 'local-file' : 'driver-buffer', previewMs, applyMs:performance.now()-applyStart});
   const prepared = await (await page.request.get(`${url}/visual/background`)).body();
   const poster = await (await page.request.get(`${url}/visual/poster`)).body();
   add({phase:'interaction-fixture', sourceBytes:source.length, sourceSHA256:createHash('sha256').update(source).digest('hex'), preparedSHA256:createHash('sha256').update(prepared).digest('hex')});
@@ -19,16 +23,16 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
   let mode = 'static';
   await page.route('**/visual', async route => {
     const response=await route.fetch(), settings=await response.json();
-    await route.fulfill({response,json:{...settings,kind:mode === 'static' ? 'image' : 'video',userPaused:mode === 'paused'}});
+    await route.fulfill({response,json:{...settings,kind:mode === 'static' ? 'image' : 'video',userPaused:mode === 'paused',...(qualityStudy ? {speedPercent:100} : {})}});
   });
   await page.route('**/visual/background*', route => mode === 'static'
     ? route.fulfill({contentType:'image/jpeg', body:poster}) : route.continue());
 
-  async function ready() {
+  async function ready(reducedMotion = false) {
     await page.goto(url);
     await expect(page.locator('#status')).toHaveText('Connected');
     await expect(page.locator('#background-image')).toBeVisible();
-    if (mode !== 'static') await expect.poll(() => page.locator('#background-video').evaluate(video => video.paused)).toBe(mode === 'paused');
+    if (mode !== 'static') await expect.poll(() => page.locator('#background-video').evaluate(video => video.paused)).toBe(mode === 'paused' || reducedMotion);
     await page.waitForFunction(() => window.backgroundProbe && document.querySelector('.xterm-rows').textContent.includes('Make my own timeline feel instant'));
     await page.evaluate(() => {
       const terminal = window.backgroundProbe.terminal;
@@ -48,6 +52,20 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
         return {text, event, thought:Number(text.match(/│ Thought (\d+)/)?.[1] || 0), day:lines.find(line => /^\s*Events\s+[A-Z]/.test(line)) || '', expanded:text.includes('Newest first')};
       };
     });
+    // A fixed preceding-day seed avoids midnight changing the measured workload.
+    // Navigate through the real UI; production clocks and timeline rules stay intact.
+    if (process.env.THOUGHTS_PERF_PREVIOUS_DAY === '1') {
+      const current = await page.evaluate(() => window.interactionSnapshot().day);
+      await page.keyboard.press('ArrowLeft');
+      await expect.poll(() => page.evaluate(() => window.interactionSnapshot().day)).not.toBe(current);
+      await expect(page.locator('.xterm-rows')).not.toContainText('Loading timeline');
+      for (let step=0;step<30;step++) {
+        const selected = await page.evaluate(() => window.interactionSnapshot().event);
+        if (selected.includes('Make my own timeline feel instant')) break;
+        await key('ArrowDown',{eventChanged:selected});
+      }
+      await expect.poll(() => page.evaluate(() => window.interactionSnapshot().event)).toContain('Make my own timeline feel instant');
+    }
   }
 
   async function key(key, expected) {
@@ -61,6 +79,7 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
           if (expected.day) return snapshot.day.includes(expected.day) && /\b30 thoughts\b/.test(snapshot.text);
           if (expected.thought) return snapshot.thought === expected.thought;
           if (expected.expanded !== undefined) return snapshot.expanded === expected.expanded && (!expected.expanded || snapshot.thought === 20000);
+          if (expected.text) return snapshot.text.includes(expected.text);
           return false;
         };
         const finish = value => {clearTimeout(timeout);listener.dispose();document.removeEventListener('keydown', started, true);resolve(value);};
@@ -142,7 +161,8 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
     });
   }
 
-  const runs = process.env.THOUGHTS_PERF_INTERACTION_SMOKE === '1' ? 1 : count;
+  const conditionsOnly = qualityStudy && process.env.THOUGHTS_PERF_CONDITIONS_ONLY === '1';
+  const runs = conditionsOnly ? 0 : process.env.THOUGHTS_PERF_INTERACTION_SMOKE === '1' ? 1 : count;
   const narrowOnly = process.env.THOUGHTS_PERF_INTERACTION_NARROW_ONLY === '1';
   for(let run=0;run<runs;run++) for(const selected of narrowOnly ? ['playing'] : ['static','paused','playing'].slice(run%3).concat(['static','paused','playing'].slice(0,run%3))) {
     mode=selected;
@@ -157,11 +177,13 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
       // Exercise the owner's exact Apply -> navigation sequence as well as
       // reload restoration. Native import time is excluded from key latency.
       await openVisual(page);
-      await chooseImage(page,{name:`synthetic-interaction-${run}.mp4`,mimeType:'video/mp4',buffer:source});
+      // Quality qualification measures repeated interaction with the same exact
+      // prepared bytes. Its one-time import is recorded separately above.
+      if (!qualityStudy) await chooseImage(page,{name:`synthetic-interaction-${run}.mp4`,mimeType:'video/mp4',buffer:source});
       await clickControl(page,'Apply');
       await expect(page.locator('.xterm-rows')).not.toContainText('Background darkness:',{timeout:120000});
       await expect(page.locator('#background-video')).toBeVisible();
-      await workload('startup-selection',run,'apply',async () => {
+      await workload('startup-selection',run,qualityStudy ? 'apply-settings' : 'apply',async () => {
         const values=[];
         for(let n=0;n<5;n++) {values.push(await key('ArrowUp',{event:'Defragment my imaginary desk'}));values.push(await key('ArrowDown',{event:'Make my own timeline feel instant'}));}
         return values;
@@ -207,5 +229,74 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
       await ready();await events(run,'narrow');
       await page.screenshot({path:output.replace('.json',`-${mode}-narrow.png`)});
     }
+  }
+  if (qualityStudy) {
+    mode = 'playing';
+    await page.setViewportSize({width:1200,height:850});
+    await ready();
+    const playback = () => page.evaluate(() => {
+      const video = document.querySelector('#background-video');
+      const quality = video.getVideoPlaybackQuality();
+      return {frames:quality.totalVideoFrames,dropped:quality.droppedVideoFrames,paused:video.paused,speed:video.playbackRate,terminalConnections:window.perfTerminalConnections};
+    });
+    const sample = async condition => {
+      for (let run=0;run<count;run++) {
+        const before=await usage(), qualityBefore=await playback(), start=performance.now();
+        await page.waitForTimeout(8000);
+        const after=await usage(), seconds=(performance.now()-start)/1000, quality=await playback();
+        add({phase:'quality-condition',condition,run,seconds,browserCPUPercent:100*(after.browserCPU-before.browserCPU)/seconds,appCPUPercent:100*(after.appCPU-before.appCPU)/seconds,before,qualityBefore,quality,...after});
+      }
+    };
+    await sample('normal-100');
+    await page.keyboard.press('t');
+    await expect(page.locator('.xterm-rows')).toContainText('Create thought');
+    let typed='qx-';
+    await page.keyboard.type(typed);
+    await expect(page.locator('.xterm-rows')).toContainText(typed);
+    for (let run=0;run<count;run++) {
+      await workload('typing',run,'normal-100',async () => {
+        const values=[];
+        for (const character of 'cpuheadroom') {
+          typed+=character;
+          values.push(await key(character,{text:typed}));
+        }
+        return values;
+      });
+    }
+    await page.keyboard.press('F8');
+    await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
+    await page.evaluate(() => window.voiceProbe.grant(0));
+    await expect(page.locator('#status')).toHaveText('Transcribing…');
+    await sample('synthetic-microphone');
+    await page.keyboard.press('F8');
+    await expect(page.locator('.xterm-rows')).toContainText('F8: Record');
+    await page.keyboard.press('Escape');
+    await openVisual(page);
+    await clickControl(page,'Playback speed: 100%');
+    await page.keyboard.press('Home');
+    for (let step=0;step<5;step++) await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.xterm-rows')).toContainText('Playback speed: 50%');
+    await clickControl(page,'Apply');
+    await expect(page.locator('.xterm-rows')).not.toContainText('Background darkness:');
+    await sample('slow-50');
+    await openVisual(page);
+    await clickControl(page,'Playback speed: 50%');
+    await page.keyboard.press('End');
+    await expect(page.locator('.xterm-rows')).toContainText('Playback speed: 100%');
+    await clickControl(page,'Pause video');
+    await clickControl(page,'Apply');
+    await expect(page.locator('.xterm-rows')).not.toContainText('Background darkness:');
+    await sample('paused');
+    await openVisual(page);
+    await clickControl(page,'Play video');
+    await clickControl(page,'Apply');
+    await expect(page.locator('.xterm-rows')).not.toContainText('Background darkness:');
+    await page.emulateMedia({reducedMotion:'reduce'});
+    // Deliberate Play overrides reduced motion for one session. A fresh page
+    // measures the default reduced-motion behavior without that override.
+    await ready(true);
+    await expect.poll(() => playback().then(value=>value.paused)).toBe(true);
+    await sample('reduced-motion');
+    await page.emulateMedia({reducedMotion:'no-preference'});
   }
 }
