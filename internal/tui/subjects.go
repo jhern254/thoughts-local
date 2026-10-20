@@ -22,6 +22,10 @@ const (
 )
 
 type SubjectService interface {
+	ListAliases(ctx context.Context, userID string, subjectID int64) ([]data.SubjectAlias, error)
+	CreateAlias(ctx context.Context, userID string, subjectID int64, name string) (*data.SubjectAlias, error)
+	UpdateAlias(ctx context.Context, userID string, subjectID, aliasID int64, name string) (*data.SubjectAlias, error)
+	RemoveAlias(ctx context.Context, userID string, subjectID, aliasID int64) error
 	Update(ctx context.Context, userID string, subjectID int64, name string) (*data.Subject, error)
 	Delete(ctx context.Context, userID string, subjectID int64) error
 	List(ctx context.Context, userID string) ([]data.Subject, error)
@@ -35,7 +39,8 @@ type subjectState struct {
 	readRequest   *int
 	cancelRead    context.CancelFunc
 	// filter scopes asynchronous Bubbles matches to this list and query revision.
-	filter listfilter.Scope
+	filter  listfilter.Scope
+	aliases subjectAliasState
 
 	// The Bubbles list owns row selection. selected is the accepted Subject used
 	// by detail, edit, and delete screens after the selected row is fetched.
@@ -144,12 +149,14 @@ func newSubjectState(service SubjectService) subjectState {
 
 	return subjectState{
 		service: service,
+		aliases: newSubjectAliasState(),
 		list:    subjectList,
 		input:   input,
 	}
 }
 
 func (m *Model) resizeSubjects(width, height int) {
+	m.resizeSubjectAliases()
 	// Reserve feedback (two lines), the record count, and navigation help.
 	m.subjects.list.SetSize(width, max(0, height-4))
 	m.subjects.input.SetWidth(max(1, width-ansi.StringWidth(m.subjects.input.Prompt)-1))
@@ -526,6 +533,8 @@ func (m Model) updateSubjectDetail(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
+		case "a":
+			return m.openSubjectAliases()
 		case "e":
 			if m.subjects.selected == nil {
 				return m, nil
@@ -663,7 +672,7 @@ func (m Model) viewSubjectDetail() string {
 
 func (m Model) subjectDetailHelp() string {
 	if m.thoughts.Browsing() {
-		return "e: edit subject • d: delete subject • Q/Esc: subjects"
+		return ansi.Wrap("a: aliases • e: edit • d: delete • Q/Esc: subjects", max(1, m.width), "")
 	}
 	return ""
 }

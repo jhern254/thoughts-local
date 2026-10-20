@@ -17,6 +17,7 @@ import (
 )
 
 type subjectServiceStub struct {
+	subjectAliasServiceStub
 	update func(context.Context, string, int64, string) (*data.Subject, error)
 	delete func(context.Context, string, int64) error
 	list   func(context.Context, string) ([]data.Subject, error)
