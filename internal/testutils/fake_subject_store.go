@@ -9,17 +9,27 @@ import (
 )
 
 type FakeSubjectStore struct {
-	subjects map[int64]data.Subject
-	lastID   int64
+	subjects    map[int64]data.Subject
+	lastID      int64
+	aliases     map[int64]data.SubjectAlias
+	lastAliasID int64
 }
 
 func NewFakeSubjectStore() *FakeSubjectStore {
-	return &FakeSubjectStore{subjects: make(map[int64]data.Subject)}
+	return &FakeSubjectStore{
+		subjects: make(map[int64]data.Subject),
+		aliases:  make(map[int64]data.SubjectAlias),
+	}
 }
 
 func (s *FakeSubjectStore) CreateSubject(ctx context.Context, subject *data.Subject) (*data.Subject, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	for _, alias := range s.aliases {
+		if alias.UserID == subject.UserID && alias.AliasName == subject.SubjectName {
+			return nil, data.ErrDuplicateRecord
+		}
 	}
 	s.lastID++
 	created := *subject
@@ -69,6 +79,11 @@ func (s *FakeSubjectStore) UpdateSubject(ctx context.Context, userID string, sub
 		}
 	}
 	subject.SubjectName = name
+	for _, alias := range s.aliases {
+		if alias.UserID == userID && alias.AliasName == name {
+			return nil, data.ErrDuplicateRecord
+		}
+	}
 	subject.UpdatedAt = updatedAt
 	s.subjects[subjectID] = subject
 	return &subject, nil
@@ -83,6 +98,11 @@ func (s *FakeSubjectStore) DeleteSubject(ctx context.Context, userID string, sub
 		return data.ErrRecordNotFound
 	}
 	delete(s.subjects, subjectID)
+	for id, alias := range s.aliases {
+		if alias.SubjectID == subjectID && alias.UserID == userID {
+			delete(s.aliases, id)
+		}
+	}
 	return nil
 }
 

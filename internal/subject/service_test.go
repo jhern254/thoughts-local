@@ -10,6 +10,7 @@ import (
 )
 
 type subjectServiceStoreStub struct {
+	aliasStoreStub
 	create       func(context.Context, *data.Subject) (*data.Subject, error)
 	get          func(context.Context, string, int64) (*data.Subject, error)
 	list         func(context.Context, string) ([]data.Subject, error)

@@ -53,6 +53,30 @@ func (s *subjectStoreStub) DeleteSubject(context.Context, string, int64) error {
 	panic("DeleteSubject not stubbed")
 }
 
+func (s *subjectStoreStub) ListSubjectAliases(context.Context, string, int64) ([]data.SubjectAlias, error) {
+	panic("ListSubjectAliases not stubbed")
+}
+
+func (s *subjectStoreStub) ListUserSubjectAliases(context.Context, string) ([]data.SubjectAlias, error) {
+	panic("ListUserSubjectAliases not stubbed")
+}
+
+func (s *subjectStoreStub) CreateSubjectAlias(context.Context, *data.SubjectAlias) (*data.SubjectAlias, error) {
+	panic("CreateSubjectAlias not stubbed")
+}
+
+func (s *subjectStoreStub) UpdateSubjectAlias(context.Context, string, int64, int64, string, time.Time) (*data.SubjectAlias, error) {
+	panic("UpdateSubjectAlias not stubbed")
+}
+
+func (s *subjectStoreStub) RemoveSubjectAlias(context.Context, string, int64, int64) error {
+	panic("RemoveSubjectAlias not stubbed")
+}
+
+func (s *subjectStoreStub) ResolveSubjectName(context.Context, string, string) (*data.Subject, error) {
+	panic("ResolveSubjectName not stubbed")
+}
+
 func newSubjectServer(store subject.Store) *application {
 	return NewApplication(subject.NewService(store), thought.NewService(testutils.NewFakeThoughtStore()), config{}, zerolog.New(io.Discard))
 }
@@ -162,7 +186,7 @@ func TestCreateSubjectHandler(t *testing.T) {
 		newSubjectServer(store).routes().ServeHTTP(response, subjectRequest(http.MethodPost, "/subjects", `{"subject_name":"coding"}`))
 
 		testutils.AssertStatusCode(t, response.Code, http.StatusConflict)
-		if !strings.Contains(response.Body.String(), "A subject with that name already exists.") {
+		if !strings.Contains(response.Body.String(), "That name is already in use by a subject or alias.") {
 			t.Fatalf("got response body %s", response.Body.String())
 		}
 	})

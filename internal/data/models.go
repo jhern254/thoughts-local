@@ -20,6 +20,16 @@ type Subject struct {
 	UpdatedAt   time.Time
 }
 
+// SubjectAlias is an alternative exact name for one canonical Subject.
+type SubjectAlias struct {
+	AliasID   int64
+	SubjectID int64
+	UserID    string
+	AliasName string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Thought struct {
 	ThoughtID  int64
 	UserID     string

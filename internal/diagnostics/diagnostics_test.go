@@ -42,8 +42,8 @@ func TestSubjectMessage(t *testing.T) {
 		want string
 	}{
 		{"wrapped missing", fmt.Errorf(private+": %w", data.ErrRecordNotFound), "The requested resource was not found."},
-		{"wrapped duplicate", fmt.Errorf(private+": %w", data.ErrDuplicateRecord), "A subject with that name already exists."},
-		{"intermediate identity", fmt.Errorf(private+": %w", identityWrapper{errors.New(private)}), "A subject with that name already exists."},
+		{"wrapped duplicate", fmt.Errorf(private+": %w", data.ErrDuplicateRecord), "That name is already in use by a subject or alias."},
+		{"intermediate identity", fmt.Errorf(private+": %w", identityWrapper{errors.New(private)}), "That name is already in use by a subject or alias."},
 		{"intermediate validation type", fmt.Errorf(private+": %w", validationWrapper{errors.New(private)}), "The subject details are invalid."},
 		{"unknown", errors.New(private), fallback},
 		{"mixed", errors.Join(data.ErrDuplicateRecord, errors.New(private)), fallback},

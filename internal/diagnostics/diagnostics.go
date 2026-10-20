@@ -12,7 +12,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
-const DuplicateSubjectMessage = "A subject with that name already exists."
+const DuplicateSubjectMessage = "That name is already in use by a subject or alias."
 
 func EventMessage(err error, fallback string) string {
 	cause := SingleError(err)

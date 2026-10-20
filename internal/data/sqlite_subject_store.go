@@ -33,10 +33,7 @@ func (s *SQLiteSubjectStore) CreateSubject(ctx context.Context, subject *Subject
 		subject.UserID,
 	)
 	if err != nil {
-		if isSQLiteUniqueConstraint(err) {
-			return nil, ErrDuplicateRecord
-		}
-		return nil, fmt.Errorf("create subject: %w", TranslateSQLiteError(err))
+		return nil, fmt.Errorf("create subject: %w", subjectNameError(err))
 	}
 
 	created, err := result.RowsAffected()
@@ -113,10 +110,7 @@ func (s *SQLiteSubjectStore) UpdateSubject(ctx context.Context, userID string, s
 		subjectID,
 	)
 	if err != nil {
-		if isSQLiteUniqueConstraint(err) {
-			return nil, ErrDuplicateRecord
-		}
-		return nil, fmt.Errorf("update subject: %w", TranslateSQLiteError(err))
+		return nil, fmt.Errorf("update subject: %w", subjectNameError(err))
 	}
 	updated, err := result.RowsAffected()
 	if err != nil {
@@ -153,6 +147,12 @@ func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, s
 	}
 	if deleted == 0 {
 		return ErrRecordNotFound
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE subject_aliases
+ SET deleted_at=max(unixepoch('now'),updated_at), updated_at=max(unixepoch('now'),updated_at)
+ WHERE user_id=? AND subject_id=? AND deleted_at IS NULL`, userID, subjectID)
+	if err != nil {
+		return fmt.Errorf("retire subject aliases: %w", TranslateSQLiteError(err))
 	}
 	_, err = tx.ExecContext(ctx, `
 		UPDATE thoughts

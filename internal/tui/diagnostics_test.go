@@ -39,7 +39,7 @@ func TestSubjectModel_FormDiagnostics(t *testing.T) {
 		err  error
 		want string
 	}{
-		{"wrapped duplicate", fmt.Errorf(private+": %w", data.ErrDuplicateRecord), "A subject with that name already exists."},
+		{"wrapped duplicate", fmt.Errorf(private+": %w", data.ErrDuplicateRecord), "That name is already in use by a subject or alias."},
 		{"mixed failure", errors.Join(data.ErrDuplicateRecord, errors.New(private)), "Could not save the subject."},
 	} {
 		t.Run(tc.name+" preserves input and displays safe status", func(t *testing.T) {
