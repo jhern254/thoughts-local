@@ -129,7 +129,7 @@ func (m *Model) cardRows(heading string, key timeline.EntryKey, count string, on
 	width := m.cardWidth()
 	content := ansi.Truncate(heading, width, "…") + "\n"
 	if key == m.expanded {
-		if subject := m.expandedSubjectRow(); subject != "" {
+		if subject, assigned := m.expandedSubjectRow(); assigned {
 			content += subject + "\n"
 		}
 		content += "\n"
@@ -164,26 +164,27 @@ func (m *Model) cardRows(heading string, key timeline.EntryKey, count string, on
 	return lines
 }
 
-func (m *Model) expandedSubjectRow() string {
+func (m *Model) expandedSubjectRow() (string, bool) {
 	for _, entry := range m.entries {
 		if entry.Key() != m.expanded || entry.Event == nil || entry.Event.SubjectID == nil {
 			continue
 		}
+		if m.expandedSubjectErr == nil && m.expandedSubject != nil && m.expandedSubject.SubjectID == *entry.Event.SubjectID {
+			return list.DefaultStyles(true).Title.Render(singleLine(m.expandedSubject.SubjectName)), true
+		}
 		if m.opening {
-			return "Loading subject…"
+			// Reserve the badge row without flashing feedback for a short read.
+			return "", true
 		}
-		if m.expandedSubjectErr != nil || m.expandedSubject == nil {
-			return "Subject unavailable"
-		}
-		return list.DefaultStyles(true).Title.Render(singleLine(m.expandedSubject.SubjectName))
+		return "Subject unavailable", true
 	}
-	return ""
+	return "", false
 }
 
 func (m *Model) expandedThoughtsRow() int {
 	// The top border, heading and blank separator precede the picker.
 	row := 3
-	if m.expandedSubjectRow() != "" {
+	if _, assigned := m.expandedSubjectRow(); assigned {
 		row++
 	}
 	return row

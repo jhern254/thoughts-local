@@ -14,6 +14,71 @@ import (
 )
 
 func TestModel_EventSubjectBadge(t *testing.T) {
+	t.Run("first pending frame reserves the subject row without flashing loading text", func(t *testing.T) {
+		m, events, _ := fixture(t)
+		id := int64(7)
+		events.items[0].SubjectID = &id
+		m, _ = m.Update(eventKey("enter"))
+		content := m.cardContent(*m.entries[0].Event)
+		if content[1] != "" || content[2] != "" || content[3] != "Loading thoughts…" {
+			t.Fatalf("got pending rows %q, want a reserved subject row and separator before loading thoughts", content[:4])
+		}
+	})
+
+	t.Run("reopening retains the matching badge while revalidating its name", func(t *testing.T) {
+		m, events, _ := fixture(t)
+		id := int64(7)
+		events.items[0].SubjectID = &id
+		reader := &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}}}
+		m.subjectReader = reader
+		m = execute(t, m, m.openEvent(1))
+		m, _ = m.Update(eventKey("left"))
+		reader.items[0].SubjectName = "Renamed literature"
+		m, cmd := m.Update(eventKey("enter"))
+		if got, want := m.cardContent(*m.entries[0].Event)[1], list.DefaultStyles(true).Title.Render("Literature"); got != want {
+			t.Fatalf("pending badge: got %q, want last resolved badge %q", got, want)
+		}
+		m = execute(t, m, cmd)
+		if got, want := m.cardContent(*m.entries[0].Event)[1], list.DefaultStyles(true).Title.Render("Renamed literature"); got != want {
+			t.Fatalf("resolved badge: got %q, want fresh badge %q", got, want)
+		}
+	})
+
+	t.Run("changed assignment never displays another subject's retained badge", func(t *testing.T) {
+		m, events, _ := fixture(t)
+		id := int64(7)
+		events.items[0].SubjectID = &id
+		m.subjectReader = &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}, {SubjectID: 8, SubjectName: "Coding"}}}
+		m = execute(t, m, m.openEvent(1))
+		m, _ = m.Update(eventKey("left"))
+		newID := int64(8)
+		events.items[0].SubjectID = &newID
+		m.entries[0].Event.SubjectID = &newID
+		m, cmd := m.Update(eventKey("enter"))
+		if got := m.cardContent(*m.entries[0].Event)[1]; got != "" {
+			t.Fatalf("pending badge: got %q, want blank row for unresolved subject", got)
+		}
+		m = execute(t, m, cmd)
+		if got, want := m.cardContent(*m.entries[0].Event)[1], list.DefaultStyles(true).Title.Render("Coding"); got != want {
+			t.Fatalf("resolved badge: got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("failed revalidation replaces the retained badge with safe feedback", func(t *testing.T) {
+		m, events, _ := fixture(t)
+		id := int64(7)
+		events.items[0].SubjectID = &id
+		reader := &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}}}
+		m.subjectReader = reader
+		m = execute(t, m, m.openEvent(1))
+		reader.err = data.ErrRecordNotFound
+		next, cmd := m.Update(eventKey("r"))
+		m = execute(t, next, cmd)
+		if got, want := m.cardContent(*m.entries[0].Event)[1], "Subject unavailable"; got != want {
+			t.Fatalf("failed badge: got %q, want %q", got, want)
+		}
+	})
+
 	t.Run("places the assigned subject below the heading with a blank row before thoughts", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)

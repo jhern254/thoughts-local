@@ -334,3 +334,64 @@ func BenchmarkTimelineSQLite(b *testing.B) {
 		}
 	})
 }
+
+// Compile before measuring and use an idle machine. The database is disposable,
+// migrated and stress-seeded, with event 721 assigned to subject 1. Setup and
+// initial day loading are outside every timed loop.
+func BenchmarkTimelineExpansion(b *testing.B) {
+	dsn := os.Getenv("THOUGHTS_STRESS_DSN")
+	if dsn == "" {
+		b.Skip("set THOUGHTS_STRESS_DSN to a disposable stress-seeded database")
+	}
+	runtime, err := application.Open(b.Context(), dsn)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = runtime.Close() })
+	current, err := runtime.Events().Get(b.Context(), "demo", 721)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if current.SubjectID == nil || *current.SubjectID != 1 {
+		b.Fatal("assign stress event 721 to subject 1 before measuring")
+	}
+	b.Run("EventScope", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if _, err := runtime.TimelineView().OpenThoughtsView(b.Context(), "demo", 721); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("SubjectLookup", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if _, err := runtime.Subjects().Get(b.Context(), "demo", 1); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("ExpandCollapse", func(b *testing.B) {
+		m := New(b.Context(), "demo", runtime.Events(), runtime.TimelineView(), runtime.Thoughts(), runtime.Subjects(), logging.Nop())
+		at := current.StartedAt.Add(time.Hour)
+		m.now = func() time.Time { return at }
+		m.clock, m.day = at, displaytime.Day(at)
+		m.active = true
+		m.Resize(80, 27)
+		m = execute(b, m, m.loadDay(m.day))
+		defer m.Close()
+		b.ReportAllocs()
+		for b.Loop() {
+			var cmd tea.Cmd
+			m, cmd = m.Update(eventKey("enter"))
+			_ = m.View() // First pending frame, before the command reply arrives.
+			m = execute(b, m, cmd)
+			_ = m.View()
+			if m.err != nil || m.expandedSubjectErr != nil {
+				b.Fatalf("expand: got %v, %v; want successful thought and subject reads", m.err, m.expandedSubjectErr)
+			}
+			m, _ = m.Update(eventKey("left"))
+			_ = m.View()
+		}
+	})
+}

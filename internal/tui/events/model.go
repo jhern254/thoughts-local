@@ -126,8 +126,9 @@ type Model struct {
 	width, height int
 
 	// expanded delegates keys and rendering to picker without replacing the day.
-	expanded           timeline.EntryKey
-	opening            bool
+	expanded timeline.EntryKey
+	opening  bool
+	// Retain the last badge during revalidation; rendering checks its subject ID.
 	expandedSubject    *data.Subject
 	expandedSubjectErr error
 	picker             thoughts.Model
@@ -281,7 +282,6 @@ func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
 	m.expansion++
 	m.expanded = key
 	m.opening = true
-	m.expandedSubject = nil
 	m.expandedSubjectErr = nil
 	m.position.followNow = false
 	ctx, cancel := context.WithCancel(m.ctx)
