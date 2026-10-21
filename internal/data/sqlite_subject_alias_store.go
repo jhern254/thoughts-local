@@ -135,17 +135,43 @@ func subjectNameError(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrRecordNotFound
 	}
-	var cause *sqlite.Error
 	// Only the named namespace guard is a duplicate. Other trigger failures
 	// (including injected write failures) must retain their original meaning.
-	nameConflict := isSQLiteUniqueConstraint(err)
-	if errors.As(err, &cause) && cause.Code() == sqlite3.SQLITE_CONSTRAINT_TRIGGER {
-		// modernc exposes the trigger message through its formatted Error string.
-		// Match the entire fixed diagnostic, never a phrase in an unrelated error.
-		nameConflict = cause.Error() == fmt.Sprintf("constraint failed: subject name conflict (%d)", sqlite3.SQLITE_CONSTRAINT_TRIGGER)
-	}
-	if nameConflict {
+	if isSQLiteUniqueConstraint(err) || isSubjectNameConflict(err) {
 		return &databaseError{cause: err, kind: ErrDuplicateRecord}
 	}
 	return TranslateSQLiteError(err)
+}
+
+func isSubjectNameConflict(err error) bool {
+	var cause *sqlite.Error
+	if !errors.As(err, &cause) || cause.Code() != sqlite3.SQLITE_CONSTRAINT_TRIGGER {
+		return false
+	}
+	// modernc exposes the trigger message through its formatted Error string.
+	// Match the entire fixed diagnostic, never a phrase in an unrelated error.
+	return cause.Error() == fmt.Sprintf("constraint failed: subject name conflict (%d)", sqlite3.SQLITE_CONSTRAINT_TRIGGER)
+}
+
+func (s *SQLiteSubjectStore) describeSubjectAliasConflict(ctx context.Context, userID, name string, cause error) error {
+	// Resolve only after the database rejects the write, keeping successful
+	// creates unchanged and the SQLite guards authoritative under concurrency.
+	canonical, err := s.ResolveSubjectName(ctx, userID, name)
+	if errors.Is(err, ErrRecordNotFound) {
+		// The alias may have been removed between rejection and this read.
+		return subjectNameError(cause)
+	}
+	if err != nil {
+		return errors.Join(subjectNameError(cause), err)
+	}
+	if canonical.SubjectName == name {
+		// A concurrent writer may have replaced the alias with a canonical name.
+		return subjectNameError(cause)
+	}
+	return &SubjectAliasConflictError{
+		cause:       cause,
+		AliasName:   name,
+		SubjectID:   canonical.SubjectID,
+		SubjectName: canonical.SubjectName,
+	}
 }

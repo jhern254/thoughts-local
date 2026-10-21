@@ -3,6 +3,7 @@ package diagnostics
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -69,7 +70,10 @@ func ThoughtMessage(err error, fallback string) string {
 func SubjectMessage(err error, fallback string) string {
 	cause := SingleError(err)
 	var validation *subject.ValidationError
+	var aliasConflict *data.SubjectAliasConflictError
 	switch {
+	case errors.As(cause, &aliasConflict):
+		return fmt.Sprintf("%q is already an alias for subject %q. Choose a different name.", aliasConflict.AliasName, aliasConflict.SubjectName)
 	case errors.Is(cause, data.ErrRecordNotFound):
 		return "The requested resource was not found."
 	case errors.Is(cause, data.ErrDuplicateRecord):

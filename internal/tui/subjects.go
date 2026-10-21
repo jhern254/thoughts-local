@@ -648,7 +648,7 @@ func (m Model) viewSubjectCreate() string {
 	if m.subjects.loading {
 		status = "Creating subject…\n\n"
 	} else if m.subjects.err != nil {
-		status = fmt.Sprintf("Error: %s\n\n", m.subjects.errMessage)
+		status = ansi.Wrap("Error: "+m.subjects.errMessage, max(1, m.width), "") + "\n\n"
 	}
 	return fmt.Sprintf("Create subject\n\n%s%s\n\nEnter: create • Esc: cancel", status, m.subjects.input.View())
 }

@@ -33,7 +33,11 @@ func (s *SQLiteSubjectStore) CreateSubject(ctx context.Context, subject *Subject
 		subject.UserID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create subject: %w", subjectNameError(err))
+		createErr := subjectNameError(err)
+		if isSubjectNameConflict(err) {
+			createErr = s.describeSubjectAliasConflict(ctx, subject.UserID, subject.SubjectName, err)
+		}
+		return nil, fmt.Errorf("create subject: %w", createErr)
 	}
 
 	created, err := result.RowsAffected()

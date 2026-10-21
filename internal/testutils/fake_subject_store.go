@@ -28,7 +28,12 @@ func (s *FakeSubjectStore) CreateSubject(ctx context.Context, subject *data.Subj
 	}
 	for _, alias := range s.aliases {
 		if alias.UserID == subject.UserID && alias.AliasName == subject.SubjectName {
-			return nil, data.ErrDuplicateRecord
+			canonical := s.subjects[alias.SubjectID]
+			return nil, &data.SubjectAliasConflictError{
+				AliasName:   alias.AliasName,
+				SubjectID:   canonical.SubjectID,
+				SubjectName: canonical.SubjectName,
+			}
 		}
 	}
 	s.lastID++

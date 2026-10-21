@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -108,8 +109,22 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("edit alias %q: got %v, want duplicate", name, err)
 			}
 		}
-		if _, err := service.Create(t.Context(), "owner", "Golang"); !errors.Is(err, data.ErrDuplicateRecord) {
-			t.Fatalf("create canonical: got %v, want duplicate", err)
+		_, err = service.Create(t.Context(), "owner", "Golang")
+		var conflict *data.SubjectAliasConflictError
+		var cause *sqlite.Error
+		if !errors.Is(err, data.ErrDuplicateRecord) || !errors.As(err, &conflict) || !errors.As(err, &cause) {
+			t.Fatalf("create canonical: got %v, want alias conflict retaining duplicate identity and SQLite cause", err)
+		}
+		if conflict.AliasName != "Golang" || conflict.SubjectID != 1 || conflict.SubjectName != "Go Programming" {
+			t.Fatalf("alias conflict: got alias %q, Subject %d/%q; want Golang, 1/Go Programming", conflict.AliasName, conflict.SubjectID, conflict.SubjectName)
+		}
+		if strings.Contains(err.Error(), "Golang") || strings.Contains(err.Error(), "Go Programming") {
+			t.Fatalf("conflict error text: got %q, want no authored names", err.Error())
+		}
+		_, err = service.Create(t.Context(), "owner", "Go Programming")
+		conflict = nil
+		if !errors.Is(err, data.ErrDuplicateRecord) || errors.As(err, &conflict) {
+			t.Fatalf("canonical duplicate: got %v, want ordinary duplicate without alias details", err)
 		}
 		if _, err := service.Update(t.Context(), "owner", 2, "Golang"); !errors.Is(err, data.ErrDuplicateRecord) {
 			t.Fatalf("rename canonical: got %v, want duplicate", err)
@@ -123,6 +138,18 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 		got, err := service.ListAliases(t.Context(), "owner", 1)
 		if err != nil || len(got) != 1 || got[0].AliasName != "Golang" {
 			t.Fatalf("retained alias: got %+v, %v; want Golang", got, err)
+		}
+	})
+
+	t.Run("another user's alias does not block creation or disclose its Subject", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		service := seedAliasSubjects(t, db)
+		if _, err := service.CreateAlias(t.Context(), "owner", 1, "Golang"); err != nil {
+			t.Fatal(err)
+		}
+		created, err := service.Create(t.Context(), "other", "Golang")
+		if err != nil || created.UserID != "other" || created.SubjectName != "Golang" {
+			t.Fatalf("other user's Subject: got %+v,%v; want own new Subject without alias disclosure", created, err)
 		}
 	})
 

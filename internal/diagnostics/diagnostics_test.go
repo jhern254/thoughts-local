@@ -65,6 +65,26 @@ func TestSubjectMessage(t *testing.T) {
 	}
 }
 
+func TestSubjectMessage_AliasConflict(t *testing.T) {
+	conflict := &data.SubjectAliasConflictError{AliasName: "Golang", SubjectID: 7, SubjectName: "Go Programming"}
+	want := `"Golang" is already an alias for subject "Go Programming". Choose a different name.`
+	if got := SubjectMessage(fmt.Errorf("PRIVATE: %w", conflict), "Could not save the subject."); got != want {
+		t.Fatalf("alias conflict: got %q, want %q", got, want)
+	}
+	if got := SubjectMessage(errors.Join(conflict, errors.New("PRIVATE")), "Could not save the subject."); got != "Could not save the subject." {
+		t.Fatalf("combined failure: got %q, want generic feedback", got)
+	}
+	conflict.AliasName = "Alias\x1b[31m"
+	conflict.SubjectName = "Subject\nname"
+	message := SubjectMessage(conflict, "Could not save the subject.")
+	if strings.ContainsAny(message, "\x1b\n") || !strings.Contains(message, `\x1b`) || !strings.Contains(message, `\n`) {
+		t.Fatalf("quoted names: got %q, want escaped terminal controls", message)
+	}
+	if strings.Contains(conflict.Error(), "Alias") || strings.Contains(conflict.Error(), "Subject") {
+		t.Fatalf("error text: got %q, want no authored names", conflict.Error())
+	}
+}
+
 func TestSingleError(t *testing.T) {
 	t.Run("retains original supported chain", func(t *testing.T) {
 		err := fmt.Errorf("PRIVATE-DIAGNOSTIC-MARKER: %w", identityWrapper{errors.New("cause")})
