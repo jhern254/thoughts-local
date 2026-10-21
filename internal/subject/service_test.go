@@ -11,13 +11,14 @@ import (
 
 type subjectServiceStoreStub struct {
 	aliasStoreStub
-	create       func(context.Context, *data.Subject) (*data.Subject, error)
-	get          func(context.Context, string, int64) (*data.Subject, error)
-	list         func(context.Context, string) ([]data.Subject, error)
-	update       func(context.Context, string, int64, string, time.Time) (*data.Subject, error)
-	delete       func(context.Context, string, int64) error
-	createCalled bool
-	updateCalled bool
+	create          func(context.Context, *data.Subject) (*data.Subject, error)
+	createFromAlias func(context.Context, *data.Subject, int64, int64) (*data.Subject, error)
+	get             func(context.Context, string, int64) (*data.Subject, error)
+	list            func(context.Context, string) ([]data.Subject, error)
+	update          func(context.Context, string, int64, string, time.Time) (*data.Subject, error)
+	delete          func(context.Context, string, int64) error
+	createCalled    bool
+	updateCalled    bool
 }
 
 func (s *subjectServiceStoreStub) CreateSubject(ctx context.Context, item *data.Subject) (*data.Subject, error) {

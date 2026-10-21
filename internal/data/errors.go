@@ -11,6 +11,7 @@ var ErrDuplicateRecord = errors.New("record already exists")
 // delivery code explicitly quotes the fields when showing this conflict.
 type SubjectAliasConflictError struct {
 	cause       error
+	AliasID     int64
 	AliasName   string
 	SubjectID   int64
 	SubjectName string

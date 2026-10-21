@@ -8,6 +8,18 @@ alias, **d** requests removal, and **Q/Esc** returns. Removal requires **y** and
 changes only the alias. The canonical name uses the existing Subject editor.
 Returning preserves the underlying Thought browser.
 
+When Subject creation conflicts with an alias, **d** opens a simple confirmation
+to remove that alias and create a new empty Subject with its exact name. **y**
+confirms; **n/Q/Esc** returns to the form without changing anything. Existing
+Thoughts, Events, Goal links and progress remain with the original Subject.
+
+`subject.Service.CreateFromAlias` validates the normal Subject-name contract;
+the store soft-deletes the exact alias and inserts the new Subject in one
+transaction. Creation failure restores the alias. Confirmation is bound to the
+alias ID, original Subject ID, owner and exact name, so stale confirmations cannot
+remove a renamed, replaced or reassigned alias. Confirmed writes use the owning
+application context and block duplicate submissions until their result arrives.
+
 Names retain their exact case and spelling, including existing Subject whitespace
 semantics. `coding`, `coDing`, and `Coding` remain distinct. An exact active name
 cannot identify both a canonical Subject and an alias, even for the same Subject.

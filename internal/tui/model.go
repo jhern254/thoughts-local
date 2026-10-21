@@ -27,6 +27,7 @@ const (
 	screenEvents screen = iota
 	screenSubjectList
 	screenSubjectCreate
+	screenSubjectFromAlias
 	screenSubjectDetail
 	screenSubjectEdit
 	screenSubjectDelete
@@ -313,6 +314,8 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSubjectList(message)
 	case screenSubjectCreate:
 		return m.updateSubjectCreate(message)
+	case screenSubjectFromAlias:
+		return m.updateSubjectFromAlias(message)
 	case screenSubjectEdit:
 		return m.updateSubjectEdit(message)
 	case screenSubjectDelete:
@@ -488,6 +491,8 @@ func (m Model) viewUnderlying() tea.View {
 		content = m.viewSubjectList()
 	case screenSubjectCreate:
 		content = m.viewSubjectCreate()
+	case screenSubjectFromAlias:
+		content = m.viewSubjectFromAlias()
 	case screenSubjectEdit:
 		content = m.viewSubjectEdit()
 	case screenSubjectDelete:

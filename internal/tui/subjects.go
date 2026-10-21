@@ -22,6 +22,7 @@ const (
 )
 
 type SubjectService interface {
+	CreateFromAlias(ctx context.Context, userID string, subjectID, aliasID int64, name string) (*data.Subject, error)
 	ListAliases(ctx context.Context, userID string, subjectID int64) ([]data.SubjectAlias, error)
 	CreateAlias(ctx context.Context, userID string, subjectID int64, name string) (*data.SubjectAlias, error)
 	UpdateAlias(ctx context.Context, userID string, subjectID, aliasID int64, name string) (*data.SubjectAlias, error)
@@ -34,10 +35,11 @@ type SubjectService interface {
 }
 
 type subjectState struct {
-	service       SubjectService
-	createSession *int
-	readRequest   *int
-	cancelRead    context.CancelFunc
+	service        SubjectService
+	createSession  *int
+	aliasToReplace *data.SubjectAliasConflictError
+	readRequest    *int
+	cancelRead     context.CancelFunc
 	// filter scopes asynchronous Bubbles matches to this list and query revision.
 	filter  listfilter.Scope
 	aliases subjectAliasState
@@ -335,12 +337,16 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 		logSubjectError(m.logger, logging.SubjectCreate, message.err)
 		m.subjects.err = message.err
 		m.subjects.errMessage = diagnostics.SubjectMessage(message.err, "Could not save the subject.")
+		if m.screen == screenSubjectFromAlias {
+			return m, nil
+		}
 		return m, m.subjects.input.Focus()
 	}
 
 	m.subjects.input.Blur()
 	m.subjects.input.Reset()
 	m.subjects.err = nil
+	m.subjects.aliasToReplace = nil
 	m.subjects.listStale = true
 	m.logger.Mutation(logging.SubjectCreated, message.subject.SubjectID)
 	if m.voiceSubjectReturn != nil {
@@ -476,6 +482,7 @@ func (m Model) openSubjectCreate(query string) (tea.Model, tea.Cmd) {
 	m.subjects.createSession = new(int)
 	m.subjects.loading = false
 	m.subjects.err = nil
+	m.subjects.aliasToReplace = nil
 	m.subjects.input.SetValue(query)
 	m.subjects.input.CursorEnd()
 	return m, m.subjects.input.Focus()
@@ -488,6 +495,14 @@ func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
+		case "d":
+			if conflict := m.subjectCreationAliasConflict(); conflict != nil {
+				m.subjects.aliasToReplace = conflict
+				m.subjects.err = nil
+				m.subjects.input.Blur()
+				m.screen = screenSubjectFromAlias
+				return m, nil
+			}
 		case "esc":
 			m.subjects.createSession = nil
 			if m.voiceSubjectReturn != nil {
@@ -650,7 +665,11 @@ func (m Model) viewSubjectCreate() string {
 	} else if m.subjects.err != nil {
 		status = ansi.Wrap("Error: "+m.subjects.errMessage, max(1, m.width), "") + "\n\n"
 	}
-	return fmt.Sprintf("Create subject\n\n%s%s\n\nEnter: create • Esc: cancel", status, m.subjects.input.View())
+	help := "Enter: create • Esc: cancel"
+	if m.subjectCreationAliasConflict() != nil {
+		help = "d: remove alias and create\n" + help
+	}
+	return fmt.Sprintf("Create subject\n\n%s%s\n\n%s", status, m.subjects.input.View(), ansi.Wrap(help, max(1, m.width), ""))
 }
 
 func (m Model) viewSubjectDetail() string {

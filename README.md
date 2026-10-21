@@ -65,6 +65,10 @@ In Subject Details, press **a** to manage aliases for the same Subject. Enter
 adds or edits a name, **d** removes an alias after confirmation, and **Q/Esc**
 returns. Subject names and aliases are case-sensitive.
 
+If a new Subject name is already an alias, **d** offers to remove that alias and
+create a separate empty Subject after confirmation. Existing records stay with
+the original Subject.
+
 - Q and Esc go back through lists, details, expanded events, and curve controls.
 - In forms and filter input, Q remains text; Esc cancels or goes back.
 - At top-level Events or the focused entity selector, Esc or Ctrl+C opens an

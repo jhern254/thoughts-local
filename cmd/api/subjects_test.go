@@ -34,6 +34,10 @@ func (s *subjectStoreStub) CreateSubject(ctx context.Context, item *data.Subject
 	return s.createSubject(ctx, item)
 }
 
+func (s *subjectStoreStub) CreateSubjectFromAlias(context.Context, *data.Subject, int64, int64) (*data.Subject, error) {
+	panic("CreateSubjectFromAlias not stubbed")
+}
+
 func (s *subjectStoreStub) GetSubject(ctx context.Context, userID string, subjectID int64) (*data.Subject, error) {
 	if s.getSubject == nil {
 		panic("GetSubject not stubbed")

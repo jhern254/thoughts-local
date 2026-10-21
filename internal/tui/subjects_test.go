@@ -19,11 +19,12 @@ import (
 
 type subjectServiceStub struct {
 	subjectAliasServiceStub
-	update func(context.Context, string, int64, string) (*data.Subject, error)
-	delete func(context.Context, string, int64) error
-	list   func(context.Context, string) ([]data.Subject, error)
-	create func(context.Context, string, string) (*data.Subject, error)
-	get    func(context.Context, string, int64) (*data.Subject, error)
+	update          func(context.Context, string, int64, string) (*data.Subject, error)
+	delete          func(context.Context, string, int64) error
+	list            func(context.Context, string) ([]data.Subject, error)
+	create          func(context.Context, string, string) (*data.Subject, error)
+	createFromAlias func(context.Context, string, int64, int64, string) (*data.Subject, error)
+	get             func(context.Context, string, int64) (*data.Subject, error)
 
 	listCalls   int
 	createCalls int
@@ -38,6 +39,10 @@ func (stub *subjectServiceStub) List(ctx context.Context, userID string) ([]data
 func (stub *subjectServiceStub) Create(ctx context.Context, userID, name string) (*data.Subject, error) {
 	stub.createCalls++
 	return stub.create(ctx, userID, name)
+}
+
+func (stub *subjectServiceStub) CreateFromAlias(ctx context.Context, userID string, subjectID, aliasID int64, name string) (*data.Subject, error) {
+	return stub.createFromAlias(ctx, userID, subjectID, aliasID, name)
 }
 
 func (stub *subjectServiceStub) Get(ctx context.Context, userID string, subjectID int64) (*data.Subject, error) {
