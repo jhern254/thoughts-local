@@ -21,6 +21,14 @@ is denied or capture fails, that draft remains available. When a recognizer
 supplies text, it updates the unsaved draft while preserving what the user typed
 before recording. Saving remains the user's decision.
 
+A thought's observation time is captured when its draft opens, whether through
+Create thought, T, or F8. Recording restarts, subject selection or creation, and
+save retries retain that time. Canceling and opening another draft captures a
+new time. Database creation and update timestamps still describe persistence.
+Event start and end forms likewise capture their default time when opened and
+allow the user to edit it. API clients must supply `observed_at` when capturing
+before submission; omitting it defaults to the service call time.
+
 The responsibilities follow a small path:
 
 ```text
