@@ -263,7 +263,7 @@ test('publishes a decoded odd-sized wallpaper before returning and moving entity
   await clickControl(page, 'Remove background');
   await expect(screen(page)).not.toContainText('Background darkness:');
   await page.keyboard.press('Tab');
-  await expect(screen(page)).toContainText('Tab/Q: events');
+  await expect(screen(page)).toContainText('Tab: mindset • Q: events');
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Background darkness:');

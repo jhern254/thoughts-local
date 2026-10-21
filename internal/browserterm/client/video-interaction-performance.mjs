@@ -198,7 +198,7 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
     const before=await usage(), started=performance.now();
     await events(run,narrowOnly ? 'narrow-repeat' : 'settled');
     await page.keyboard.press('Tab');
-    await expect(page.locator('.xterm-rows')).toContainText('Tab/Q: events');
+    await expect(page.locator('.xterm-rows')).toContainText('Tab: mindset • Q: events');
     for(let attempt=0;attempt<3 && !await page.locator('.xterm-bg-62').filter({hasText:/^Thoughts$/}).count();attempt++) {
       const previous=await page.locator('.xterm-bg-62').allTextContents();
       await page.keyboard.press('ArrowLeft');
