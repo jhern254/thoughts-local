@@ -162,7 +162,7 @@ motion for the current session. Preview playback pauses the active background.
 For a new upload, choose a 1–30 second range in the TUI trim editor. Move the
 source cursor to inspect a paused frame; Enter on Start or End uses that position.
 Arrow keys adjust by 0.1 seconds; Shift adjusts by one second. **Preview loop**
-prepares the exact clip. A loading bar shows activity during preparation; press
+prepares the exact clip. A fading braille wave above Options shows activity during preparation; press
 Esc or Tab then Enter to cancel the upload. **Done** and **Apply** use the last successful preview,
 even if you subsequently change the cut points or quality. The editor shows the
 previewed quality and actual dimensions/FPS; preview again to accept a new quality.

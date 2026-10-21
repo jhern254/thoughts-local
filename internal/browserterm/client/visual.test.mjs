@@ -182,6 +182,10 @@ test('preparation indicator follows the current editor through replacement, comp
     connected: true,
     state: {open: false},
     preparationStatus: {hidden: true},
+    preparationWave: {setPlayback() {}},
+    terminalContainer: {dataset: {}},
+    documentVisible: true,
+    motionQuery: {matches: false},
     previewContainer: {},
     terminal: {focus() {}},
     videoTrim: {
@@ -212,4 +216,45 @@ test('preparation indicator follows the current editor through replacement, comp
   assert.equal(visual.preparationStatus.hidden, true);
   preparations.shift()(); await third;
   assert.equal(visual.preparationStatus.hidden, true);
+});
+
+function waveFixture() {
+  const trace = {textContent: ''};
+  const element = {querySelector: () => trace, querySelectorAll: () => [trace], dataset: {}};
+  const context = vm.createContext({element});
+  vm.runInContext(readFileSync(new URL('../static/preparation.js', import.meta.url), 'utf8'), context);
+  return {wave: vm.runInContext('new ThoughtsPreparationWave(element)', context), trace, element};
+}
+
+test('braille activity wave retires motion without rewriting the fixed curve', () => {
+  const {wave, trace, element} = waveFixture();
+  const original = trace.textContent;
+  wave.setPlayback(true, true, false);
+  assert.equal(element.dataset.animating, 'true');
+  for (const state of [[true, false, false], [false, true, false], [true, true, true]]) {
+    wave.setPlayback(...state);
+    assert.equal(element.dataset.animating, 'false');
+    wave.setPlayback(true, true, false);
+    assert.equal(element.dataset.animating, 'true');
+  }
+  wave.setPlayback(false, true, false);
+  assert.equal(element.dataset.animating, 'false');
+  assert.equal(trace.textContent, original);
+});
+
+test('braille activity wave completes two cycles with both endpoints on the center axis', () => {
+  const {trace} = waveFixture();
+  const rows = trace.textContent.split('\n');
+  assert.equal(rows.length, 6);
+  assert.ok(rows.every(row => row.length === 78));
+  function hasDot(x, y) {
+    const bits = [[1, 2, 4, 64], [8, 16, 32, 128]];
+    return !!((rows[Math.floor(y / 4)].charCodeAt(Math.floor(x / 2)) - 0x2800) & bits[x % 2][y % 4]);
+  }
+  assert.ok(hasDot(0, 12), 'left endpoint is on the axis');
+  assert.ok(hasDot(155, 12), 'right endpoint is on the axis');
+  assert.ok(hasDot(19, 2), 'first peak is above the axis');
+  assert.ok(hasDot(58, 22), 'first trough is below the axis');
+  assert.ok(hasDot(97, 2), 'second peak is above the axis');
+  assert.ok(hasDot(136, 22), 'second trough is below the axis');
 });

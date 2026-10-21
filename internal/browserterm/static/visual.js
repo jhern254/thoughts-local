@@ -20,12 +20,16 @@ class ThoughtsVisual {
     this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
     this.playbackStatus = document.getElementById('video-status');
     this.preparationStatus = document.getElementById('video-preparation');
+    this.preparationWave = new ThoughtsPreparationWave(document.getElementById('video-preparation-wave'));
+    this.terminalContainer = document.getElementById('terminal');
     this.motionQuery.addEventListener('change', () => {
       this.motionOverride = false;
       if (this.motionQuery.matches) this.stopPreviewPlayback();
       this.updatePlayback(); this.reportPlayback();
+      this.updatePreparationStatus();
     });
-    document.addEventListener('visibilitychange', () => { this.documentVisible = !document.hidden; this.updatePlayback(); if (document.hidden) this.stopPreviewPlayback(); });
+    document.addEventListener('visibilitychange', () => { this.documentVisible = !document.hidden; this.updatePlayback(); this.updatePreparationStatus(); if (document.hidden) this.stopPreviewPlayback(); });
+    window.addEventListener('pagehide', () => this.preparationWave.setPlayback(false, false, false));
     this.state = {open: false};
     this.videoTrim = new ThoughtsVideoTrim(this);
     this.previewGeneration = 0;
@@ -130,7 +134,30 @@ class ThoughtsVisual {
   updatePreparationStatus() {
     // The current request owns the indicator through encoding, validation and
     // preview acknowledgement. Retired async completions cannot hide a new one.
-    this.preparationStatus.hidden = !(this.connected && this.state.open && this.state.trimming && this.state.request === 'prepareLoop');
+    const active = !!(this.connected && this.state.open && this.state.trimming && this.state.request === 'prepareLoop');
+    this.preparationStatus.hidden = !active;
+    this.terminalContainer.dataset.preparing = String(active);
+    this.preparationWave.setPlayback(active, this.documentVisible, this.motionQuery.matches);
+    if (active) this.positionPreparation();
+  }
+  positionPreparation() {
+    if (this.preparationStatus.hidden || !this.state.preview) return;
+    const screen = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
+    const cellWidth = screen.width / this.terminal.cols;
+    const width = this.state.preview.Width * cellWidth;
+    Object.assign(this.preparationStatus.style, {
+      left: `${screen.left + this.state.preview.X * cellWidth}px`, width: `${width}px`
+    });
+    const wave = document.getElementById('video-preparation-wave');
+    const layer = this.preparationWave.trace;
+    // Measure only on layout/terminal paints, never in the animation loop.
+    if (layer.offsetWidth && layer.offsetHeight) {
+      wave.style.setProperty('--wave-width', `${width}px`);
+      wave.style.setProperty('--wave-tail', `${width * 64 / 156}px`);
+      wave.style.setProperty('--wave-dot', `${width / 156}px`);
+      wave.style.setProperty('--wave-scale-x', width / layer.offsetWidth);
+      wave.style.setProperty('--wave-scale-y', wave.clientHeight / layer.offsetHeight);
+    }
   }
   disconnect() {
     this.connected = false;
@@ -229,6 +256,7 @@ class ThoughtsVisual {
     this.previewFrame = requestAnimationFrame(() => this.positionPreview());
   }
   positionPreview() {
+    this.positionPreparation();
     this.previewContainer.hidden = true;
     const previewRect = this.state.preview;
     if (!this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth)) return;

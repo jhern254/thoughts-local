@@ -29,7 +29,7 @@ async function stageSource(page) {
   await expect(page.locator('#background-preview-wrap')).toBeVisible();
 }
 
-test('preparing a loop shows an accessible loading bar and keeps keyboard cancellation available',async({page},testInfo)=>{
+test('preparing a loop shows a braille wave above Options and keeps keyboard cancellation available',async({page},testInfo)=>{
   let sockets=0, releasePreparation;
   page.on('websocket',()=>sockets++);
   await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
@@ -44,22 +44,54 @@ test('preparing a loop shows an accessible loading bar and keeps keyboard cancel
   });
   try {
     await clickControl(page,'Preview loop');
-    const bar=page.getByRole('progressbar',{name:'Preparing video…'});
-    await expect(bar).toBeVisible();
+    const bar=page.locator('#video-preparation-wave');
+    await expect(page.getByRole('progressbar',{name:'Preparing video…'})).toBeVisible();
     await expect(bar).not.toHaveAttribute('aria-valuenow');
-    await expect.poll(()=>bar.evaluate(element=>getComputedStyle(element,'::after').animationName)).toBe('video-preparation-pulse');
-    const position=await bar.evaluate(element=>getComputedStyle(element,'::after').transform);
-    await expect.poll(()=>bar.evaluate(element=>getComputedStyle(element,'::after').transform)).not.toBe(position);
+    const lightPosition=()=>bar.locator('.preparation-sweep').first().evaluate(element=>getComputedStyle(element).transform);
+    const position=await lightPosition();
+    await expect.poll(lightPosition).not.toBe(position);
+    await expect(bar.locator('pre')).toHaveCount(2);
+    async function expectWavePlacement() {
+      await expect.poll(()=>page.evaluate(()=>{
+        const wave=document.getElementById('video-preparation-wave').getBoundingClientRect();
+        const preview=document.getElementById('background-preview-wrap').getBoundingClientRect();
+        const terminal=document.querySelector('.xterm-screen').getBoundingClientRect();
+        return wave.bottom<=terminal.top && Math.abs(wave.left-preview.left)<1 && Math.abs(wave.width-preview.width)<1;
+      })).toBe(true);
+    }
+    await expectWavePlacement();
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
     await page.screenshot({path:`/tmp/video-loading-${testInfo.project.name}-desktop.png`});
     await page.setViewportSize({width:650,height:600});
     await expect(bar).toBeInViewport();
+    await expectWavePlacement();
     await page.emulateMedia({reducedMotion:'reduce'});
-    await expect.poll(()=>bar.evaluate(element=>getComputedStyle(element,'::after').animationName)).toBe('none');
+    await page.waitForTimeout(100);
+    const still=await lightPosition();
+    await page.waitForTimeout(300);
+    expect(await lightPosition()).toBe(still);
     await page.screenshot({path:`/tmp/video-loading-${testInfo.project.name}-narrow.png`});
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await expect.poll(lightPosition).not.toBe(still);
+    await page.evaluate(()=>{
+      Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    const hiddenFrame=await lightPosition();
+    await page.waitForTimeout(300);
+    expect(await lightPosition()).toBe(hiddenFrame);
+    await page.evaluate(()=>{
+      delete document.hidden;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect.poll(lightPosition).not.toBe(hiddenFrame);
     releasePreparation();
     await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
     await expect(bar).toBeHidden();
+    expect(await bar.evaluate(element=>element.getAnimations({subtree:true}).length)).toBe(0);
+    const retiredFrame=await lightPosition();
+    await page.waitForTimeout(300);
+    expect(await lightPosition()).toBe(retiredFrame);
     await page.unroute('**/visual/video/preview');
 
     let releaseFailure;

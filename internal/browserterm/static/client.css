@@ -23,12 +23,29 @@ header { position: relative; }
 
 #video-status { font-size: 12px; }
 
-#video-preparation:not([hidden]) { display: flex; flex-direction: column; gap: 4px; width: clamp(120px, 35vw, 260px); font-size: 12px; }
-#video-preparation [role="progressbar"] { height: 5px; overflow: hidden; border-radius: 3px; background: #444; }
-#video-preparation [role="progressbar"]::after { content: ""; display: block; height: 100%; width: 30%; background: #8a7fe0; animation: video-preparation-pulse 1.2s ease-in-out infinite alternate; }
-@keyframes video-preparation-pulse { from { transform: translateX(0); } to { transform: translateX(233.333%); } }
+:root { --video-preparation-height: clamp(72px, 14vh, 112px); }
+#terminal[data-preparing="true"] { top: calc(42px + var(--video-preparation-height)); }
+#video-preparation { position: fixed; top: 50px; height: calc(var(--video-preparation-height) - 8px); pointer-events: none; }
+#video-preparation:not([hidden]) { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+#video-preparation-label { color: #c2bcec; line-height: 16px; }
+#video-preparation-wave { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+#video-preparation-wave::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #514961; }
+#video-preparation-wave pre { position: absolute; top: 0; left: 0; margin: 0; width: max-content; font: 14px/16px monospace; color: #cbbcff; transform-origin: left top; transform: scale(var(--wave-scale-x, 1), var(--wave-scale-y, 1)) translateY(-2px); }
+/* The light window moves over a fixed curve. Its inner layer moves by the
+   opposite amount, keeping text stationary without reshaping glyphs per frame. */
+.preparation-sweep { position: absolute; top: 0; bottom: 0; left: calc(-1 * var(--wave-tail)); width: var(--wave-tail); overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000); transform: translateX(calc((var(--wave-width) + var(--wave-tail)) / 2)); }
+.preparation-curve { position: absolute; top: 0; bottom: 0; left: var(--wave-tail); width: var(--wave-width); transform: translateX(calc((var(--wave-width) + var(--wave-tail)) / -2)); }
+.preparation-head { left: calc(-1 * var(--wave-dot)); width: var(--wave-dot); mask-image: none; }
+.preparation-head .preparation-curve { left: var(--wave-dot); }
+#video-preparation-wave .preparation-head pre { color: #faf5ff; }
+#video-preparation-wave[data-animating="true"] .preparation-sweep { animation: preparation-light 4.583333s steps(55) infinite; }
+#video-preparation-wave[data-animating="true"] .preparation-curve { animation: preparation-countermotion 4.583333s steps(55) infinite; }
+@keyframes preparation-light { from { transform: translateX(0); } to { transform: translateX(calc(var(--wave-width) + var(--wave-tail))); } }
+@keyframes preparation-countermotion { from { transform: translateX(0); } to { transform: translateX(calc(-1 * (var(--wave-width) + var(--wave-tail)))); } }
 @media (prefers-reduced-motion: reduce) {
-  #video-preparation [role="progressbar"]::after { animation: none; width: 100%; background: repeating-linear-gradient(90deg, #8a7fe0 0 8px, transparent 8px 16px); }
+  #video-preparation-wave[data-animating="true"] .preparation-sweep,
+  #video-preparation-wave[data-animating="true"] .preparation-curve { animation: none; }
 }
+
 
 #background-preview-video[hidden] { display: none; }

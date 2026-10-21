@@ -982,3 +982,57 @@ Playwright's in-memory multi-megabyte injection reproducibly blocked Chromium
 long enough to exhaust the bounded worklet credits; the local-file path passed
 with the same track, draft and connection assertions. Audio queue limits and
 production capture behavior were not relaxed.
+
+### Video preparation activity wave
+
+The approved [activity-wave style](app-style-guide.md#approved-video-preparation-indicator)
+uses a fixed braille curve with a fading light trail and bright head above
+Options. Two copies of the curve are rendered once. Clipped windows move over
+them using opposing CSS transforms, in 55 steps over approximately 4.58 seconds.
+There are no animation-driven text rewrites, Go ticks, HTTP requests, or
+WebSocket frames. The browser reserves vertical space only while preparation is
+pending. Hiding the page, reduced motion, cancellation, disconnection, and
+completion remove the animations.
+
+On 2026-10-21, the T480s/i5-8250U/UHD 620 Linux reference machine was checked with
+visible Brave 148.0.7778.217, a disposable seeded app, and the existing synthetic
+1080p60 motion fixture. No test/build jobs ran alongside the measurements. The
+probe used the existing harness's CDP process CPU and Linux PSS accounting.
+Percentages below are fractions of **one logical CPU**, not the entire machine.
+
+| Condition | Browser CPU | Native app CPU |
+| --- | ---: | ---: |
+| Wave active, preparation HTTP request held before FFmpeg (two 10-second windows) | 12.6–13.4% | 2.1–2.2% |
+| Same view, static reduced-motion control (10 seconds) | 0.8% | 1.8% |
+| Actual 30-second Maximum loop preparation and preview acknowledgement (47.0 seconds) | 6.3% | 1.3% |
+
+Native app CPU excludes the FFmpeg subprocess. These are whole-browser costs,
+not an isolated estimate of the wave's rendering instructions. The active and
+static samples held the HTTP request to separate the indicator from encoding;
+the real-preparation sample includes encoding, output validation, poster work,
+and preview acknowledgement. Its lower browser average does not establish that
+encoding makes the indicator cheaper.
+
+The earlier implementation rewrote five braille text layers at 12 Hz and used
+22.5–23.4% browser CPU in the same held-request comparison. Keeping text fixed
+reduced that cost, but the animation is still measurable. It is limited to a
+pending import, not an always-running decoration. A JavaScript timer driving the
+same transforms did not improve the measured result, so the implementation keeps
+the simpler CSS animation.
+
+Separate two-second visual-step samples had an 83.3 ms median interval and
+83.4–99.9 ms p95. The single Tab-to-Cancel focus sample during actual preparation
+was 29.9 ms, with one WebSocket connection throughout. These short samples do
+not establish a long-duration responsiveness or battery guarantee. Browser PSS
+was 326–341 MiB in the active control windows and 377 MiB after preparing and
+decoding the Maximum preview; renderer JS heap was approximately 4.8–5.1 MiB.
+The prepared preview starts native video playback after acknowledgement, so its
+subsequent CPU cost must not be mistaken for a still-running wave. The wave had
+no further updates or active animations after completion.
+
+Focused Chromium and Firefox acceptance covers normal/narrow layouts, resizing,
+focus, reduced motion, hidden-page suspension, success, failure, cancellation,
+and stale operation ownership. Temporary measurement scripts, JSON records and
+captures are kept together under `/tmp/thoughts-sine-preview`; the retained
+transform measurements are `performance-css-transforms.json`. They are local
+review artifacts, not required runtime assets or a new performance framework.

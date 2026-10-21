@@ -39,10 +39,14 @@ display width, not the meaning of the animation. If actual completion progress
 becomes available, present it explicitly rather than implying that the moving
 dot measures work completed.
 
-This is an approved design reference; the browser mockup does not establish
-production integration or measured performance. Its five reused text layers
-and 12 updates per second are a prototype choice, not a required rendering API
-or a performance guarantee.
+The browser renders the braille curve once for the fading trail and bright head.
+CSS moves clipped light windows over that fixed text in about 12 steps per
+second. These are implementation choices, not a required rendering API or a
+performance guarantee. The browser reserves space above the terminal while
+preparation is pending; resizing uses the existing terminal layout and transport.
+Animation frames remain local and do not rewrite text or send terminal or HTTP
+updates. See the [measurement notes](browser-background-performance.md#video-preparation-activity-wave)
+for the cost of the integrated indicator.
 
 ## Motion, ownership, and verification
 

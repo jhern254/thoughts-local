@@ -14,6 +14,7 @@
   <script defer src="/static/pcm-capture.js"></script>
   <script defer src="/static/framing.js"></script>
   <script defer src="/static/video-trim.js"></script>
+  <script defer src="/static/preparation.js"></script>
   <script defer src="/static/visual.js"></script>
   <script defer src="/static/client.js"></script>
 </head>
@@ -22,12 +23,15 @@
   <div id="background-overlay" aria-hidden="true" hidden></div>
   <header>
     <strong>Thoughts</strong>
-    <span id="video-preparation" role="status" hidden>
-      <span id="video-preparation-label">Preparing video…</span>
-      <span role="progressbar" aria-labelledby="video-preparation-label"></span>
-    </span>
     <span id="video-status" role="status" hidden></span><span id="status" role="status">Connecting…</span><button id="reconnect" hidden>Reconnect</button>
   </header>
+  <div id="video-preparation" hidden>
+    <span id="video-preparation-label" role="status">Preparing video…</span>
+    <div id="video-preparation-wave" role="progressbar" aria-labelledby="video-preparation-label">
+      <div class="preparation-sweep" aria-hidden="true"><div class="preparation-curve"><pre></pre></div></div>
+      <div class="preparation-sweep preparation-head" aria-hidden="true"><div class="preparation-curve"><pre></pre></div></div>
+    </div>
+  </div>
   <main id="terminal" aria-label="Thoughts terminal"></main>
   <input id="background-file" type="file" accept="image/jpeg,image/png,video/mp4,video/quicktime" hidden aria-label="Choose background image or video">
   <div id="background-preview-wrap" hidden><div id="background-preview-frame"><img id="background-preview" alt="Selected background preview"></div></div>
