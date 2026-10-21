@@ -12,6 +12,7 @@ import (
 
 type SubjectReader interface {
 	List(context.Context, string) ([]data.Subject, error)
+	Get(context.Context, string, int64) (*data.Subject, error)
 }
 
 // CreateSubjectRequest asks the root to open its existing creation screen.

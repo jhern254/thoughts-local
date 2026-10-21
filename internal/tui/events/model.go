@@ -60,10 +60,12 @@ type latestEventThoughtMsg struct {
 	err     error
 }
 type entryOpenedMsg struct {
-	owner   *int
-	request uint64
-	scope   timeline.ThoughtScope
-	err     error
+	owner      *int
+	request    uint64
+	scope      timeline.ThoughtScope
+	err        error
+	subject    *data.Subject
+	subjectErr error
 }
 type eventSavedMsg struct {
 	owner   *int
@@ -124,10 +126,12 @@ type Model struct {
 	width, height int
 
 	// expanded delegates keys and rendering to picker without replacing the day.
-	expanded timeline.EntryKey
-	opening  bool
-	picker   thoughts.Model
-	form     eventForm
+	expanded           timeline.EntryKey
+	opening            bool
+	expandedSubject    *data.Subject
+	expandedSubjectErr error
+	picker             thoughts.Model
+	form               eventForm
 
 	// blurred preserves selection while the root entity strip owns keyboard focus.
 	active  bool
@@ -277,10 +281,13 @@ func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
 	m.expansion++
 	m.expanded = key
 	m.opening = true
+	m.expandedSubject = nil
+	m.expandedSubjectErr = nil
 	m.position.followNow = false
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancelExpansion = cancel
 	owner, request, user, view := m.owner, m.expansion, m.userID, m.timelineView
+	subjects := m.subjectReader
 	return func() tea.Msg {
 		if ctx.Err() != nil {
 			return nil
@@ -295,7 +302,19 @@ func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
 		if ctx.Err() != nil {
 			return nil
 		}
-		return entryOpenedMsg{owner, request, scope, err}
+		result := entryOpenedMsg{
+			owner:   owner,
+			request: request,
+			scope:   scope,
+			err:     err,
+		}
+		if err == nil && scope.Event().SubjectID != nil {
+			result.subject, result.subjectErr = subjects.Get(ctx, user, *scope.Event().SubjectID)
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		return result
 	}
 }
 func (m *Model) fail(operation logging.Operation, err error) {
@@ -446,6 +465,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.opening = false
+		m.expandedSubject, m.expandedSubjectErr = reply.subject, reply.subjectErr
+		m.fail(logging.SubjectGet, reply.subjectErr)
 		m.load.retainedBody = ""
 		m.err = reply.err
 		m.fail(logging.TimelineEntryOpen, reply.err)

@@ -161,12 +161,13 @@ func (m *Model) renderExpandedThoughtPlotCells(layout timelineLayout, offset, he
 				break
 			}
 			previews, reference := m.picker.TimelineEntryThoughtPlots()
+			pickerTop := top + m.expandedThoughtsRow()
 			bars := make([]render.ThoughtLengthBar, 0, len(previews))
 			for _, preview := range previews {
-				// Border, heading and blank line precede the picker; its count row is
-				// already included in preview.Row. All offsets are terminal rows.
+				// The picker supplies its own count row in preview.Row. The card's
+				// header also includes an optional subject and the blank separator.
 				bars = append(bars, render.ThoughtLengthBar{
-					Row:            top + 3 + preview.Row - offset - thoughtPlotTop,
+					Row:            pickerTop + preview.Row - offset - thoughtPlotTop,
 					CharacterCount: preview.CharacterCount,
 				})
 				if preview.Selected {

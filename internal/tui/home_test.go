@@ -137,6 +137,36 @@ func TestModel_EventsHome(t *testing.T) {
 		return m, events
 	}
 
+	t.Run("assigned event badge survives thought detail and disappears on collapse", func(t *testing.T) {
+		m, events := newHome(t)
+		id := int64(7)
+		events.items[0].SubjectID = &id
+		m.subjects.service.(*subjectServiceStub).get = func(ctx context.Context, userID string, subjectID int64) (*data.Subject, error) {
+			if userID != "home-user" || subjectID != id || ctx.Err() != nil {
+				t.Fatalf("got subject lookup (%q, %d, %v), want active home-user lookup for %d", userID, subjectID, ctx.Err(), id)
+			}
+			return &data.Subject{SubjectID: id, SubjectName: "Event subject"}, nil
+		}
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 100, Height: 30})
+		m, cmd := rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		before := m.View().Content
+		if !strings.Contains(before, "Event subject") || !strings.Contains(before, "bounded preview") || m.entityFocused {
+			t.Fatalf("got expanded root view %q, want event subject and thought preview with Events focus", before)
+		}
+		m, cmd = rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+		m = runHomeData(t, m, cmd)
+		if m.View().Content != before {
+			t.Fatal("detail return changed the expanded card or its subject badge")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+		if strings.Contains(m.View().Content, "Event subject") || !m.events.AtTopLevel() || m.entityFocused {
+			t.Fatal("collapse retained the badge or changed Events focus")
+		}
+	})
+
 	t.Run("Left from event thought detail restores the expanded event", func(t *testing.T) {
 		m, _ := newHome(t)
 		m, cmd := rootUpdate(m, enterKey())

@@ -18,6 +18,10 @@ func (s cancellationSubjects) List(ctx context.Context, _ string) ([]data.Subjec
 	return s.read(ctx)
 }
 
+func (s cancellationSubjects) Get(context.Context, string, int64) (*data.Subject, error) {
+	panic("unexpected subject lookup")
+}
+
 type cancellationTimeline struct {
 	TimelineView
 	read func(context.Context) (timeline.ThoughtScope, error)

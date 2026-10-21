@@ -129,6 +129,9 @@ func (m *Model) cardRows(heading string, key timeline.EntryKey, count string, on
 	width := m.cardWidth()
 	content := ansi.Truncate(heading, width, "…") + "\n"
 	if key == m.expanded {
+		if subject := m.expandedSubjectRow(); subject != "" {
+			content += subject + "\n"
+		}
 		content += "\n"
 		if m.opening {
 			content += "Loading thoughts…"
@@ -159,6 +162,31 @@ func (m *Model) cardRows(heading string, key timeline.EntryKey, count string, on
 		lines[i] = ansi.Truncate(lines[i], width, "…")
 	}
 	return lines
+}
+
+func (m *Model) expandedSubjectRow() string {
+	for _, entry := range m.entries {
+		if entry.Key() != m.expanded || entry.Event == nil || entry.Event.SubjectID == nil {
+			continue
+		}
+		if m.opening {
+			return "Loading subject…"
+		}
+		if m.expandedSubjectErr != nil || m.expandedSubject == nil {
+			return "Subject unavailable"
+		}
+		return list.DefaultStyles(true).Title.Render(singleLine(m.expandedSubject.SubjectName))
+	}
+	return ""
+}
+
+func (m *Model) expandedThoughtsRow() int {
+	// The top border, heading and blank separator precede the picker.
+	row := 3
+	if m.expandedSubjectRow() != "" {
+		row++
+	}
+	return row
 }
 
 func (m *Model) paintCard(content []string, selected bool) []string {
