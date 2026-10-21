@@ -99,7 +99,8 @@ const thoughtSelect = `SELECT
 			version,
 			observed_at,
 			created_at,
-			updated_at
+			updated_at,
+            EXISTS (SELECT 1 FROM thought_mindset_periods p WHERE p.thought_id = thoughts.thought_id AND p.ended_at IS NULL)
 		FROM thoughts `
 
 func (s *SQLiteThoughtStore) ListThoughts(ctx context.Context, userID string, subjectID int64) ([]Thought, error) {
@@ -157,6 +158,7 @@ func scanThought(row interface{ Scan(...any) error }) (*Thought, error) {
 		&observedAt,
 		&createdAt,
 		&updatedAt,
+		&thought.IsMindset,
 	)
 	if err != nil {
 		return nil, err

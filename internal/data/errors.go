@@ -46,3 +46,6 @@ var ErrDatabaseReadOnly = errors.New("database read-only")
 
 // ErrVersionConflict requires reloading a record before updating or deleting it.
 var ErrVersionConflict = errors.New("record version changed")
+
+// ErrMindsetChronology rejects a designation before its previous transition.
+var ErrMindsetChronology = errors.New("mindset action precedes the latest transition")

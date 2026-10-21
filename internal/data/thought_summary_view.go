@@ -20,6 +20,7 @@ type ThoughtSummaryView struct {
 	SubjectName    *string
 	ObservedAt     time.Time
 	CreatedAt      time.Time
+	IsMindset      bool // Derived from an open mindset period.
 }
 
 type ThoughtCursor struct {

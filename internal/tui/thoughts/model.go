@@ -22,6 +22,7 @@ import (
 )
 
 type Service interface {
+	SetMindset(context.Context, string, int64, bool, time.Time) (bool, error)
 	BrowseView(context.Context, string, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	ListUnassigned(context.Context, string) ([]data.Thought, error)
 	List(context.Context, string, int64) ([]data.Thought, error)
@@ -67,13 +68,15 @@ type Model struct {
 	draftObservedAt     time.Time
 	viewport            viewport.Model
 	voice               voiceDraft
+	directThoughtID     *int64
 	selected            *data.Thought
 	selectedSubjectName string
 
-	loading    bool
-	stale      bool
-	err        error
-	errMessage string
+	mindsetSaving bool
+	loading       bool
+	stale         bool
+	err           error
+	errMessage    string
 
 	inputWarning string
 	// filter owns asynchronous Bubbles matches for the current list revision.
@@ -142,7 +145,7 @@ type Result struct {
 
 func New(ctx context.Context, userID string, service Service, logger logging.Logger) Model {
 	delegate := list.NewDefaultDelegate()
-	items := list.New([]list.Item{row{kind: rowCreate}}, delegate, 80, 14)
+	items := list.New([]list.Item{row{kind: rowCreate}}, mindsetDelegate{DefaultDelegate: delegate}, 80, 14)
 	items.Title = "Thoughts"
 	items.SetShowStatusBar(false)
 	items.DisableQuitKeybindings()
@@ -199,6 +202,7 @@ func (m *Model) Reset() {
 	m.request++
 	m.subjectID = nil
 	m.selected = nil
+	m.directThoughtID = nil
 	m.selectedSubjectName = ""
 	m.screen = browse
 	m.loading = false
@@ -228,7 +232,7 @@ func (m *Model) OpenUnassigned() tea.Cmd {
 // Browsing allows the parent to handle subject shortcuts, but not editor input
 // or keys used to set/clear a thought-list filter.
 func (m Model) Browsing() bool {
-	return m.screen == browse && !m.list.SettingFilter() && !m.list.IsFiltered()
+	return m.directThoughtID == nil && !m.mindsetSaving && m.screen == browse && !m.list.SettingFilter() && !m.list.IsFiltered()
 }
 
 // Creating lets the parent equip and render the shared thought editor.
@@ -316,6 +320,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	switch message := msg.(type) {
+	case MindsetResult:
+		return m.receiveMindset(message)
+	case MindsetChanged:
+		return m, m.applyMindset(message)
 	case SpeechAvailabilityMsg:
 		m.speechRecognitionAvailable = message.Available
 		return m, nil
@@ -396,6 +404,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok {
+		if m.directThoughtID != nil && m.screen != detail {
+			if key.String() == "r" && !m.loading {
+				return m, m.getThought(*m.directThoughtID)
+			}
+			return m, nil
+		}
+		if m.mindsetSaving {
+			return m, nil
+		}
+		if key.String() == "m" && m.screen != create && !m.list.SettingFilter() {
+			cmd := m.setMindset()
+			return m, cmd
+		}
 		if m.browsingThoughtsView && m.screen == browse {
 			return m.updateBrowseThoughtsView(msg)
 		}
@@ -527,16 +548,25 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View() string {
 	status := ""
-	if m.loading {
+	if m.mindsetSaving {
+		status = "Saving mindset…\n"
+	} else if m.loading {
 		status = "Loading…\n"
 	} else if m.err != nil {
 		status = m.errMessage + "\n"
+	}
+	if m.directThoughtID != nil && m.screen != detail {
+		return status + "\n←/Q/Esc: back • r: retry"
 	}
 	switch m.screen {
 	case create:
 		return m.editorView(status)
 	case detail:
-		return fmt.Sprintf("Thought %d • %s\n%s%s\n←/Q/Esc: back • ↑/↓: scroll • PgUp/PgDn: page • r: reload", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
+		badge := ""
+		if m.selected.IsMindset {
+			badge = MindsetBadge() + " "
+		}
+		return badge + fmt.Sprintf("Thought %d • %s\n%s%s\n←/Q/Esc: back • ↑/↓: scroll • PgUp/PgDn: page • r: reload • m: mindset", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
 	default:
 		if m.browsingThoughtsView {
 			return m.renderBrowseThoughtsView(status)
@@ -551,6 +581,6 @@ func (m Model) View() string {
 		if count == 1 {
 			label = "thought"
 		}
-		return fmt.Sprintf("%s\n%d %s\nr: refresh", strings.TrimSuffix(status+m.list.View(), "\n"), count, label)
+		return fmt.Sprintf("%s\n%d %s\nr: refresh • m: mindset", strings.TrimSuffix(status+m.list.View(), "\n"), count, label)
 	}
 }

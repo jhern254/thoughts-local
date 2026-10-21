@@ -8,7 +8,7 @@ import (
 )
 
 func (m Model) canExit() bool {
-	return m.screen == screenEvents && ((m.entityFocused && m.events.CanLeave()) || m.events.AtTopLevel())
+	return m.screen == screenEvents && !m.mindsets.Focused() && ((m.entityFocused && m.events.CanLeave()) || m.events.AtTopLevel())
 }
 
 func (m Model) updateExitPrompt(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {

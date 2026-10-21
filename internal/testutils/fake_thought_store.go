@@ -70,6 +70,7 @@ func (s *FakeThoughtStore) BrowseThoughtsView(ctx context.Context, userID string
 		}
 		items = append(items, data.ThoughtSummaryView{
 			ThoughtID:  item.ThoughtID,
+			IsMindset:  item.IsMindset,
 			Preview:    string(preview),
 			ObservedAt: item.ObservedAt,
 			CreatedAt:  item.CreatedAt,
@@ -167,4 +168,28 @@ func (s *FakeThoughtStore) DeleteThought(ctx context.Context, userID string, id,
 	}
 	delete(s.thoughts, id)
 	return nil
+}
+
+func (s *FakeThoughtStore) SetThoughtMindset(ctx context.Context, userID string, id int64, active bool, at time.Time) (bool, error) {
+	item, err := s.GetThought(ctx, userID, id)
+	if err != nil {
+		return false, err
+	}
+	item.IsMindset = active
+	s.thoughts[id] = *item
+	return active, nil
+}
+
+// Historical interval semantics are covered against real SQLite. This fake
+// supplies current marked previews for presentation tests.
+func (s *FakeThoughtStore) ListMindsetsInRange(ctx context.Context, userID string, from, until time.Time) ([]data.ThoughtSummaryView, error) {
+	view, err := s.BrowseThoughtsView(ctx, userID, data.ThoughtSummaryViewRequest{})
+	items := []data.ThoughtSummaryView{}
+	for _, item := range view.Items {
+		if item.IsMindset {
+			items = append(items, item)
+		}
+	}
+	slices.Reverse(items)
+	return items, err
 }

@@ -12,6 +12,7 @@ import (
 )
 
 type thoughtServiceStoreStub struct {
+	Store
 	browseView     func(context.Context, string, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	listUnassigned func(context.Context, string) ([]data.Thought, error)
 	list           func(context.Context, string, int64) ([]data.Thought, error)

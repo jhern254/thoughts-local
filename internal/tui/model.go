@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/tui/events"
+	"github.com/jhern254/go-thoughts/internal/tui/mindset"
 	"strings"
 
 	"charm.land/bubbles/v2/list"
@@ -25,6 +26,7 @@ type screen uint8
 
 const (
 	screenEvents screen = iota
+	screenMindsetThought
 	screenSubjectList
 	screenSubjectCreate
 	screenSubjectFromAlias
@@ -71,21 +73,24 @@ type Model struct {
 
 	// Entity selection and panel focus are separate: selectedEntity remembers the
 	// strip choice while entityFocused decides whether the strip or Events owns keys.
-	selectedEntity entityKind
-	entityFocused  bool
-	width          int
-	height         int
-	options        optionsState
-	speechSetup    speechSetupState
-	exitPromptOpen bool
-	exitYes        bool
-	events         events.Model
-	subjects       subjectState
-	thoughts       thoughts.Model
-	metrics        MetricsService
+	selectedEntity                    entityKind
+	entityFocused                     bool
+	width                             int
+	height                            int
+	options                           optionsState
+	speechSetup                       speechSetupState
+	exitPromptOpen                    bool
+	exitYes                           bool
+	mindsets                          mindset.Model
+	mindsetsNeedRefresh               bool
+	homeEventsHeight, homeEventsWidth int
+	events                            events.Model
+	subjects                          subjectState
+	thoughts                          thoughts.Model
+	metrics                           MetricsService
 }
 
-func NewModel(ctx context.Context, user *data.User, subjects SubjectService, thoughtService thoughts.Service, metrics MetricsService, eventService events.Service, timelineView events.TimelineView, logger logging.Logger) Model {
+func NewModel(ctx context.Context, user *data.User, subjects SubjectService, thoughtService ThoughtService, metrics MetricsService, eventService events.Service, timelineView events.TimelineView, logger logging.Logger) Model {
 	model := Model{
 		ctx:      ctx,
 		user:     user,
@@ -97,8 +102,9 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 		subjects: newSubjectState(subjects),
 		thoughts: thoughts.New(ctx, user.UserID, thoughtService, logger),
 		metrics:  metrics,
+		mindsets: mindset.New(ctx, user.UserID, thoughtService, logger),
 	}
-	model.events.Resize(defaultWidth, defaultHeight-6)
+	model.resizeHome()
 	return model
 }
 
@@ -115,7 +121,8 @@ func (m Model) Init() tea.Cmd {
 func (m Model) openHome() (tea.Model, tea.Cmd) {
 	m.subjects.stopRead()
 	m.screen = screenEvents
-	m.events.SetFocused(!m.entityFocused)
+	m.events.SetFocused(!m.entityFocused && !m.mindsets.Focused())
+	m.mindsetsNeedRefresh = true
 	cmd := m.events.Open()
 	return m, cmd
 }
@@ -124,6 +131,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.update(message)
 	next := updated.(Model)
 	next.offerSpeechSetup()
+	if next.ctx.Err() == nil {
+		cmd = tea.Batch(cmd, next.syncMindsets())
+	}
 	if next.ctx.Err() == nil && next.browserRecordingEnabled && next.thoughts.Creating() && !next.thoughts.VoiceOpen() {
 		next.voiceDraftID++
 		name := ""
@@ -186,12 +196,36 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	if mindset.Owns(message) {
+		var cmd tea.Cmd
+		m.mindsets, cmd = m.mindsets.Update(message)
+		return m, cmd
+	}
 	if events.Owns(message) {
 		var cmd tea.Cmd
 		m.events, cmd = m.events.Update(message)
 		return m, cmd
 	}
 	switch message := message.(type) {
+	case mindset.OpenThoughtMsg:
+		if m.screen != screenEvents || !m.mindsets.AcceptsOpen(message) {
+			return m, nil
+		}
+		m.screen = screenMindsetThought
+		return m, m.thoughts.OpenDetail(message.Thought)
+	case mindset.ReturnToEventsMsg:
+		if m.screen != screenEvents || !m.mindsets.AcceptsReturn(message) {
+			return m, nil
+		}
+		return m, m.focusHome(1)
+	case thoughts.MindsetChanged:
+		var thoughtCmd, eventCmd, panelCmd tea.Cmd
+		m.thoughts, thoughtCmd = m.thoughts.Update(message)
+		m.events, eventCmd = m.events.Update(message)
+		if !m.mindsets.Day().IsZero() {
+			panelCmd = m.mindsets.Load(m.events.Day())
+		}
+		return m, tea.Batch(thoughtCmd, eventCmd, panelCmd)
 	case BrowserOptionsEnabledMsg:
 		m.browserOptionsEnabled = true
 		return m, nil
@@ -251,11 +285,11 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = message.Width
 		m.height = message.Height
-		m.events.Resize(message.Width, max(1, message.Height-6))
+		m.resizeHome()
 		m.resizeSubjects(message.Width, message.Height)
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
 		return m, nil
-	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtBrowseStatsResult:
+	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtBrowseStatsResult, thoughts.MindsetResult:
 		var cmd, eventCmd tea.Cmd
 		m.thoughts, cmd = m.thoughts.Update(message)
 		m.events, eventCmd = m.events.Update(message)
@@ -308,6 +342,15 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case screenMindsetThought:
+		if key, ok := message.(tea.KeyPressMsg); ok && !m.thoughts.SavingMindset() && (key.String() == "esc" || key.String() == "q" || key.String() == "left") {
+			m.thoughts.Reset()
+			m.screen = screenEvents
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.thoughts, cmd = m.thoughts.Update(message)
+		return m, cmd
 	case screenEvents:
 		return m.updateHome(message)
 	case screenSubjectList:
@@ -327,7 +370,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case screenMiscThoughts:
 		return m.updateMiscThoughts(message)
 	case screenVoiceThought:
-		if key, ok := message.(tea.KeyPressMsg); ok && (key.String() == "esc" || key.String() == "q" || key.String() == "left") && m.thoughts.ShowingDetail() {
+		if key, ok := message.(tea.KeyPressMsg); ok && (key.String() == "esc" || key.String() == "q" || key.String() == "left") && m.thoughts.ShowingDetail() && !m.thoughts.SavingMindset() {
 			m.thoughts.Reset()
 			return m.openHome()
 		}
@@ -355,10 +398,20 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok && m.events.CanLeave() {
-		if key.String() == "tab" {
-			m.entityFocused = !m.entityFocused
-			m.events.SetFocused(!m.entityFocused)
-			return m, nil
+		if key.String() == "tab" || key.String() == "shift+tab" {
+			step := 1
+			if key.String() == "shift+tab" {
+				step = 2
+			}
+			return m, m.focusHome((m.homeFocus() + step) % 3)
+		}
+		if m.mindsets.Focused() {
+			var cmd tea.Cmd
+			m.mindsets, cmd = m.mindsets.Update(message)
+			return m, cmd
+		}
+		if key.String() == "r" {
+			m.mindsetsNeedRefresh = true
 		}
 		if m.entityFocused {
 			switch key.String() {
@@ -421,9 +474,12 @@ func (m Model) entityStrip() string {
 			line = m.subjects.list.Styles.Title.Render(line)
 		}
 	}
-	help := "Tab: entities"
+	help := "Tab/Shift+Tab: panels"
+	if m.mindsets.Focused() {
+		help = "Enter: expand/open • ←/Q/Esc: back • ↑/↓: select • PgUp/PgDn: scroll • r: refresh"
+	}
 	if m.entityFocused {
-		help = "Tab/Q: events • ←/→: entity • Enter: open"
+		help = "Tab: mindset • Q: events • ←/→: entity • Enter: open"
 	}
 	if m.canExit() {
 		help += " • Esc/Ctrl+C: exit"
@@ -461,7 +517,7 @@ func (m Model) viewUnderlying() tea.View {
 		return view
 	}
 	switch m.screen {
-	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts, screenVoiceThought:
+	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts, screenVoiceThought, screenMindsetThought:
 		if m.thoughts.Creating() {
 			heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
 			view.Content = heading + "\n" + m.thoughts.View()
@@ -481,9 +537,12 @@ func (m Model) viewUnderlying() tea.View {
 	switch m.screen {
 	case screenOptions:
 		content = "Options\n\nVisual backgrounds are available in browser mode.\n\nq/Esc: events"
+	case screenMindsetThought:
+		content = m.thoughts.View()
 	case screenEvents:
 		content = m.events.View()
-		if m.events.CanLeave() {
+		if m.events.TimelineVisible() {
+			content = m.mindsets.View() + "\n\n" + content
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content
 			content += "\n" + strings.Repeat("─", max(1, m.width)) + "\n" + m.entityStrip()
 		}
@@ -545,7 +604,7 @@ func (m Model) VoiceState() thoughts.VoiceState {
 		state.CanOpenThoughtDraft = m.events.CanLeave() && !m.speechSetup.open
 	case screenSubjectList:
 		state.CanOpenThoughtDraft = !m.subjects.loading && !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered()
-	case screenBrowseThoughts, screenMiscThoughts, screenSubjectDetail:
+	case screenBrowseThoughts, screenMiscThoughts, screenSubjectDetail, screenMindsetThought:
 		state.CanOpenThoughtDraft = m.thoughts.Browsing() || m.thoughts.ShowingDetail()
 	case screenVoiceThought:
 		state.CanOpenThoughtDraft = m.thoughts.ShowingDetail()
@@ -554,7 +613,7 @@ func (m Model) VoiceState() thoughts.VoiceState {
 		state = m.thoughts.VoiceState()
 		state.BrowserRecordingEnabled = true
 	}
-	if m.speechSetup.open || m.options.open {
+	if m.speechSetup.open || m.options.open || m.thoughts.SavingMindset() {
 		state.CanOpenThoughtDraft = false
 	}
 	return state

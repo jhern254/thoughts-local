@@ -44,6 +44,11 @@ func (s *Scope) SetItems(model *list.Model, items []list.Item) tea.Cmd {
 	return s.wrap(model.SetItems(items))
 }
 
+func (s *Scope) SetItem(model *list.Model, index int, item list.Item) tea.Cmd {
+	s.Invalidate()
+	return s.wrap(model.SetItem(index, item))
+}
+
 func (s Scope) wrap(cmd tea.Cmd) tea.Cmd {
 	if cmd == nil {
 		return nil

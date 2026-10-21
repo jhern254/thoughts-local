@@ -9,7 +9,8 @@ import (
 )
 
 const thoughtSummarySelectPrefix = `SELECT t.thought_id, substr(t.thought, 1, 81), s.subject_name,
-	t.observed_at, t.created_at, `
+	t.observed_at, t.created_at,
+    EXISTS (SELECT 1 FROM thought_mindset_periods p WHERE p.thought_id = t.thought_id AND p.ended_at IS NULL), `
 
 const thoughtSummaryFrom = `
 	FROM thoughts t
@@ -63,7 +64,7 @@ func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query s
 		var item ThoughtSummaryView
 		var subject sql.NullString
 		var observed, created int64
-		if err := rows.Scan(&item.ThoughtID, &item.Preview, &subject, &observed, &created, &item.CharacterCount); err != nil {
+		if err := rows.Scan(&item.ThoughtID, &item.Preview, &subject, &observed, &created, &item.IsMindset, &item.CharacterCount); err != nil {
 			return ThoughtSummaryViewResult{}, fmt.Errorf("scan thought summary: %w", TranslateSQLiteError(err))
 		}
 		if subject.Valid {

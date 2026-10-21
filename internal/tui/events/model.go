@@ -203,8 +203,13 @@ func (m *Model) SetFocused(focused bool) {
 	m.blurred = blurred
 	m.picker.SetFocused(focused)
 }
-func (m Model) CanLeave() bool { return !m.form.open && !m.picker.ShowingDetail() }
-func (m Model) FormOpen() bool { return m.form.open }
+func (m Model) CanLeave() bool {
+	return m.TimelineVisible() && !m.picker.SavingMindset()
+}
+func (m Model) TimelineVisible() bool { return !m.form.open && !m.picker.ShowingDetail() }
+func (m Model) Day() time.Time        { return m.day }
+func (m Model) DayReady() bool        { return m.active && !m.load.entriesPending }
+func (m Model) FormOpen() bool        { return m.form.open }
 
 // AtTopLevel excludes the nested views and controls owned by Events.
 func (m Model) AtTopLevel() bool {
@@ -520,8 +525,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		cmd := m.loadDay(day)
 		return m, cmd
-	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtBrowseStatsResult:
+	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtBrowseStatsResult, thoughts.MindsetResult, thoughts.MindsetChanged:
 		m.load.retainedBody = ""
+		if change, ok := msg.(thoughts.MindsetChanged); ok && m.latest != nil && m.latest.ThoughtID == change.ThoughtID {
+			m.latest.IsMindset = change.Active
+		}
 		var cmd tea.Cmd
 		m.picker, cmd = m.picker.Update(msg)
 		if !m.picker.ShowingDetail() {
@@ -535,6 +543,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
+		return m, nil
+	}
+	if m.picker.SavingMindset() {
 		return m, nil
 	}
 	if key.String() == "q" {
