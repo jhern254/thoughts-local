@@ -42,7 +42,7 @@ func (m *Model) activateVideoTrim() {
 			m.options.status = "Choose 1–30 seconds within the source."
 			return
 		}
-		m.options.status = "Preparing exact loop… Esc: cancel upload"
+		m.options.status = "Preparing video…"
 		m.requestOptions("prepareLoop")
 	case trimFocusDone:
 		if !m.options.loopReady {
@@ -53,6 +53,7 @@ func (m *Model) activateVideoTrim() {
 		m.options.focus = optionsFocusTrim
 		m.requestOptions("")
 	case trimFocusCancel:
+		m.options.status = "Cancelling upload…"
 		m.requestOptions("discardVideo")
 	}
 }
@@ -62,10 +63,21 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		key := msg.String()
 		if key == "esc" || key == "q" {
-			m.requestOptions("discardVideo")
+			m.options.trimFocus = trimFocusCancel
+			m.activateVideoTrim()
 			return m, nil
 		}
 		if m.options.request != "" {
+			if m.options.request == "prepareLoop" {
+				switch key {
+				case "tab", "shift+tab", "up", "down":
+					m.options.trimFocus = trimFocusCancel
+				case "enter", "space":
+					if m.options.trimFocus == trimFocusCancel {
+						m.activateVideoTrim()
+					}
+				}
+			}
 			return m, nil
 		}
 		switch key {
@@ -200,7 +212,12 @@ func (m Model) viewVideoTrim() tea.View {
 	} else {
 		lines = append(lines, "No prepared loop yet.")
 	}
-	lines = append(lines, muted.Render(m.options.status), muted.Render("←/→: 0.1s · Shift: 1s · ↑/↓: focus"), muted.Render("Enter on Start/End: use source position"))
+	lines = append(lines, muted.Render(m.options.status))
+	if m.options.request == "prepareLoop" {
+		lines = append(lines, muted.Render("Tab: Cancel · Esc: cancel upload"), muted.Render("Cut and quality controls resume when ready."))
+	} else {
+		lines = append(lines, muted.Render("←/→: 0.1s · Shift: 1s · ↑/↓: focus"), muted.Render("Enter on Start/End: use source position"))
+	}
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")
 	}

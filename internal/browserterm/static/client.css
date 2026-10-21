@@ -23,4 +23,12 @@ header { position: relative; }
 
 #video-status { font-size: 12px; }
 
+#video-preparation:not([hidden]) { display: flex; flex-direction: column; gap: 4px; width: clamp(120px, 35vw, 260px); font-size: 12px; }
+#video-preparation [role="progressbar"] { height: 5px; overflow: hidden; border-radius: 3px; background: #444; }
+#video-preparation [role="progressbar"]::after { content: ""; display: block; height: 100%; width: 30%; background: #8a7fe0; animation: video-preparation-pulse 1.2s ease-in-out infinite alternate; }
+@keyframes video-preparation-pulse { from { transform: translateX(0); } to { transform: translateX(233.333%); } }
+@media (prefers-reduced-motion: reduce) {
+  #video-preparation [role="progressbar"]::after { animation: none; width: 100%; background: repeating-linear-gradient(90deg, #8a7fe0 0 8px, transparent 8px 16px); }
+}
+
 #background-preview-video[hidden] { display: none; }

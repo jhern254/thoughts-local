@@ -29,6 +29,76 @@ async function stageSource(page) {
   await expect(page.locator('#background-preview-wrap')).toBeVisible();
 }
 
+test('preparing a loop shows an accessible loading bar and keeps keyboard cancellation available',async({page},testInfo)=>{
+  let sockets=0, releasePreparation;
+  page.on('websocket',()=>sockets++);
+  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+  await openVisual(page);await stageSource(page);
+  await clickControl(page,'End: 30.00s (max 30.00s)');
+  await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
+  await expect(screen(page)).toContainText('End: 1.00s');
+  const gate=new Promise(resolve=>{releasePreparation=resolve;});
+  await page.route('**/visual/video/preview',async route=>{
+    if(route.request().method()==='POST')await gate;
+    await route.continue();
+  });
+  try {
+    await clickControl(page,'Preview loop');
+    const bar=page.getByRole('progressbar',{name:'Preparing video…'});
+    await expect(bar).toBeVisible();
+    await expect(bar).not.toHaveAttribute('aria-valuenow');
+    await expect.poll(()=>bar.evaluate(element=>getComputedStyle(element,'::after').animationName)).toBe('video-preparation-pulse');
+    const position=await bar.evaluate(element=>getComputedStyle(element,'::after').transform);
+    await expect.poll(()=>bar.evaluate(element=>getComputedStyle(element,'::after').transform)).not.toBe(position);
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+    await page.screenshot({path:`/tmp/video-loading-${testInfo.project.name}-desktop.png`});
+    await page.setViewportSize({width:650,height:600});
+    await expect(bar).toBeInViewport();
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await expect.poll(()=>bar.evaluate(element=>getComputedStyle(element,'::after').animationName)).toBe('none');
+    await page.screenshot({path:`/tmp/video-loading-${testInfo.project.name}-narrow.png`});
+    releasePreparation();
+    await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+    await expect(bar).toBeHidden();
+    await page.unroute('**/visual/video/preview');
+
+    let releaseFailure;
+    const failureGate=new Promise(resolve=>{releaseFailure=resolve;});
+    await page.route('**/visual/video/preview',async route=>{
+      if(route.request().method()==='POST'){
+        await failureGate;
+        await route.fulfill({status:500,body:'Could not prepare loop.'});
+      } else await route.continue();
+    });
+    try {
+      await clickControl(page,'Preview loop');
+      await expect(bar).toBeVisible();
+      releaseFailure();
+      await expect(screen(page)).toContainText('Could not load or apply.');
+      await expect(bar).toBeHidden();
+      await expect(screen(page)).toContainText('Range: 0.00–1.00s');
+    } finally { releaseFailure(); }
+    await page.unroute('**/visual/video/preview');
+
+    let releaseCancelled;
+    const cancelGate=new Promise(resolve=>{releaseCancelled=resolve;});
+    await page.route('**/visual/video/preview',async route=>{
+      if(route.request().method()==='POST')await cancelGate;
+      await route.continue();
+    });
+    try {
+      await clickControl(page,'Preview loop');
+      await expect(bar).toBeVisible();
+      await page.keyboard.press('Tab');
+      await expect.poll(async()=>(await page.locator('.xterm-bg-62').allTextContents()).map(text=>text.trim())).toContain('Cancel upload');
+      await page.keyboard.press('Enter');
+      await expect(bar).toBeHidden();
+      await expect(screen(page)).toContainText('Background darkness:');
+      expect(sockets).toBe(1);
+    } finally { releaseCancelled(); }
+  } finally { releasePreparation(); await page.unrouteAll({behavior:'wait'}); }
+});
+
 test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep the accepted loop',async({page},testInfo)=>{
   let sockets=0, prepares=0, applies=0;
   page.on('websocket',()=>sockets++);

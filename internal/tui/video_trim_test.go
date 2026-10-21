@@ -184,6 +184,44 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 
+	t.Run("preparation keeps Cancel keyboard accessible while cut controls stay locked", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.width, m.height = 80, 36
+		trim := visual.VideoTrim{EndMS: 30000}
+		m.options = optionsState{
+			open:             true,
+			trimming:         true,
+			trimFocus:        trimFocusPreview,
+			sourceDurationMS: 60000,
+			trim:             trim,
+		}
+		m, _ = rootUpdate(m, enterKey())
+		id := m.OptionsState().ID
+		if m.OptionsState().Request != "prepareLoop" {
+			t.Fatal("preview did not request preparation")
+		}
+		if !strings.Contains(m.View().Content, "Tab: Cancel") {
+			t.Fatal("pending preparation does not explain keyboard cancellation")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
+		m, _ = rootUpdate(m, enterKey())
+		if m.OptionsState().Trim != trim || m.OptionsState().ID != id {
+			t.Fatal("pending preparation allowed edits or a duplicate request")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		if m.options.trimFocus != trimFocusCancel {
+			t.Fatal("Tab did not focus Cancel during preparation")
+		}
+		m, _ = rootUpdate(m, enterKey())
+		if m.OptionsState().Request != "discardVideo" || m.OptionsState().ID == id {
+			t.Fatal("Enter on Cancel did not retire preparation")
+		}
+		if !strings.Contains(m.View().Content, "Cancelling upload") {
+			t.Fatal("cancel still displays preparation status")
+		}
+	})
+
 	t.Run("Cancel remains clickable during preparation and retires its result", func(t *testing.T) {
 		m := newRootTestModel()
 		m.browserOptionsEnabled = true

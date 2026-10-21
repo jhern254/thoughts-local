@@ -174,3 +174,42 @@ test('authoritative paused restore never starts playback before or after connect
  assert.equal(visual.saved.userPaused,true);assert.equal(video.playbackRate,.95);
  assert.equal(video.paused,true);assert.equal(plays,0);
 });
+
+test('preparation indicator follows the current editor through replacement, completion and disconnect', async () => {
+  const {visual} = activationFixture();
+  const preparations = [];
+  Object.assign(visual, {
+    connected: true,
+    state: {open: false},
+    preparationStatus: {hidden: true},
+    previewContainer: {},
+    terminal: {focus() {}},
+    videoTrim: {
+      sync() {},
+      prepare() { return new Promise(resolve => preparations.push(resolve)); },
+      async discard() {}
+    }
+  });
+  visual.cancelFramingDrag = () => {};
+  visual.queuePreview = () => {};
+  visual.updatePlayback = () => {};
+  visual.discardPreview = () => {};
+  const state = {open: true, trimming: true, id: 1, request: 'prepareLoop'};
+  const first = visual.receive(state);
+  assert.equal(visual.preparationStatus.hidden, false);
+  await visual.receive({...state, id: 2, request: 'discardVideo'});
+  assert.equal(visual.preparationStatus.hidden, true);
+  const second = visual.receive({...state, id: 3});
+  assert.equal(visual.preparationStatus.hidden, false);
+  preparations.shift()(); await first;
+  assert.equal(visual.preparationStatus.hidden, false, 'retired completion must not hide the current preparation');
+  preparations.shift()(); await second;
+  assert.equal(visual.preparationStatus.hidden, false, 'keep showing until the TUI accepts the result');
+  await visual.receive({...state, id: 3, request: ''});
+  assert.equal(visual.preparationStatus.hidden, true);
+  const third = visual.receive({...state, id: 4});
+  visual.disconnect();
+  assert.equal(visual.preparationStatus.hidden, true);
+  preparations.shift()(); await third;
+  assert.equal(visual.preparationStatus.hidden, true);
+});

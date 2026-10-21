@@ -20,7 +20,14 @@
 <body>
   <div id="background-surface" aria-hidden="true" hidden><img id="background-image" alt="" hidden></div>
   <div id="background-overlay" aria-hidden="true" hidden></div>
-  <header><strong>Thoughts</strong><span id="video-status" role="status" hidden></span><span id="status" role="status">Connecting…</span><button id="reconnect" hidden>Reconnect</button></header>
+  <header>
+    <strong>Thoughts</strong>
+    <span id="video-preparation" role="status" hidden>
+      <span id="video-preparation-label">Preparing video…</span>
+      <span role="progressbar" aria-labelledby="video-preparation-label"></span>
+    </span>
+    <span id="video-status" role="status" hidden></span><span id="status" role="status">Connecting…</span><button id="reconnect" hidden>Reconnect</button>
+  </header>
   <main id="terminal" aria-label="Thoughts terminal"></main>
   <input id="background-file" type="file" accept="image/jpeg,image/png,video/mp4,video/quicktime" hidden aria-label="Choose background image or video">
   <div id="background-preview-wrap" hidden><div id="background-preview-frame"><img id="background-preview" alt="Selected background preview"></div></div>

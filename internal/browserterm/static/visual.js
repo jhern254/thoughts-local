@@ -19,6 +19,7 @@ class ThoughtsVisual {
     this.documentVisible = !document.hidden;
     this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
     this.playbackStatus = document.getElementById('video-status');
+    this.preparationStatus = document.getElementById('video-preparation');
     this.motionQuery.addEventListener('change', () => {
       this.motionOverride = false;
       if (this.motionQuery.matches) this.stopPreviewPlayback();
@@ -80,6 +81,7 @@ class ThoughtsVisual {
   async receive(state) {
     const previousState = this.state;
     this.state = state;
+    this.updatePreparationStatus();
     if (!state.open || !state.editing || state.id !== previousState.id) this.cancelFramingDrag();
     this.refreshAfterClose = previousState.open && !state.open;
     if (JSON.stringify(state.preview) !== JSON.stringify(previousState.preview)) this.previewContainer.hidden = true;
@@ -125,6 +127,11 @@ class ThoughtsVisual {
         break;
     }
   }
+  updatePreparationStatus() {
+    // The current request owns the indicator through encoding, validation and
+    // preview acknowledgement. Retired async completions cannot hide a new one.
+    this.preparationStatus.hidden = !(this.connected && this.state.open && this.state.trimming && this.state.request === 'prepareLoop');
+  }
   disconnect() {
     this.connected = false;
     this.motionOverride = false;
@@ -132,6 +139,7 @@ class ThoughtsVisual {
     this.updatePlayback();
     this.connectionGeneration++;
     this.state = {open: false};
+    this.updatePreparationStatus();
     this.refreshAfterClose = false;
     this.discardPreview();
     this.updateDarkness(this.saved.darkness);
