@@ -506,7 +506,7 @@ func TestModel_EventsHome(t *testing.T) {
 				t.Fatal("timeline must own focus before rendering home")
 			}
 			before := strings.Split(m.View().Content, separator)
-			if len(before) != 2 {
+			if len(before) != 3 {
 				t.Fatal("missing divider between timeline and entities")
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
@@ -515,17 +515,17 @@ func TestModel_EventsHome(t *testing.T) {
 			if !m.entityFocused || m.events.View() == focused {
 				t.Fatal("Tab must blur Events during Update, before root View")
 			}
-			blurred := strings.Split(m.View().Content, separator)[0]
-			beforeText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(before[0]), "│", " ")), " ")
+			blurred := strings.Split(m.View().Content, separator)[1]
+			beforeText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(before[1]), "│", " ")), " ")
 			blurredText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(blurred), "│", " ")), " ")
-			if before[0] == blurred || beforeText != blurredText {
+			if before[1] == blurred || beforeText != blurredText {
 				t.Fatal("Tab should change calendar highlighting without changing its contents")
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 			if m.entityFocused || m.events.View() != focused {
 				t.Fatal("Shift+Tab back must restore Events focus before root View")
 			}
-			if strings.Split(m.View().Content, separator)[0] != before[0] {
+			if strings.Split(m.View().Content, separator)[1] != before[1] {
 				t.Fatal("returning focus did not restore selected event and thought")
 			}
 		}

@@ -4,10 +4,12 @@ Press **m** on a saved thought in a list or its detail screen to mark or unmark
 it as a mindset. A white **M** badge indicates that it is currently marked.
 The shortcut does not intercept typing in the editor or search filter.
 
-The **mindset** panel sits above Events. Tab and Shift+Tab move between Mindset,
-Events, and the entity strip. Enter expands the panel, then opens the selected
-thought. Arrow keys and Page Up/Down navigate; Home/End select the first/last
-thought. Left collapses. Q/Esc collapses first, then returns focus to Events.
+The **Mindset** panel sits above Events, using the same title block style and a
+separator line. Its collapsed preview appears beside the title; an empty day
+shows `...` in that position. Tab and Shift+Tab move between Mindset,
+Events, and the entity strip. Focusing Mindset expands its scrolling list;
+moving focus away restores the inline preview. Enter opens the selected thought.
+Arrow keys and Page Up/Down navigate; Home/End select the first/last thought. Left collapses. Q/Esc collapses first, then returns focus to Events.
 Returning from a thought restores the panel's selection and scroll position.
 
 Collapsed, the panel cycles through previews every 15 seconds. Rotation pauses

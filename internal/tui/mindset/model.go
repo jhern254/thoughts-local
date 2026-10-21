@@ -3,14 +3,12 @@ package mindset
 
 import (
 	"context"
-	"image/color"
 	"strings"
 	"time"
 	"unicode"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/failure"
@@ -91,7 +89,7 @@ func (m Model) Focused() bool  { return m.focused }
 func (m Model) Expanded() bool { return m.expanded }
 func (m Model) Height() int {
 	if !m.expanded || len(m.items) == 0 || m.err != nil || m.loading {
-		return 2
+		return 1
 	}
 	return 1 + min(m.rows, len(m.items))
 }
@@ -169,6 +167,8 @@ func (m Model) SetFocused(focused bool) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.focused = focused
+	m.expanded = focused
+	m.keepVisible()
 	return m, m.startTimer()
 }
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -265,12 +265,7 @@ func (m *Model) keepVisible() {
 	m.offset = max(0, min(m.offset, len(m.items)-m.rows))
 }
 func (m Model) View() string {
-	heading := lipgloss.NewStyle().Background(color.White).Foreground(color.Black).Padding(0, 1).Render("mindset")
-	marker := " ▸"
-	if m.expanded {
-		marker = " ▾"
-	}
-	heading = ansi.Truncate(heading+marker, m.width, "")
+	heading := list.DefaultStyles(true).Title.Render("Mindset")
 	status := ""
 	switch {
 	case m.loading:
@@ -278,30 +273,32 @@ func (m Model) View() string {
 	case m.err != nil:
 		status = "Could not load mindsets. r: retry"
 	case len(m.items) == 0:
-		status = "No mindset thoughts for this day."
+		status = "..."
+	case !m.expanded:
+		status = previewText(m.items[m.index].Preview)
 	}
-	if status != "" {
-		return heading + "\n" + ansi.Truncate(status, m.width, "…")
+	if status != "" || !m.expanded {
+		return ansi.Truncate(heading+" "+status, m.width, "…")
 	}
 	styles := list.NewDefaultItemStyles(true)
-	first, last := m.index, m.index+1
-	if m.expanded {
-		first = m.offset
-		last = min(len(m.items), first+m.rows)
-	}
-	rows := []string{heading}
-	for i := first; i < last; i++ {
-		text := strings.Map(func(r rune) rune {
-			if unicode.IsSpace(r) || unicode.IsControl(r) {
-				return ' '
-			}
-			return r
-		}, m.items[i].Preview)
+	last := min(len(m.items), m.offset+m.rows)
+	rows := []string{ansi.Truncate(heading, m.width, "")}
+	for i := m.offset; i < last; i++ {
 		style := styles.NormalTitle
 		if m.focused && i == m.index {
 			style = styles.SelectedTitle
 		}
+		text := previewText(m.items[i].Preview)
 		rows = append(rows, ansi.Truncate(style.Render(ansi.Truncate(text, max(0, m.width-style.GetHorizontalFrameSize()), "…")), m.width, ""))
 	}
 	return strings.Join(rows, "\n")
+}
+
+func previewText(text string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, text)
 }

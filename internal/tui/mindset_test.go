@@ -31,15 +31,31 @@ func newMindsetHome(t *testing.T, count int) Model {
 	// in the panel package, while this test executes real data command batches.
 	m.focusHome(0)
 	m, cmd := rootUpdate(m, m.Init()())
-	return startHomeData(t, m, cmd)
+	m = startHomeData(t, m, cmd)
+	m.focusHome(1)
+	return m
 }
 
 func TestModel_MindsetHome(t *testing.T) {
+	t.Run("separates the inline mindset header from Events", func(t *testing.T) {
+		m := newMindsetHome(t, 0)
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
+		rows := strings.Split(ansi.Strip(m.View().Content), "\n")
+		if got, want := rows[2], " Mindset  ..."; got != want {
+			t.Fatalf("mindset row: got %q, want %q", got, want)
+		}
+		if got, want := rows[3], strings.Repeat("─", 80); got != want {
+			t.Fatalf("panel separator: got %q, want %q", got, want)
+		}
+		if !strings.HasPrefix(rows[4], " Events ") {
+			t.Fatalf("row below separator: got %q, want Events header", rows[4])
+		}
+	})
 	t.Run("expansion pushes Events down and returning from detail restores selection", func(t *testing.T) {
 		m := newMindsetHome(t, 6)
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
 		before := ansi.Strip(m.View().Content)
-		m, _ = rootUpdate(m, enterKey())
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		expanded := ansi.Strip(m.View().Content)
 		row := func(text, label string) int {
 			for i, line := range strings.Split(text, "\n") {
@@ -49,7 +65,7 @@ func TestModel_MindsetHome(t *testing.T) {
 			}
 			return -1
 		}
-		if got, want := row(expanded, "Events")-row(before, "Events"), 4; got != want {
+		if got, want := row(expanded, "Events")-row(before, "Events"), 5; got != want {
 			t.Fatalf("Events displacement: got %d, want %d", got, want)
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
@@ -75,21 +91,21 @@ func TestModel_MindsetHome(t *testing.T) {
 	})
 	t.Run("Tab cycles all three panels and reverse Tab returns", func(t *testing.T) {
 		m := newMindsetHome(t, 0)
-		for _, want := range []int{1, 2, 0} {
+		for _, want := range []int{2, 0, 1} {
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 			if got := m.homeFocus(); got != want {
 				t.Fatalf("focus: got %d, want %d", got, want)
 			}
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
-		if m.homeFocus() != 2 {
-			t.Fatal("reverse Tab did not focus entities")
+		if m.homeFocus() != 0 {
+			t.Fatal("reverse Tab did not focus Mindset")
 		}
 	})
 	t.Run("narrow expansion preserves usable Events height and clips Unicode rows", func(t *testing.T) {
 		m := newMindsetHome(t, 6)
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 40, Height: 24})
-		m, _ = rootUpdate(m, enterKey())
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		if got, want := m.homeEventsHeight, 14; got != want {
 			t.Fatalf("Events height: got %d, want %d", got, want)
 		}
@@ -104,7 +120,7 @@ func TestModel_MindsetHome(t *testing.T) {
 	})
 	t.Run("m from panel detail updates status without leaving the thought", func(t *testing.T) {
 		m := newMindsetHome(t, 1)
-		m, _ = rootUpdate(m, enterKey())
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, cmd := rootUpdate(m, enterKey())
 		m = runHomeData(t, m, cmd)
 		m, cmd = rootUpdate(m, runeKey('m'))

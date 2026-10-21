@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -50,7 +51,9 @@ func TestModel_Panel(t *testing.T) {
 		m, _ = m.Update(cmd())
 		m.Resize(40, 2)
 		m, _ = m.SetFocused(true)
-		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+		if !m.Expanded() {
+			t.Fatal("focusing must expand the scrolling list")
+		}
 		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
 		text := ansi.Strip(m.View())
 		if strings.Contains(text, "one") || !strings.Contains(text, "three") || m.offset != 1 {
@@ -59,6 +62,10 @@ func TestModel_Panel(t *testing.T) {
 		_, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 		if got := cmd().(OpenThoughtMsg).Thought.ThoughtID; got != 3 {
 			t.Fatalf("opened ID: got %d, want 3", got)
+		}
+		m, _ = m.SetFocused(false)
+		if m.Expanded() || strings.Contains(m.View(), "\n") || !strings.Contains(m.View(), "three") {
+			t.Fatalf("blurred panel: got %q expanded=%v, want inline selected preview", m.View(), m.Expanded())
 		}
 	})
 	t.Run("rejects replies from the previous day", func(t *testing.T) {
@@ -129,11 +136,42 @@ func TestModel_PanelFailuresAndTimers(t *testing.T) {
 			t.Fatalf("refreshed selection: got %d expanded=%v", m.index, m.expanded)
 		}
 	})
-	t.Run("header uses a white background and black text", func(t *testing.T) {
+	t.Run("header matches the other panel title blocks", func(t *testing.T) {
 		m := New(t.Context(), "u", &reader{}, logging.Nop())
-		got := m.View()
-		if !strings.Contains(got, "38;2;0;0;0") || !strings.Contains(got, "48;2;255;255;255") {
-			t.Fatalf("header colors: got %q, want black on white", got)
+		want := list.DefaultStyles(true).Title.Render("Mindset") + " ..."
+		if got := m.View(); got != want {
+			t.Fatalf("empty header: got %q, want %q", got, want)
+		}
+	})
+}
+
+func TestModel_InlinePreview(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		items []data.ThoughtSummaryView
+		want  string
+	}{
+		{name: "empty", want: " Mindset  ..."},
+		{name: "populated", items: []data.ThoughtSummaryView{{ThoughtID: 1, Preview: "Keep learning"}}, want: " Mindset  Keep learning"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := New(t.Context(), "u", &reader{items: tc.items}, logging.Nop())
+			m, _ = m.Update(m.Load(time.Now())())
+			if got := ansi.Strip(m.View()); got != tc.want {
+				t.Fatalf("collapsed row: got %q, want %q", got, tc.want)
+			}
+			if got := m.Height(); got != 1 {
+				t.Fatalf("collapsed height: got %d, want 1", got)
+			}
+		})
+	}
+	t.Run("clips Unicode preview to the remaining header width", func(t *testing.T) {
+		m := New(t.Context(), "u", &reader{items: []data.ThoughtSummaryView{{ThoughtID: 1, Preview: "界界界界界界界界"}}}, logging.Nop())
+		m, _ = m.Update(m.Load(time.Now())())
+		m.Resize(18, 5)
+		got := ansi.Strip(m.View())
+		if !strings.HasPrefix(got, " Mindset  界") || !strings.HasSuffix(got, "…") || ansi.StringWidth(got) > 18 {
+			t.Fatalf("clipped row: got %q, want inline Unicode within 18 cells", got)
 		}
 	})
 }

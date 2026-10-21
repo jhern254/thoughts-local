@@ -476,7 +476,10 @@ func (m Model) entityStrip() string {
 	}
 	help := "Tab/Shift+Tab: panels"
 	if m.mindsets.Focused() {
-		help = "Enter: expand/open • ←/Q/Esc: back • ↑/↓: select • PgUp/PgDn: scroll • r: refresh"
+		help = "Enter: open • ←/Q/Esc: back • ↑/↓: select • PgUp/PgDn: scroll • r: refresh"
+		if !m.mindsets.Expanded() {
+			help = "Enter: expand • Q/Esc: events • r: refresh"
+		}
 	}
 	if m.entityFocused {
 		help = "Tab: mindset • Q: events • ←/→: entity • Enter: open"
@@ -542,7 +545,7 @@ func (m Model) viewUnderlying() tea.View {
 	case screenEvents:
 		content = m.events.View()
 		if m.events.TimelineVisible() {
-			content = m.mindsets.View() + "\n\n" + content
+			content = m.mindsets.View() + "\n" + strings.Repeat("─", max(1, m.width)) + "\n" + content
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content
 			content += "\n" + strings.Repeat("─", max(1, m.width)) + "\n" + m.entityStrip()
 		}
