@@ -1,4 +1,8 @@
 /* Browser recording architecture: docs/browser-audio.md. */
+// One second of 100ms frames absorbs short main-thread stalls without dropping
+// audio. Its 32,000 bytes fit below the browser socket and Go queue ceilings.
+// Keep the initial grant in pcm-capture.js aligned with this hard limit.
+const maximumPendingPCMFrames = 10;
 class ThoughtsPCMProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -12,7 +16,7 @@ class ThoughtsPCMProcessor extends AudioWorkletProcessor {
     this.pcmFrameView = new DataView(this.pcmFrameStorage);
     this.port.onmessage = event => {
       if (event.data.stop) this.release();
-      else if (Number.isInteger(event.data.credit) && event.data.credit > 0) this.chunkCredits = Math.min(4, this.chunkCredits + event.data.credit);
+      else if (Number.isInteger(event.data.credit) && event.data.credit > 0) this.chunkCredits = Math.min(maximumPendingPCMFrames, this.chunkCredits + event.data.credit);
     };
     if (sampleRate < 16000 || !Number.isFinite(sampleRate)) this.fail();
   }

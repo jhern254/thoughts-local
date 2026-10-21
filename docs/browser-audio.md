@@ -117,6 +117,14 @@ The server also limits both recording time and the amount of sound received to
 its own sending bound and stops capture if it cannot keep up; an abandoned
 connection times out.
 
+The worklet permits ten unacknowledged 100 ms frames (32,000 bytes), giving the
+browser about one second to recover from a brief main-thread stall. The browser
+socket remains bounded at 48,000 queued bytes, below Go's twenty-frame waiting
+queue (64,000 bytes). A recovered worklet burst therefore fits the downstream
+ceilings. These limits do not batch or delay normal audio: each frame is sent
+immediately. Sustained overload still ends capture instead of silently dropping
+sound or accumulating an unbounded recording. Stop clears late frames as before.
+
 ## Make Stop freeze the draft
 
 As soon as Go processes Stop, that recording loses permission to change the
