@@ -29,6 +29,9 @@ func (m Model) videoTrimEndLimit() int64 {
 }
 
 func (m *Model) activateVideoTrim() {
+	if m.options.request == "discardVideo" {
+		return
+	}
 	switch m.options.trimFocus {
 	case trimFocusStart:
 		m.options.trim.StartMS = m.options.sourcePositionMS

@@ -131,6 +131,62 @@ test('preparing a loop shows a braille wave above Options and keeps keyboard can
   } finally { releasePreparation(); await page.unrouteAll({behavior:'wait'}); }
 });
 
+test('repeated cancellation keeps one discard owner until Visual is restored',async({page},testInfo)=>{
+  let sockets=0, deletes=0, latestOptions, releasePreparation, releaseDiscard;
+  const discardIDs=new Set();
+  page.on('websocket',socket=>{
+    sockets++;
+    socket.on('framereceived',({payload})=>{
+      const frame=Buffer.from(payload);
+      if(frame[0]!==111)return;
+      latestOptions=JSON.parse(frame.subarray(1).toString());
+      if(latestOptions.request==='discardVideo')discardIDs.add(latestOptions.id);
+    });
+  });
+  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+  await openVisual(page);await stageSource(page);
+  const preparationGate=new Promise(resolve=>{releasePreparation=resolve;});
+  const discardGate=new Promise(resolve=>{releaseDiscard=resolve;});
+  await page.route('**/visual/video/preview',async route=>{
+    if(route.request().method()==='POST')await preparationGate;
+    await route.continue();
+  });
+  await page.route('**/visual/video/source',async route=>{
+    if(route.request().method()==='DELETE'){deletes++;await discardGate;}
+    await route.continue();
+  });
+  try {
+    await clickControl(page,'Preview loop');
+    await expect.poll(()=>latestOptions?.request).toBe('prepareLoop');
+    const preparationID=latestOptions.id;
+    await page.keyboard.press('Escape');
+    await expect.poll(()=>latestOptions?.request).toBe('discardVideo');
+    const discardID=latestOptions.id;
+    expect(discardID).toBe(preparationID+1);
+    await expect.poll(()=>deletes).toBe(1);
+    await expect(screen(page)).toContainText('Cancelling upload…');
+    for(const key of ['Escape','Escape','q','q','Enter'])await page.keyboard.press(key);
+    await page.setViewportSize({width:650,height:600});
+    await clickControl(page,'Cancel upload');await clickControl(page,'Cancel upload');
+    expect(latestOptions.id).toBe(discardID);
+    releaseDiscard();
+    await expect(screen(page)).toContainText('Background darkness:');
+    expect(deletes).toBe(1);
+    expect([...discardIDs]).toEqual([discardID]);
+    await expect(screen(page)).not.toContainText('Cancel upload');
+    await expect(page.locator('#video-preparation')).toBeHidden();
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+    await page.screenshot({path:`/tmp/video-cancellation-${testInfo.project.name}.png`});
+    await clickControl(page,'Background darkness: 70%');
+    await page.keyboard.press('ArrowRight');
+    await expect(screen(page)).toContainText('Background darkness: 71%');
+    expect(sockets).toBe(1);
+  } finally {
+    releasePreparation();releaseDiscard();
+    await page.unrouteAll({behavior:'wait'});
+  }
+});
+
 test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep the accepted loop',async({page},testInfo)=>{
   let sockets=0, prepares=0, applies=0;
   page.on('websocket',()=>sockets++);

@@ -290,3 +290,127 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_VideoTrimCancellation(t *testing.T) {
+	cancelClick := tea.MouseClickMsg{X: 8, Y: 27, Button: tea.MouseLeft}
+	for _, request := range []string{"", "prepareLoop"} {
+		for _, action := range []struct {
+			name     string
+			messages []tea.Msg
+		}{
+			{"Escape", []tea.Msg{tea.KeyPressMsg{Code: tea.KeyEscape}}},
+			{"Q", []tea.Msg{tea.KeyPressMsg{Code: 'q'}}},
+			{"Cancel click", []tea.Msg{cancelClick}},
+			{"Tab then Enter", []tea.Msg{tea.KeyPressMsg{Code: tea.KeyTab}, enterKey()}},
+		} {
+			name := "editing"
+			if request != "" {
+				name = request
+			}
+			t.Run(name+" cancels once with "+action.name, func(t *testing.T) {
+				m := newRootTestModel()
+				m.browserOptionsEnabled = true
+				m.width, m.height = 80, 36
+				m.options = optionsState{
+					open:             true,
+					id:               5,
+					request:          request,
+					darkness:         70,
+					video:            true,
+					trimming:         true,
+					newVideo:         true,
+					trimFocus:        trimFocusDone,
+					sourceDurationMS: 60000,
+					trim:             visual.VideoTrim{EndMS: 30000},
+				}
+				for _, message := range action.messages {
+					m, _ = rootUpdate(m, message)
+				}
+				if got := m.OptionsState(); got.Request != "discardVideo" || got.ID != 6 {
+					t.Fatalf("cancel state = %+v, want discardVideo with ID 6", got)
+				}
+				for _, message := range []tea.Msg{
+					tea.KeyPressMsg{Code: tea.KeyEscape}, tea.KeyPressMsg{Code: tea.KeyEscape},
+					tea.KeyPressMsg{Code: 'q'}, tea.KeyPressMsg{Code: 'q'},
+					enterKey(), tea.KeyPressMsg{Code: tea.KeySpace}, cancelClick, cancelClick,
+				} {
+					m, _ = rootUpdate(m, message)
+					if got := m.OptionsState(); got.Request != "discardVideo" || got.ID != 6 {
+						t.Fatalf("repeated %T changed discard ownership: got %+v, want discardVideo with ID 6", message, got)
+					}
+				}
+				latePreview := BrowserOptionsMsg{
+					Action:       "loopReady",
+					ID:           5,
+					VideoQuality: visual.VideoQualityEfficient,
+					Width:        1280,
+					Height:       720,
+					FrameRate:    visual.VideoFrameRate{Numerator: 24, Denominator: 1},
+					Trim:         visual.VideoTrim{EndMS: 1000},
+					DurationMS:   1000,
+				}
+				m, _ = rootUpdate(m, latePreview)
+				if m.options.loopReady || m.OptionsState().ID != 6 || m.OptionsState().Request != "discardVideo" {
+					t.Fatalf("late preview changed cancellation: %+v", m.OptionsState())
+				}
+				m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "discarded", ID: 6, Background: true, Kind: "image"})
+				if !m.options.open || m.options.trimming || m.options.newVideo || m.options.loopReady || !m.options.hasBackground || m.options.video || m.options.request != "" {
+					t.Fatalf("discard completion did not restore saved-image Visual: %+v", m.OptionsState())
+				}
+				if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Background darkness: 70%") || strings.Contains(view, "Cancel upload") {
+					t.Fatalf("discard completion shows the wrong screen:\n%s", view)
+				}
+				m, _ = rootUpdate(m, latePreview)
+				if m.options.loopReady || m.options.trimming {
+					t.Fatal("late preview restored the cancelled editor")
+				}
+				focus := m.options.focus
+				m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
+				if m.options.focus == focus || m.options.request != "" {
+					t.Fatal("Visual controls are not usable after cancellation")
+				}
+			})
+		}
+	}
+
+	t.Run("cut and quality controls remain locked during preparation and cancellation", func(t *testing.T) {
+		for _, request := range []string{"prepareLoop", "discardVideo"} {
+			for _, control := range []struct {
+				name  string
+				focus int
+				row   int
+			}{
+				{"Start", trimFocusStart, 21},
+				{"End", trimFocusEnd, 22},
+				{"Quality", trimFocusQuality, 23},
+			} {
+				t.Run(request+" locks "+control.name, func(t *testing.T) {
+					m := newRootTestModel()
+					m.browserOptionsEnabled = true
+					m.width, m.height = 80, 36
+					trim := visual.VideoTrim{StartMS: 1000, EndMS: 30000}
+					m.options = optionsState{
+						open:             true,
+						id:               5,
+						request:          request,
+						videoQuality:     visual.VideoQualityEfficient,
+						trimming:         true,
+						trimFocus:        control.focus,
+						sourceDurationMS: 60000,
+						sourcePositionMS: 9000,
+						trim:             trim,
+					}
+					for _, message := range []tea.Msg{
+						tea.KeyPressMsg{Code: tea.KeyRight}, tea.KeyPressMsg{Code: tea.KeyHome}, enterKey(),
+						tea.MouseClickMsg{X: 8, Y: control.row, Button: tea.MouseLeft},
+					} {
+						m, _ = rootUpdate(m, message)
+						if got := m.OptionsState(); got.ID != 5 || got.Request != request || got.Trim != trim || got.SourcePositionMS != 9000 || got.VideoQuality != visual.VideoQualityEfficient {
+							t.Fatalf("pending %s allowed %s changes: %+v", request, control.name, got)
+						}
+					}
+				})
+			}
+		}
+	})
+}
