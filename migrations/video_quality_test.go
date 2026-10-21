@@ -23,12 +23,12 @@ func TestVisualQuality(t *testing.T) {
 func TestVisualQualityUpgrade(t *testing.T) {
 	t.Run("adds default without rewriting existing preferences and rolls back independently", func(t *testing.T) {
 		db := openMigratedDatabase(t)
-		applyMigrationFiles(t, db, "000013_video_quality.down.sql", false)
+		applyMigrationFiles(t, db, "000014_video_quality.down.sql", false)
 		insertUsers(t, db)
 		if _, err := db.Exec("INSERT INTO visual(user_id,background_asset,darkness,fit,zoom,position_x,position_y,speed_percent,user_paused) VALUES ('user-1','0123456789abcdef0123456789abcdef.mp4',42,'fit',150,1000,9000,50,1)"); err != nil {
 			t.Fatal(err)
 		}
-		applyMigrationFiles(t, db, "000013_video_quality.up.sql", false)
+		applyMigrationFiles(t, db, "000014_video_quality.up.sql", false)
 		var quality, asset, fit string
 		var darkness, zoom, x, y, speed, paused int
 		if err := db.QueryRow("SELECT video_quality,background_asset,darkness,fit,zoom,position_x,position_y,speed_percent,user_paused FROM visual").Scan(&quality, &asset, &darkness, &fit, &zoom, &x, &y, &speed, &paused); err != nil {
@@ -37,7 +37,7 @@ func TestVisualQualityUpgrade(t *testing.T) {
 		if quality != "efficient" || asset != "0123456789abcdef0123456789abcdef.mp4" || darkness != 42 || fit != "fit" || zoom != 150 || x != 1000 || y != 9000 || speed != 50 || paused != 1 {
 			t.Fatalf("upgrade changed existing settings: %q %q %d %s %d %d %d %d %d", quality, asset, darkness, fit, zoom, x, y, speed, paused)
 		}
-		applyMigrationFiles(t, db, "000013_video_quality.down.sql", false)
+		applyMigrationFiles(t, db, "000014_video_quality.down.sql", false)
 		var count int
 		if err := db.QueryRow("SELECT count(*) FROM visual WHERE darkness=42 AND speed_percent=50").Scan(&count); err != nil {
 			t.Fatal(err)
