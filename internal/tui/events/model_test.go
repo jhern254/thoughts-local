@@ -75,6 +75,10 @@ func (s *eventStub) End(_ context.Context, _ string, id, version int64, end time
 }
 
 type viewStore struct {
+	subjectTimes               []data.SubjectTimeView
+	subjectTimeErr             error
+	subjectReads               int
+	subjectCutoff              time.Time
 	items                      []data.ThoughtSummaryView
 	thoughtGroupsOutsideEvents []data.ThoughtGroupOutsideEvents
 	thoughtGroupsErr           error
@@ -209,6 +213,9 @@ func fixture(t testing.TB) (Model, *eventStub, *viewStore) {
 	m.active = true
 	m.Resize(80, 27)
 	m = execute(t, m, m.loadDay(m.day))
+	// Most fixtures exercise entry selection; startup and the Now stop have focused tests.
+	m.position.target = targetEntry
+	m.anchor()
 	return m, s, v
 }
 
@@ -557,3 +564,9 @@ func (s *viewStore) ListThoughtGroupsOutsideEvents(context.Context, string, time
 }
 
 func (m *Model) openEvent(id int64) tea.Cmd { return m.openEntry(timeline.EntryKey{EventID: id}) }
+
+func (s *viewStore) SubjectTimeInRange(_ context.Context, _ string, _, _, cutoff time.Time) ([]data.SubjectTimeView, error) {
+	s.subjectReads++
+	s.subjectCutoff = cutoff
+	return s.subjectTimes, s.subjectTimeErr
+}

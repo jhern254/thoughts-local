@@ -75,6 +75,13 @@ func TestModel_TimelinePosition(t *testing.T) {
 				t.Fatal("Down must select and reveal the second event, stopping at the last event")
 			}
 		}
+		if m.position.target != targetBoundary {
+			t.Fatal("second Down did not reach Now")
+		}
+		m, _ = m.Update(eventKey("up"))
+		if m.position.target != targetEntry || m.entries[m.position.entryIndex].Event.EventID != 2 {
+			t.Fatal("Up from Now did not select the latest entry")
+		}
 		for range 2 {
 			m, _ = m.Update(eventKey("up"))
 			if m.entries[m.position.entryIndex].Event.EventID != 1 || m.View() != before {

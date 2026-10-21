@@ -2,17 +2,17 @@ package render
 
 import "math"
 
-// ThoughtLengthBar occupies one terminal row. CharacterCount is the full
-// nonnegative code-point count of a thought; Row may be outside the viewport.
-type ThoughtLengthBar struct {
-	Row            int
-	CharacterCount int64
+// Bar occupies one terminal row. Value is a nonnegative quantity in caller-defined
+// units (for example, code points or elapsed seconds); Row may be outside the viewport.
+type Bar struct {
+	Row   int
+	Value int64
 }
 
-// ThoughtLengthBarOptions uses the same mode, boost and size conventions as curves.
-// Reference is the whole event's maximum, including offscreen thoughts. It is
+// BarOptions uses the same mode, boost and size conventions as curves.
+// Reference is the whole collection's maximum, including offscreen values. It is
 // deliberately not inferred from visible bars: scrolling must not change scale.
-type ThoughtLengthBarOptions struct {
+type BarOptions struct {
 	Mode      Mode
 	Reference int64
 	Exponent  float64 // Positive power; invalid values use the thought length default, 3.0.
@@ -35,12 +35,12 @@ func ThoughtLengthExponent(curveExponent float64) float64 {
 	return thoughtLengthExponent * curveExponent / countExponent
 }
 
-// RenderThoughtLengthBars draws discrete leftward bars in the existing Braille language.
+// RenderBars draws discrete leftward bars in the existing Braille language.
 // It returns height rows of width cells; nonpositive dimensions return nil.
 // CurveIndex identifies the input bar for caller-owned coloring, or -1 for blank or the muted connecting stem.
 // Selection is not a drawing input and cannot change bar geometry.
 //
-// For full character count L and event maximum R:
+// For quantity L and collection maximum R:
 //
 //	ratio = min(max(L, 0) / R, 1)
 //	maximumReach = min(lane dots - 1, (minAmplitude + amplitudeGain) * size)
@@ -54,7 +54,7 @@ func ThoughtLengthExponent(curveExponent float64) float64 {
 // including clipped/offscreen bars, but never extends into headers or footers.
 // Outline keeps only each rectangle's perimeter and the same stem. Zero/negative values
 // and unknown references draw nothing, rather than inventing an aesthetic mound.
-func RenderThoughtLengthBars(width, height int, bars []ThoughtLengthBar, options ThoughtLengthBarOptions) [][]Cell {
+func RenderBars(width, height int, bars []Bar, options BarOptions) [][]Cell {
 	if width <= 0 || height <= 0 {
 		return nil
 	}
@@ -82,7 +82,7 @@ func RenderThoughtLengthBars(width, height int, bars []ThoughtLengthBar, options
 	// Find support before clipping so cropping a viewport cannot shorten the stem.
 	first, last := height, -1
 	for _, bar := range bars {
-		if bar.CharacterCount > 0 {
+		if bar.Value > 0 {
 			first = min(first, bar.Row)
 			last = max(last, bar.Row)
 		}
@@ -95,10 +95,10 @@ func RenderThoughtLengthBars(width, height int, bars []ThoughtLengthBar, options
 		rows[row][width-1] = Cell{Glyph: stem, CurveIndex: -1}
 	}
 	for index, bar := range bars {
-		if bar.Row < 0 || bar.Row >= height || bar.CharacterCount <= 0 {
+		if bar.Row < 0 || bar.Row >= height || bar.Value <= 0 {
 			continue
 		}
-		ratio := min(1, float64(bar.CharacterCount)/float64(options.Reference))
+		ratio := min(1, float64(bar.Value)/float64(options.Reference))
 		reach := min(baseline, max(1, int(math.Round(maximum*math.Pow(ratio, exponent)))))
 		left := baseline - reach
 		for x := left; x <= baseline; x++ {

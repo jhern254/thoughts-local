@@ -135,6 +135,42 @@ func TestModel_EventsHome(t *testing.T) {
 		return m, events
 	}
 
+	t.Run("Now buffers navigation to metrics and Escape stays in Events", func(t *testing.T) {
+		m, events := newHome(t)
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+		reads := events.lists
+		press := func(code rune) {
+			t.Helper()
+			var cmd tea.Cmd
+			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: code}))
+			if cmd != nil || m.entityFocused || m.screen != screenEvents || events.lists != reads {
+				t.Fatal("navigation started work or changed panel focus")
+			}
+		}
+		preview := m.events.View()
+		press(tea.KeyUp)
+		if m.events.View() == preview {
+			t.Fatal("Up did not reveal the latest card")
+		}
+		press(tea.KeyDown)
+		if m.events.View() != preview {
+			t.Fatal("Down did not stop at the original Now preview")
+		}
+		press(tea.KeyDown)
+		if m.events.AtTopLevel() || !strings.Contains(m.events.View(), "Esc/←: now") {
+			t.Fatal("second Down did not open metrics")
+		}
+		press(tea.KeyEscape)
+		if !m.events.AtTopLevel() || m.events.View() != preview {
+			t.Fatal("Escape did not return to Now inside Events")
+		}
+		press(tea.KeyDown)
+		press(tea.KeyEnd)
+		if m.events.View() != preview {
+			t.Fatal("End did not return to Now")
+		}
+	})
+
 	t.Run("assigned event badge survives thought detail and disappears on collapse", func(t *testing.T) {
 		m, events := newHome(t)
 		id := int64(7)
@@ -622,5 +658,13 @@ func (*homeTimelineStub) OpenThoughtsOutsideEventsView(context.Context, string, 
 	panic("unexpected thoughts outside events expansion")
 }
 func (s homeThoughtStore) ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
+	return nil, nil
+}
+
+func (s homeThoughtStore) SubjectTimeInRange(context.Context, string, time.Time, time.Time, time.Time) ([]data.SubjectTimeView, error) {
+	return nil, nil
+}
+
+func (*homeTimelineStub) SubjectTimeInRange(context.Context, string, time.Time, time.Time, time.Time) ([]data.SubjectTimeView, error) {
 	return nil, nil
 }

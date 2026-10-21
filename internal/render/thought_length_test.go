@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-func TestRenderThoughtLengthBars(t *testing.T) {
+func TestRenderBars(t *testing.T) {
 	t.Run("lengths stay ordered and scrolling preserves the event reference", func(t *testing.T) {
-		bars := []ThoughtLengthBar{{Row: 0, CharacterCount: 1}, {Row: 2, CharacterCount: 160}, {Row: 4, CharacterCount: 320}}
-		options := ThoughtLengthBarOptions{Reference: 320}
-		rows := RenderThoughtLengthBars(10, 5, bars, options)
+		bars := []Bar{{Row: 0, Value: 1}, {Row: 2, Value: 160}, {Row: 4, Value: 320}}
+		options := BarOptions{Reference: 320}
+		rows := RenderBars(10, 5, bars, options)
 		occupied := func(row []Cell) int {
 			n := 0
 			for _, c := range row {
@@ -22,7 +22,7 @@ func TestRenderThoughtLengthBars(t *testing.T) {
 		if !(occupied(rows[0]) < occupied(rows[2]) && occupied(rows[2]) < occupied(rows[4])) {
 			t.Fatal("longer thoughts must have longer bars")
 		}
-		cropped := RenderThoughtLengthBars(10, 1, []ThoughtLengthBar{{Row: 0, CharacterCount: 160}}, options)
+		cropped := RenderBars(10, 1, []Bar{{Row: 0, Value: 160}}, options)
 		for x := range rows[2] {
 			if rows[2][x].Glyph != cropped[0][x].Glyph {
 				t.Fatal("scrolling changed scale")
@@ -33,9 +33,9 @@ func TestRenderThoughtLengthBars(t *testing.T) {
 		}
 	})
 	t.Run("default contrast distinguishes similar lengths without changing equal values", func(t *testing.T) {
-		bars := []ThoughtLengthBar{{Row: 0, CharacterCount: 80}, {Row: 3, CharacterCount: 90}, {Row: 6, CharacterCount: 100}, {Row: 9, CharacterCount: 90}}
-		rows := RenderThoughtLengthBars(10, 10, bars, ThoughtLengthBarOptions{Reference: 100})
-		previous := RenderThoughtLengthBars(10, 10, bars, ThoughtLengthBarOptions{Reference: 100, Exponent: 0.8})
+		bars := []Bar{{Row: 0, Value: 80}, {Row: 3, Value: 90}, {Row: 6, Value: 100}, {Row: 9, Value: 90}}
+		rows := RenderBars(10, 10, bars, BarOptions{Reference: 100})
+		previous := RenderBars(10, 10, bars, BarOptions{Reference: 100, Exponent: 0.8})
 		width := func(row []Cell) int {
 			n := 0
 			for _, cell := range row {
@@ -53,14 +53,14 @@ func TestRenderThoughtLengthBars(t *testing.T) {
 		}
 	})
 	t.Run("stem is continuous clipped and absent outside thought rows", func(t *testing.T) {
-		bars := []ThoughtLengthBar{{Row: 1, CharacterCount: 80}, {Row: 5, CharacterCount: 100}}
-		rows := RenderThoughtLengthBars(10, 7, bars, ThoughtLengthBarOptions{Reference: 100})
+		bars := []Bar{{Row: 1, Value: 80}, {Row: 5, Value: 100}}
+		rows := RenderBars(10, 7, bars, BarOptions{Reference: 100})
 		for y := range rows {
 			if (rows[y][9].Glyph != ' ') != (y >= 1 && y <= 5) {
 				t.Fatalf("unexpected stem extent at row %d", y)
 			}
 		}
-		crop := RenderThoughtLengthBars(10, 3, []ThoughtLengthBar{{Row: -1, CharacterCount: 80}, {Row: 3, CharacterCount: 100}}, ThoughtLengthBarOptions{Reference: 100})
+		crop := RenderBars(10, 3, []Bar{{Row: -1, Value: 80}, {Row: 3, Value: 100}}, BarOptions{Reference: 100})
 		for y := range crop {
 			for x := range crop[y] {
 				if crop[y][x] != rows[y+2][x] {
@@ -71,9 +71,9 @@ func TestRenderThoughtLengthBars(t *testing.T) {
 	})
 
 	t.Run("outline preserves bounds and removes interior dots", func(t *testing.T) {
-		bars := []ThoughtLengthBar{{Row: 0, CharacterCount: 100}}
-		filled := RenderThoughtLengthBars(10, 1, bars, ThoughtLengthBarOptions{Reference: 100})
-		outline := RenderThoughtLengthBars(10, 1, bars, ThoughtLengthBarOptions{Reference: 100, Mode: Outline})
+		bars := []Bar{{Row: 0, Value: 100}}
+		filled := RenderBars(10, 1, bars, BarOptions{Reference: 100})
+		outline := RenderBars(10, 1, bars, BarOptions{Reference: 100, Mode: Outline})
 		different := false
 		for x, c := range filled[0] {
 			o := outline[0][x]
@@ -87,10 +87,10 @@ func TestRenderThoughtLengthBars(t *testing.T) {
 		}
 	})
 	t.Run("empty invalid and oversized inputs stay bounded", func(t *testing.T) {
-		if RenderThoughtLengthBars(0, 1, nil, ThoughtLengthBarOptions{}) != nil {
+		if RenderBars(0, 1, nil, BarOptions{}) != nil {
 			t.Fatal("invalid width")
 		}
-		rows := RenderThoughtLengthBars(1, 2, []ThoughtLengthBar{{Row: -1, CharacterCount: 100}, {Row: 0, CharacterCount: 1000}, {Row: 1, CharacterCount: 0}}, ThoughtLengthBarOptions{Reference: 10, Size: 1.25})
+		rows := RenderBars(1, 2, []Bar{{Row: -1, Value: 100}, {Row: 0, Value: 1000}, {Row: 1, Value: 0}}, BarOptions{Reference: 10, Size: 1.25})
 		if len(rows) != 2 || len(rows[0]) != 1 || rows[0][0].Glyph == ' ' || rows[1][0].Glyph != ' ' {
 			t.Fatalf("unexpected rows: %v", rows)
 		}

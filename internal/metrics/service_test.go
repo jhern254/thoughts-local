@@ -10,9 +10,10 @@ import (
 )
 
 type storeStub struct {
-	err    error
-	ctx    context.Context
-	userID string
+	err                 error
+	ctx                 context.Context
+	userID              string
+	from, until, cutoff time.Time
 }
 
 func (s *storeStub) ThoughtCountsByEvent(ctx context.Context, u string, _, _, _ time.Time) ([]data.EventThoughtCountView, error) {
@@ -80,4 +81,22 @@ func (s *storeStub) ThoughtStatsInRange(ctx context.Context, u string, from, unt
 
 func (s *storeStub) ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
 	return nil, s.err
+}
+
+func (s *storeStub) SubjectTimeInRange(ctx context.Context, user string, from, until, cutoff time.Time) ([]data.SubjectTimeView, error) {
+	s.ctx, s.userID, s.from, s.until, s.cutoff = ctx, user, from, until, cutoff
+	return []data.SubjectTimeView{{SubjectID: 7, TimeSpentSeconds: 42}}, s.err
+}
+
+func TestService_SubjectTimeInRange(t *testing.T) {
+	t.Run("preserves context interval cutoff results and original error", func(t *testing.T) {
+		from, until, cutoff := time.Unix(1, 0), time.Unix(100, 0), time.Unix(50, 0)
+		for _, cause := range []error{nil, errors.New("store failure")} {
+			store := &storeStub{err: cause}
+			rows, err := NewService(store).SubjectTimeInRange(t.Context(), "u", from, until, cutoff)
+			if store.ctx != t.Context() || store.userID != "u" || store.from != from || store.until != until || store.cutoff != cutoff || len(rows) != 1 || rows[0].TimeSpentSeconds != 42 || err != cause {
+				t.Fatalf("got rows %v, error %v, scope %+v; want original interval, cutoff and error", rows, err, store)
+			}
+		}
+	})
 }

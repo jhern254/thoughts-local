@@ -165,13 +165,13 @@ func draw(scene scene, width, height, selected, selectedThought int, options ren
 			curves = append(curves, render.Distribution{CenterY: float64(card.top*4) + float64(cardHeight*4-1)/2, Count: card.count})
 		} else {
 			thoughtPlotTop, thoughtPlotEnd = card.top, card.top+cardHeight
-			bars := make([]render.ThoughtLengthBar, 0, len(card.thoughts))
+			bars := make([]render.Bar, 0, len(card.thoughts))
 			var reference int64
 			for i, thought := range card.thoughts {
-				bars = append(bars, render.ThoughtLengthBar{Row: 4 + 3*i, CharacterCount: thought.characters})
+				bars = append(bars, render.Bar{Row: 4 + 3*i, Value: thought.characters})
 				reference = max(reference, thought.characters)
 			}
-			thoughtPlotCells = render.RenderThoughtLengthBars(curveWidth, cardHeight, bars, render.ThoughtLengthBarOptions{
+			thoughtPlotCells = render.RenderBars(curveWidth, cardHeight, bars, render.BarOptions{
 				Mode:      options.Mode,
 				Reference: reference,
 				Exponent:  render.ThoughtLengthExponent(options.CountExponent),

@@ -1,8 +1,17 @@
 package events
 
+type timelineTarget uint8
+
+const (
+	targetEntry timelineTarget = iota
+	targetBoundary
+	targetMetrics
+)
+
 // timelinePosition separates timeline-entry selection from the first visible rendered
 // line. Layout supplies row positions because cards have variable heights.
 type timelinePosition struct {
+	target     timelineTarget
 	entryIndex int
 	topLine    int
 	followNow  bool
@@ -24,6 +33,7 @@ func (p *timelinePosition) moveEntry(delta, entryCount int) {
 }
 
 func (p *timelinePosition) first() {
+	p.target = targetEntry
 	p.followNow = false
 	p.entryIndex, p.topLine = 0, 0
 }

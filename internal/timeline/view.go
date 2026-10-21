@@ -66,3 +66,7 @@ func (s *Service) ThoughtStats(ctx context.Context, userID string, scope Thought
 	}
 	return s.metrics.ThoughtStatsInRange(ctx, userID, scope.from, scope.until)
 }
+
+func (s *Service) SubjectTimeInRange(ctx context.Context, userID string, from, until, ongoingUntil time.Time) ([]data.SubjectTimeView, error) {
+	return s.metrics.SubjectTimeInRange(ctx, userID, from, until, ongoingUntil)
+}

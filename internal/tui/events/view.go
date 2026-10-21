@@ -285,7 +285,7 @@ func (m *Model) measureTimeline() timelineLayout {
 			priority:   1,
 			key:        entry.Key(),
 			content:    m.entryContent(entry),
-			selected:   i == m.position.entryIndex,
+			selected:   i == m.position.entryIndex && m.position.target == targetEntry,
 			end:        end,
 			hideEnd:    hideEnd,
 		})
@@ -417,6 +417,13 @@ func (m *Model) revealSelected() {
 	m.position.clamp(len(layout.lines))
 }
 func (m *Model) anchor() {
+	if m.position.target == targetBoundary {
+		return
+	}
+	if m.position.target == targetMetrics {
+		m.clampSubjectTime()
+		return
+	}
 	if m.day.IsZero() {
 		return
 	}
@@ -430,6 +437,12 @@ func (m *Model) anchor() {
 }
 
 func (m *Model) timelineBody() string {
+	if m.position.target == targetBoundary {
+		return m.boundaryBody()
+	}
+	if m.position.target == targetMetrics {
+		return m.subjectTimeBody()
+	}
 	layout := m.measureTimeline()
 	position := m.position
 	position.clamp(len(layout.lines))
@@ -461,6 +474,9 @@ func (m Model) View() string {
 		body = m.timelineBody()
 	}
 	status := m.message
+	if status == "" && m.subjectTime.err != nil {
+		status = "Could not refresh subject time. r: retry"
+	}
 	if status == "" {
 		status = "d: distribution settings"
 	}
@@ -478,6 +494,16 @@ func (m Model) View() string {
 	}
 	if !m.expanded.IsZero() {
 		help = "Q/Esc back • r reload • d distributions • m mindset"
+	}
+	if m.position.target == targetBoundary && m.message == "" && m.subjectTime.err == nil && !m.load.showStatus {
+		status = "↑: latest card • ↓: subject time • d: distributions"
+	}
+	if m.position.target == targetMetrics {
+		status = "↑/↓: subjects • PgUp/PgDn: page • Esc/←: now"
+		help = "Home: first • End: now • r: refresh • d: distributions"
+		if m.subjectTime.err != nil {
+			status = "Could not refresh subject time. r: retry"
+		}
 	}
 	if m.distributions.open {
 		status = m.distributions.label()

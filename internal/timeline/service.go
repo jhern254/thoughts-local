@@ -21,6 +21,7 @@ type ThoughtReader interface {
 }
 
 type MetricsReader interface {
+	SubjectTimeInRange(context.Context, string, time.Time, time.Time, time.Time) ([]data.SubjectTimeView, error)
 	ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error)
 	ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error)
 	ThoughtStatsInRange(context.Context, string, time.Time, time.Time) (data.ThoughtIntervalStats, error)

@@ -9,6 +9,7 @@ import (
 )
 
 type Store interface {
+	SubjectTimeInRange(context.Context, string, time.Time, time.Time, time.Time) ([]data.SubjectTimeView, error)
 	ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error)
 	ThoughtCountsByEvent(context.Context, string, time.Time, time.Time, time.Time) ([]data.EventThoughtCountView, error)
 	ThoughtStatsInRange(context.Context, string, time.Time, time.Time) (data.ThoughtIntervalStats, error)
@@ -43,4 +44,8 @@ func (s *Service) ThoughtStatsInRange(ctx context.Context, userID string, from, 
 
 func (s *Service) ListThoughtGroupsOutsideEvents(ctx context.Context, userID string, from, until, ongoingUntil time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
 	return s.store.ListThoughtGroupsOutsideEvents(ctx, userID, from, until, ongoingUntil)
+}
+
+func (s *Service) SubjectTimeInRange(ctx context.Context, userID string, from, until, ongoingUntil time.Time) ([]data.SubjectTimeView, error) {
+	return s.store.SubjectTimeInRange(ctx, userID, from, until, ongoingUntil)
 }
