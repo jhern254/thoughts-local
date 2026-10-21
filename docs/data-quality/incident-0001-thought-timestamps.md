@@ -153,31 +153,120 @@ local rather than adding them to operational logs or the Git repository.
 
 ### After a verified deployment
 
-Prefer freezing a final incident snapshot after stopping all old writers and
-joining their pending saves, before allowing writes from the fixed binary.
-Extracting all rows from that snapshot avoids assumptions about historical
-clock values. Record the database identity, fixed build, snapshot hash, and UTC
-cutover time in this report. Restarting one of several writers is insufficient.
+This procedure produces a review file containing thoughts that may have been
+saved by the old application. It does not repair their timestamps. Use a
+snapshot of the database so the records being reviewed cannot change while you
+validate and export them.
 
-For a database that also contains later records, the query accepts
-`:fixed_writers_started_at_unix`, a positive integer UTC epoch second for that
-verified cutover. In the SQLite shell:
+Here, **cutover** means the transition from the old application to the fixed
+application for one particular database. A **writer** is any running process
+that can save to that database, such as the TUI, browser server, API, or an import
+command. Merging the PR does not stop those processes or replace their running
+code. Opening another browser tab also does not restart the server behind it.
+
+There is no verified cutover timestamp recorded for this incident yet. Until
+that evidence is available, use a NULL cutoff and review the complete snapshot.
+
+#### 1. Choose the review scope
+
+| Database snapshot available | Cutoff to use | What the export contains |
+| --- | --- | --- |
+| Final snapshot taken after all old writers stopped, before fixed writers began saving | `NULL` | Every retained thought at the end of the old application's operation. This is the preferred incident inventory. |
+| Later snapshot containing both old and new saves, with a documented cutover | Verified integer Unix timestamp | Thoughts whose `created_at` is at or before the cutover second. |
+| Snapshot with uncertain deployment history, overlapping writers, imports with preserved creation times, or clock changes | `NULL` | Every retained thought for manual review; a time filter cannot reliably separate the two populations. |
+
+A Unix timestamp is the number of seconds since 1970-01-01 00:00:00 UTC. This
+query expects **seconds**, not milliseconds or a formatted date string. The
+cutoff describes the deployment boundary; it is not the time of the oldest or
+newest thought and is not the time you happen to run the review.
+
+#### 2. Establish and record the deployment boundary
+
+If you are carrying out the deployment, perform these actions in order:
+
+1. Identify the exact database file and every process that can write to it.
+   Resolve the configured database path; do not assume two processes started
+   from different directories use the same `data/thoughts.db`.
+2. Stop accepting new entries through the old application. Let saves already
+   submitted finish, and confirm all old writer processes have exited. Pending
+   background work must finish before the database connection closes. An
+   unsaved draft is not a database record; let its owner save or explicitly
+   discard it before shutdown. Do not assume a browser draft survives a restart.
+3. While all writers are stopped, make the final snapshot using step 3 below.
+   Exporting every row of this snapshot with a NULL cutoff gives the complete
+   retained population without relying on historical clock values.
+4. Rebuild from a revision containing the fix and record the revision and
+   executable being deployed. Immediately before starting the fixed writers,
+   record the UTC time and its Unix value. Confirm that every restarted writer
+   uses the intended executable and database. This recorded boundary is usable
+   only if no old writer can resume saving afterward.
+5. Verify the running application with a deliberate delayed-save check: open a
+   test draft, wait several seconds, and save it. Its observation time should
+   reflect opening, while its creation time should reflect saving. Identify the
+   test record in the deployment notes so it is not mistaken for historical data.
+
+On the deployment host, this terminal command records both time representations
+from one clock reading. Run it at the boundary described above, not later when
+preparing the report:
+
+```sh
+sqlite3 -header -column :memory: \
+  "SELECT unixepoch('now') AS cutover_unix, datetime('now') AS cutover_utc;"
+```
+
+Retain the output alongside the absolute database path, source revision,
+executable path and hash, confirmation that old writers stopped, snapshot path
+and hash, and the delayed-save result. Add that deployment evidence to this
+report. A valid date conversion alone cannot establish which software was
+running. If the transition already happened without adequate records, do not
+invent a cutoff from the merge date or the current time; use the full extract.
+
+#### 3. Create a private snapshot and open it read-only
+
+The following commands run in your normal terminal on Linux, from the repository
+root. Replace the source path with the database identified in step 2. `mktemp`
+creates a new directory for this review so an earlier snapshot is not replaced.
+For the preferred final snapshot, run these while all writers are stopped. For
+a later review, the same SQLite backup command gives a consistent copy, but it
+will also contain records saved since deployment.
+
+```sh
+incident_source_db="/absolute/path/to/data/thoughts.db"
+incident_review_dir="$(mktemp -d /tmp/incident-0001-review.XXXXXX)"
+sqlite3 -readonly "$incident_source_db" \
+  ".backup '$incident_review_dir/snapshot.sqlite3'"
+sha256sum "$incident_review_dir/snapshot.sqlite3"
+printf '%s\n' "$incident_review_dir"
+sqlite3 -readonly "$incident_review_dir/snapshot.sqlite3"
+```
+
+Keep the printed directory path and hash. `/tmp` is temporary storage; archive
+the evidence in private durable storage before it is cleaned up. Use SQLite's
+backup command rather than copying a live `.db` file alone: recent committed
+changes may still be in a separate write-ahead log.
+
+The last command opens the SQLite shell and displays a `sqlite>` prompt. The
+commands in steps 4 and 5 belong at that prompt. Commands beginning with a dot
+are SQLite shell commands; SQL statements end with a semicolon. Stay in this
+same session so the parameter you validate is the one used for export.
+
+#### 4. Set the cutoff and validate it before exporting
+
+Start with the complete-population setting:
 
 ```text
-sqlite3 -readonly /absolute/path/to/review-snapshot.sqlite3
 .parameter init
 .parameter set :fixed_writers_started_at_unix NULL
 .headers on
-.mode csv
-.once /tmp/incident-0001-thoughts.csv
-.read docs/data-quality/incident-0001-thought-timestamps.sql
+.mode column
 ```
 
-Replace **only `NULL`** with the verified numeric epoch second when known.
-Leaving it NULL deliberately keeps every row; there is no verified numeric
-cutoff to publish yet. The query deliberately contains no parameter validation
-or malformed-data fallback. Before running a bounded extract, inspect the
-parameter in the same SQLite session:
+For the complete snapshot, leave `NULL` as written. For a later snapshot with a
+verified cutover, replace only `NULL` in the `.parameter set` command with the
+positive integer from the deployment record, then execute that command. Do not
+paste a date string, a millisecond value, or an illustrative timestamp.
+
+Inspect the value SQLite will actually use:
 
 ```sql
 SELECT
@@ -186,10 +275,19 @@ SELECT
     datetime(:fixed_writers_started_at_unix, 'unixepoch') AS cutoff_utc;
 ```
 
-Require `null` for a complete extract, or `integer` with a positive value and a
-UTC rendering matching the independently verified deployment boundary. A text
-value or a date that cannot be rendered is invalid. Do not infer deployment from
-this formatting check. Also check the stored creation times:
+For a complete extract, `cutoff_type` must be `null`; the other two values will
+be NULL, normally displayed as empty cells. For an extract limited by cutover,
+require all three conditions:
+
+- `cutoff_type` is `integer`.
+- `cutoff_value` is positive and matches the recorded Unix seconds.
+- `cutoff_utc` is nonempty and matches the recorded UTC deployment time.
+
+If any condition fails, stop and correct the parameter before continuing. The
+extraction query does not validate its input. In particular, a text value can
+produce misleading comparisons instead of an error.
+
+Next, check that stored creation times can be compared to that cutoff:
 
 ```sql
 SELECT thought_id, created_at
@@ -199,20 +297,67 @@ WHERE typeof(created_at) <> 'integer'
 ORDER BY thought_id;
 ```
 
-Require zero rows before using the bounded query. If this check fails, use the
-complete extract with a NULL cutoff and investigate the listed records; the
-bounded query does not guarantee inclusion of malformed values. The incident
-snapshot has zero such records. These checks establish usable types and date
-representations, not that a clock or historical time was correct.
+**Zero rows is the required result before using a numeric cutoff.** No output
+means this check found no malformed creation times. If rows appear, retain their
+IDs for investigation and reset the parameter to NULL for a complete extract:
 
-The bounded inclusion rule is `created_at <= cutoff`. The inclusive boundary
-keeps saves in the cutover second because SQLite stores whole seconds. It may include a fixed
-writer's first same-second save; that is a review candidate, not confirmed harm.
-Creation time is the service's save-time clock value, not a database commit
-sequence. Clock changes, imports with preserved creation times, overlapping old
-writers, or missing deployment evidence invalidate a precise temporal cutoff;
-use the full snapshot scope in those cases. An old writer that saves after the
-chosen cutoff will otherwise be missed.
+```text
+.parameter set :fixed_writers_started_at_unix NULL
+```
+
+Rerun the parameter inspection after changing it. The incident snapshot passed
+this creation-time check with zero rows. Passing establishes usable types and
+date representations; it does not prove the historical clocks were correct.
+
+#### 5. Export and reconcile the review file
+
+Only after the checks above, run these commands in the same SQLite session.
+Replace the `.once` destination with a file named `thoughts.csv` inside the
+private directory printed in step 3. The `.read` path is relative to the
+repository root where you launched SQLite.
+
+```text
+.headers on
+.mode csv
+.once /absolute/path/to/private-review/thoughts.csv
+.read docs/data-quality/incident-0001-thought-timestamps.sql
+```
+
+`.once` sends the next command's output to that file. Keep it immediately before
+`.read`; running a validation query between them would put the validation output
+in the CSV instead of the thoughts. The export includes authored text, so retain
+it with the private evidence rather than committing it to Git.
+
+After the export, check the expected population using the same cutoff:
+
+```text
+.mode column
+```
+
+```sql
+SELECT
+    COUNT(*) AS expected_records,
+    COUNT(DISTINCT thought_id) AS expected_distinct_ids
+FROM thoughts
+WHERE :fixed_writers_started_at_unix IS NULL
+   OR created_at <= :fixed_writers_started_at_unix;
+```
+
+Use a CSV-aware reader to compare the exported record count and unique thought
+IDs with these results. A line count is insufficient because a thought can span
+multiple lines. Record the chosen cutoff (including NULL), snapshot hash,
+export hash, and reconciled counts with the evidence. The captured incident
+snapshot reconciles to 38 records and 38 distinct IDs; a later snapshot may have
+more. Type `.quit` to leave SQLite when finished.
+
+The query includes `created_at <= cutoff`, so saves in the cutover second remain
+in scope. SQLite stores these timestamps at whole-second precision; a fixed
+writer's first save in that same second may therefore be included for review.
+`created_at` is the service's save-time clock value, not a database commit
+sequence. If an old writer saved after the recorded boundary, or the clock or
+import history makes that comparison unreliable, use the complete extract and
+review the deployment evidence again. Inclusion identifies a review candidate,
+not a confirmed incorrect timestamp.
 
 ### Why the query does not miss the usual historical cases
 
