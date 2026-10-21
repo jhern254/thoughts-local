@@ -3,12 +3,14 @@ package mindset
 
 import (
 	"context"
+	"image/color"
 	"strings"
 	"time"
 	"unicode"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/failure"
@@ -24,10 +26,6 @@ type Reader interface {
 
 type OpenThoughtMsg struct {
 	Thought data.ThoughtSummaryView
-	owner   *int
-	request uint64
-}
-type ReturnToEventsMsg struct {
 	owner   *int
 	request uint64
 }
@@ -51,19 +49,19 @@ func Owns(msg tea.Msg) bool {
 }
 
 type Model struct {
-	ctx                                 context.Context
-	userID                              string
-	reader                              Reader
-	logger                              logging.Logger
-	owner                               *int
-	cancelRead, cancelTimer             context.CancelFunc
-	request, generation                 uint64
-	day                                 time.Time
-	items                               []data.ThoughtSummaryView
-	index, offset                       int
-	width, rows                         int
-	visible, focused, expanded, loading bool
-	err                                 error
+	ctx                       context.Context
+	userID                    string
+	reader                    Reader
+	logger                    logging.Logger
+	owner                     *int
+	cancelRead, cancelTimer   context.CancelFunc
+	request, generation       uint64
+	day                       time.Time
+	items                     []data.ThoughtSummaryView
+	index, offset             int
+	width, rows               int
+	visible, focused, loading bool
+	err                       error
 }
 
 func New(ctx context.Context, userID string, reader Reader, logger logging.Logger) Model {
@@ -78,20 +76,17 @@ func New(ctx context.Context, userID string, reader Reader, logger logging.Logge
 	}
 }
 func (m Model) AcceptsOpen(msg OpenThoughtMsg) bool {
-	return m.focused && m.expanded && !m.loading && len(m.items) > 0 && msg.owner == m.owner && msg.request == m.request && msg.Thought.ThoughtID == m.items[m.index].ThoughtID
-}
-func (m Model) AcceptsReturn(msg ReturnToEventsMsg) bool {
-	return m.focused && !m.expanded && msg.owner == m.owner && msg.request == m.request
+	return m.focused && !m.loading && len(m.items) > 0 && msg.owner == m.owner && msg.request == m.request && msg.Thought.ThoughtID == m.items[m.index].ThoughtID
 }
 
 func (m Model) Day() time.Time { return m.day }
 func (m Model) Focused() bool  { return m.focused }
-func (m Model) Expanded() bool { return m.expanded }
+func (m Model) Expanded() bool { return m.focused }
 func (m Model) Height() int {
-	if !m.expanded || len(m.items) == 0 || m.err != nil || m.loading {
+	if !m.focused || len(m.items) == 0 || m.err != nil || m.loading {
 		return 1
 	}
-	return 1 + min(m.rows, len(m.items))
+	return min(m.rows, len(m.items))
 }
 func (m *Model) Resize(width, rows int) {
 	m.width = max(1, width)
@@ -138,7 +133,7 @@ func (m *Model) stopTimer() {
 }
 func (m *Model) startTimer() tea.Cmd {
 	m.stopTimer()
-	if !m.visible || m.focused || m.expanded || m.loading || m.err != nil || len(m.items) < 2 {
+	if !m.visible || m.focused || m.loading || m.err != nil || len(m.items) < 2 {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -167,7 +162,6 @@ func (m Model) SetFocused(focused bool) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.focused = focused
-	m.expanded = focused
 	m.keepVisible()
 	return m, m.startTimer()
 }
@@ -203,7 +197,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.keepVisible()
 		return m, m.startTimer()
 	case tickMsg:
-		if msg.owner != m.owner || msg.generation != m.generation || !m.visible || m.focused || m.expanded || len(m.items) < 2 {
+		if msg.owner != m.owner || msg.generation != m.generation || !m.visible || m.focused || len(m.items) < 2 {
 			return m, nil
 		}
 		m.index = (m.index + 1) % len(m.items)
@@ -215,42 +209,37 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.String() {
 		case "r":
 			return m, m.Load(m.day)
-		case "left", "q", "esc":
-			if m.expanded {
-				m.expanded = false
-				return m, nil
-			}
-			return m, func() tea.Msg { return ReturnToEventsMsg{owner: m.owner, request: m.request} }
+		case "left", "q":
+			return m, nil
 		case "enter", "right":
 			if m.loading || m.err != nil || len(m.items) == 0 {
-				return m, nil
-			}
-			if !m.expanded {
-				m.expanded = true
-				m.keepVisible()
 				return m, nil
 			}
 			item := m.items[m.index]
 			return m, func() tea.Msg { return OpenThoughtMsg{Thought: item, owner: m.owner, request: m.request} }
 		}
-		if !m.expanded || m.loading || len(m.items) == 0 {
+		if m.loading || len(m.items) == 0 {
 			return m, nil
 		}
+		step := 0
 		switch msg.String() {
 		case "up", "k":
-			m.index--
+			step = -1
 		case "down", "j":
-			m.index++
+			step = 1
 		case "pgup":
-			m.index -= m.rows
+			step = -m.rows
 		case "pgdown":
-			m.index += m.rows
+			step = m.rows
 		case "home":
 			m.index = 0
 		case "end":
 			m.index = len(m.items) - 1
 		}
-		m.index = max(0, min(m.index, len(m.items)-1))
+		m.index = (m.index + step) % len(m.items)
+		if m.index < 0 {
+			m.index += len(m.items)
+		}
 		m.keepVisible()
 	}
 	return m, nil
@@ -265,7 +254,8 @@ func (m *Model) keepVisible() {
 	m.offset = max(0, min(m.offset, len(m.items)-m.rows))
 }
 func (m Model) View() string {
-	heading := list.DefaultStyles(true).Title.Render("Mindset")
+	heading := lipgloss.NewStyle().Background(color.White).Foreground(color.Black).Padding(0, 1).Render("Mindset")
+	styles := list.NewDefaultItemStyles(true)
 	status := ""
 	switch {
 	case m.loading:
@@ -273,23 +263,32 @@ func (m Model) View() string {
 	case m.err != nil:
 		status = "Could not load mindsets. r: retry"
 	case len(m.items) == 0:
+		if m.focused {
+			return ansi.Truncate(heading+styles.SelectedTitle.PaddingLeft(0).Render("..."), m.width, "")
+		}
 		status = "..."
-	case !m.expanded:
+	case !m.focused:
 		status = previewText(m.items[m.index].Preview)
 	}
-	if status != "" || !m.expanded {
+	if status != "" || !m.focused {
 		return ansi.Truncate(heading+" "+status, m.width, "…")
 	}
-	styles := list.NewDefaultItemStyles(true)
 	last := min(len(m.items), m.offset+m.rows)
-	rows := []string{ansi.Truncate(heading, m.width, "")}
+	rows := make([]string, 0, last-m.offset)
+	indent := strings.Repeat(" ", ansi.StringWidth(heading))
+	pickerWidth := max(0, m.width-ansi.StringWidth(heading))
 	for i := m.offset; i < last; i++ {
-		style := styles.NormalTitle
+		style := styles.NormalTitle.PaddingLeft(1)
 		if m.focused && i == m.index {
-			style = styles.SelectedTitle
+			style = styles.SelectedTitle.PaddingLeft(0)
 		}
 		text := previewText(m.items[i].Preview)
-		rows = append(rows, ansi.Truncate(style.Render(ansi.Truncate(text, max(0, m.width-style.GetHorizontalFrameSize()), "…")), m.width, ""))
+		prefix := indent
+		if i == m.offset {
+			prefix = heading
+		}
+		item := style.Render(ansi.Truncate(text, max(0, pickerWidth-style.GetHorizontalFrameSize()), "…"))
+		rows = append(rows, ansi.Truncate(prefix+item, m.width, ""))
 	}
 	return strings.Join(rows, "\n")
 }

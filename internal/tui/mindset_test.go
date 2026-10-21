@@ -65,7 +65,7 @@ func TestModel_MindsetHome(t *testing.T) {
 			}
 			return -1
 		}
-		if got, want := row(expanded, "Events")-row(before, "Events"), 5; got != want {
+		if got, want := row(expanded, "Events")-row(before, "Events"), 4; got != want {
 			t.Fatalf("Events displacement: got %d, want %d", got, want)
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
@@ -79,14 +79,52 @@ func TestModel_MindsetHome(t *testing.T) {
 		if m.screen != screenEvents || m.View().Content != selected {
 			t.Fatal("return lost panel selection, scroll, or timeline")
 		}
-		m, _ = rootUpdate(m, escapeKey())
-		if m.mindsets.Expanded() || m.exitPromptOpen {
-			t.Fatal("Escape must collapse before exiting")
+		m, cmd = rootUpdate(m, runeKey('q'))
+		if cmd != nil || m.View().Content != selected || m.homeFocus() != 0 {
+			t.Fatal("Q must leave the focused picker and cursor unchanged")
 		}
-		m, cmd = rootUpdate(m, escapeKey())
-		m, _ = rootUpdate(m, cmd()) // Leaving focus schedules rotation; do not run the timer.
-		if m.homeFocus() != 1 || m.exitPromptOpen {
-			t.Fatal("second Escape must return to Events")
+		m, _ = rootUpdate(m, escapeKey())
+		if !m.exitPromptOpen || m.homeFocus() != 0 || !m.mindsets.Expanded() || !strings.Contains(m.View().Content, "Exit app?") {
+			t.Fatal("Escape must open the app exit prompt without leaving Mindset")
+		}
+		m, _ = rootUpdate(m, escapeKey())
+		if m.exitPromptOpen || m.View().Content != selected {
+			t.Fatal("canceling exit must preserve picker focus, cursor, and scroll")
+		}
+	})
+	t.Run("Left preserves the focused picker and its cursor", func(t *testing.T) {
+		for _, count := range []int{0, 3} {
+			m := newMindsetHome(t, count)
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
+			day := m.events.Day()
+			before := m.View().Content
+			for range 2 {
+				var cmd tea.Cmd
+				m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+				if cmd != nil {
+					t.Fatal("Left returned a command, want no action")
+				}
+				if m.homeFocus() != 0 || !m.mindsets.Expanded() || m.View().Content != before || !m.events.Day().Equal(day) {
+					t.Fatalf("Left with %d thoughts: got focus %d expanded=%v day=%v, want unchanged expanded Mindset on %v", count, m.homeFocus(), m.mindsets.Expanded(), m.events.Day(), day)
+				}
+			}
+		}
+	})
+	t.Run("Down from the last thought wraps to the first and opens it", func(t *testing.T) {
+		m := newMindsetHome(t, 6)
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		selected := m.View().Content
+		m, cmd := rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		if m.screen != screenMindsetThought || !strings.Contains(m.View().Content, "Practice 1 deliberately") {
+			t.Fatalf("wrapped detail: got %q, want Practice 1", m.View().Content)
+		}
+		m, _ = rootUpdate(m, escapeKey())
+		if m.View().Content != selected {
+			t.Fatal("detail return changed wrapped selection or scroll")
 		}
 	})
 	t.Run("Tab cycles all three panels and reverse Tab returns", func(t *testing.T) {

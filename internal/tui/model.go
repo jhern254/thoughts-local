@@ -213,11 +213,6 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.screen = screenMindsetThought
 		return m, m.thoughts.OpenDetail(message.Thought)
-	case mindset.ReturnToEventsMsg:
-		if m.screen != screenEvents || !m.mindsets.AcceptsReturn(message) {
-			return m, nil
-		}
-		return m, m.focusHome(1)
 	case thoughts.MindsetChanged:
 		var thoughtCmd, eventCmd, panelCmd tea.Cmd
 		m.thoughts, thoughtCmd = m.thoughts.Update(message)
@@ -476,10 +471,7 @@ func (m Model) entityStrip() string {
 	}
 	help := "Tab/Shift+Tab: panels"
 	if m.mindsets.Focused() {
-		help = "Enter: open • ←/Q/Esc: back • ↑/↓: select • PgUp/PgDn: scroll • r: refresh"
-		if !m.mindsets.Expanded() {
-			help = "Enter: expand • Q/Esc: events • r: refresh"
-		}
+		help = "Enter: open • ↑/↓: select • PgUp/PgDn: scroll • r: refresh"
 	}
 	if m.entityFocused {
 		help = "Tab: mindset • Q: events • ←/→: entity • Enter: open"

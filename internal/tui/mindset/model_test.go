@@ -3,12 +3,14 @@ package mindset
 import (
 	"context"
 	"errors"
+	"fmt"
+	"image/color"
 	"strings"
 	"testing"
 	"time"
 
-	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
@@ -128,17 +130,17 @@ func TestModel_PanelFailuresAndTimers(t *testing.T) {
 		cmd := m.Load(time.Now())
 		m, _ = m.Update(cmd())
 		m.index = 1
-		m.expanded = true
+		m, _ = m.SetFocused(true)
 		service.items = []data.ThoughtSummaryView{{ThoughtID: 2, Preview: "two"}, {ThoughtID: 1, Preview: "one"}}
 		cmd = m.Load(m.day)
 		m, _ = m.Update(cmd())
-		if m.index != 0 || !m.expanded {
-			t.Fatalf("refreshed selection: got %d expanded=%v", m.index, m.expanded)
+		if m.index != 0 || !m.Expanded() {
+			t.Fatalf("refreshed selection: got %d expanded=%v", m.index, m.Expanded())
 		}
 	})
-	t.Run("header matches the other panel title blocks", func(t *testing.T) {
+	t.Run("header uses black text on a white block", func(t *testing.T) {
 		m := New(t.Context(), "u", &reader{}, logging.Nop())
-		want := list.DefaultStyles(true).Title.Render("Mindset") + " ..."
+		want := lipgloss.NewStyle().Background(color.White).Foreground(color.Black).Padding(0, 1).Render("Mindset") + " ..."
 		if got := m.View(); got != want {
 			t.Fatalf("empty header: got %q, want %q", got, want)
 		}
@@ -174,4 +176,81 @@ func TestModel_InlinePreview(t *testing.T) {
 			t.Fatalf("clipped row: got %q, want inline Unicode within 18 cells", got)
 		}
 	})
+}
+
+func TestModel_EmptyFocus(t *testing.T) {
+	m := New(t.Context(), "u", &reader{}, logging.Nop())
+	m, _ = m.Update(m.Load(time.Now())())
+	m, _ = m.SetFocused(true)
+	got := m.View()
+	if text := ansi.Strip(got); text != " Mindset │..." {
+		t.Fatalf("focused empty row: got %q, want title and selected ellipsis", text)
+	}
+	if !strings.Contains(got, "38;2;238;111;248") || !strings.Contains(got, "38;2;173;88;180") {
+		t.Fatalf("focused empty style: got %q, want purple picker text and rail", got)
+	}
+	m, _ = m.SetFocused(false)
+	if got := ansi.Strip(m.View()); got != " Mindset  ..." {
+		t.Fatalf("blurred empty row: got %q, want unselected ellipsis", got)
+	}
+}
+
+func TestModel_ExpandedAlignment(t *testing.T) {
+	for _, width := range []int{80, 24} {
+		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
+			m := New(t.Context(), "u", &reader{items: []data.ThoughtSummaryView{
+				{ThoughtID: 1, Preview: "First 界 thought"},
+				{ThoughtID: 2, Preview: "Second 界 thought with a long continuation"},
+			}}, logging.Nop())
+			m, _ = m.Update(m.Load(time.Now())())
+			m.Resize(width, 5)
+			collapsed := ansi.Strip(m.View())
+			column := ansi.StringWidth(strings.Split(collapsed, "First")[0])
+			m, _ = m.SetFocused(true)
+			rows := strings.Split(ansi.Strip(m.View()), "\n")
+			if len(rows) != 2 || m.Height() != 2 {
+				t.Fatalf("expanded rows: got %q, height %d, want two rows", rows, m.Height())
+			}
+			for i, word := range []string{"First", "Second"} {
+				position := strings.Index(rows[i], word)
+				if position < 0 || ansi.StringWidth(rows[i][:position]) != column || ansi.StringWidth(rows[i]) > width {
+					t.Fatalf("picker row %d: got %q, want text at column %d within %d cells", i, rows[i], column, width)
+				}
+			}
+			if !strings.HasPrefix(rows[0], " Mindset ") || strings.Contains(rows[1], "Mindset") {
+				t.Fatalf("title position: got %q, want title beside first row only", rows)
+			}
+		})
+	}
+}
+
+func TestModel_SelectionWraps(t *testing.T) {
+	m := New(t.Context(), "u", &reader{items: []data.ThoughtSummaryView{
+		{ThoughtID: 1, Preview: "first"},
+		{ThoughtID: 2, Preview: "second"},
+		{ThoughtID: 3, Preview: "third"},
+	}}, logging.Nop())
+	m, _ = m.Update(m.Load(time.Now())())
+	m.Resize(40, 2)
+	m, _ = m.SetFocused(true)
+	for _, step := range []struct {
+		key  rune
+		want int64
+	}{
+		{key: tea.KeyUp, want: 3},
+		{key: tea.KeyDown, want: 1},
+		{key: tea.KeyEnd, want: 3},
+		{key: tea.KeyDown, want: 1},
+		{key: tea.KeyPgUp, want: 2},
+		{key: tea.KeyPgDown, want: 1},
+	} {
+		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: step.key}))
+		_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+		if got := cmd().(OpenThoughtMsg).Thought.ThoughtID; got != step.want {
+			t.Fatalf("selection after key %d: got thought %d, want %d", step.key, got, step.want)
+		}
+		if m.index < m.offset || m.index >= m.offset+m.rows {
+			t.Fatalf("selected row %d outside visible rows starting at %d", m.index, m.offset)
+		}
+	}
 }
