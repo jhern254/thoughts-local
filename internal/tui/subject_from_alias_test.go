@@ -28,7 +28,7 @@ func subjectAliasConflictModel(t *testing.T) Model {
 	return runModelCommand(t, model, enterKey())
 }
 
-func aliasCreationKey() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: tea.KeyF2}) }
+func aliasCreationKey() tea.KeyPressMsg { return runeKey('d') }
 
 type subjectFromAliasServiceStub struct {
 	SubjectService
@@ -42,7 +42,7 @@ func (s *subjectFromAliasServiceStub) CreateFromAlias(ctx context.Context, userI
 func TestSubjectModel_CreateFromAlias(t *testing.T) {
 	t.Run("offers confirmation then creates a separate empty Subject", func(t *testing.T) {
 		model := subjectAliasConflictModel(t)
-		if !strings.Contains(model.View().Content, "F2: remove alias and create") {
+		if !strings.Contains(model.View().Content, "d: remove alias and create") {
 			t.Fatalf("conflict view: got %q, want explicit action", model.View().Content)
 		}
 		updated, _ := model.Update(aliasCreationKey())
@@ -103,10 +103,22 @@ func TestSubjectModel_CreateFromAlias(t *testing.T) {
 	t.Run("editing the pending name invalidates the alias action", func(t *testing.T) {
 		model := subjectAliasConflictModel(t)
 		model.subjects.input.SetValue("Different name")
-		updated, cmd := model.Update(aliasCreationKey())
+		model.subjects.input.CursorEnd()
+		updated, _ := model.Update(aliasCreationKey())
 		model = updated.(Model)
-		if model.screen != screenSubjectCreate || cmd != nil || strings.Contains(model.View().Content, "F2: remove alias") {
+		if model.screen != screenSubjectCreate || strings.Contains(model.View().Content, "d: remove alias") {
 			t.Fatal("stale conflict still offered removal after name changed")
+		}
+		if got := model.subjects.input.Value(); got != "Different named" {
+			t.Fatalf("ordinary typing: got %q, want Different named", got)
+		}
+	})
+	t.Run("d remains text without an alias conflict", func(t *testing.T) {
+		model := openCreateSubject(t, openSubjects(t, newSubjectTestModel(subject.NewService(testutils.NewFakeSubjectStore()))))
+		updated, _ := model.Update(runeKey('d'))
+		model = updated.(Model)
+		if model.screen != screenSubjectCreate || model.subjects.input.Value() != "d" {
+			t.Fatal("d did not remain ordinary form text")
 		}
 	})
 	t.Run("failed confirmation permits retry and duplicate submits cannot run", func(t *testing.T) {

@@ -495,14 +495,14 @@ func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
-		case "f2":
+		case "d":
 			if conflict := m.subjectCreationAliasConflict(); conflict != nil {
 				m.subjects.aliasToReplace = conflict
 				m.subjects.err = nil
 				m.subjects.input.Blur()
 				m.screen = screenSubjectFromAlias
+				return m, nil
 			}
-			return m, nil
 		case "esc":
 			m.subjects.createSession = nil
 			if m.voiceSubjectReturn != nil {
@@ -667,7 +667,7 @@ func (m Model) viewSubjectCreate() string {
 	}
 	help := "Enter: create • Esc: cancel"
 	if m.subjectCreationAliasConflict() != nil {
-		help = "F2: remove alias and create\n" + help
+		help = "d: remove alias and create\n" + help
 	}
 	return fmt.Sprintf("Create subject\n\n%s%s\n\n%s", status, m.subjects.input.View(), ansi.Wrap(help, max(1, m.width), ""))
 }

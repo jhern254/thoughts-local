@@ -8,7 +8,7 @@ alias, **d** requests removal, and **Q/Esc** returns. Removal requires **y** and
 changes only the alias. The canonical name uses the existing Subject editor.
 Returning preserves the underlying Thought browser.
 
-When Subject creation conflicts with an alias, **F2** opens a simple confirmation
+When Subject creation conflicts with an alias, **d** opens a simple confirmation
 to remove that alias and create a new empty Subject with its exact name. **y**
 confirms; **n/Q/Esc** returns to the form without changing anything. Existing
 Thoughts, Events, Goal links and progress remain with the original Subject.
