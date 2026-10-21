@@ -22,6 +22,7 @@ const (
 )
 
 type SubjectService interface {
+	ListAliasesForUser(context.Context, string) ([]data.SubjectAlias, error)
 	CreateFromAlias(ctx context.Context, userID string, subjectID, aliasID int64, name string) (*data.Subject, error)
 	ListAliases(ctx context.Context, userID string, subjectID int64) ([]data.SubjectAlias, error)
 	CreateAlias(ctx context.Context, userID string, subjectID int64, name string) (*data.SubjectAlias, error)

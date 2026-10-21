@@ -12,7 +12,7 @@ func (m Model) editorView(status string) string {
 	body := "Create thought\n" + status + m.input.View()
 	help := "Ctrl+S: save • Enter: newline • Esc: cancel"
 	if m.VoiceOpen() {
-		body += "\nSubject (optional)\n" + m.voice.query.View()
+		body += "\n" + m.voiceSubjectLabel() + "\n" + m.voice.query.View()
 		if m.voice.subjectFocused {
 			items := m.matchingVoiceSubjects()
 			visible := max(1, min(4, m.voice.height-8))

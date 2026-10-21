@@ -45,6 +45,52 @@ recording in Go memory. Returned words replace that recording's contribution to
 the unsaved draft as recognition improves. Tests can still use a fake consumer
 to check capture and draft ownership independently of the speech engine.
 
+## Spoken Subject prefixes
+
+Start an empty voice draft with a name followed by “thought”, for example
+“Programming in Go thought, today I learned about interfaces.” Exact canonical
+names and aliases select the canonical Subject. The full transcript remains
+visible during recording. After Stop, the command is removed and the body's
+first Unicode letter is capitalized. Nothing is saved until Ctrl+S.
+
+The Subject label identifies provisional suggestions and ambiguous matches.
+Unknown names fill the existing Subject input without creating anything; after
+Stop, use Tab and “Create subject…” or choose an existing Subject. An ambiguous
+match requires selection. Ordinary speech such as “I thought about learning Go”
+remains unchanged and may be saved as Misc. Existing Subject context and manual
+choices take precedence. Subject and text controls remain locked while recording.
+Only the initial recording into an otherwise empty draft recognizes a command;
+later recordings and recordings appended to typed text are literal. Empty or
+denied recording attempts do not consume that initial opportunity.
+
+`internal/subjectdiscovery` separates a pure parser, candidate reads, and ranking.
+The conservative English command grammar accepts a standalone case-insensitive
+“thought” after at most eight words and 255 Unicode characters. It declines
+pronoun/article-led narrative fragments; this is a command convention, not
+full natural-language understanding. Subject spelling and persisted identity
+remain case-sensitive.
+
+Candidates (Subjects, aliases, and usage) load once per draft under its context.
+Live revisions reuse prepared matching features, with no database reads per
+transcript. Alias/count failures degrade to the remaining data. This is not a
+transactional database snapshot: concurrent changes in another session may
+require reopening the draft; save/creation still use authoritative validation.
+
+Exact case-sensitive canonical names and aliases bypass scoring. Otherwise,
+ranking takes the larger Dice overlap of significant word sets and Unicode
+character trigrams, using the best canonical/alias spelling per Subject. A 0.75
+minimum and 0.10 winner margin govern selection. Close relevant ties may use
+Thought counts only when all counts are known and one Subject has at least three
+Thoughts, at least three more than each competitor, and at least twice their
+usage. Other ties remain ambiguous. These are tunable heuristics, not calibrated
+probabilities. No extra model, persistence, or inference is involved.
+
+Recommendations share transcript authority with editor mutation. Stop revokes
+that authority immediately; `RecordingEnded` cleans only the last accepted
+initial contribution, once. Prefix-only input is retained for editing. Candidate
+replies carry draft, request, session and component identity, and cannot override
+manual selection/creation or a retired draft. No transcript or cue is logged.
+
 ## Give sound its own connection
 
 Typing and recording have different needs. Sound arrives continuously and
