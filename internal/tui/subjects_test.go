@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
@@ -17,6 +18,7 @@ import (
 )
 
 type subjectServiceStub struct {
+	subjectAliasServiceStub
 	update func(context.Context, string, int64, string) (*data.Subject, error)
 	delete func(context.Context, string, int64) error
 	list   func(context.Context, string) ([]data.Subject, error)
@@ -116,6 +118,61 @@ func TestSubjectModel_List(t *testing.T) {
 }
 
 func TestSubjectModel_Create(t *testing.T) {
+	t.Run("identifies the conflicting alias and its Subject while preserving the creation form", func(t *testing.T) {
+		store := testutils.NewFakeSubjectStore()
+		service := subject.NewService(store)
+		canonical, err := service.Create(t.Context(), "local-user-id", "Go Programming")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.CreateAlias(t.Context(), "local-user-id", canonical.SubjectID, "Golang"); err != nil {
+			t.Fatal(err)
+		}
+		var logs bytes.Buffer
+		logger, err := logging.New(&logs, "test", "info")
+		if err != nil {
+			t.Fatal(err)
+		}
+		model := newSubjectTestModel(service)
+		model.logger = logger
+		model = openCreateSubject(t, openSubjects(t, model))
+		model.subjects.input.SetValue("Golang")
+		model = runModelCommand(t, model, enterKey())
+		want := `"Golang" is already an alias for subject "Go Programming".`
+		if got := model.subjects.errMessage; got != want {
+			t.Fatalf("conflict feedback: got %q, want %q", got, want)
+		}
+		if model.screen != screenSubjectCreate || model.subjects.loading || !model.subjects.input.Focused() || model.subjects.input.Value() != "Golang" {
+			t.Fatal("conflict lost the pending name, input focus, or creation screen")
+		}
+		for _, width := range []int{80, 32} {
+			updated, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: 18})
+			model = updated.(Model)
+			view := model.View().Content
+			readableView := strings.Join(strings.Fields(ansi.Strip(view)), " ")
+			for _, name := range []string{`"Golang"`, `"Go Programming"`} {
+				if !strings.Contains(readableView, name) {
+					t.Fatalf("creation view: got %q, want %q", view, name)
+				}
+			}
+			for _, line := range strings.Split(view, "\n") {
+				if got := ansi.StringWidth(line); got > width {
+					t.Fatalf("feedback width: got %d, want <=%d: %q", got, width, line)
+				}
+			}
+			if got := strings.Count(view, "\n") + 1; got > 18 {
+				t.Fatalf("creation view height: got %d, want <=18", got)
+			}
+		}
+		if strings.Contains(logs.String(), "Golang") || strings.Contains(logs.String(), "Go Programming") || strings.Contains(logs.String(), "operation failed") {
+			t.Fatalf("expected conflict logs: got %q, want no authored names or operational failure", logs.String())
+		}
+		model.subjects.input.SetValue("A separate subject")
+		model = runModelCommand(t, model, enterKey())
+		if model.screen != screenSubjectDetail || model.subjects.selected.SubjectName != "A separate subject" {
+			t.Fatal("correcting the name did not create the new Subject")
+		}
+	})
 	t.Run("passes entered name unchanged and displays created subject", func(t *testing.T) {
 		const name = "  learn Go  "
 		createdAt := time.Date(2026, time.January, 2, 15, 4, 5, 0, time.UTC)

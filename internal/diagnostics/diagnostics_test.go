@@ -42,8 +42,8 @@ func TestSubjectMessage(t *testing.T) {
 		want string
 	}{
 		{"wrapped missing", fmt.Errorf(private+": %w", data.ErrRecordNotFound), "The requested resource was not found."},
-		{"wrapped duplicate", fmt.Errorf(private+": %w", data.ErrDuplicateRecord), "A subject with that name already exists."},
-		{"intermediate identity", fmt.Errorf(private+": %w", identityWrapper{errors.New(private)}), "A subject with that name already exists."},
+		{"wrapped duplicate", fmt.Errorf(private+": %w", data.ErrDuplicateRecord), "That name is already in use by a subject or alias."},
+		{"intermediate identity", fmt.Errorf(private+": %w", identityWrapper{errors.New(private)}), "That name is already in use by a subject or alias."},
 		{"intermediate validation type", fmt.Errorf(private+": %w", validationWrapper{errors.New(private)}), "The subject details are invalid."},
 		{"unknown", errors.New(private), fallback},
 		{"mixed", errors.Join(data.ErrDuplicateRecord, errors.New(private)), fallback},
@@ -62,6 +62,26 @@ func TestSubjectMessage(t *testing.T) {
 				t.Fatal("got changed error, want original private error available")
 			}
 		})
+	}
+}
+
+func TestSubjectMessage_AliasConflict(t *testing.T) {
+	conflict := &data.SubjectAliasConflictError{AliasName: "Golang", SubjectID: 7, SubjectName: "Go Programming"}
+	want := `"Golang" is already an alias for subject "Go Programming".`
+	if got := SubjectMessage(fmt.Errorf("PRIVATE: %w", conflict), "Could not save the subject."); got != want {
+		t.Fatalf("alias conflict: got %q, want %q", got, want)
+	}
+	if got := SubjectMessage(errors.Join(conflict, errors.New("PRIVATE")), "Could not save the subject."); got != "Could not save the subject." {
+		t.Fatalf("combined failure: got %q, want generic feedback", got)
+	}
+	conflict.AliasName = "Alias\x1b[31m"
+	conflict.SubjectName = "Subject\nname"
+	message := SubjectMessage(conflict, "Could not save the subject.")
+	if strings.ContainsAny(message, "\x1b\n") || !strings.Contains(message, `\x1b`) || !strings.Contains(message, `\n`) {
+		t.Fatalf("quoted names: got %q, want escaped terminal controls", message)
+	}
+	if strings.Contains(conflict.Error(), "Alias") || strings.Contains(conflict.Error(), "Subject") {
+		t.Fatalf("error text: got %q, want no authored names", conflict.Error())
 	}
 }
 

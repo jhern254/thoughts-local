@@ -6,6 +6,23 @@ import "errors"
 var ErrRecordNotFound = errors.New("record not found")
 var ErrDuplicateRecord = errors.New("record already exists")
 
+// SubjectAliasConflictError carries same-owner name details for presentation.
+// Error stays fixed so ordinary error handling cannot log authored names;
+// delivery code explicitly quotes the fields when showing this conflict.
+type SubjectAliasConflictError struct {
+	cause       error
+	AliasName   string
+	SubjectID   int64
+	SubjectName string
+}
+
+func (err *SubjectAliasConflictError) Error() string {
+	return "subject name conflicts with an existing alias"
+}
+
+func (err *SubjectAliasConflictError) Is(target error) bool { return target == ErrDuplicateRecord }
+func (err *SubjectAliasConflictError) Unwrap() error        { return err.cause }
+
 // ErrEventOverlap rejects an interval intersecting another active event.
 var ErrEventOverlap = errors.New("event overlaps another event")
 

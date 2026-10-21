@@ -41,7 +41,7 @@ func TestCLI_SubjectDiagnostics(t *testing.T) {
 		want   string
 		logged bool
 	}{
-		{"wrapped duplicate", fmt.Errorf(private+": %w", data.ErrDuplicateRecord), "A subject with that name already exists.", false},
+		{"wrapped duplicate", fmt.Errorf(private+": %w", data.ErrDuplicateRecord), "That name is already in use by a subject or alias.", false},
 		{"unknown", errors.New(private), "Could not save the subject.", true},
 		{"mixed", errors.Join(data.ErrDuplicateRecord, errors.New(private)), "Could not complete the command.", true},
 	} {

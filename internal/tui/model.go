@@ -30,6 +30,7 @@ const (
 	screenSubjectDetail
 	screenSubjectEdit
 	screenSubjectDelete
+	screenSubjectAliases
 	screenMiscThoughts
 	screenBrowseThoughts
 	screenVoiceThought
@@ -275,6 +276,10 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSubjectUpdated(message)
 	case subjectDeletedMsg:
 		return m.handleSubjectDeleted(message)
+	case subjectAliasesListedMsg:
+		return m.receiveSubjectAliases(message)
+	case subjectAliasSavedMsg:
+		return m.receiveSubjectAliasSaved(message)
 	case subjectFoundMsg:
 		if message.request != m.subjects.readRequest {
 			return m, nil
@@ -314,6 +319,8 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSubjectDelete(message)
 	case screenSubjectDetail:
 		return m.updateSubjectDetail(message)
+	case screenSubjectAliases:
+		return m.updateSubjectAliases(message)
 	case screenMiscThoughts:
 		return m.updateMiscThoughts(message)
 	case screenVoiceThought:
@@ -487,6 +494,8 @@ func (m Model) viewUnderlying() tea.View {
 		content = m.viewSubjectDelete()
 	case screenSubjectDetail:
 		content = m.viewSubjectDetail()
+	case screenSubjectAliases:
+		content = m.viewSubjectAliases()
 	case screenVoiceThought:
 		content = m.thoughts.View()
 	case screenMiscThoughts:

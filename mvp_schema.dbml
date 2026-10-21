@@ -51,15 +51,43 @@ Table subjects {
   subject_name text [not null] // user curated single category
   created_at   timestamptz [not null, default: `now()`]
   updated_at   timestamptz [not null, default: `now()`]
+  deleted_at   timestamptz
 
   Note: '''
     CHECK (length(trim(subject_name)) BETWEEN 1 AND 255)
     CHECK (created_at <= updated_at)
+    Active names use binary comparison and a partial unique index.
+    Migration 000013 guards the shared canonical/alias namespace on writes.
   '''
 
   Indexes {
     (user_id, subject_name) [unique, name: 'uq_subjects_user_name']
+    (subject_id, user_id) [unique, name: 'uq_subjects_id_user']
     user_id [name: 'idx_subjects_user']
+  }
+}
+
+Table subject_aliases {
+  alias_id   integer [pk]
+  subject_id integer [not null]
+  user_id    text [not null]
+  alias_name text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+
+  Note: '''
+    CHECK (length(trim(alias_name)) BETWEEN 1 AND 255)
+    CHECK (created_at <= updated_at)
+    deleted_at is NULL or an integer between created_at and updated_at.
+    Both indexes include only rows with deleted_at IS NULL.
+    Names use binary comparison; triggers prohibit exact active canonical collisions.
+    Ordinary Subject deletion retires aliases in the same transaction.
+  '''
+
+  Indexes {
+    (user_id, alias_name) [unique, name: 'uq_subject_aliases_user_name']
+    (user_id, subject_id, alias_id) [name: 'idx_subject_aliases_subject']
   }
 }
 
@@ -309,6 +337,7 @@ Ref: subjects.subject_id < events.subject_id [delete: set null, update: cascade]
 
 /* Thoughts classification and timing */
 Ref: subjects.subject_id < thoughts.subject_id   [delete: set null]
+Ref: subjects.(subject_id, user_id) < subject_aliases.(subject_id, user_id) [delete: cascade, update: cascade]
 Ref: events.event_id   < thoughts.event_id       [delete: set null]
 
 /* Tagging M:N */
