@@ -47,6 +47,7 @@ type Model struct {
 	userID                     string
 	service                    Service
 	logger                     logging.Logger
+	now                        func() time.Time
 
 	// owner separates model instances. request owns list/get/create and cursor
 	// replies; statsRequest lets a full-scope statistics refresh independently.
@@ -63,6 +64,7 @@ type Model struct {
 	subjectID           *int64
 	list                list.Model
 	input               textarea.Model
+	draftObservedAt     time.Time
 	viewport            viewport.Model
 	voice               voiceDraft
 	selected            *data.Thought
@@ -151,7 +153,18 @@ func New(ctx context.Context, userID string, service Service, logger logging.Log
 	input.MaxWidth = 0
 	view := viewport.New()
 	view.SoftWrap = true
-	m := Model{owner: new(int), ctx: ctx, userID: userID, service: service, logger: logger, list: items, input: input, viewport: view, itemStyles: delegate.Styles}
+	m := Model{
+		ctx:        ctx,
+		userID:     userID,
+		service:    service,
+		logger:     logger,
+		now:        time.Now,
+		owner:      new(int),
+		list:       items,
+		input:      input,
+		viewport:   view,
+		itemStyles: delegate.Styles,
+	}
 	m.Resize(80, 14)
 	return m
 }
@@ -193,6 +206,7 @@ func (m *Model) Reset() {
 	m.err = nil
 	m.input.Blur()
 	m.input.Reset()
+	m.draftObservedAt = time.Time{}
 	m.inputWarning = ""
 	m.list.ResetFilter()
 	m.list.SetItems([]list.Item{row{kind: rowCreate}})
@@ -284,11 +298,12 @@ func (m *Model) createThought(body string) tea.Cmd {
 	}
 	owner := m.owner
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
+	observedAt := m.draftObservedAt
 	return func() tea.Msg {
 		if ctx.Err() != nil {
 			return nil
 		}
-		item, err := service.Create(ctx, userID, body, subjectID, time.Time{})
+		item, err := service.Create(ctx, userID, body, subjectID, observedAt)
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -367,6 +382,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.viewport.GotoTop()
 		if result.operation == logging.ThoughtCreate {
 			m.input.Reset()
+			m.draftObservedAt = time.Time{}
 			m.selectedSubjectName = m.voice.subjectName
 			id := m.subjectID
 			if m.VoiceOpen() {
@@ -441,6 +457,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.request++
 				m.input.Blur()
 				m.input.Reset()
+				m.draftObservedAt = time.Time{}
 				m.err = nil
 				m.screen = browse
 				return m, nil
@@ -480,6 +497,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 						m.request++
 						m.inputWarning = ""
 						m.screen = create
+						m.draftObservedAt = m.now()
 						return m, m.input.Focus()
 					case rowRecord:
 						cmd := m.getThought(item.item.ThoughtID)

@@ -447,12 +447,17 @@ func TestModel_EventForms(t *testing.T) {
 	})
 	t.Run("End writes only after saving and retains version context", func(t *testing.T) {
 		m, s, _ := fixture(t)
+		openedAt := m.now()
 		m, _ = m.Update(eventKey("e"))
 		if !m.form.ending || s.ends != 0 {
 			t.Fatal("End form wrote before save")
 		}
+		m.now = func() time.Time { return openedAt.Add(5 * time.Minute) }
 		m, cmd := m.Update(eventKey("enter"))
 		result := cmd().(eventSavedMsg)
+		if got := result.event.EndedAt; got == nil || !got.Equal(openedAt) {
+			t.Fatalf("end time got %v, want form opening %v", got, openedAt)
+		}
 		if s.ends != 1 || !result.ending || result.event.Version != 2 {
 			t.Fatal("End lost version or called wrong operation")
 		}

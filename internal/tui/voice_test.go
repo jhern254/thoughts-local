@@ -4,11 +4,56 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/testutils"
+	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
+
+func TestModel_ThoughtCaptureTime(t *testing.T) {
+	for _, entry := range []struct {
+		name    string
+		message tea.Msg
+	}{
+		{"browser t shortcut", tea.KeyPressMsg{Code: 't', Text: "t"}},
+		{"browser F8 shortcut", tea.KeyPressMsg{Code: tea.KeyF8}},
+		{"browser open action", thoughts.VoiceAction{Action: "open"}},
+	} {
+		t.Run(entry.name+" saves the time of entry", func(t *testing.T) {
+			m := newRootTestModel()
+			m.subjects.service = &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }}
+			service := thought.NewService(testutils.NewFakeThoughtStore())
+			m.thoughts = thoughts.New(t.Context(), m.user.UserID, service, logging.Nop())
+			m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{SpeechRecognitionAvailable: true})
+			before := time.Now()
+			m = runModelCommand(t, m, entry.message)
+			after := time.Now()
+			state := m.VoiceState()
+			if state.RecordingID != 0 {
+				m, _ = rootUpdate(m, thoughts.VoiceAction{Action: "stopped", DraftID: state.DraftID, RecordingID: state.RecordingID})
+			}
+			m, _ = rootUpdate(m, tea.PasteMsg{Content: "capture time regression"})
+			m = runModelCommand(t, m, tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+			items, err := service.ListUnassigned(t.Context(), m.user.UserID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(items) != 1 {
+				t.Fatalf("saved thoughts got %d, want 1", len(items))
+			}
+			if got := items[0].ObservedAt; got.Before(before) || got.After(after) {
+				t.Fatalf("observed time got %v, want entry between %v and %v", got, before, after)
+			}
+			if !m.thoughts.ShowingDetail() {
+				t.Fatal("save did not open thought detail")
+			}
+		})
+	}
+}
 
 func TestModel_VoiceDraft(t *testing.T) {
 	t.Run("native mode refuses browser voice entry", func(t *testing.T) {

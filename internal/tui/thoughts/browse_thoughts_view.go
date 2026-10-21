@@ -287,6 +287,7 @@ func (m Model) updateBrowseThoughtsView(msg tea.Msg) (Model, tea.Cmd) {
 		if row.kind == rowCreate {
 			m.request++
 			m.screen, m.inputWarning = create, ""
+			m.draftObservedAt = m.now()
 			return m, m.input.Focus()
 		}
 		cmd := m.getThought(row.item.ThoughtID)

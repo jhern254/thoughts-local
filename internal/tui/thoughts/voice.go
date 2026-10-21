@@ -102,6 +102,7 @@ func (m *Model) stopVoice() {
 func (m *Model) OpenVoice(draftID uint64, reader VoiceSubjectReader) tea.Cmd {
 	m.Reset()
 	m.screen = create
+	m.draftObservedAt = m.now()
 	return tea.Batch(m.input.Focus(), m.EnableVoice(draftID, reader, ""))
 }
 
