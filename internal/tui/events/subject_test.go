@@ -32,6 +32,22 @@ func TestModel_SubjectSelection(t *testing.T) {
 type subjectReaderStub struct {
 	items []data.Subject
 	err   error
+	get   func(context.Context, string, int64) (*data.Subject, error)
+}
+
+func (s *subjectReaderStub) Get(ctx context.Context, userID string, id int64) (*data.Subject, error) {
+	if s.get != nil {
+		return s.get(ctx, userID, id)
+	}
+	if s.err != nil {
+		return nil, s.err
+	}
+	for _, item := range s.items {
+		if item.SubjectID == id {
+			return &item, nil
+		}
+	}
+	return nil, data.ErrRecordNotFound
 }
 
 func (s *subjectReaderStub) List(context.Context, string) ([]data.Subject, error) {
