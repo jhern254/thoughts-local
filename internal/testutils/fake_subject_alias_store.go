@@ -97,3 +97,19 @@ func (s *FakeSubjectStore) ResolveSubjectName(ctx context.Context, userID, name 
 	}
 	return nil, data.ErrRecordNotFound
 }
+
+func (s *FakeSubjectStore) CreateSubjectFromAlias(ctx context.Context, subject *data.Subject, subjectID, aliasID int64) (*data.Subject, error) {
+	if _, err := s.GetSubject(ctx, subject.UserID, subjectID); err != nil {
+		return nil, err
+	}
+	alias, ok := s.aliases[aliasID]
+	if !ok || alias.UserID != subject.UserID || alias.SubjectID != subjectID || alias.AliasName != subject.SubjectName {
+		return nil, data.ErrRecordNotFound
+	}
+	delete(s.aliases, aliasID)
+	created, err := s.CreateSubject(ctx, subject)
+	if err != nil {
+		s.aliases[aliasID] = alias
+	}
+	return created, err
+}

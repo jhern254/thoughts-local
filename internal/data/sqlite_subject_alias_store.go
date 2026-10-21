@@ -156,22 +156,19 @@ func isSubjectNameConflict(err error) bool {
 func (s *SQLiteSubjectStore) describeSubjectAliasConflict(ctx context.Context, userID, name string, cause error) error {
 	// Resolve only after the database rejects the write, keeping successful
 	// creates unchanged and the SQLite guards authoritative under concurrency.
-	canonical, err := s.ResolveSubjectName(ctx, userID, name)
-	if errors.Is(err, ErrRecordNotFound) {
+	conflict := &SubjectAliasConflictError{cause: cause, AliasName: name}
+	err := s.db.QueryRowContext(ctx, `SELECT a.alias_id,s.subject_id,s.subject_name
+ FROM subject_aliases a JOIN subjects s ON s.subject_id=a.subject_id AND s.user_id=a.user_id
+ JOIN users u ON u.user_id=a.user_id
+ WHERE a.user_id=? AND a.alias_name=? AND a.deleted_at IS NULL
+ AND s.deleted_at IS NULL AND u.deleted_at IS NULL`, userID, name).
+		Scan(&conflict.AliasID, &conflict.SubjectID, &conflict.SubjectName)
+	if errors.Is(err, sql.ErrNoRows) {
 		// The alias may have been removed between rejection and this read.
 		return subjectNameError(cause)
 	}
 	if err != nil {
 		return errors.Join(subjectNameError(cause), err)
 	}
-	if canonical.SubjectName == name {
-		// A concurrent writer may have replaced the alias with a canonical name.
-		return subjectNameError(cause)
-	}
-	return &SubjectAliasConflictError{
-		cause:       cause,
-		AliasName:   name,
-		SubjectID:   canonical.SubjectID,
-		SubjectName: canonical.SubjectName,
-	}
+	return conflict
 }

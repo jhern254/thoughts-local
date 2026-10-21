@@ -30,6 +30,7 @@ func (s *FakeSubjectStore) CreateSubject(ctx context.Context, subject *data.Subj
 		if alias.UserID == subject.UserID && alias.AliasName == subject.SubjectName {
 			canonical := s.subjects[alias.SubjectID]
 			return nil, &data.SubjectAliasConflictError{
+				AliasID:     alias.AliasID,
 				AliasName:   alias.AliasName,
 				SubjectID:   canonical.SubjectID,
 				SubjectName: canonical.SubjectName,

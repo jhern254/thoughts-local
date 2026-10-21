@@ -12,6 +12,7 @@ import (
 type Store interface {
 	AliasStore
 	CreateSubject(ctx context.Context, subject *data.Subject) (*data.Subject, error)
+	CreateSubjectFromAlias(ctx context.Context, subject *data.Subject, subjectID, aliasID int64) (*data.Subject, error)
 	GetSubject(ctx context.Context, userID string, subjectID int64) (*data.Subject, error)
 	ListSubjects(ctx context.Context, userID string) ([]data.Subject, error)
 	UpdateSubject(ctx context.Context, userID string, subjectID int64, name string, updatedAt time.Time) (*data.Subject, error)
