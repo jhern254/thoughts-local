@@ -55,6 +55,9 @@ Event updates replace the complete editable event state. A nil `SubjectID` expli
 
 Choose presentation mechanisms for clear ownership, small implementations, and demonstrated benefit.
 
+Follow the [app style guide](docs/app-style-guide.md) for approved visual patterns,
+including clean distribution curves and the video-preparation activity wave.
+
 * Keep Bubble Tea/Lip Gloss as the current default for terminal screens, navigation, and forms. Use browser-native HTML/CSS and APIs for focused browser presentation such as media previews, loading indicators, and file selection when they simplify the implementation or improve the experience.
 * Keep application behavior in Go. Browser enhancements must use existing services and authoritative operation state; do not duplicate validation, persistence rules, or entire workflows in JavaScript.
 * Keep visual animation with the renderer that owns the display. Prefer local animation over repeated application-state updates solely to produce motion. CSS or browser APIs may serve the current browser interface; a future Go rendering engine may own animation directly. Keep rendering updates separate from domain mutations and persistence, and measure total cost when comparing implementations. This is a boundary and ownership rule, not a restriction on implementation language.
