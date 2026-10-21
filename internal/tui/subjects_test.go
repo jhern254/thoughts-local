@@ -138,7 +138,7 @@ func TestSubjectModel_Create(t *testing.T) {
 		model = openCreateSubject(t, openSubjects(t, model))
 		model.subjects.input.SetValue("Golang")
 		model = runModelCommand(t, model, enterKey())
-		want := `"Golang" is already an alias for subject "Go Programming". Choose a different name.`
+		want := `"Golang" is already an alias for subject "Go Programming".`
 		if got := model.subjects.errMessage; got != want {
 			t.Fatalf("conflict feedback: got %q, want %q", got, want)
 		}

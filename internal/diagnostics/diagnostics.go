@@ -73,7 +73,7 @@ func SubjectMessage(err error, fallback string) string {
 	var aliasConflict *data.SubjectAliasConflictError
 	switch {
 	case errors.As(cause, &aliasConflict):
-		return fmt.Sprintf("%q is already an alias for subject %q. Choose a different name.", aliasConflict.AliasName, aliasConflict.SubjectName)
+		return fmt.Sprintf("%q is already an alias for subject %q.", aliasConflict.AliasName, aliasConflict.SubjectName)
 	case errors.Is(cause, data.ErrRecordNotFound):
 		return "The requested resource was not found."
 	case errors.Is(cause, data.ErrDuplicateRecord):

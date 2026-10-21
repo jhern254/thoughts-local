@@ -67,7 +67,7 @@ func TestSubjectMessage(t *testing.T) {
 
 func TestSubjectMessage_AliasConflict(t *testing.T) {
 	conflict := &data.SubjectAliasConflictError{AliasName: "Golang", SubjectID: 7, SubjectName: "Go Programming"}
-	want := `"Golang" is already an alias for subject "Go Programming". Choose a different name.`
+	want := `"Golang" is already an alias for subject "Go Programming".`
 	if got := SubjectMessage(fmt.Errorf("PRIVATE: %w", conflict), "Could not save the subject."); got != want {
 		t.Fatalf("alias conflict: got %q, want %q", got, want)
 	}
