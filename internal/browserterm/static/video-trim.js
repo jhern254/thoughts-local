@@ -11,10 +11,15 @@ class ThoughtsVideoTrim {
   }
   async request(path, options, signal) {
     const response = await fetch(path, {...options, headers: {...this.headers(), ...options.headers}, signal});
-    if (!response.ok) throw new Error('Video operation unavailable.');
+    if (!response.ok) {
+      const error=new Error('Video operation unavailable.');
+      if(response.status===507) error.videoAction='sourceSpace';
+      if(response.status===408) error.videoAction='sourceTimeout';
+      throw error;
+    }
     return response;
   }
-  async stage(file, operationID) {
+  async selectSource(file, operationID) {
     this.close();
     this.visual.releasePreviewVideo();
     const generation = this.generation;
@@ -22,32 +27,67 @@ class ThoughtsVideoTrim {
     const controller = new AbortController();
     this.controller = controller;
     try {
-      if (file.size > 128 * 1024 * 1024) throw new Error();
-      const response = await this.request('/visual/video/source', {method:'POST', body:file}, controller.signal);
-      const source = await response.json();
-      if (!this.owns(generation) || this.visual.state.id !== operationID) return;
-      this.source = source;
+      if (file.size > this.visual.state.maxVideoSourceBytes) throw new Error('Video source exceeds the limit.');
+      this.localFile = file;
       this.sourceURL = URL.createObjectURL(file);
-      const video = this.makeVideo(this.sourceURL);
+      const video = this.makeVideo(this.sourceURL, 'metadata');
       this.sourceVideo = video;
       await this.ready(video, controller.signal);
-      if (!this.owns(generation)) return;
-      // Native dimensions include display rotation and sample-aspect ratio.
-      // Source playback is paused; only explicitly prepared loops can play.
+      if (!this.owns(generation) || this.visual.state.id !== operationID) return;
+      if (Math.abs(video.currentTime) > 0.001) {const error=new Error('Source timeline unavailable.');error.videoAction='sourceTimeline';throw error;}
+      const durationMS = Math.floor(video.duration * 1000);
+      if (!Number.isSafeInteger(durationMS) || durationMS < 1000 || durationMS > this.visual.state.maxVideoSourceDurationMS || !video.videoWidth || !video.videoHeight) throw new Error('Unsupported source.');
+      // Browser metadata is provisional. Only native staging can validate the
+      // container, streams, duration and supported display interpretation.
       this.visual.candidateKind = 'video';
-      this.visual.previewSourceSize = {width:source.width, height:source.height};
+      this.visual.previewSourceSize = {width:video.videoWidth, height:video.videoHeight};
       this.showSource(0);
-      this.visual.sendAction({action:'staged', id:operationID, kind:'video', durationMS:source.durationMS});
+      this.visual.sendAction({action:'sourceSelected', id:operationID, kind:'video', durationMS});
     } catch (error) {
       if (this.owns(generation)) {this.close(); throw error;}
     } finally {
       if (this.controller === controller) this.controller = undefined;
     }
   }
-  makeVideo(url) {
+  setStage(label, operationID) {
+    if (this.visual.state.id !== operationID) return;
+    const status = document.getElementById('video-preparation-label');
+    if (status) status.textContent = label;
+  }
+  uploadSource(signal, operationID) {
+    // XHR supplies an upload-complete event without buffering the File in JS.
+    // Completion only changes status: the response still owns native validation.
+    return new Promise((resolve,reject) => {
+      const upload = new XMLHttpRequest();
+      const finish = (error,source) => {
+        signal.removeEventListener('abort',abort);
+        upload.onload=upload.onerror=upload.onabort=upload.ontimeout=null;
+        upload.upload.onload=null;
+        error ? reject(error) : resolve(source);
+      };
+      const abort = () => upload.abort();
+      upload.open('POST','/visual/video/source');
+      upload.setRequestHeader('X-Visual-Editor',this.editorID);
+      upload.responseType='json';
+      upload.timeout=22*60*1000;
+      upload.upload.onload=()=>{if (!signal.aborted) this.setStage('Validating source…',operationID);};
+      upload.onload=()=>{
+        if (upload.status===200 && upload.response?.sourceID) {finish(null,upload.response);return;}
+        const error=new Error('Video source unavailable.');
+        error.videoAction=upload.status===507 ? 'sourceSpace' : upload.status===408 ? 'sourceTimeout' : upload.status===422 ? 'sourceTimeline' : [400,413].includes(upload.status) ? 'sourceUnsupported' : 'failed';
+        finish(error);
+      };
+      upload.onerror=upload.onabort=()=>finish(new Error('Video transfer unavailable.'));
+      upload.ontimeout=()=>{const error=new Error('Video transfer timed out.');error.videoAction='sourceTimeout';finish(error);};
+      signal.addEventListener('abort',abort,{once:true});
+      if (signal.aborted) {finish(new Error('Video transfer cancelled.'));return;}
+      upload.send(this.localFile);
+    });
+  }
+  makeVideo(url, preload = 'auto') {
     const video = document.createElement('video');
     video.muted = true; video.loop = true; video.playsInline = true;
-    video.preload = 'auto'; video.hidden = true; video.src = url;
+    video.preload = preload; video.hidden = true; video.src = url;
     return video;
   }
   ready(video, signal) {
@@ -91,15 +131,19 @@ class ThoughtsVideoTrim {
     if (!video || video.seeking || this.seekTarget === undefined) return;
     const target = this.seekTarget;
     this.seekTarget = undefined;
-    if (Math.abs(video.currentTime-target) < 0.001) return;
+    if (Math.abs(video.currentTime-target) < 0.001) { video.hidden = false; return; }
+    video.hidden = true;
     video.addEventListener('seeked', () => {
-      if (this.sourceVideo === video) this.seekSource();
+      if (this.sourceVideo === video) {
+        if (this.seekTarget === undefined) video.hidden = false;
+        this.seekSource();
+      }
     }, {once:true});
     video.currentTime = target;
   }
   sync(state, previous) {
-    if (!this.source) return;
-    if (state.trimming && state.sourceFrame && (!previous.sourceFrame || state.sourcePositionMS !== previous.sourcePositionMS)) this.showSource(state.sourcePositionMS);
+    if (!this.localFile) return;
+    if (state.trimming && state.sourceFrame && (!previous.sourceFrame || state.trim.startMS !== previous.trim?.startMS)) this.showSource(state.trim.startMS);
     if (!state.trimming && previous.trimming && this.acceptedVideo && this.visual.previewVideo !== this.acceptedVideo) this.showAccepted(false);
   }
   async prepare(state) {
@@ -111,6 +155,19 @@ class ThoughtsVideoTrim {
     this.controller = controller;
     let candidate, videoURL, posterURL;
     try {
+      if (!this.source) {
+        this.setStage('Transferring selected source…', operationID);
+        const staged = await this.uploadSource(controller.signal, operationID);
+        if (!this.owns(generation) || controller.signal.aborted || visual.state.id !== operationID) return;
+        this.source = staged;
+        visual.sendAction({action:'sourceVerified',id:operationID,durationMS:this.source.durationMS});
+      }
+      const {startMS,endMS}=state.trim;
+      if (startMS < 0 || endMS > this.source.durationMS || endMS-startMS < 1000 || endMS-startMS > 30000) {
+        visual.sendAction({action:'sourceBounds',id:operationID});
+        return;
+      }
+      this.setStage(`Preparing ${(endMS-startMS)/1000}-second loop…`, operationID);
       const response = await this.request('/visual/video/preview', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceID:this.source.sourceID, trim:state.trim,videoQuality:state.videoQuality})},controller.signal);
       const prepared = await response.json();
       if (!this.owns(generation)) return;
@@ -137,10 +194,10 @@ class ThoughtsVideoTrim {
       }
       this.showAccepted(true);
       visual.sendAction({action:'loopReady',id:operationID,trim:this.accepted.trim,durationMS:this.accepted.durationMS,videoQuality:this.accepted.videoQuality,width:this.accepted.width,height:this.accepted.height,frameRate:this.accepted.frameRate});
-    } catch {
-      if (this.owns(generation) && !controller.signal.aborted) {
+    } catch (error) {
+      if (this.owns(generation) && !controller.signal.aborted && visual.state.id === operationID) {
         if (this.acceptedVideo) this.showAccepted(false);
-        visual.reply('failed',operationID);
+        visual.reply(error.videoAction || 'failed',operationID);
       }
     } finally {
       visual.retireVideo(candidate);
@@ -183,7 +240,7 @@ class ThoughtsVideoTrim {
     visual.stopPreviewPlayback();
     visual.retireVideo(this.sourceVideo); visual.retireVideo(this.acceptedVideo);
     for (const url of [this.sourceURL,this.acceptedVideoURL,this.acceptedPosterURL]) if (url) URL.revokeObjectURL(url);
-    this.source = undefined; this.accepted = undefined;
+    this.source = undefined; this.localFile = undefined; this.accepted = undefined;
     this.sourceVideo = undefined; this.acceptedVideo = undefined;
     this.sourceURL = undefined; this.acceptedVideoURL = undefined; this.acceptedPosterURL = undefined;
     this.seekTarget = undefined;

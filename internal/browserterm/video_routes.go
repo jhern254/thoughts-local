@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -30,17 +33,21 @@ func (s *server) beginVideoEdit(w http.ResponseWriter, r *http.Request, heavy bo
 		http.Error(w, "Visual editor unavailable.", http.StatusForbidden)
 		return nil, nil, nil, false
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), visual.MaxVideoProcessingTime)
+	operationLimit := visual.MaxVideoProcessingTime
+	if r.Method == http.MethodPost && r.URL.Path == "/visual/video/source" {
+		operationLimit += visual.MaxVideoTransferTime
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), operationLimit)
 	ownerDone := make(chan struct{})
 	stopOwner := context.AfterFunc(owner, func() { defer close(ownerDone); cancel() })
 	controller := http.NewResponseController(w)
-	deadline := time.Now().Add(visual.MaxVideoProcessingTime)
+	deadline := time.Now().Add(operationLimit)
 	if err := controller.SetReadDeadline(deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
 		if !stopOwner() {
 			<-ownerDone
 		}
 		cancel()
-		visualError(w, err)
+		videoError(w, err)
 		return nil, nil, nil, false
 	}
 	if err := controller.SetWriteDeadline(deadline.Add(writeTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
@@ -48,7 +55,7 @@ func (s *server) beginVideoEdit(w http.ResponseWriter, r *http.Request, heavy bo
 			<-ownerDone
 		}
 		cancel()
-		visualError(w, err)
+		videoError(w, err)
 		return nil, nil, nil, false
 	}
 	abortDone := make(chan struct{})
@@ -74,7 +81,7 @@ func (s *server) beginVideoEdit(w http.ResponseWriter, r *http.Request, heavy bo
 	}
 	if heavy && !s.importMu.TryLock() {
 		finishContext()
-		visualError(w, visual.ErrBusy)
+		videoError(w, visual.ErrBusy)
 		return nil, nil, nil, false
 	}
 	releaseHeavy := func() {
@@ -97,7 +104,7 @@ func (s *server) beginVideoEdit(w http.ResponseWriter, r *http.Request, heavy bo
 	if editor.filesOwner != "" && editor.filesOwner != headers[0] {
 		if err := editor.discardFiles(); err != nil {
 			finish()
-			visualError(w, err)
+			videoError(w, err)
 			return nil, nil, nil, false
 		}
 	}
@@ -128,10 +135,34 @@ func (s *server) stageVisualVideoSource(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer finish()
-	r.Body = http.MaxBytesReader(w, r.Body, visual.MaxVideoBytes)
-	source, err := visual.StageVideo(ctx, r.Body)
+	r.Body = http.MaxBytesReader(w, r.Body, visual.MaxVideoSourceBytes)
+	if r.ContentLength > visual.MaxVideoSourceBytes {
+		videoError(w, visual.ErrVideoSourceSize)
+		return
+	}
+	// A new source POST replaces the browser File selection. Retire the old
+	// staged input before receiving another movie, so replacement never needs
+	// space for two originals. Accepted derivative bytes remain independently owned.
+	if editor.source != nil {
+		if err := editor.source.Close(); err != nil {
+			videoError(w, err)
+			return
+		}
+		editor.source = nil
+		editor.sourceID = ""
+	}
+	reader := &videoTransferReader{ctx: ctx, input: r.Body, controller: http.NewResponseController(w), deadline: time.Now().Add(visual.MaxVideoTransferTime)}
+	source, err := visual.StageVideo(ctx, reader)
 	if err != nil {
-		visualError(w, err)
+		videoError(w, err)
+		return
+	}
+	if !source.HasZeroStartTimestamp() {
+		if err := source.Close(); err != nil {
+			videoError(w, err)
+			return
+		}
+		http.Error(w, "Export a zero-start MP4/MOV for reliable scene preview.", http.StatusUnprocessableEntity)
 		return
 	}
 	if err := ctx.Err(); err != nil {
@@ -140,7 +171,7 @@ func (s *server) stageVisualVideoSource(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := editor.discardFiles(); err != nil {
 		source.Close()
-		visualError(w, err)
+		videoError(w, err)
 		return
 	}
 	editor.filesOwner = r.Header.Get("X-Visual-Editor")
@@ -159,7 +190,7 @@ func (s *server) discardVisualVideoSource(w http.ResponseWriter, r *http.Request
 	}
 	defer finish()
 	if err := editor.discardFiles(); err != nil {
-		visualError(w, err)
+		videoError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -182,7 +213,7 @@ func (s *server) prepareVisualVideoLoop(w http.ResponseWriter, r *http.Request) 
 		input.VideoQuality = visual.VideoQualityEfficient
 	}
 	if !input.VideoQuality.Valid() {
-		visualError(w, visual.ErrVideoQuality)
+		videoError(w, visual.ErrVideoQuality)
 		return
 	}
 	if editor.source == nil || editor.sourceID != input.SourceID {
@@ -199,7 +230,7 @@ func (s *server) prepareVisualVideoLoop(w http.ResponseWriter, r *http.Request) 
 	}
 	prepared, err := editor.source.Prepare(ctx, input.Trim, input.VideoQuality)
 	if err != nil {
-		visualError(w, err)
+		videoError(w, err)
 		return
 	}
 	if err := ctx.Err(); err != nil {
@@ -209,7 +240,7 @@ func (s *server) prepareVisualVideoLoop(w http.ResponseWriter, r *http.Request) 
 	if editor.pending != nil {
 		if err := editor.pending.Close(); err != nil {
 			prepared.Close()
-			visualError(w, err)
+			videoError(w, err)
 			return
 		}
 	}
@@ -268,7 +299,7 @@ func (s *server) discardVisualVideoPreview(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := editor.pending.Close(); err != nil {
-		visualError(w, err)
+		videoError(w, err)
 		return
 	}
 	editor.pending = nil
@@ -328,10 +359,54 @@ func (s *server) applyVisualVideoLoop(w http.ResponseWriter, r *http.Request) {
 	}
 	settings, warning, err := s.visual.ApplyPreparedVideo(ctx, editor.accepted, input.Darkness, input.Framing, input.SpeedPercent, input.UserPaused)
 	if err != nil {
-		visualError(w, err)
+		videoError(w, err)
 		return
 	}
 	// A committed selection remains successful when temporary cleanup fails.
 	warning = editor.discardFiles() != nil || warning
 	writeVisual(w, settings, warning)
+}
+
+// Reset the idle timeout only when reading the next bounded portion. The total
+// transfer deadline remains fixed, including for a peer that trickles bytes.
+type videoTransferReader struct {
+	ctx        context.Context
+	input      io.Reader
+	controller *http.ResponseController
+	deadline   time.Time
+}
+
+func (reader *videoTransferReader) Read(body []byte) (int, error) {
+	deadline := time.Now().Add(visual.MaxVideoTransferIdleTime)
+	if reader.deadline.Before(deadline) {
+		deadline = reader.deadline
+	}
+	if err := reader.controller.SetReadDeadline(deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return 0, err
+	}
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return reader.input.Read(body)
+}
+
+// Video-only feedback keeps transfer failures useful without exposing OS text
+// or changing the image importer's presentation contract.
+func videoError(w http.ResponseWriter, err error) {
+	var networkError net.Error
+	diskFull := errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT)
+	if runtime.GOOS == "windows" {
+		// Win32 reports ERROR_DISK_FULL or ERROR_HANDLE_DISK_FULL for file writes.
+		diskFull = diskFull || errors.Is(err, syscall.Errno(112)) || errors.Is(err, syscall.Errno(39))
+	}
+	switch {
+	case diskFull:
+		http.Error(w, "Not enough temporary disk space for the video source.", http.StatusInsufficientStorage)
+	case errors.Is(err, visual.ErrVideoSourceSize):
+		http.Error(w, "Video source exceeds 8 GiB.", http.StatusRequestEntityTooLarge)
+	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &networkError) && networkError.Timeout()):
+		http.Error(w, "Video operation timed out. Retry with a smaller source or shorter cut.", http.StatusRequestTimeout)
+	default:
+		visualError(w, err)
+	}
 }

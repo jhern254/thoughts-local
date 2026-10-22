@@ -14,6 +14,12 @@ func validateVideoContainer(input io.ReaderAt, size int64) error {
 }
 
 func inspectVideoContainer(input io.ReaderAt, size int64, prepared bool) error {
+	// Long-source sample tables grow with frame count. Prepared loops retain
+	// their smaller metadata bound; neither path buffers the movie index.
+	indexLimit := int64(32 << 20)
+	if prepared {
+		indexLimit = 8 << 20
+	}
 	boxes := 0
 	tracks := 0
 	var movie, media, fileType bool
@@ -68,7 +74,7 @@ func inspectVideoContainer(input io.ReaderAt, size int64, prepared bool) error {
 					}
 				}
 				if kind == "moov" {
-					if depth != 0 || movie || length > 8<<20 {
+					if depth != 0 || movie || length > indexLimit {
 						return ErrVideo
 					}
 					movie = true
@@ -150,7 +156,7 @@ func inspectVideoContainer(input io.ReaderAt, size int64, prepared bool) error {
 		}
 		return nil
 	}
-	if size < 24 || size > MaxVideoBytes {
+	if size < 24 || size > MaxVideoSourceBytes {
 		return ErrVideo
 	}
 	if err := inspect(0, size, 0); err != nil {

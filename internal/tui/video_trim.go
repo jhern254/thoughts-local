@@ -2,8 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -12,7 +14,6 @@ import (
 
 const (
 	trimFocusSource = iota
-	trimFocusStart
 	trimFocusEnd
 	trimFocusQuality
 	trimFocusSpeed
@@ -33,11 +34,13 @@ func (m *Model) activateVideoTrim() {
 		return
 	}
 	switch m.options.trimFocus {
-	case trimFocusStart:
-		m.options.trim.StartMS = m.options.sourcePositionMS
-		m.options.trim.EndMS = min(m.options.trim.EndMS, m.videoTrimEndLimit())
-	case trimFocusEnd:
-		m.options.trim.EndMS = min(m.options.sourcePositionMS, m.videoTrimEndLimit())
+	case trimFocusSource:
+		m.options.trimTimecode = textinput.New()
+		m.options.trimTimecode.Prompt = "Source / Start: "
+		m.options.trimTimecode.CharLimit = 12
+		m.options.trimTimecode.SetValue(trimTimecode(m.options.trim.StartMS))
+		m.options.trimTimecode.Focus()
+		m.options.trimTimecodeEditing = true
 	case trimFocusQuality:
 		m.cycleVideoQuality()
 	case trimFocusPreview:
@@ -62,6 +65,29 @@ func (m *Model) activateVideoTrim() {
 }
 
 func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.options.trimTimecodeEditing && m.options.request == "" {
+		if key, ok := message.(tea.KeyPressMsg); ok {
+			switch key.String() {
+			case "esc":
+				m.options.trimTimecodeEditing = false
+				m.options.status = ""
+				return m, nil
+			case "enter":
+				position, ok := parseTrimTimecode(m.options.trimTimecode.Value())
+				if !ok {
+					m.options.status = "Use HH:MM:SS with optional milliseconds."
+					return m, nil
+				}
+				m.setTrimStart(position)
+				m.options.trimTimecodeEditing = false
+				m.options.status = ""
+				return m, nil
+			}
+		}
+		var command tea.Cmd
+		m.options.trimTimecode, command = m.options.trimTimecode.Update(message)
+		return m, command
+	}
 	switch msg := message.(type) {
 	case tea.KeyPressMsg:
 		key := msg.String()
@@ -90,7 +116,7 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.options.trimFocus = (m.options.trimFocus + trimFocusCount - 1) % trimFocusCount
 		case "enter", "space":
 			m.activateVideoTrim()
-		case "left", "right", "shift+left", "shift+right", "home", "end":
+		case "left", "right", "shift+left", "shift+right", "home", "end", "pgup", "pgdown":
 			if m.options.trimFocus == trimFocusQuality {
 				m.setVideoQuality(key)
 				return m, nil
@@ -104,20 +130,15 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			var value *int64
-			switch m.options.trimFocus {
-			case trimFocusSource:
-				value = &m.options.sourcePositionMS
-			case trimFocusStart:
-				value = &m.options.trim.StartMS
-			case trimFocusEnd:
-				value = &m.options.trim.EndMS
-			}
-			if value == &m.options.sourcePositionMS {
-				m.options.sourceFrame = true
-			}
-			if value == nil {
+			if m.options.trimFocus != trimFocusSource && m.options.trimFocus != trimFocusEnd {
 				return m, nil
+			}
+			value := m.options.trim.StartMS
+			lower, upper := int64(0), max(int64(0), m.options.sourceDurationMS-1000)
+			if m.options.trimFocus == trimFocusEnd {
+				value = m.options.trim.EndMS
+				lower = m.options.trim.StartMS + 1000
+				upper = m.videoTrimEndLimit()
 			}
 			step := int64(100)
 			if strings.HasPrefix(key, "shift+") {
@@ -125,19 +146,27 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch key {
 			case "home":
-				*value = 0
+				value = lower
 			case "end":
-				*value = m.options.sourceDurationMS
+				value = upper
+			case "pgup":
+				value -= 60000
+			case "pgdown":
+				value += 60000
 			default:
 				if strings.HasSuffix(key, "left") {
-					*value = max(0, *value-step)
+					value -= step
 				} else {
-					*value = min(m.options.sourceDurationMS, *value+step)
+					value += step
 				}
 			}
-			if m.options.trimFocus == trimFocusStart || m.options.trimFocus == trimFocusEnd {
-				m.options.trim.EndMS = min(m.options.trim.EndMS, m.videoTrimEndLimit())
+			value = max(lower, min(upper, value))
+			if m.options.trimFocus == trimFocusSource {
+				m.setTrimStart(value)
+			} else {
+				m.options.trim.EndMS = value
 			}
+
 		}
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
@@ -164,12 +193,20 @@ func (m *Model) clickVideoTrim(x, y int, activate bool) {
 	if m.options.request != "" && (!activate || y != top+8) {
 		return
 	}
-	if y == top+1 {
+	if y == top && activate {
+		m.options.trimFocus = trimFocusSource
+	} else if y == top+1 {
 		m.options.trimFocus = trimFocusSource
 		m.options.sourceFrame = true
-		m.options.sourcePositionMS = int64(max(0, min(width-1, x-left))) * m.options.sourceDurationMS / int64(max(1, width-1))
+		m.setTrimStart(int64(max(0, min(width-1, x-left))) * m.options.sourceDurationMS / int64(max(1, width-1)))
 	} else if activate && y >= top+2 && y <= top+8 {
-		m.options.trimFocus = trimFocusStart + y - (top + 2)
+		if y == top+3 {
+			return
+		}
+		m.options.trimFocus = trimFocusEnd + y - (top + 2)
+		if y >= top+4 {
+			m.options.trimFocus--
+		}
 		if m.options.trimFocus >= trimFocusPreview {
 			m.activateVideoTrim()
 		}
@@ -201,12 +238,12 @@ func (m Model) viewVideoTrim() tea.View {
 	} else {
 		lines = append(lines, "")
 	}
-	peak := int(m.options.sourcePositionMS * int64(width-1) / max(1, m.options.sourceDurationMS))
+	peak := int(min(m.options.trim.StartMS, m.options.sourceDurationMS) * int64(width-1) / max(1, m.options.sourceDurationMS))
 	rail := strings.Repeat("─", peak) + "●" + strings.Repeat("─", width-peak-1)
 	lines = append(lines,
-		label(trimFocusSource, "Source: "+trimSeconds(m.options.sourcePositionMS)+" / "+trimSeconds(m.options.sourceDurationMS)+"s"), muted.Render(rail),
-		label(trimFocusStart, "Start: "+trimSeconds(m.options.trim.StartMS)+"s"),
-		label(trimFocusEnd, "End: "+trimSeconds(m.options.trim.EndMS)+"s (max "+trimSeconds(m.videoTrimEndLimit())+"s)"),
+		label(trimFocusSource, "Source / Start: "+trimTimecode(m.options.trim.StartMS)+" / "+trimTimecode(m.options.sourceDurationMS)), muted.Render(rail),
+		label(trimFocusEnd, "End: "+trimTimecode(m.options.trim.EndMS)+" (max "+trimTimecode(m.videoTrimEndLimit())+")"),
+		plain.Render(fmt.Sprintf("Selected: %.1f seconds", float64(m.options.trim.EndMS-m.options.trim.StartMS)/1000)),
 		label(trimFocusQuality, "Video quality: "+m.options.videoQuality.Description()),
 		label(trimFocusSpeed, fmt.Sprintf("Playback speed: %d%%", m.options.speedPercent)),
 		label(trimFocusPreview, "Preview loop"), label(trimFocusDone, "Done — use previewed loop"), label(trimFocusCancel, "Cancel upload"))
@@ -215,11 +252,21 @@ func (m Model) viewVideoTrim() tea.View {
 	} else {
 		lines = append(lines, "No prepared loop yet.")
 	}
+	if m.options.trimTimecodeEditing {
+		for i, line := range lines {
+			if strings.Contains(ansi.Strip(line), "Source / Start:") {
+				lines[i] = selected.Render(m.options.trimTimecode.View())
+				break
+			}
+		}
+	}
 	lines = append(lines, muted.Render(m.options.status))
 	if m.options.request == "prepareLoop" {
 		lines = append(lines, muted.Render("Tab: Cancel · Esc: cancel upload"), muted.Render("Cut and quality controls resume when ready."))
+	} else if m.options.trimTimecodeEditing {
+		lines = append(lines, muted.Render("Enter: jump · Esc: back"), muted.Render("HH:MM:SS or HH:MM:SS.mmm"))
 	} else {
-		lines = append(lines, muted.Render("←/→: 0.1s · Shift: 1s · ↑/↓: focus"), muted.Render("Enter on Start/End: use source position"))
+		lines = append(lines, muted.Render("←/→: 0.1s · Shift: 1s · ↑/↓: focus"), muted.Render("PgUp/Dn: 60s · Home/End · Enter: timecode"))
 	}
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")
@@ -228,4 +275,47 @@ func (m Model) viewVideoTrim() tea.View {
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	return view
+}
+
+// Start is the sole source-preview cursor. Accepted encoded loops own their
+// separate playback position and survive all unpreviewed draft edits.
+func (m *Model) setTrimStart(positionMS int64) {
+	m.options.trim.StartMS = max(int64(0), min(positionMS, m.options.sourceDurationMS-1000))
+	m.options.trim.EndMS = m.videoTrimEndLimit()
+	m.options.sourceFrame = true
+}
+func trimTimecode(milliseconds int64) string {
+	return fmt.Sprintf("%02d:%02d:%02d.%03d", milliseconds/3600000, (milliseconds/60000)%60, (milliseconds/1000)%60, milliseconds%1000)
+}
+func parseTrimTimecode(value string) (int64, bool) {
+	parts := strings.Split(value, ":")
+	if len(parts) != 3 || len(parts[0]) != 2 || len(parts[1]) != 2 {
+		return 0, false
+	}
+	seconds := strings.Split(parts[2], ".")
+	if len(seconds) > 2 || len(seconds[0]) != 2 {
+		return 0, false
+	}
+	digits := []string{parts[0], parts[1], seconds[0]}
+	fraction := "000"
+	if len(seconds) == 2 {
+		if len(seconds[1]) < 1 || len(seconds[1]) > 3 {
+			return 0, false
+		}
+		fraction = seconds[1] + strings.Repeat("0", 3-len(seconds[1]))
+		digits = append(digits, seconds[1])
+	}
+	for _, part := range digits {
+		for _, digit := range part {
+			if digit < '0' || digit > '9' {
+				return 0, false
+			}
+		}
+	}
+	hours, _ := strconv.ParseInt(parts[0], 10, 64)
+	minutes, _ := strconv.ParseInt(parts[1], 10, 64)
+	secs, _ := strconv.ParseInt(seconds[0], 10, 64)
+	ms, _ := strconv.ParseInt(fraction, 10, 64)
+	position := hours*3600000 + minutes*60000 + secs*1000 + ms
+	return position, minutes < 60 && secs < 60 && position <= visual.MaxVideoSourceDuration*1000
 }

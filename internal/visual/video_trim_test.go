@@ -21,7 +21,7 @@ func TestVideoTrim_Valid(t *testing.T) {
 		duration int64
 		valid    bool
 	}{
-		{"accepts a late interval in a two minute source", VideoTrim{90000, 120000}, 120000, true},
+		{"accepts a late interval in a two hour source", VideoTrim{7170000, 7200000}, 7200000, true},
 		{"accepts one second", VideoTrim{1250, 2250}, 60000, true},
 		{"rejects negative start", VideoTrim{-1, 1000}, 60000, false},
 		{"rejects reversed range", VideoTrim{2000, 1000}, 60000, false},
@@ -155,6 +155,9 @@ func TestVideoSource_CutTiming(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer source.Close()
+			if got, want := source.HasZeroStartTimestamp(), offset == "0"; got != want {
+				t.Fatalf("zero-start timestamp=%v, want %v", got, want)
+			}
 			prepared, err := source.Prepare(t.Context(), VideoTrim{StartMS: 6250, EndMS: 7500}, VideoQualityEfficient)
 			if err != nil {
 				t.Fatal(err)

@@ -12,13 +12,13 @@ function fixture() {
   return {editor,visual,context,revoked};
 }
 
-test('draft cut edits neither prepare nor stop an accepted loop',()=>{
-  const {editor}=fixture();editor.source={sourceID:'source'};
+test('End edits retain the accepted loop without moving its source cursor',()=>{
+  const {editor}=fixture();editor.localFile={};editor.source={sourceID:'source'};
   editor.acceptedVideo={};
   editor.showSource=()=>{throw new Error('draft edit sought source');};
   editor.showAccepted=()=>{throw new Error('draft edit replaced preview');};
-  const before={trimming:true,sourceFrame:false,sourcePositionMS:0,trim:{startMS:0,endMS:30000}};
-  editor.sync({...before,trim:{startMS:10,endMS:30000}},before);
+  const before={trimming:true,sourceFrame:false,trim:{startMS:0,endMS:30000}};
+  editor.sync({...before,trim:{startMS:0,endMS:29000}},before);
 });
 
 test('source scrubbing coalesces seeks while a seek is in flight',()=>{
@@ -69,15 +69,75 @@ for (const preferences of [{reducedMotion:true,userPaused:false},{reducedMotion:
 }
 
 test('unpreviewed quality edits preserve the acknowledged loop and never prepare automatically',()=>{
- const {editor}=fixture();editor.source={sourceID:'source'};
+ const {editor}=fixture();editor.localFile={};editor.source={sourceID:'source'};
  editor.accepted={previewID:'accepted',videoQuality:'efficient'};
  editor.showSource=()=>{throw new Error('quality edit sought source');};
  editor.showAccepted=()=>{throw new Error('quality edit replaced preview');};
- const before={trimming:true,sourceFrame:false,sourcePositionMS:0,videoQuality:'efficient'};
+ const before={trimming:true,sourceFrame:false,videoQuality:'efficient'};
  editor.sync({...before,videoQuality:'maximum'},before);
  assert.equal(editor.accepted.videoQuality,'efficient');
  const request=JSON.parse(editor.applyRequest({videoQuality:'maximum',darkness:42,speedPercent:50}).body);
  assert.equal(request.previewID,'accepted');
  assert.equal(request.videoQuality,undefined); // Native accepted metadata owns persistence.
  assert.equal(request.speedPercent,50);
+});
+
+test('file selection opens a local paused source without upload or processing',async()=>{
+ const {editor,visual,context}=fixture();const actions=[];
+ context.URL.createObjectURL=()=> 'blob:local';
+ context.fetch=()=>{throw new Error('selection uploaded source');};
+ visual.state.maxVideoSourceBytes=8*1024**3;visual.state.maxVideoSourceDurationMS=7200000;
+ visual.releasePreviewVideo=()=>{};visual.sendAction=action=>actions.push(action);
+ const file={size:7*1024**3,arrayBuffer(){throw new Error('whole file buffered');}};
+ const video={duration:6900,videoWidth:1920,videoHeight:1080};
+ editor.makeVideo=(url,preload)=>{video.preload=preload;return video;};editor.ready=async()=>{};editor.showSource=position=>assert.equal(position,0);
+ await editor.selectSource(file,1);
+ assert.equal(editor.localFile,file);assert.equal(editor.source,undefined);
+ assert.equal(video.preload,'metadata');
+ assert.equal(actions[0].action,'sourceSelected');assert.equal(actions[0].durationMS,6900000);
+});
+
+test('Start updates seek the existing local source before native staging',()=>{
+ const {editor}=fixture();editor.localFile={};const seeks=[];editor.showSource=ms=>seeks.push(ms);
+ const before={trimming:true,sourceFrame:true,trim:{startMS:0,endMS:30000}};
+ editor.sync({...before,trim:{startMS:5050000,endMS:5080000}},before);
+ assert.deepEqual(seeks,[5050000]);assert.equal(editor.source,undefined);
+});
+
+test('explicit previews stage once and reuse the verified source',async()=>{
+ const {editor,visual}=fixture();let uploads=0,prepares=0;const actions=[];
+ visual.state.trim={startMS:1000,endMS:4000};visual.sendAction=action=>actions.push(action);
+ editor.localFile={};editor.setStage=()=>{};editor.showAccepted=()=>{};
+ editor.uploadSource=async()=>{uploads++;return {sourceID:'verified',durationMS:60000};};
+ editor.accepted={previewID:'accepted',trim:visual.state.trim,durationMS:3000};editor.acceptedVideo={};
+ editor.request=async()=>{prepares++;return {json:async()=>editor.accepted};};
+ await editor.prepare(visual.state);await editor.prepare(visual.state);
+ assert.equal(uploads,1);assert.equal(prepares,2);assert.equal(actions.filter(a=>a.action==='sourceVerified').length,1);
+});
+
+test('verified shorter duration rejects the cut without moving the requested scene',async()=>{
+ const {editor,visual}=fixture();const actions=[];
+ const trim={startMS:59000,endMS:60000};visual.state.trim=trim;visual.sendAction=action=>actions.push(action);
+ editor.localFile={};editor.setStage=()=>{};
+ editor.uploadSource=async()=>({sourceID:'verified',durationMS:59000});
+ editor.request=async()=>{throw new Error('invalid cut reached native preparation');};
+ await editor.prepare(visual.state);
+ assert.deepEqual(visual.state.trim,trim);assert.equal(actions.at(-1).action,'sourceBounds');assert.equal(editor.source.sourceID,'verified');
+});
+
+test('a retired upload cannot publish its source into a newer editor',async()=>{
+ const {editor,visual}=fixture();let resolve;editor.setStage=()=>{};editor.localFile={};visual.state.trim={startMS:0,endMS:1000};
+ editor.uploadSource=()=>new Promise(done=>{resolve=done;});
+ const pending=editor.prepare(visual.state);editor.close();
+ resolve({sourceID:'retired',durationMS:60000});await pending;
+ assert.equal(editor.source,undefined);
+});
+
+test('a browser with a nonzero local media origin rejects before staging',async()=>{
+ const {editor,visual,context}=fixture();
+ context.URL.createObjectURL=()=> 'blob:offset';context.fetch=()=>{throw new Error('incompatible timeline uploaded');};
+ visual.releasePreviewVideo=()=>{};visual.state.maxVideoSourceBytes=8*1024**3;visual.state.maxVideoSourceDurationMS=7200000;
+ editor.makeVideo=()=>({currentTime:5,duration:12,videoWidth:64,videoHeight:48});editor.ready=async()=>{};
+ await assert.rejects(editor.selectSource({size:1024},1),error=>error.videoAction==='sourceTimeline');
+ assert.equal(editor.localFile,undefined);assert.equal(editor.source,undefined);
 });

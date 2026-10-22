@@ -314,10 +314,10 @@ class ThoughtsVisual {
     try {
       const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
       if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp') {
-        await this.videoTrim.stage(file, operationID); return;
+        await this.videoTrim.selectSource(file, operationID); return;
       }
       if (file.size > 16 * 1024 * 1024) throw new Error();
-      if (this.videoTrim?.source) {
+      if (this.videoTrim?.localFile) {
         const editorID = this.videoTrim.editorID;
         this.videoTrim.close();
         await fetch('/visual/video/source',{method:'DELETE',headers:{'X-Visual-Editor':editorID}});
@@ -351,11 +351,11 @@ class ThoughtsVisual {
         this.queuePreview();
         this.reply('selected', operationID);
       } finally { bitmap.close(); }
-    } catch {
+    } catch (error) {
       if (previewGeneration !== this.previewGeneration || this.state.id !== operationID) return;
       this.discardPreview();
       if (this.activeURL) this.preview.src = this.activeURL;
-      this.reply('failed', operationID);
+      this.reply(error.videoAction === 'sourceTimeline' ? 'sourceTimeline' : 'failed', operationID);
     } finally { this.terminal.focus(); }
   }
   async activate(settings, connectionGeneration = this.connectionGeneration) {
@@ -482,7 +482,7 @@ class ThoughtsVisual {
     const paused = preferences.userPaused;
     return !!(this.video && this.saved.background && this.saved.kind === 'video' && !paused &&
       this.connected && this.documentVisible && (!this.motionQuery?.matches || this.motionOverride) &&
-      !this.previewPlaying && !this.videoTrim?.source && !this.playbackFailed);
+      !this.previewPlaying && !this.videoTrim?.localFile && !this.playbackFailed);
   }
   updatePlayback() {
     const video = this.video;
@@ -550,7 +550,7 @@ class ThoughtsVisual {
     this.updatePlayback();
   }
   async togglePreviewPlayback() {
-    if (this.videoTrim?.source && this.previewVideo === this.videoTrim.sourceVideo) {
+    if (this.videoTrim?.localFile && this.previewVideo === this.videoTrim.sourceVideo) {
       if (!this.videoTrim.acceptedVideo) return;
       this.videoTrim.showAccepted(false);
     }

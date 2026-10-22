@@ -11,102 +11,103 @@ import (
 )
 
 func TestModel_VideoTrim(t *testing.T) {
-	t.Run("cut and source arrows nudge by a tenth of a second without rounding milliseconds", func(t *testing.T) {
-		for _, focus := range []int{trimFocusSource, trimFocusStart, trimFocusEnd} {
-			m := newRootTestModel()
-			m.browserOptionsEnabled = true
-			m.width, m.height = 80, 36
-			m.options = optionsState{
-				open:             true,
-				trimming:         true,
-				trimFocus:        focus,
-				sourceDurationMS: 60000,
-				sourcePositionMS: 1251,
-				trim:             visual.VideoTrim{StartMS: 1251, EndMS: 1251},
-			}
-			position := func() int64 {
-				switch focus {
-				case trimFocusStart:
-					return m.options.trim.StartMS
-				case trimFocusEnd:
-					return m.options.trim.EndMS
-				default:
-					return m.options.sourcePositionMS
+	t.Run("failed preparation restores the accepted loop label and preserves drafts", func(t *testing.T) {
+		for _, action := range []string{"failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceTimeline"} {
+			t.Run(action, func(t *testing.T) {
+				m := newRootTestModel()
+				m.browserOptionsEnabled = true
+				accepted := visual.VideoTrim{EndMS: 10000}
+				draft := visual.VideoTrim{StartMS: 60000, EndMS: 90000}
+				m.options = optionsState{open: true, trimming: true, request: "prepareLoop", id: 5, sourceFrame: true, loopReady: true, acceptedTrim: accepted, trim: draft}
+				m, _ = rootUpdate(m, BrowserOptionsMsg{Action: action, ID: 5})
+				if m.options.sourceFrame || !m.options.loopReady || m.options.acceptedTrim != accepted || m.options.trim != draft || m.options.request != "" {
+					t.Fatal("failed preparation did not restore accepted-loop presentation while retaining draft")
 				}
-			}
-			for _, action := range []struct {
-				code rune
-				mod  tea.KeyMod
-				want int64
-			}{
-				{tea.KeyRight, 0, 1351}, {tea.KeyLeft, 0, 1251},
-				{tea.KeyRight, tea.ModShift, 2251}, {tea.KeyLeft, tea.ModShift, 1251},
-				{tea.KeyHome, 0, 0}, {tea.KeyLeft, 0, 0},
-				{tea.KeyEnd, 0, 60000}, {tea.KeyRight, 0, 60000},
-			} {
-				m, _ = rootUpdate(m, tea.KeyPressMsg{Code: action.code, Mod: action.mod})
-				want := action.want
-				if focus == trimFocusEnd && want == 60000 {
-					want = 31251
-				}
-				if got := position(); got != want {
-					t.Fatalf("focus %d key %d: got %d ms, want %d", focus, action.code, got, want)
-				}
-			}
-			if !strings.Contains(m.View().Content, "←/→: 0.1s · Shift: 1s") {
-				t.Fatal("help does not describe the arrow increments")
-			}
+			})
 		}
 	})
-	t.Run("end stays within thirty seconds of start and the source boundary", func(t *testing.T) {
-		for _, tc := range []struct {
-			name       string
-			focus      int
-			trim       visual.VideoTrim
-			positionMS int64
-			key        tea.KeyPressMsg
-			want       visual.VideoTrim
-			wantMax    string
+	t.Run("start navigation seeks source and resets the proposed interval without replacing accepted bytes", func(t *testing.T) {
+		for _, test := range []struct {
+			name  string
+			key   tea.KeyPressMsg
+			start int64
 		}{
-			{"right at maximum", trimFocusEnd, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, 0, tea.KeyPressMsg{Code: tea.KeyRight}, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
-			{"shift right crossing maximum", trimFocusEnd, visual.VideoTrim{StartMS: 1251, EndMS: 31000}, 0, tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift}, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
-			{"end key uses relative maximum", trimFocusEnd, visual.VideoTrim{StartMS: 1251, EndMS: 5000}, 0, tea.KeyPressMsg{Code: tea.KeyEnd}, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
-			{"source position cannot bypass maximum", trimFocusEnd, visual.VideoTrim{StartMS: 1251, EndMS: 5000}, 60000, enterKey(), visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
-			{"late cut ends at source boundary", trimFocusEnd, visual.VideoTrim{StartMS: 57000, EndMS: 58000}, 60000, tea.KeyPressMsg{Code: tea.KeyEnd}, visual.VideoTrim{StartMS: 57000, EndMS: 60000}, "60.00"},
-			{"moving start earlier bounds end", trimFocusStart, visual.VideoTrim{StartMS: 10000, EndMS: 40000}, 0, tea.KeyPressMsg{Code: tea.KeyLeft}, visual.VideoTrim{StartMS: 9900, EndMS: 39900}, "39.90"},
-			{"start home bounds end", trimFocusStart, visual.VideoTrim{StartMS: 10000, EndMS: 40000}, 0, tea.KeyPressMsg{Code: tea.KeyHome}, visual.VideoTrim{EndMS: 30000}, "30.00"},
-			{"start at source position bounds end", trimFocusStart, visual.VideoTrim{StartMS: 10000, EndMS: 40000}, 1251, enterKey(), visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
-			{"source cursor still reaches full source", trimFocusSource, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, 0, tea.KeyPressMsg{Code: tea.KeyEnd}, visual.VideoTrim{StartMS: 1251, EndMS: 31251}, "31.25"},
+			{"fine nudge", tea.KeyPressMsg{Code: tea.KeyRight}, 5050100},
+			{"shift nudge", tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}, 5049000},
+			{"minute forward", tea.KeyPressMsg{Code: tea.KeyPgDown}, 5110000},
+			{"minute backward", tea.KeyPressMsg{Code: tea.KeyPgUp}, 4990000},
+			{"first scene", tea.KeyPressMsg{Code: tea.KeyHome}, 0},
+			{"final scene", tea.KeyPressMsg{Code: tea.KeyEnd}, 7199000},
 		} {
-			t.Run(tc.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				m := newRootTestModel()
 				m.browserOptionsEnabled = true
 				m.width, m.height = 80, 36
-				accepted := visual.VideoTrim{StartMS: 10000, EndMS: 40000}
-				m.options = optionsState{
-					open:             true,
-					trimming:         true,
-					trimFocus:        tc.focus,
-					sourceDurationMS: 60000,
-					sourcePositionMS: tc.positionMS,
-					trim:             tc.trim,
-					loopReady:        true,
-					acceptedTrim:     accepted,
+				accepted := visual.VideoTrim{EndMS: 30000}
+				m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusSource, sourceDurationMS: 7200000, trim: visual.VideoTrim{StartMS: 5050000, EndMS: 5055000}, loopReady: true, acceptedTrim: accepted}
+				m, _ = rootUpdate(m, test.key)
+				want := visual.VideoTrim{StartMS: test.start, EndMS: min(test.start+30000, 7200000)}
+				if got := m.OptionsState().Trim; got != want {
+					t.Fatalf("trim = %+v, want %+v", got, want)
 				}
-				m, _ = rootUpdate(m, tc.key)
-				if got := m.OptionsState().Trim; got != tc.want {
-					t.Fatalf("trim = %+v, want %+v", got, tc.want)
-				}
-				if got := m.options.acceptedTrim; got != accepted || !m.options.loopReady || m.OptionsState().Request != "" {
-					t.Fatalf("draft edit changed accepted loop or requested preparation: %+v", m.OptionsState())
-				}
-				if tc.focus == trimFocusSource && m.options.sourcePositionMS != 60000 {
-					t.Fatalf("source cursor = %d, want 60000", m.options.sourcePositionMS)
-				}
-				if !strings.Contains(ansi.Strip(m.View().Content), "End: "+trimSeconds(tc.want.EndMS)+"s (max "+tc.wantMax+"s)") {
-					t.Fatalf("End control does not show current maximum:\n%s", m.View().Content)
+				if !m.options.sourceFrame || m.options.acceptedTrim != accepted || !m.options.loopReady || m.options.request != "" {
+					t.Fatal("source edit changed accepted preparation or started native work")
 				}
 			})
+		}
+	})
+	t.Run("end can shorten a cut without moving the source frame", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusEnd, sourceDurationMS: 7200000, trim: visual.VideoTrim{StartMS: 5050000, EndMS: 5080000}}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyLeft})
+		if got, want := m.options.trim, (visual.VideoTrim{StartMS: 5050000, EndMS: 5079900}); got != want {
+			t.Fatalf("trim = %+v, want %+v", got, want)
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyHome})
+		if m.options.trim.EndMS != 5051000 {
+			t.Fatalf("minimum end = %d, want 5051000", m.options.trim.EndMS)
+		}
+	})
+	t.Run("inline timecode entry confirms or cancels without closing the editor", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.options = optionsState{open: true, trimming: true, sourceDurationMS: 7200000, trim: visual.VideoTrim{EndMS: 30000}}
+		m, _ = rootUpdate(m, enterKey())
+		m.options.trimTimecode.SetValue("01:24:10.125")
+		m, _ = rootUpdate(m, enterKey())
+		if got, want := m.options.trim, (visual.VideoTrim{StartMS: 5050125, EndMS: 5080125}); got != want {
+			t.Fatalf("trim = %+v, want %+v", got, want)
+		}
+		m, _ = rootUpdate(m, enterKey())
+		m.options.trimTimecode.SetValue("01:99:00")
+		m, _ = rootUpdate(m, enterKey())
+		if !m.options.trimTimecodeEditing || !strings.Contains(m.options.status, "HH:MM:SS") {
+			t.Fatal("invalid timecode was accepted")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+		if !m.options.trimming || m.options.request != "" || m.options.trimTimecodeEditing {
+			t.Fatal("Escape cancelled the editor instead of timecode entry")
+		}
+	})
+	t.Run("verified shorter bounds preserve the draft scene and remain safe to render", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.width, m.height = 60, 24
+		trim := visual.VideoTrim{StartMS: 7199000, EndMS: 7200000}
+		m.options = optionsState{open: true, trimming: true, request: "prepareLoop", id: 5, sourceDurationMS: 7200000, trim: trim}
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "sourceVerified", ID: 5, DurationMS: 60000})
+		if m.options.request != "prepareLoop" || m.options.trim != trim {
+			t.Fatal("native verification moved the chosen scene")
+		}
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "sourceBounds", ID: 5})
+		if m.options.request != "" || m.options.trim != trim {
+			t.Fatal("invalid bounds did not finish with the draft intact")
+		}
+		_ = m.View()
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyHome})
+		if !m.options.trim.Valid(60000) {
+			t.Fatalf("corrected trim = %+v", m.options.trim)
 		}
 	})
 	t.Run("unpreviewed cut edits preserve the accepted loop used by Done and Apply", func(t *testing.T) {
@@ -116,7 +117,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Darkness: 70})
 		m.activateOption()
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "staged", ID: m.OptionsState().ID, Kind: "video", DurationMS: 60000})
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "sourceSelected", ID: m.OptionsState().ID, Kind: "video", DurationMS: 60000})
 		if !m.OptionsState().Trimming || m.OptionsState().Trim.EndMS != 30000 {
 			t.Fatalf("staged state = %+v", m.OptionsState())
 		}
@@ -125,7 +126,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		id := m.OptionsState().ID
 		accepted := visual.VideoTrim{StartMS: 0, EndMS: 30000}
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", VideoQuality: visual.VideoQualityEfficient, Width: 1280, Height: 720, FrameRate: visual.VideoFrameRate{Numerator: 24, Denominator: 1}, ID: id, Trim: accepted, DurationMS: 30000})
-		m.options.trimFocus = trimFocusStart
+		m.options.trimFocus = trimFocusSource
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
 		if m.OptionsState().Trim.StartMS != 100 || m.options.acceptedTrim != accepted || !m.options.loopReady {
 			t.Fatal("draft edit lost accepted loop")
@@ -380,8 +381,8 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 				focus int
 				row   int
 			}{
-				{"Start", trimFocusStart, 21},
-				{"End", trimFocusEnd, 22},
+				{"Source / Start", trimFocusSource, 19},
+				{"End", trimFocusEnd, 21},
 				{"Quality", trimFocusQuality, 23},
 			} {
 				t.Run(request+" locks "+control.name, func(t *testing.T) {
@@ -397,15 +398,15 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 						trimming:         true,
 						trimFocus:        control.focus,
 						sourceDurationMS: 60000,
-						sourcePositionMS: 9000,
-						trim:             trim,
+
+						trim: trim,
 					}
 					for _, message := range []tea.Msg{
 						tea.KeyPressMsg{Code: tea.KeyRight}, tea.KeyPressMsg{Code: tea.KeyHome}, enterKey(),
 						tea.MouseClickMsg{X: 8, Y: control.row, Button: tea.MouseLeft},
 					} {
 						m, _ = rootUpdate(m, message)
-						if got := m.OptionsState(); got.ID != 5 || got.Request != request || got.Trim != trim || got.SourcePositionMS != 9000 || got.VideoQuality != visual.VideoQualityEfficient {
+						if got := m.OptionsState(); got.ID != 5 || got.Request != request || got.Trim != trim || got.VideoQuality != visual.VideoQualityEfficient {
 							t.Fatalf("pending %s allowed %s changes: %+v", request, control.name, got)
 						}
 					}

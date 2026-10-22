@@ -139,7 +139,7 @@ Some JPEG/PNG color encodings are unsupported. When an image is rejected for com
 See [Media handling and privacy](docs/media-handling-policy.md) for the distinction between background display copies and future private media attachments. Metadata removal does not anonymize what is visible in a picture.
 
 Video imports require installed **FFmpeg and ffprobe** with H.264 encoding support.
-Sources may be up to two minutes, at most 128 MiB, 4,096 pixels per side, 9MP per frame,
+Sources may be up to two hours, at most 8 GiB, 4,096 pixels per side, 9MP per frame,
 and 60 FPS. Choose **Video quality** before preparing a loop:
 
 | Quality | Resolution ceiling | FPS ceiling |
@@ -159,10 +159,14 @@ or **Play/Pause video**; Apply saves these preferences. Slower playback can look
 less smooth. Hidden tabs, disconnected sessions and reduced-motion preferences
 pause playback automatically; a deliberate Play action can override reduced
 motion for the current session. Preview playback pauses the active background.
-For a new upload, choose a 1–30 second range in the TUI trim editor. Move the
-source cursor to inspect a paused frame; Enter on Start or End uses that position.
-Arrow keys adjust by 0.1 seconds; Shift adjusts by one second. **Preview loop**
-prepares the exact clip. A fading braille wave above Options shows activity during preparation; press
+For a new upload, browse a paused local preview before transferring the source.
+**Source / Start** moves the frame and proposes the next 30 seconds, clamped to
+the source; shorten **End** for a smaller cut. Arrow keys adjust by 0.1 seconds,
+Shift by one second, PageUp/PageDown by one minute, and Home/End reach the source
+boundaries. Enter on Source / Start accepts `HH:MM:SS` with optional milliseconds.
+The first **Preview loop** transfers the whole source once to temporary local
+staging, validates it, and prepares only the selected 1–30 seconds. Later previews
+reuse that staged source until the editor closes. A fading braille wave above Options shows activity during preparation; press
 Esc or Tab then Enter to cancel the upload. **Done** and **Apply** use the last successful preview,
 even if you subsequently change the cut points or quality. The editor shows the
 previewed quality and actual dimensions/FPS; preview again to accept a new quality.
@@ -170,7 +174,9 @@ Apply saves those exact previewed bytes and their quality preference. With no
 pending import, changing quality only changes the preference for future imports.
 Speed changes playback duration,
 not the selected footage. Saved videos cannot be re-trimmed; reimport the source.
-HDR/HEVC and AI animation remain separate work.
+Some MP4/MOV timestamp layouts cannot be previewed consistently across browsers;
+export with timestamps starting at zero if requested. HDR/HEVC and AI animation
+remain separate work.
 
 Background assets remain local and are not cloud-uploaded.
 

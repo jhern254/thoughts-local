@@ -89,7 +89,7 @@ data streams, chapters, source location/device/date metadata and comments are
 not retained. Display rotation is normalized into frames; only supported SDR
 color interpretation and necessary playback/container information remain.
 
-Source limits are 128 MiB, 1–120 seconds, 4,096 pixels per axis, 9 million pixels
+Source limits are 8 GiB, 1–7,200 seconds, 4,096 pixels per axis, 9 million pixels
 per frame and 60 FPS. Selected footage is 1–30 seconds. Import quality is a
 persisted preference, initially Efficient, with these output ceilings:
 
@@ -121,14 +121,19 @@ references, limits work and joins canceled subprocesses before cleanup. FFmpeg
 and ffprobe are installed separately and must be maintained by the user. This
 boundary is not an OS sandbox; protocol restrictions alone do not confine files.
 Staging bounds the source bytes/container/stream declarations without rejecting
-a two-minute 1080p60 source merely because its full duration exceeds a decoded
+a two-hour source merely because its full duration exceeds a decoded
 pixel budget. Each preparation instead counts decoded frames before timestamp
 trimming and FPS reduction, including preceding-keyframe seek preroll. Exceeding
 four billion nominal source pixels or 7,200 frames cancels and joins FFmpeg.
 Decoder and pipe read-ahead can occur; this is an application work budget, not
 a hard CPU, process-memory or OS sandbox limit. Extremely long GOPs can make
 a late cut exceed it; choose an earlier/shorter cut or export a source with more
-frequent keyframes. Finite two-minute operation deadlines remain unchanged.
+frequent keyframes. Transfer has a finite 20-minute total limit and a 30-second no-progress read
+limit. Native container/probe validation receives a fresh two-minute deadline
+after transfer; each preparation retains its separate two-minute deadline.
+Increasing source duration does not increase the decoded-frame or pixel budgets.
+Source movie indexes are bounded to 32 MiB; prepared-loop indexes remain bounded
+to 8 MiB. Four-stream, nesting, box-count and processor-allocation limits remain.
 
 Prepared output has its own tier-size limit, container/stream checks, actual
 packet cadence/count and VBV-envelope validation, and a bounded full independent
@@ -142,11 +147,32 @@ preview exclusivity and playback failure are browser lifecycle conditions, never
 saved pause preferences. A stable poster covers loading, buffering, pause and
 failure. No frames travel through the terminal or WebSocket. Local video/poster
 assets and staging files are not encrypted; crashes can leave unselected files.
-Future vault work must include these assets. New-upload trimming temporarily
-retains one privately staged source while Visual is open; Apply, Cancel, closing
+Future vault work must include these assets. New-upload selection initially keeps a browser File/object URL and one muted,
+paused source-video element with metadata preloading. Browser metadata is
+provisional. Moving Start seeks that element and proposes at most 30 seconds;
+it does not upload, invoke native processing, or build thumbnails. Browser
+seeking may read/decode the frames its native media implementation requires.
+
+The first explicit Preview loop streams the complete local File through HTTP
+to one private native source file; this is not zero-copy or native-path access.
+The application does not buffer the movie into a JavaScript ArrayBuffer or Go
+byte slice. Actual received bytes, container references and probed streams are
+validated before preparation. Verified bounds never silently move a chosen scene.
+Browser imports require both video and container start timestamps to be zero: a
+nonzero origin can make Chromium and Firefox show different frames for the same
+position. Such sources are rejected with fixed feedback and native staging is
+removed, rather than silently changing the chosen scene.
+A successful staging is reused for further previews in the same editor.
+New-upload trimming temporarily retains that source while Visual is open; Apply, Cancel, closing
 Visual, disconnect and orderly shutdown remove it after joining processing.
 It is not an archive; saved clips have no retained source or re-trim metadata.
 A crash can leave staging files, as with other incomplete filesystem operations.
+An 8 GiB source can occupy roughly that much additional temporary disk space,
+plus bounded candidates and accepted output. Sources and derivatives are
+unencrypted; larger staging increases the amount and duration of private data
+exposed on local storage. Orderly cleanup is not secure erasure. Unsupported,
+poorly indexed or very long-GOP movies may still be rejected. The source file
+on the user's device is never changed.
 Only explicit Preview loop encodes; Apply saves the last acknowledged prepared
 video and poster unchanged. Draft cut or quality edits do not replace that
 accepted loop. Its quality, dimensions, rational FPS and interval belong to the

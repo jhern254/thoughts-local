@@ -48,6 +48,24 @@ type VideoSource struct {
 }
 
 func (source *VideoSource) Info() VideoSourceInfo { return source.info }
+
+// Browsers disagree about whether a nonzero MP4 start offset belongs to
+// currentTime. Browser-local scene selection requires an unambiguous zero origin;
+// native callers can still prepare source-relative cuts with nonzero timestamps.
+func (source *VideoSource) HasZeroStartTimestamp() bool {
+	stream, found := source.probe.video()
+	if !found {
+		return false
+	}
+	for _, text := range []string{stream.StartTime, source.probe.Format.StartTime} {
+		start, err := strconv.ParseFloat(text, 64)
+		if err != nil || start != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func (source *VideoSource) Close() error {
 	if source.directory == "" {
 		return nil
@@ -73,8 +91,6 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 	if err != nil {
 		return nil, ErrVideoTools
 	}
-	ctx, cancel := context.WithTimeout(ctx, MaxVideoProcessingTime)
-	defer cancel()
 	directory, err := os.MkdirTemp("", "thoughts-video-source-")
 	if err != nil {
 		return nil, err
@@ -90,10 +106,16 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 	if err != nil {
 		return nil, err
 	}
-	size, copyErr := io.Copy(file, videoSourceReader{ctx: ctx, input: io.LimitReader(input, MaxVideoBytes+1)})
+	transferCtx, cancelTransfer := context.WithTimeout(ctx, MaxVideoTransferTime)
+	size, copyErr := copyVideoSource(transferCtx, file, input)
 	if copyErr == nil {
-		copyErr = ctx.Err()
+		copyErr = transferCtx.Err()
 	}
+	cancelTransfer()
+	// Transfer time never consumes the processor deadline. A blocking input
+	// reader must be interrupted by its owner (HTTP read deadlines below).
+	ctx, cancel := context.WithTimeout(ctx, MaxVideoProcessingTime)
+	defer cancel()
 	if copyErr == nil {
 		copyErr = validateVideoContainer(file, size)
 	}
@@ -128,6 +150,16 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 			Height:     height,
 		},
 	}, nil
+}
+
+// The fixed-size copy buffer bounds application memory independently of the
+// movie size. Counting actual bytes also covers absent or false Content-Length.
+func copyVideoSource(ctx context.Context, output io.Writer, input io.Reader) (int64, error) {
+	size, err := io.CopyBuffer(output, videoSourceReader{ctx: ctx, input: io.LimitReader(input, MaxVideoSourceBytes+1)}, make([]byte, 32<<10))
+	if err == nil && size > MaxVideoSourceBytes {
+		err = ErrVideoSourceSize
+	}
+	return size, err
 }
 
 // Trim records the requested source interval; DurationMS records the validated

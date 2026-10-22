@@ -72,9 +72,11 @@ fixtures; it does not change the platform verification statuses above.
 ## Browser video background processor
 
 Video import requires user-installed FFmpeg/ffprobe with `libx264`, tested on
-Linux amd64 with FFmpeg 6.1.1. New-upload trimming, including late cuts,
-nonzero source timestamps and fractional frame rates, is verified on that
-processor with Chromium/Firefox Linux previews. They are not bundled, auto-installed, or required
+Linux amd64 with FFmpeg 6.1.1. New-upload trimming, including late cuts and
+fractional frame rates, is verified on that processor with Chromium/Firefox
+Linux previews. Native source-relative trimming also tests nonzero source
+timestamps; browser imports reject nonzero video/container origins because
+Chromium and Firefox can interpret their preview positions differently. They are not bundled, auto-installed, or required
 by ordinary app builds/image backgrounds. Keep the tools patched using the
 platform's maintained distribution. Processing uses Go subprocesses without cgo;
 this does not establish an OS sandbox. Chromium and Firefox Linux playback were
@@ -89,3 +91,11 @@ portrait output, 23.976/29.97/59.94 FPS and padded-macroblock level selection.
 Chromium and Firefox integration tests decode and persist actual 1080p60
 prepared streams. These Linux results do not upgrade other platforms or imply
 that every browser/device supports Constrained Baseline Level 4.2 playback.
+
+Long-source imports (up to two hours / 8 GiB) retain these platform statuses.
+Linux amd64 exercised small synthetic two-hour sources in Chromium/Firefox and
+a real 2.64 GiB source in Brave on the T480s. The exact 8 GiB boundary uses
+controlled streaming readers rather than a huge routine test fixture. Windows
+video-write feedback recognizes Win32 disk-full codes 112 and 39; macOS/Windows
+large-file hosting, cleanup permissions and browser runtime behavior remain
+unverified. Build-only checks do not establish large-source runtime support.

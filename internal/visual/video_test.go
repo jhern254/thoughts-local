@@ -54,7 +54,7 @@ func TestVideoLimits(t *testing.T) {
 		if err := info.validate(true); err != nil {
 			t.Fatal(err)
 		}
-		for _, change := range []func(*videoStream){func(s *videoStream) { s.PixFmt = "yuv420p10le" }, func(s *videoStream) { s.ColorTransfer = "smpte2084" }, func(s *videoStream) { s.Duration = "121" }, func(s *videoStream) { s.AvgFrameRate = "61/1" }, func(s *videoStream) { s.CodecName = "hevc" }} {
+		for _, change := range []func(*videoStream){func(s *videoStream) { s.PixFmt = "yuv420p10le" }, func(s *videoStream) { s.ColorTransfer = "smpte2084" }, func(s *videoStream) { s.Duration = "7200.001" }, func(s *videoStream) { s.AvgFrameRate = "61/1" }, func(s *videoStream) { s.CodecName = "hevc" }} {
 			bad := stream
 			change(&bad)
 			if err := (videoProbe{Streams: []videoStream{bad}}).validate(false); !errors.Is(err, ErrVideo) {
@@ -67,7 +67,7 @@ func TestVideoLimits(t *testing.T) {
 		}
 	})
 	t.Run("source duration and aggregate work remain separate from selected footage", func(t *testing.T) {
-		stream := videoStream{CodecName: "h264", CodecType: "video", Width: 1280, Height: 720, PixFmt: "yuv420p", AvgFrameRate: "24/1", Duration: "120"}
+		stream := videoStream{CodecName: "h264", CodecType: "video", Width: 1280, Height: 720, PixFmt: "yuv420p", AvgFrameRate: "24/1", Duration: "7200"}
 		if err := (videoProbe{Streams: []videoStream{stream}}).validate(false); err != nil {
 			t.Fatal(err)
 		}

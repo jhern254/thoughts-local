@@ -16,12 +16,12 @@ test.beforeAll(()=>{
 test.afterAll(()=>{if(fixtureDirectory)rmSync(fixtureDirectory,{recursive:true,force:true});});
 const framing={fit:'fill',zoom:100,positionX:5000,positionY:5000};
 
-test.beforeEach(async({page})=>{
+test.beforeEach(async({page,baseURL})=>{
+  // Reset before opening the page: its initial background restore also reads
+  // Visual settings and legitimately excludes a concurrent settings mutation.
+  const response=await page.request.put('/visual/settings',{headers:{Origin:new URL(baseURL).origin},data:{darkness:70,framing,speedPercent:100,userPaused:false,videoQuality:'efficient'}});
+  await expect(response).toBeOK();
   await page.goto('/');
-  await expect(screen(page)).toContainText('Events');
-  const response=await page.request.put('/visual/settings',{headers:{Origin:new URL(page.url()).origin},data:{darkness:70,framing,speedPercent:100,userPaused:false,videoQuality:'efficient'}});
-  expect(response.ok()).toBe(true);
-  await page.reload();
   await expect(screen(page)).toContainText('Events');
 });
 
@@ -58,7 +58,7 @@ test('unpreviewed quality changes retain accepted quality and bytes through Appl
   const acceptedVideo=await(await page.request.get(`/visual/video/preview?id=${prepared.previewID}&part=video`,{headers})).body();
   const acceptedPoster=await(await page.request.get(`/visual/video/preview?id=${prepared.previewID}&part=poster`,{headers})).body();
   await clickControl(page,'Edit loop');
-  await expect(screen(page)).toContainText('Source:');
+  await expect(screen(page)).toContainText('Source / Start:');
   await setVideoQuality(page,'maximum');
   await expect(screen(page)).toContainText('Previewed: Efficient');
   await expect(screen(page)).toContainText('Preview loop to use Maximum');
@@ -81,7 +81,7 @@ test('a new explicit quality preview replaces the candidate while settings saves
   await openVisual(page);
   await chooseImage(page,{name:'quality-change.mp4',mimeType:'video/mp4',buffer:video});
   await clickControl(page,'Edit loop');
-  await expect(screen(page)).toContainText('Source:');
+  await expect(screen(page)).toContainText('Source / Start:');
   await setVideoQuality(page,'maximum');
   const reply=page.waitForResponse(r=>r.url().endsWith('/visual/video/preview')&&r.request().method()==='POST');
   await clickControl(page,'Preview loop');

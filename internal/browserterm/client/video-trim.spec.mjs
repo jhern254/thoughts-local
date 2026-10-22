@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openVisual, clickControl, screen} from './visual-helpers.mjs';
 
-let source;
+let source, longSource, offsetSource;
 // The native settings outlive each browser context. Give motion assertions an
 // explicit user preference rather than inheriting the preceding test's pause.
 test.beforeEach(async({request,baseURL})=>{
@@ -18,6 +18,12 @@ test.beforeAll(() => {
     const path = join(directory,'source.mp4');
     execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=96x64:rate=24:duration=60','-c:v','libx264','-threads','1','-g','120','-pix_fmt','yuv420p','-movflags','+faststart',path]);
     source = {name:'synthetic-minute.mp4',mimeType:'video/mp4',buffer:readFileSync(path)};
+    const longPath=join(directory,'two-hours.mp4');
+    execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=32x24:rate=1:duration=7200','-c:v','libx264','-threads','1','-g','60','-pix_fmt','yuv420p','-movflags','+faststart',longPath]);
+    longSource={name:'two-hours.mp4',mimeType:'video/mp4',buffer:readFileSync(longPath)};
+    const offsetPath=join(directory,'offset.mp4');
+    execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','color=size=32x24:rate=24:duration=2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-output_ts_offset','5','-movflags','+faststart',offsetPath]);
+    offsetSource={name:'offset.mp4',mimeType:'video/mp4',buffer:readFileSync(offsetPath)};
   } finally {rmSync(directory,{recursive:true,force:true});}
 });
 
@@ -34,9 +40,9 @@ test('preparing a loop shows a braille wave above Options and keeps keyboard can
   page.on('websocket',()=>sockets++);
   await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
   await openVisual(page);await stageSource(page);
-  await clickControl(page,'End: 30.00s (max 30.00s)');
-  await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
-  await expect(screen(page)).toContainText('End: 1.00s');
+  await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');
+  await page.keyboard.press('Home');
+  await expect(screen(page)).toContainText('End: 00:00:01.000');
   const gate=new Promise(resolve=>{releasePreparation=resolve;});
   await page.route('**/visual/video/preview',async route=>{
     if(route.request().method()==='POST')await gate;
@@ -45,7 +51,7 @@ test('preparing a loop shows a braille wave above Options and keeps keyboard can
   try {
     await clickControl(page,'Preview loop');
     const bar=page.locator('#video-preparation-wave');
-    await expect(page.getByRole('progressbar',{name:'Preparing video…'})).toBeVisible();
+    await expect(page.getByRole('progressbar')).toBeVisible();
     await expect(bar).not.toHaveAttribute('aria-valuenow');
     const lightPosition=()=>bar.locator('.preparation-sweep').first().evaluate(element=>getComputedStyle(element).transform);
     const position=await lightPosition();
@@ -208,23 +214,17 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   const connectedSockets=sockets;
   await page.keyboard.press('t');await page.keyboard.insertText('Keep this trim draft 界');
   await openVisual(page);await stageSource(page);
-  await clickControl(page,'End: 30.00s (max 30.00s)');
+  await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');
   await page.keyboard.press('End');
   await page.keyboard.press('Shift+ArrowRight');
-  await expect(screen(page)).toContainText('End: 30.00s (max 30.00s)');
-  await page.keyboard.press('Shift+Tab');await page.keyboard.press('Shift+Tab');
+  await expect(screen(page)).toContainText('End: 00:00:30.000 (max 00:00:30.000)');
+  await clickControl(page,'Source / Start: 00:00:00.000 / 00:01:00.000');
   await page.keyboard.press('End');
-  await expect(screen(page)).toContainText('Source: 60.00 / 60.00s');
-  await clickControl(page,'End: 30.00s (max 30.00s)');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:59.000 / 00:01:00.000');
   await page.keyboard.press('Enter');
-  await expect(screen(page)).toContainText('End: 30.00s (max 30.00s)');
-  await page.screenshot({path:`/tmp/trim-${testInfo.project.name}-end-limit.png`});
-  await page.keyboard.press('Shift+Tab');await page.keyboard.press('Shift+Tab');
-  for(let i=0;i<3;i++)await page.keyboard.press('Shift+ArrowLeft');
-  await expect(screen(page)).toContainText('Source: 57.00 / 60.00s');
-  await clickControl(page,'Start: 0.00s');await page.keyboard.press('Enter');
-  await expect(screen(page)).toContainText('End: 30.00s (max 60.00s)');
-  await page.keyboard.press('Tab');await page.keyboard.press('End');
+  await page.keyboard.press('Control+u');await page.keyboard.insertText('00:00:57.000');await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('End: 00:01:00.000 (max 00:01:00.000)');
+  await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.currentTime)).toBe(57);
   await clickControl(page,'Preview loop');
   await expect(screen(page)).toContainText('Range: 57.00–60.00s');
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(false);
@@ -233,18 +233,15 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   // CSP deliberately permits blob playback, not arbitrary blob fetch requests.
   const previewBytes=Buffer.from(await page.evaluate(()=>window.trimPreviewBytes));
   await page.screenshot({path:`/tmp/trim-${testInfo.project.name}-desktop.png`});
-  await clickControl(page,'Start: 57.00s');await page.keyboard.press('Home');
-  await expect(screen(page)).toContainText('End: 30.00s (max 30.00s)');
+  await clickControl(page,'Source / Start: 00:00:57.000 / 00:01:00.000');await page.keyboard.press('Home');
+  await expect(screen(page)).toContainText('End: 00:00:30.000 (max 00:00:30.000)');
   await expect(screen(page)).toContainText('Range: 57.00–60.00s');
   expect(prepares).toBe(1);
-  await page.keyboard.press('Enter');
-  await expect(screen(page)).toContainText('Start: 57.00s');
-  await page.keyboard.press('Tab');await page.keyboard.press('End');
-  await expect(screen(page)).toContainText('End: 60.00s (max 60.00s)');
-  // A failed explicit replacement must leave both native acknowledgement and
-  // browser player on the previously reviewed loop.
-  await clickControl(page,'Start: 57.00s');await page.keyboard.press('ArrowRight');
-  await expect(screen(page)).toContainText('Start: 57.10s');
+  await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('00:00:57.000');await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('End: 00:01:00.000 (max 00:01:00.000)');
+  // A failed replacement preserves the previously acknowledged loop.
+  await page.keyboard.press('ArrowRight');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:57.100 / 00:01:00.000');
   expect(prepares).toBe(1);
   await page.route('**/visual/video/preview',async route=>{
     if(route.request().method()==='POST')await route.fulfill({status:500,body:'Could not prepare loop.'});else await route.continue();
@@ -304,10 +301,12 @@ test('disconnect retires an editor and its prepared URLs without changing the se
   await openVisual(page);
   const staged=page.waitForRequest(request=>new URL(request.url()).pathname==='/visual/video/source'&&request.method()==='POST');
   await stageSource(page);
-  const editorID=(await staged).headers()['x-visual-editor'];
+
   // Keep the initial preview short; no source is retained once the session ends.
-  await clickControl(page,'End: 30.00s (max 30.00s)');await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
-  await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Range: 0.00–1.00s');
+  await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
+  await clickControl(page,'Preview loop');
+  const editorID=(await staged).headers()['x-visual-editor'];
+  await expect(screen(page)).toContainText('Range: 0.00–1.00s');
   await page.emulateMedia({reducedMotion:'reduce'});
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(true);
   await page.evaluate(()=>window.trimSocket.close());
@@ -336,7 +335,7 @@ test('a decoded loop stays applicable with reduced motion or rejected preview pl
   await page.emulateMedia({reducedMotion:'reduce'});
   await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
   await openVisual(page);await stageSource(page);
-  await clickControl(page,'End: 30.00s (max 30.00s)');await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');
+  await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
   await clickControl(page,'Preview loop');
   await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(true);
@@ -354,4 +353,76 @@ test('a decoded loop stays applicable with reduced motion or rejected preview pl
   expect(settings.kind).toBe('video');expect(settings.userPaused).toBe(false);
   await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
   await expect(page.locator('#background-image')).toBeVisible();
+});
+
+
+test('two-hour source stays local while Start seeks and uploads once for repeated previews',async({page},testInfo)=>{
+ let uploads=0,prepares=0,sockets=0;
+ page.on('websocket',()=>sockets++);
+ page.on('request',request=>{const url=new URL(request.url());if(request.method()==='POST'&&url.pathname==='/visual/video/source')uploads++;if(request.method()==='POST'&&url.pathname==='/visual/video/preview')prepares++;});
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await openVisual(page);
+ const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(longSource);
+ await expect(screen(page)).toContainText('Source / Start: 00:00:00.000 / 02:00:00.000');
+ expect(uploads).toBe(0);expect(prepares).toBe(0);
+ await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('01:24:10.000');await page.keyboard.press('Enter');
+ await expect(screen(page)).toContainText('End: 01:24:40.000');
+ await expect.poll(()=>page.locator('#background-preview-video').evaluate(v=>v.currentTime)).toBe(5050);
+ await expect(page.locator('#background-preview-video')).toBeVisible();
+ await page.screenshot({path:`/tmp/long-source-${testInfo.project.name}-paused.png`});
+ await page.setViewportSize({width:650,height:600});
+ await expect(screen(page)).toContainText('Source / Start: 01:24:10.000');
+ await expect.poll(()=>page.locator('#background-preview-wrap').evaluate(element=>{const rect=element.getBoundingClientRect();return !element.hidden&&rect.left>=0&&rect.right<=innerWidth;})).toBe(true);
+ await page.screenshot({path:`/tmp/long-source-${testInfo.project.name}-narrow.png`});
+ await page.keyboard.press('PageDown');await expect(screen(page)).toContainText('Source / Start: 01:25:10.000');
+ await page.keyboard.press('End');await expect(screen(page)).toContainText('Source / Start: 01:59:59.000');
+ await expect.poll(()=>page.locator('#background-preview-video').evaluate(v=>v.currentTime)).toBe(7199);
+ expect(uploads).toBe(0);expect(prepares).toBe(0);
+ await page.keyboard.press('Shift+ArrowLeft');
+ await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ expect(uploads).toBe(1);expect(prepares).toBe(1);
+ await clickControl(page,'Source / Start: 01:59:58.000 / 02:00:00.000');
+ await page.keyboard.press('Shift+ArrowLeft');
+ await expect(screen(page)).toContainText('Source / Start: 01:59:57.000');
+ const reused=page.waitForResponse(r=>new URL(r.url()).pathname==='/visual/video/preview'&&r.request().method()==='POST');
+ await clickControl(page,'Preview loop');await reused;
+ await expect(page.locator('#video-preparation')).toBeHidden();
+ await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ expect(uploads).toBe(1);expect(prepares).toBe(2);expect(sockets).toBe(1);
+ expect(await page.locator('#background-preview-video').evaluate(video=>video.duration)).toBe(3);
+ await clickControl(page,'Cancel upload');await expect(screen(page)).toContainText('Background darkness:');
+});
+
+for(const phase of ['source transfer','preview acknowledgement'])test(`cancellation during ${phase} retires the candidate without changing the background`,async({page})=>{
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ const before=await(await page.request.get('/visual')).json();
+ await openVisual(page);await stageSource(page);
+ await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
+ let release,entered;
+ const gate=new Promise(done=>{release=done;}),arrival=new Promise(done=>{entered=done;});
+ const path=phase==='source transfer'?'**/visual/video/source':'**/visual/video/preview';
+ await page.route(path,async route=>{
+  const method=phase==='source transfer'?'POST':'PUT';
+  if(route.request().method()===method){entered();await gate;}
+  await route.continue();
+ });
+ try {
+  await clickControl(page,'Preview loop');await arrival;
+  await page.keyboard.press('Escape');await page.keyboard.press('Escape');
+  await expect(screen(page)).toContainText('Background darkness:');
+  expect(await(await page.request.get('/visual')).json()).toEqual(before);
+  await expect(page.locator('#background-preview-video')).toHaveCount(0);
+ }finally{release();await page.unrouteAll({behavior:'wait'});}
+});
+
+
+test('incompatible browser timestamp origins cannot prepare a different scene',async({page})=>{
+ let prepares=0;page.on('request',r=>{if(new URL(r.url()).pathname==='/visual/video/preview'&&r.method()==='POST')prepares++;});
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ const before=await(await page.request.get('/visual')).json();await openVisual(page);
+ const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(offsetSource);
+ await expect(screen(page)).toContainText(/Set cut points|Export a zero-start/);
+ if((await screen(page).textContent()).includes('Set cut points'))await clickControl(page,'Preview loop');
+ await expect(screen(page)).toContainText('Export a zero-start MP4/MOV');
+ expect(prepares).toBe(0);expect(await(await page.request.get('/visual')).json()).toEqual(before);
 });

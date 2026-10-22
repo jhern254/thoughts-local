@@ -64,7 +64,7 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 			if msg.ID == 0 || !msg.Framing.Valid() || msg.Framing.Fit != "fill" {
 				return nil, errInput
 			}
-		case "loaded", "selected", "cancelled", "saved", "warning", "failed", "played", "previewed", "staged", "loopReady", "discarded":
+		case "loaded", "selected", "cancelled", "saved", "warning", "failed", "played", "previewed", "sourceSelected", "sourceVerified", "sourceBounds", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceTimeline", "loopReady", "discarded":
 			if msg.ID == 0 {
 				return nil, errInput
 			}
