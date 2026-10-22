@@ -23,12 +23,12 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 	t.Run("starts at Now then opens pinned metrics without reading", func(t *testing.T) {
 		m, _, store := fixture(t)
 		startup := New(m.ctx, m.userID, m.service, m.timelineView, thought.NewService(testutils.NewFakeThoughtStore()), m.subjectReader, m.logger)
-		if startup.position.target != targetBoundary {
+		if startup.position.target != targetDayBoundary {
 			t.Fatal("new model does not focus Now")
 		}
 		m, _ = m.Update(eventKey("end"))
 		m.subjectTime.items = []data.SubjectTimeView{{SubjectID: 1, SubjectName: "Coding", TimeSpentSeconds: 12000}, {SubjectID: 2, SubjectName: "Reading", TimeSpentSeconds: 6000}}
-		if m.position.target != targetBoundary {
+		if m.position.target != targetDayBoundary {
 			t.Fatal("startup did not focus Now")
 		}
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
@@ -37,7 +37,7 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 		}
 		reads := store.subjectReads
 		m, cmd := m.Update(eventKey("down"))
-		if cmd != nil || store.subjectReads != reads || m.position.target != targetMetrics {
+		if cmd != nil || store.subjectReads != reads || m.position.target != targetSubjectTime {
 			t.Fatal("opening metrics started a read or lost focus")
 		}
 		rows = strings.Split(ansi.Strip(m.timelineBody()), "\n")
@@ -45,7 +45,7 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 			t.Fatalf("pinned header: got %q", rows[:5])
 		}
 		m, _ = m.Update(eventKey("up"))
-		if m.position.target != targetBoundary {
+		if m.position.target != targetDayBoundary {
 			t.Fatal("collapse skipped the Now stop")
 		}
 		m, _ = m.Update(eventKey("up"))
@@ -53,7 +53,7 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 			t.Fatal("Up did not select latest entry")
 		}
 		m, _ = m.Update(eventKey("down"))
-		if m.position.target != targetBoundary {
+		if m.position.target != targetDayBoundary {
 			t.Fatal("Down skipped the buffer stop")
 		}
 	})
@@ -88,11 +88,11 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 		m, _ = m.Update(eventKey("down"))
 		reads := store.subjectReads
 		m, cmd := m.Update(eventKey("left"))
-		if cmd != nil || m.position.target != targetMetrics {
+		if cmd != nil || m.position.target != targetSubjectTime {
 			t.Fatal("Left exited metrics")
 		}
 		m, cmd = m.Update(eventKey("up"))
-		if cmd != nil || m.position.target != targetBoundary || store.subjectReads != reads {
+		if cmd != nil || m.position.target != targetDayBoundary || store.subjectReads != reads {
 			t.Fatal("Up did not return to the latest event and Now without a read")
 		}
 	})
@@ -100,14 +100,14 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 	t.Run("End retains historical metrics until today's cards arrive", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.day = m.day.AddDate(0, 0, -1)
-		m.position.target = targetMetrics
+		m.position.target = targetSubjectTime
 		before := m.timelineBody()
 		m, cmd := m.Update(eventKey("end"))
 		if !m.load.entriesPending || m.load.retainedBody != before {
 			t.Fatal("End changed the accepted historical body before today's reply")
 		}
 		m = execute(t, m, cmd)
-		if m.position.target != targetBoundary || !m.day.Equal(displaytime.Day(m.clock)) {
+		if m.position.target != targetDayBoundary || !m.day.Equal(displaytime.Day(m.clock)) {
 			t.Fatal("End did not land at today's Now stop")
 		}
 	})
@@ -258,7 +258,7 @@ func TestModel_SubjectTimeRefresh(t *testing.T) {
 
 	t.Run("shows delayed feedback only for the current pending read", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		m.position.target = targetMetrics
+		m.position.target = targetSubjectTime
 		batch := m.loadSubjectTime(m.day)().(tea.BatchMsg)
 		if strings.Contains(m.View(), "Loading subject time") {
 			t.Fatal("fast read flashed loading feedback")
@@ -350,7 +350,7 @@ func TestModel_SubjectTimePresentation(t *testing.T) {
 	t.Run("keeps durations and Unicode names inside a narrow card without a chart lane", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.Resize(40, 20)
-		m.position.target = targetMetrics
+		m.position.target = targetSubjectTime
 		m.subjectTime.items = []data.SubjectTimeView{{SubjectID: 7, SubjectName: strings.Repeat("学習", 30), TimeSpentSeconds: 5400}}
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
 		if !strings.Contains(rows[4], "Subject time today") || !strings.Contains(rows[4], "Goals") {
@@ -372,7 +372,7 @@ func TestModel_SubjectTimePresentation(t *testing.T) {
 	})
 	t.Run("uses the whole-day scale while scrolling and leaves ellipsis lanes blank", func(t *testing.T) {
 		m, _, _ := fixture(t)
-		m.position.target = targetMetrics
+		m.position.target = targetSubjectTime
 		for i := 0; i < 30; i++ {
 			m.subjectTime.items = append(m.subjectTime.items, data.SubjectTimeView{SubjectID: int64(i + 1), SubjectName: fmt.Sprintf("Subject %02d", i), TimeSpentSeconds: int64(36000 / (i + 1))})
 		}
@@ -391,13 +391,13 @@ func TestModel_SubjectTimePresentation(t *testing.T) {
 	t.Run("anchors empty and short charts below Now and labels historical days", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.entries = nil
-		m.position.target = targetBoundary
+		m.position.target = targetDayBoundary
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
 		if len(rows) != m.bodyHeight() || !strings.Contains(rows[0], "Now") || !strings.Contains(rows[5], "No subject time recorded") || !strings.Contains(rows[6], "╰") {
 			t.Fatalf("got empty preview %q", rows)
 		}
 		m.day = m.day.AddDate(0, 0, -1)
-		m.position.target = targetMetrics
+		m.position.target = targetSubjectTime
 		rows = strings.Split(ansi.Strip(m.timelineBody()), "\n")
 		if strings.Contains(rows[0], "Now") || !strings.Contains(rows[0], "...") || strings.Contains(rows[4], "today") {
 			t.Fatalf("got historical heading %q", rows[:5])
@@ -410,7 +410,7 @@ func BenchmarkModel_SubjectTimeNavigation(b *testing.B) {
 	for i := 0; i < 30; i++ {
 		m.subjectTime.items = append(m.subjectTime.items, data.SubjectTimeView{SubjectID: int64(i + 1), SubjectName: fmt.Sprintf("Subject %02d", i), TimeSpentSeconds: int64(3600 - i)})
 	}
-	m.position.target = targetBoundary
+	m.position.target = targetDayBoundary
 	reads := store.subjectReads
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -430,14 +430,14 @@ func TestModel_SubjectTimeSnapshots(t *testing.T) {
 	for _, name := range []string{"subject-time-preview", "subject-time-expanded", "subject-time-narrow"} {
 		t.Run(name, func(t *testing.T) {
 			m, _, _ := fixture(t)
-			m.position.target = targetBoundary
+			m.position.target = targetDayBoundary
 			m.subjectTime.items = []data.SubjectTimeView{
 				{SubjectID: 1, SubjectName: "Coding", TimeSpentSeconds: 12000},
 				{SubjectID: 2, SubjectName: "Reading", TimeSpentSeconds: 6000},
 				{SubjectID: 3, SubjectName: "Planning", TimeSpentSeconds: 1200},
 			}
 			if name != "subject-time-preview" {
-				m.position.target = targetMetrics
+				m.position.target = targetSubjectTime
 			}
 			if name == "subject-time-narrow" {
 				m.Resize(40, 20)
@@ -456,7 +456,7 @@ func TestModel_SubjectTimeSnapshots(t *testing.T) {
 
 func TestModel_SubjectTimeDistributions(t *testing.T) {
 	t.Run("uses a strong baseline and responds to shared controls from timeline and metrics", func(t *testing.T) {
-		for _, target := range []timelineTarget{targetBoundary, targetMetrics} {
+		for _, target := range []timelineTarget{targetDayBoundary, targetSubjectTime} {
 			m, _, _ := fixture(t)
 			m.position.target = target
 			m.subjectTime.items = []data.SubjectTimeView{

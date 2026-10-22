@@ -4,8 +4,8 @@ type timelineTarget uint8
 
 const (
 	targetEntry timelineTarget = iota
-	targetBoundary
-	targetMetrics
+	targetDayBoundary
+	targetSubjectTime
 )
 
 // timelinePosition separates timeline-entry selection from the first visible rendered

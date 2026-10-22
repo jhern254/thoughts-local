@@ -23,11 +23,11 @@ func previewThoughts() []previewThought {
 
 func drawThoughtLengths(width, height, selected int, options render.Options, plain bool) string {
 	thoughts := previewThoughts()
-	bars := make([]render.Bar, len(thoughts))
+	bars := make([]render.HorizontalBar, len(thoughts))
 	for i, thought := range thoughts {
-		bars[i] = render.Bar{Row: 3 * i, Value: thought.characters}
+		bars[i] = render.HorizontalBar{Row: 3 * i, Value: thought.characters}
 	}
-	cells := render.RenderBars(curveWidth, 8, bars, render.BarOptions{
+	cells := render.RenderHorizontalBars(curveWidth, 8, bars, render.HorizontalBarOptions{
 		Mode:      options.Mode,
 		Reference: 320,
 		Exponent:  render.ThoughtLengthExponent(options.CountExponent),

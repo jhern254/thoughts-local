@@ -201,7 +201,7 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 	header := ansi.Truncate(heading, nameWidth, "…")
 	header += strings.Repeat(" ", max(0, timeColumn-ansi.StringWidth(header))) + "Goals"
 	content := []string{ansi.Truncate(header, m.cardWidth(), "…")}
-	var bars []render.Bar
+	var bars []render.HorizontalBar
 	var barSubjects []int64
 	start, end := 0, len(s.items)
 	if windowed {
@@ -235,13 +235,13 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 		badge := list.DefaultStyles(true).Title.Render(singleLine(item.SubjectName))
 		badge = ansi.Truncate(badge, nameWidth, "…")
 		content = append(content, ansi.Truncate(badge+strings.Repeat(" ", max(0, timeColumn-ansi.StringWidth(badge)))+spent, m.cardWidth(), "…"))
-		bars = append(bars, render.Bar{Row: len(content), Value: item.TimeSpentSeconds})
+		bars = append(bars, render.HorizontalBar{Row: len(content), Value: item.TimeSpentSeconds})
 		barSubjects = append(barSubjects, item.SubjectID)
 	}
 	if windowed && end < len(s.items) {
 		content = append(content, "...")
 	}
-	panel := m.paintCard(content, m.position.target == targetMetrics)
+	panel := m.paintCard(content, m.position.target == targetSubjectTime)
 	var cells [][]render.Cell
 	if m.width >= distributionMinWidth && len(s.items) > 0 {
 		_, exponent := m.distributions.boostPreset()
@@ -249,7 +249,7 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 		// 0.8). Apply that same ratio to every shared preset, so all five levels
 		// still change these bars when tuned from either the timeline or metrics.
 		const subjectTimeBoost = 0.25 / 0.8
-		cells = render.RenderBars(distributionWidth, len(panel), bars, render.BarOptions{
+		cells = render.RenderHorizontalBars(distributionWidth, len(panel), bars, render.HorizontalBarOptions{
 			Mode:      m.distributions.mode,
 			Reference: s.items[0].TimeSpentSeconds,
 			Exponent:  render.ThoughtLengthExponent(exponent) * subjectTimeBoost,

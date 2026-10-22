@@ -2,17 +2,17 @@ package render
 
 import "math"
 
-// Bar occupies one terminal row. Value is a nonnegative quantity in caller-defined
+// HorizontalBar occupies one terminal row. Value is a nonnegative quantity in caller-defined
 // units (for example, code points or elapsed seconds); Row may be outside the viewport.
-type Bar struct {
+type HorizontalBar struct {
 	Row   int
 	Value int64
 }
 
-// BarOptions uses the same mode, boost and size conventions as curves.
+// HorizontalBarOptions uses the same mode, boost and size conventions as curves.
 // Reference is the whole collection's maximum, including offscreen values. It is
 // deliberately not inferred from visible bars: scrolling must not change scale.
-type BarOptions struct {
+type HorizontalBarOptions struct {
 	Mode      Mode
 	Reference int64
 	Exponent  float64 // Positive power; invalid values use the thought length default, 3.0.
@@ -35,7 +35,7 @@ func ThoughtLengthExponent(curveExponent float64) float64 {
 	return thoughtLengthExponent * curveExponent / countExponent
 }
 
-// RenderBars draws discrete leftward bars in the existing Braille language.
+// RenderHorizontalBars draws discrete leftward bars in the existing Braille language.
 // It returns height rows of width cells; nonpositive dimensions return nil.
 // CurveIndex identifies the input bar for caller-owned coloring, or -1 for blank or the muted connecting stem.
 // Selection is not a drawing input and cannot change bar geometry.
@@ -54,7 +54,7 @@ func ThoughtLengthExponent(curveExponent float64) float64 {
 // including clipped/offscreen bars, but never extends into headers or footers.
 // Outline keeps only each rectangle's perimeter and the same stem. Zero/negative values
 // and unknown references draw nothing, rather than inventing an aesthetic mound.
-func RenderBars(width, height int, bars []Bar, options BarOptions) [][]Cell {
+func RenderHorizontalBars(width, height int, bars []HorizontalBar, options HorizontalBarOptions) [][]Cell {
 	if width <= 0 || height <= 0 {
 		return nil
 	}

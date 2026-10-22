@@ -286,7 +286,7 @@ func (m *Model) measureTimeline() timelineLayout {
 			priority:   1,
 			key:        entry.Key(),
 			content:    m.entryContent(entry),
-			selected:   (m.position.target == targetEntry && i == m.position.entryIndex) || (m.position.target == targetBoundary && i == len(m.entries)-1),
+			selected:   (m.position.target == targetEntry && i == m.position.entryIndex) || (m.position.target == targetDayBoundary && i == len(m.entries)-1),
 			end:        end,
 			hideEnd:    hideEnd,
 		})
@@ -436,10 +436,10 @@ func (m *Model) revealSelected() {
 	m.position.clamp(len(layout.lines))
 }
 func (m *Model) anchor() {
-	if m.position.target == targetBoundary {
+	if m.position.target == targetDayBoundary {
 		return
 	}
-	if m.position.target == targetMetrics {
+	if m.position.target == targetSubjectTime {
 		m.clampSubjectTime()
 		return
 	}
@@ -456,10 +456,10 @@ func (m *Model) anchor() {
 }
 
 func (m *Model) timelineBody() string {
-	if m.position.target == targetBoundary {
+	if m.position.target == targetDayBoundary {
 		return m.boundaryBody()
 	}
-	if m.position.target == targetMetrics {
+	if m.position.target == targetSubjectTime {
 		return m.subjectTimeBody()
 	}
 	layout := m.measureTimeline()
@@ -514,10 +514,10 @@ func (m Model) View() string {
 	if !m.expanded.IsZero() {
 		help = "Q/Esc back • r reload • d distributions • m mindset"
 	}
-	if m.position.target == targetBoundary && m.message == "" && m.subjectTime.err == nil && !m.load.showStatus {
+	if m.position.target == targetDayBoundary && m.message == "" && m.subjectTime.err == nil && !m.load.showStatus {
 		status = "↑: latest card • ↓: subject time • d: distributions"
 	}
-	if m.position.target == targetMetrics {
+	if m.position.target == targetSubjectTime {
 		status = "↑: back/scroll • ↓: subjects • PgUp/PgDn: page • Esc: now"
 		help = "Home: first • End: now • r: refresh • d: distributions"
 		if m.subjectTime.err != nil {

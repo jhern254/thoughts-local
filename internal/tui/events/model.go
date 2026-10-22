@@ -156,7 +156,7 @@ func New(ctx context.Context, userID string, service Service, view TimelineView,
 		clock:         now,
 		day:           displaytime.Day(now),
 		distributions: defaultDistributionSettings(),
-		position:      timelinePosition{target: targetBoundary, followNow: true},
+		position:      timelinePosition{target: targetDayBoundary, followNow: true},
 		width:         80,
 		height:        20,
 
@@ -216,7 +216,7 @@ func (m Model) FormOpen() bool        { return m.form.open }
 
 // AtTopLevel excludes the nested views and controls owned by Events.
 func (m Model) AtTopLevel() bool {
-	return m.CanLeave() && m.expanded.IsZero() && !m.distributions.open && m.position.target != targetMetrics
+	return m.CanLeave() && m.expanded.IsZero() && !m.distributions.open && m.position.target != targetSubjectTime
 }
 func (m *Model) Resize(width, height int) {
 	m.load.retainedBody = ""
@@ -391,7 +391,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.position.entryIndex, m.position.topLine, m.expanded = 0, 0, timeline.EntryKey{}
 			m.position.target = targetEntry
 			if m.position.followNow {
-				m.position.target = targetBoundary
+				m.position.target = targetDayBoundary
 			}
 			m.entries = nil
 			m.picker.Reset()
@@ -545,7 +545,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.clock = m.now()
 			day = displaytime.Day(m.clock)
 			m.position.followNow = true
-			m.position.target = targetBoundary
+			m.position.target = targetDayBoundary
 		}
 		cmd := m.loadDay(day)
 		return m, cmd
@@ -590,7 +590,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.load.retainedBody = ""
 		return m, nil
 	}
-	if m.position.target == targetMetrics {
+	if m.position.target == targetSubjectTime {
 		m.load.retainedBody = ""
 		switch key.String() {
 		case "down", "j":
@@ -599,7 +599,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		case "up", "k":
 			if m.subjectTime.offset == 0 {
-				m.position.target = targetBoundary
+				m.position.target = targetDayBoundary
 				m.position.followNow = m.day.Equal(displaytime.Day(m.clock))
 			} else {
 				m.subjectTime.offset--
@@ -615,7 +615,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.clampSubjectTime()
 			return m, nil
 		case "esc":
-			m.position.target = targetBoundary
+			m.position.target = targetDayBoundary
 			m.position.followNow = m.day.Equal(displaytime.Day(m.clock))
 			return m, nil
 		case "end", "home", "r":
@@ -668,7 +668,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	default:
 		m.load.retainedBody = ""
 	}
-	if m.position.target == targetBoundary && len(m.entries) > 0 {
+	if m.position.target == targetDayBoundary && len(m.entries) > 0 {
 		m.position.entryIndex = len(m.entries) - 1
 	}
 	switch navigation {
@@ -680,7 +680,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if !day.Equal(m.day) || m.load.entriesPending {
 			cmd = m.loadDay(day)
 		}
-		m.position.target = targetBoundary
+		m.position.target = targetDayBoundary
 		m.position.entryIndex = max(0, len(m.entries)-1)
 		m.anchor()
 		return m, cmd
@@ -707,9 +707,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if key.String() == "up" || key.String() == "k" {
 			delta = -1
 		}
-		if m.position.target == targetBoundary {
+		if m.position.target == targetDayBoundary {
 			if delta > 0 {
-				m.position.target = targetMetrics
+				m.position.target = targetSubjectTime
 				m.position.followNow = false
 				m.subjectTime.offset = 0
 				return m, nil
@@ -724,7 +724,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		if delta > 0 && (len(m.entries) == 0 || m.position.entryIndex == len(m.entries)-1) {
-			m.position.target = targetBoundary
+			m.position.target = targetDayBoundary
 			m.position.followNow = m.day.Equal(displaytime.Day(m.clock))
 			m.anchor()
 			return m, nil
@@ -732,7 +732,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.position.moveEntry(delta, len(m.entries))
 		m.revealSelected()
 	case "pgup", "pgdown":
-		if m.position.target == targetBoundary {
+		if m.position.target == targetDayBoundary {
 			m.position.topLine = max(0, m.measureTimeline().nowLine-m.bodyHeight()+2)
 		}
 		m.position.target = targetEntry

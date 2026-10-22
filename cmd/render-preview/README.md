@@ -220,6 +220,6 @@ reach = max(1, round(maximumReach * ratio^exponent))
 ```
 
 Positive bars have at least one dot of reach. The 16-dot default matches the
-collapsed curve's maximum peak; size is bounded to 0.5–1.25. Bar length compares
+collapsed curve's maximum peak; size is bounded to 0.5–1.25. HorizontalBar length compares
 thoughts within an event, not across events. This is a discrete length chart,
 not a probability density or a timeline of thought timestamps.

@@ -75,7 +75,7 @@ func TestModel_TimelinePosition(t *testing.T) {
 				t.Fatal("Down must select and reveal the second event, stopping at the last event")
 			}
 		}
-		if m.position.target != targetBoundary {
+		if m.position.target != targetDayBoundary {
 			t.Fatal("second Down did not reach Now")
 		}
 		m, _ = m.Update(eventKey("up"))
