@@ -382,7 +382,7 @@ func (m *Model) measureTimeline() timelineLayout {
 	subjectTimeTop := -1
 	if nowLine >= 0 || m.day.Before(displaytime.Day(m.clock)) {
 		subjectTimeTop = len(lines) + 2
-		lines = append(lines, make([]string, 2+max(1, len(m.subjectTime.items))+3)...)
+		lines = append(lines, make([]string, 2+max(1, len(m.subjectTime.items))+4)...)
 	}
 	return timelineLayout{
 		subjectTimeTop: subjectTimeTop,
@@ -525,7 +525,7 @@ func (m Model) View() string {
 		}
 	}
 	if m.distributions.open {
-		status = m.distributions.label()
+		status = m.activeDistributions().label()
 		if m.width < distributionMinWidth {
 			status = "Distributions hidden below 60 columns"
 		}

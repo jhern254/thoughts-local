@@ -46,6 +46,7 @@ type subjectTimeState struct {
 	items               []data.SubjectTimeView
 	err                 error
 	offset              int
+	distributions       distributionSettings
 }
 
 func (s *subjectTimeState) stop() {
@@ -125,7 +126,7 @@ func (m *Model) acceptSubjectTime(reply subjectTimeMsg) {
 }
 
 func (m *Model) clampSubjectTime() {
-	capacity := max(1, m.bodyHeight()-6)
+	capacity := max(1, m.bodyHeight()-7)
 	last := 0
 	if len(m.subjectTime.items) > capacity {
 		last = len(m.subjectTime.items) - max(1, capacity-1)
@@ -170,14 +171,27 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 	if m.day.Equal(displaytime.Day(m.clock)) {
 		heading += " today"
 	}
-	content := []string{ansi.Truncate(heading, m.cardWidth(), "…")}
+	// Align the duration column using the whole day, so scrolling cannot move it.
+	nameWidth := 0
+	timeWidth := len("Goals")
+	for _, item := range s.items {
+		nameWidth = max(nameWidth, ansi.StringWidth(singleLine(item.SubjectName))+2)
+		timeWidth = max(timeWidth, ansi.StringWidth(subjectTimeDuration(item.TimeSpentSeconds)))
+	}
+	gap := min(3, max(0, m.cardWidth()-timeWidth))
+	nameWidth = max(0, min(nameWidth, m.cardWidth()-gap-timeWidth))
+	timeColumn := nameWidth + gap
+	content := []string{
+		ansi.Truncate(heading, m.cardWidth(), "…"),
+		ansi.Truncate(strings.Repeat(" ", timeColumn)+"Goals", m.cardWidth(), "…"),
+	}
 	var bars []render.Bar
 	var barSubjects []int64
 	start, end := 0, len(s.items)
 	if windowed {
 		m.clampSubjectTime()
 		start = s.offset
-		capacity := max(1, m.bodyHeight()-6)
+		capacity := max(1, m.bodyHeight()-7)
 		if start > 0 {
 			content = append(content, "...")
 			capacity--
@@ -203,8 +217,8 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 		item := s.items[i]
 		spent := subjectTimeDuration(item.TimeSpentSeconds)
 		badge := list.DefaultStyles(true).Title.Render(singleLine(item.SubjectName))
-		badge = ansi.Truncate(badge, max(0, m.cardWidth()-ansi.StringWidth(spent)-1), "…")
-		content = append(content, badge+strings.Repeat(" ", max(1, m.cardWidth()-ansi.StringWidth(badge)-ansi.StringWidth(spent)))+spent)
+		badge = ansi.Truncate(badge, nameWidth, "…")
+		content = append(content, ansi.Truncate(badge+strings.Repeat(" ", max(0, timeColumn-ansi.StringWidth(badge)))+spent, m.cardWidth(), "…"))
 		bars = append(bars, render.Bar{Row: len(content), Value: item.TimeSpentSeconds})
 		barSubjects = append(barSubjects, item.SubjectID)
 	}
@@ -214,12 +228,12 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 	panel := m.paintCard(content, m.position.target == targetMetrics)
 	var cells [][]render.Cell
 	if m.width >= distributionMinWidth && len(s.items) > 0 {
-		_, exponent := m.distributions.boostPreset()
+		_, exponent := s.distributions.boostPreset()
 		cells = render.RenderBars(distributionWidth, len(panel), bars, render.BarOptions{
-			Mode:      m.distributions.mode,
+			Mode:      s.distributions.mode,
 			Reference: s.items[0].TimeSpentSeconds,
 			Exponent:  render.ThoughtLengthExponent(exponent),
-			Size:      float64(m.distributions.size) / 100,
+			Size:      float64(s.distributions.size) / 100,
 		})
 	}
 	for y := range panel {
@@ -251,7 +265,7 @@ func (m *Model) boundaryBody() string {
 	if len(m.entries) > 0 {
 		layout := m.measureTimeline()
 		last := layout.cards[len(layout.cards)-1]
-		available := max(0, height-6)
+		available := max(0, height-7)
 		if len(last.content)+2 > available && available >= 4 {
 			card := m.paintCard(last.content[:available-2], last.selected)
 			for i, row := range card {

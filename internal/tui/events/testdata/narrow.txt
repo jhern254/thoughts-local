@@ -15,6 +15,6 @@
 
           ╭────────────────────────────╮
           │Subject time today          │
-          │No subject time recorded.   │
+          │   Goals                    │
 ←: collapse • →: open • ↑/↓: thoughts •…
 Q/Esc back • r reload • d distributions…

@@ -22,6 +22,6 @@
 
                         ╭──────────────────────────────────────────────────────╮
                         │Subject time today                                    │
-                        │No subject time recorded.                             │
+                        │   Goals                                              │
 d: distribution settings
 ← day / → open • Home/End: first/now • r: refresh • n: start • e: end
