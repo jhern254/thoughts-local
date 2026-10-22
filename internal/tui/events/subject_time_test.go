@@ -391,50 +391,58 @@ func TestModel_SubjectTimeSnapshots(t *testing.T) {
 }
 
 func TestModel_SubjectTimeDistributions(t *testing.T) {
-	t.Run("starts strong and tunes metrics independently with reset to strong", func(t *testing.T) {
-		m, _, _ := fixture(t)
-		m.position.target = targetMetrics
-		m.subjectTime.items = []data.SubjectTimeView{
-			{SubjectID: 1, SubjectName: "Coding", TimeSpentSeconds: 3600},
-			{SubjectID: 2, SubjectName: "Reading", TimeSpentSeconds: 1800},
-		}
-		before := distributionLane(m.subjectTimePanel(false))
-		m, _ = m.Update(eventKey("d"))
-		if !strings.Contains(m.View(), "strong boost") {
-			t.Fatal("metrics did not default to strong boost")
-		}
-		var previous int
-		for range 3 {
-			m, _ = m.Update(eventKey("left"))
-		}
-		for level := range boostCount {
-			lane := distributionLane(m.subjectTimePanel(false))
-			filled := 0
+	t.Run("uses a strong baseline and responds to shared controls from timeline and metrics", func(t *testing.T) {
+		for _, target := range []timelineTarget{targetBoundary, targetMetrics} {
+			m, _, _ := fixture(t)
+			m.position.target = target
+			m.subjectTime.items = []data.SubjectTimeView{
+				{SubjectID: 1, SubjectName: "Coding", TimeSpentSeconds: 3600},
+				{SubjectID: 2, SubjectName: "Reading", TimeSpentSeconds: 1800},
+			}
+			before := distributionLane(m.subjectTimePanel(false))
+			// At normal shared settings the half-day bar has Strong Boost's
+			// 0.9375 exponent, reaching eight dots plus its baseline: 36 dots.
+			rows := m.subjectTimePanel(false)
+			lane := ansi.Cut(ansi.Strip(rows[3]), 12, 22)
+			var dots int
 			for _, glyph := range lane {
 				if glyph >= '\u2800' && glyph <= '\u28ff' {
-					filled += bits.OnesCount8(uint8(glyph - '\u2800'))
+					dots += bits.OnesCount8(uint8(glyph - '\u2800'))
 				}
 			}
-			if level > 0 && filled <= previous {
-				t.Fatalf("boost %d: got %d dots, want more than %d", level, filled, previous)
+			if dots != 36 {
+				t.Fatalf("default metric bar: got %d dots, want 36", dots)
 			}
-			previous = filled
-			m, _ = m.Update(eventKey("right"))
-		}
-		m, _ = m.Update(eventKey("up"))
-		m, _ = m.Update(eventKey("f"))
-		m, _ = m.Update(eventKey("0"))
-		if got := distributionLane(m.subjectTimePanel(false)); got != before {
-			t.Fatal("reset did not restore strong metric geometry")
-		}
-		if m.distributions.boost != boostNormal || m.distributions.size != 100 || m.distributions.mode != render.Filled {
-			t.Fatal("metric tuning changed event settings")
-		}
-		m, _ = m.Update(eventKey("esc"))
-		m.position.target = targetBoundary
-		m, _ = m.Update(eventKey("d"))
-		if !strings.Contains(m.View(), "normal boost") {
-			t.Fatal("event settings no longer default to normal")
+			m, _ = m.Update(eventKey("d"))
+			m, _ = m.Update(eventKey("left"))
+			previous := 0
+			for level := range boostCount {
+				lane := distributionLane(m.subjectTimePanel(false))
+				filled := 0
+				for _, glyph := range lane {
+					if glyph >= '\u2800' && glyph <= '\u28ff' {
+						filled += bits.OnesCount8(uint8(glyph - '\u2800'))
+					}
+				}
+				if level > 0 && filled <= previous {
+					t.Fatalf("target %v boost %d: got %d dots, want more than %d", target, level, filled, previous)
+				}
+				previous = filled
+				m, _ = m.Update(eventKey("right"))
+			}
+			m, _ = m.Update(eventKey("up"))
+			m, _ = m.Update(eventKey("f"))
+			if m.distributions.size != 105 || m.distributions.mode != render.Outline {
+				t.Fatal("shared size and mode did not change")
+			}
+			m, _ = m.Update(eventKey("0"))
+			if got := distributionLane(m.subjectTimePanel(false)); got != before {
+				t.Fatal("reset did not restore strong metric geometry")
+			}
+			m, _ = m.Update(eventKey("esc"))
+			if m.distributions.open {
+				t.Fatal("tuning did not close")
+			}
 		}
 	})
 }

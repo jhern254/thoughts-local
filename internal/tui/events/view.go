@@ -525,7 +525,7 @@ func (m Model) View() string {
 		}
 	}
 	if m.distributions.open {
-		status = m.activeDistributions().label()
+		status = m.distributions.label()
 		if m.width < distributionMinWidth {
 			status = "Distributions hidden below 60 columns"
 		}

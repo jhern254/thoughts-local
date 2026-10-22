@@ -38,7 +38,6 @@ const (
 // These are session-local presentation settings, independent of day loads.
 // Reset restores filled mode, size 100%, and normal boost: curves use exponent
 // 0.8, while thought length bars use their separate cubic default via ThoughtLengthExponent.
-// Subject time has independent settings and resets to strong boost.
 // Smaller exponents give low counts more presence without moving the maximum.
 // Size scales the renderer's gains; the lane and card geometry stay fixed.
 type distributionSettings struct {
@@ -50,19 +49,6 @@ type distributionSettings struct {
 
 func defaultDistributionSettings() distributionSettings {
 	return distributionSettings{boost: boostNormal, size: distributionDefaultSize, mode: render.Filled}
-}
-
-func defaultSubjectTimeDistributionSettings() distributionSettings {
-	settings := defaultDistributionSettings()
-	settings.boost = boostStrong
-	return settings
-}
-
-func (m *Model) activeDistributions() *distributionSettings {
-	if m.position.target == targetMetrics {
-		return &m.subjectTime.distributions
-	}
-	return &m.distributions
 }
 
 func (s distributionSettings) boostPreset() (string, float64) {
@@ -81,7 +67,7 @@ func (s distributionSettings) boostPreset() (string, float64) {
 }
 
 func (m *Model) tuneDistributions(key string) {
-	s := m.activeDistributions()
+	s := &m.distributions
 	switch key {
 	case "left", "h":
 		s.boost = max(boostLow, s.boost-1)
@@ -99,12 +85,9 @@ func (m *Model) tuneDistributions(key string) {
 		}
 	case "0":
 		*s = defaultDistributionSettings()
-		if m.position.target == targetMetrics {
-			*s = defaultSubjectTimeDistributionSettings()
-		}
-		m.distributions.open = true
+		s.open = true
 	case "esc", "enter", "d":
-		m.distributions.open = false
+		s.open = false
 	}
 	m.load.retainedBody = ""
 }

@@ -46,7 +46,6 @@ type subjectTimeState struct {
 	items               []data.SubjectTimeView
 	err                 error
 	offset              int
-	distributions       distributionSettings
 }
 
 func (s *subjectTimeState) stop() {
@@ -227,12 +226,16 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 	panel := m.paintCard(content, m.position.target == targetMetrics)
 	var cells [][]render.Cell
 	if m.width >= distributionMinWidth && len(s.items) > 0 {
-		_, exponent := s.distributions.boostPreset()
+		_, exponent := m.distributions.boostPreset()
+		// The baseline matches thought bars at Strong Boost (0.25 instead of
+		// 0.8). Apply that same ratio to every shared preset, so all five levels
+		// still change these bars when tuned from either the timeline or metrics.
+		const subjectTimeBoost = 0.25 / 0.8
 		cells = render.RenderBars(distributionWidth, len(panel), bars, render.BarOptions{
-			Mode:      s.distributions.mode,
+			Mode:      m.distributions.mode,
 			Reference: s.items[0].TimeSpentSeconds,
-			Exponent:  render.ThoughtLengthExponent(exponent),
-			Size:      float64(s.distributions.size) / 100,
+			Exponent:  render.ThoughtLengthExponent(exponent) * subjectTimeBoost,
+			Size:      float64(m.distributions.size) / 100,
 		})
 	}
 	for y := range panel {
