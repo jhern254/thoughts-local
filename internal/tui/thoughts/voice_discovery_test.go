@@ -282,7 +282,8 @@ func TestModel_VoiceDiscovery(t *testing.T) {
 		m, _ = m.Update(cmd())
 		id := int64(7)
 		m.subjectID = &id
-		m.EnableVoice(1, &voiceSubjects{}, "Go Programming")
+		cmd = m.EnableVoice(1, &voiceSubjects{}, "Go Programming")
+		m, _ = m.Update(cmd())
 		m, r = startDiscoveryRecording(m)
 		m = transcript(m, r, 1, "Fitness Training thought hello")
 		m, _ = m.Update(voice.RecordingEnded{Recording: r})

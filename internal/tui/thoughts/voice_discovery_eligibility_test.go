@@ -3,6 +3,7 @@ package thoughts
 import (
 	"testing"
 
+	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
@@ -152,9 +153,46 @@ func TestModel_VoiceCommandEligibility(t *testing.T) {
 		m, recording := startDiscoveryRecording(m)
 		m = transcript(m, recording, 1, "Fitness Training thought, study movement.")
 		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		if got, want := m.input.Value(), "Fitness Training thought, study movement."; got != want {
+			t.Fatalf("text before candidate data = %q, want %q", got, want)
+		}
 		m, _ = m.Update(reply)
 		if m.subjectID == nil || *m.subjectID != id || m.voice.query.Value() != "Go Programming" || m.input.Value() != "Study movement." || m.VoiceState().RecordingStatus != "idle" {
 			t.Fatalf("subject=%v query=%q text=%q status=%q, want contextual selection and cleaned confirmed body", m.subjectID, m.voice.query.Value(), m.input.Value(), m.VoiceState().RecordingStatus)
+		}
+	})
+	t.Run("contextual Subject does not authorize cleanup of a delayed name collision", func(t *testing.T) {
+		m, _, subjects := discoveryModel(t)
+		id := int64(7)
+		m.subjectID = &id
+		subjects.items = append(subjects.items,
+			data.Subject{SubjectID: 9, SubjectName: "Fitness Training"},
+			data.Subject{SubjectID: 10, SubjectName: "fitness training"})
+		load := m.EnableVoice(1, subjects, "Go Programming")
+		reply := load()
+		stamp := m.draftObservedAt
+		m, recording := startDiscoveryRecording(m)
+		const text = "Fitness Training thought, study movement."
+		m = transcript(m, recording, 1, text)
+		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		m, _ = m.Update(reply)
+		if m.subjectID == nil || *m.subjectID != id || m.voice.query.Value() != "Go Programming" || m.input.Value() != text || m.draftObservedAt != stamp || m.VoiceState().RecordingStatus != "idle" {
+			t.Fatalf("subject=%v query=%q text=%q status=%q, want contextual selection and unchanged ambiguous dictation", m.subjectID, m.voice.query.Value(), m.input.Value(), m.VoiceState().RecordingStatus)
+		}
+	})
+	t.Run("late contextual cleanup preserves edits made after recording", func(t *testing.T) {
+		m, _, subjects := discoveryModel(t)
+		id := int64(7)
+		m.subjectID = &id
+		load := m.EnableVoice(1, subjects, "Go Programming")
+		reply := load()
+		m, recording := startDiscoveryRecording(m)
+		m = transcript(m, recording, 1, "Fitness Training thought, study movement.")
+		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		m.input.SetValue("My edited thought.")
+		m, _ = m.Update(reply)
+		if m.subjectID == nil || *m.subjectID != id || m.voice.query.Value() != "Go Programming" || m.input.Value() != "My edited thought." {
+			t.Fatalf("subject=%v query=%q text=%q, want contextual selection and preserved edits", m.subjectID, m.voice.query.Value(), m.input.Value())
 		}
 	})
 	t.Run("a confirmed selection survives another recording and delayed data", func(t *testing.T) {

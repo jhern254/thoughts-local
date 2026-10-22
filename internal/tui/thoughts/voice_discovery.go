@@ -55,7 +55,16 @@ func (m *Model) beginSpokenSubject() {
 
 func (m *Model) refreshSpokenSubject(candidatesChanged bool) {
 	suggestion := &m.voice.suggestion
-	if m.discovery == nil || suggestion.origin == subjectExplicit || m.voice.suspended {
+	if m.discovery == nil || m.voice.suspended {
+		return
+	}
+	if suggestion.origin == subjectExplicit {
+		// A contextual selection prevents automatic reassignment, but is not
+		// evidence that the spoken cue is unambiguous. Deferred cleanup still
+		// requires the snapshot and the frozen command from this recording.
+		if candidatesChanged && m.voice.recordingStatus == "idle" && suggestion.frozenCommand.Cue != "" && suggestion.snapshot.ConfirmsCommand(suggestion.frozenCommand) {
+			m.cleanUneditedSpokenPrefix(suggestion.frozenCommand)
+		}
 		return
 	}
 	cue := suggestion.frozenCommand.Cue
@@ -140,7 +149,7 @@ func (m *Model) freezeSpokenSubject() {
 func (m *Model) finishSpokenSubject() {
 	m.freezeSpokenSubject()
 	suggestion := &m.voice.suggestion
-	if (suggestion.loaded || suggestion.origin == subjectExplicit) && suggestion.frozenCommand.Cue != "" && suggestion.snapshot.ConfirmsCommand(suggestion.frozenCommand) {
+	if suggestion.loaded && suggestion.frozenCommand.Cue != "" && suggestion.snapshot.ConfirmsCommand(suggestion.frozenCommand) {
 		m.cleanUneditedSpokenPrefix(suggestion.frozenCommand)
 	}
 	if strings.TrimSpace(suggestion.transcript) != "" {
