@@ -2,6 +2,7 @@ package events
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"context"
 	"errors"
 	"fmt"
 	"math/bits"
@@ -179,6 +180,8 @@ func TestModel_SubjectTimeRefresh(t *testing.T) {
 	})
 	t.Run("refreshes ongoing time on a clock tick and retains same-day data on failure", func(t *testing.T) {
 		m, _, store := fixture(t)
+		subjectID := int64(7)
+		m.entries[0].Event.SubjectID = &subjectID
 		store.subjectTimes = []data.SubjectTimeView{{SubjectID: 7, SubjectName: "Coding", TimeSpentSeconds: 300}}
 		at := m.clock.Add(time.Minute)
 		m, cmd := m.Update(tickMsg{owner: m.owner, session: m.session, at: at})
@@ -192,6 +195,67 @@ func TestModel_SubjectTimeRefresh(t *testing.T) {
 			t.Fatal("refresh failure discarded good data or exposed raw error")
 		}
 	})
+	t.Run("reads on ticks only when assigned ongoing time changes within the displayed day", func(t *testing.T) {
+		for _, scenario := range []struct {
+			name                                 string
+			assigned, completed, empty           bool
+			dayOffset                            int
+			clockOffset, tickOffset, startOffset time.Duration
+			wantRead                             bool
+		}{
+			{name: "empty day", empty: true, tickOffset: time.Minute},
+			{name: "unassigned ongoing event", tickOffset: time.Minute},
+			{name: "ongoing event has not started", assigned: true, startOffset: time.Hour, tickOffset: time.Minute},
+			{name: "ongoing event starts during tick", assigned: true, startOffset: 30 * time.Second, tickOffset: time.Minute, wantRead: true},
+			{name: "completed assigned event", assigned: true, completed: true, tickOffset: time.Minute},
+			{name: "historical day with an ongoing assigned event", assigned: true, dayOffset: -1, tickOffset: time.Minute},
+			{name: "future day", assigned: true, dayOffset: 1, tickOffset: time.Minute},
+			{name: "unchanged second", assigned: true, tickOffset: time.Millisecond},
+			{name: "assigned ongoing event", assigned: true, tickOffset: time.Minute, wantRead: true},
+			{name: "final cutoff after midnight", assigned: true, clockOffset: 24*time.Hour - time.Second, tickOffset: time.Minute, wantRead: true},
+			{name: "already clipped at midnight", assigned: true, clockOffset: 24 * time.Hour, tickOffset: time.Minute},
+		} {
+			t.Run(scenario.name, func(t *testing.T) {
+				m, _, store := fixture(t)
+				m.position.followNow = false
+				if scenario.clockOffset != 0 {
+					m.clock = m.day.Add(scenario.clockOffset)
+				}
+				m.day = m.day.AddDate(0, 0, scenario.dayOffset)
+				event := m.entries[0].Event
+				if scenario.startOffset != 0 {
+					event.StartedAt = m.clock.Add(scenario.startOffset)
+				}
+				if scenario.empty {
+					m.entries = nil
+				}
+				if scenario.assigned {
+					id := int64(7)
+					event.SubjectID = &id
+				}
+				if scenario.completed {
+					end := m.clock
+					event.EndedAt = &end
+				}
+				reads := store.subjectReads
+				// End only the recurring clock; data commands keep the day context.
+				clockCtx, cancelClock := context.WithCancel(t.Context())
+				cancelClock()
+				m.clockCtx = clockCtx
+				m, cmd := m.Update(tickMsg{owner: m.owner, session: m.session, at: m.clock.Add(scenario.tickOffset)})
+				m = execute(t, m, cmd)
+				got := store.subjectReads - reads
+				want := 0
+				if scenario.wantRead {
+					want = 1
+				}
+				if got != want {
+					t.Fatalf("subject reads: got %d, want %d", got, want)
+				}
+			})
+		}
+	})
+
 	t.Run("shows delayed feedback only for the current pending read", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.position.target = targetMetrics

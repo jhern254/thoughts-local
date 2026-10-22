@@ -356,6 +356,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if reply.owner != m.owner || reply.session != m.session {
 			return m, nil
 		}
+		previousClock := m.clock
 		m.clock = reply.at
 		m.load.retainedBody = ""
 		var reload tea.Cmd
@@ -363,7 +364,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			reload = m.loadDay(displaytime.Day(m.clock))
 		}
 		var subjectRead tea.Cmd
-		if !m.load.entriesPending {
+		if !m.load.entriesPending && m.subjectTimeChangesOnTick(previousClock) {
 			subjectRead = m.loadSubjectTime(m.day)
 		}
 		m.anchor()

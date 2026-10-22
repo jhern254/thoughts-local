@@ -124,6 +124,24 @@ func (m *Model) acceptSubjectTime(reply subjectTimeMsg) {
 	m.applySubjectTime()
 }
 
+// Only assigned ongoing events depend on the clock. Clamp both cutoffs to the
+// displayed day, including its final update when a non-following view crosses midnight.
+func (m *Model) subjectTimeChangesOnTick(previousClock time.Time) bool {
+	from, until := m.day.Unix(), m.day.AddDate(0, 0, 1).Unix()
+	previousCutoff := max(from, min(until, previousClock.Unix()))
+	cutoff := max(from, min(until, m.clock.Unix()))
+	if previousCutoff == cutoff {
+		return false
+	}
+	for _, entry := range m.entries {
+		event := entry.Event
+		if event != nil && event.SubjectID != nil && event.EndedAt == nil && event.StartedAt.Unix() < max(previousCutoff, cutoff) {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Model) clampSubjectTime() {
 	capacity := max(1, m.bodyHeight()-6)
 	last := 0
