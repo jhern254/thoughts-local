@@ -15,7 +15,8 @@ the first/last thought. Left and Q leave the picker and its cursor unchanged.
 Esc opens the app exit prompt; canceling it preserves the picker. Returning
 from a thought restores the panel's selection and scroll position.
 
-Collapsed, the panel cycles through previews every 15 seconds. Rotation pauses
+When focus leaves Mindset, the selected thought stays in the collapsed preview
+for 15 seconds before cycling to the next thought. Rotation pauses
 while focused, expanded, or offscreen. Expanded, it shows up to five text rows,
 with fewer rows on short terminals to leave room for Events. Open a thought to
 read its complete text. Press **r** to refresh.

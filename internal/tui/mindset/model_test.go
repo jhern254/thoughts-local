@@ -178,6 +178,31 @@ func TestModel_InlinePreview(t *testing.T) {
 	})
 }
 
+func TestModel_RotationAfterFocus(t *testing.T) {
+	m := New(t.Context(), "u", &reader{items: []data.ThoughtSummaryView{
+		{ThoughtID: 1, Preview: "first"},
+		{ThoughtID: 2, Preview: "second"},
+		{ThoughtID: 3, Preview: "third"},
+	}}, logging.Nop())
+	m, _ = m.Update(m.Load(time.Now())())
+	m, _ = m.SetVisible(true)
+	oldTick := tickMsg{owner: m.owner, generation: m.generation}
+	m, _ = m.SetFocused(true)
+	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
+	m, cmd := m.SetFocused(false)
+	if cmd == nil || ansi.Strip(m.View()) != " Mindset  third" {
+		t.Fatalf("blurred picker: got %q timer=%v, want selected thought and a fresh timer", m.View(), cmd != nil)
+	}
+	m, _ = m.Update(oldTick)
+	if got := ansi.Strip(m.View()); got != " Mindset  third" {
+		t.Fatalf("stale tick changed selected preview: got %q, want third", got)
+	}
+	m, _ = m.Update(tickMsg{owner: m.owner, generation: m.generation})
+	if got := ansi.Strip(m.View()); got != " Mindset  first" {
+		t.Fatalf("next cycle: got %q, want first after third", got)
+	}
+}
+
 func TestModel_EmptyFocus(t *testing.T) {
 	m := New(t.Context(), "u", &reader{}, logging.Nop())
 	m, _ = m.Update(m.Load(time.Now())())

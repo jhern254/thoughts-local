@@ -537,7 +537,7 @@ func (m Model) viewUnderlying() tea.View {
 	case screenEvents:
 		content = m.events.View()
 		if m.events.TimelineVisible() {
-			content = m.mindsets.View() + "\n" + strings.Repeat("─", max(1, m.width)) + "\n" + content
+			content = m.mindsets.View() + "\n" + strings.Repeat("─", max(1, m.width)) + "\n\n" + content
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content
 			content += "\n" + strings.Repeat("─", max(1, m.width)) + "\n" + m.entityStrip()
 		}

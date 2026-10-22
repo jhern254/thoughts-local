@@ -12,10 +12,10 @@ type ThoughtService interface {
 }
 
 func (m *Model) resizeHome() {
-	m.mindsets.Resize(m.width, max(1, m.height-6-14-1))
+	m.mindsets.Resize(m.width, max(1, m.height-6-14-2))
 	height := max(1, m.height-6)
 	if m.events.TimelineVisible() {
-		height = max(1, height-m.mindsets.Height()-1)
+		height = max(1, height-m.mindsets.Height()-2)
 	}
 	if m.homeEventsHeight != height || m.homeEventsWidth != m.width {
 		m.homeEventsHeight, m.homeEventsWidth = height, m.width

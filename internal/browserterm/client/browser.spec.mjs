@@ -12,7 +12,7 @@ test('renders newlines at the same column as native terminal output', async ({pa
   // A pipe does not apply the PTY's ONLCR output translation. Without the
   // corresponding xterm option, each new line incorrectly moves to the right.
   await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Mindset/);
-  await expect.poll(() => screen(page).locator('div').nth(4).textContent()).toMatch(/^ Events/);
+  await expect.poll(() => screen(page).locator('div').nth(5).textContent()).toMatch(/^ Events/);
 });
 
 test('second tab is busy; quit and reload start independent sessions', async ({page, context}) => {
