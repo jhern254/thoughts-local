@@ -38,15 +38,16 @@ func TestEventTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		var m tea.Model = tui.NewModel(ctx, &data.User{UserID: "u"}, subject.NewService(data.NewSQLiteSubjectStore(db)), thought.NewService(thoughts), counts, events, timeline.NewService(events, thoughts, counts), logger)
-		// Hold the only connection until both real startup reads are queued.
+		// Hold the only connection until the timeline, counts and subject-time reads are queued.
 		conn, err := db.Conn(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer conn.Close()
 		m, cmd := m.Update(m.Init()())
-		// The third command only delays UI feedback; these two use SQLite.
-		batch := cmd().(tea.BatchMsg)[0]().(tea.BatchMsg)[:2]
+		// Feedback timers do not use SQLite; queue only the three data reads.
+		dayBatch := cmd().(tea.BatchMsg)[0]().(tea.BatchMsg)
+		batch := []tea.Cmd{dayBatch[0], dayBatch[1], dayBatch[3]().(tea.BatchMsg)[0]}
 		replies := make(chan tea.Msg, len(batch))
 		waits := db.Stats().WaitCount
 		for _, read := range batch {

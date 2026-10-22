@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -66,7 +67,10 @@ func (*homeTimelineStub) ThoughtCounts(context.Context, string, time.Time, time.
 	return nil, nil
 }
 
-type homeThoughtStore struct{ summary data.ThoughtSummaryView }
+type homeThoughtStore struct {
+	summary      data.ThoughtSummaryView
+	subjectTimes []data.SubjectTimeView
+}
 
 func (s homeThoughtStore) ListThoughtsInRange(context.Context, string, time.Time, time.Time) ([]data.Thought, error) {
 	panic("unexpected full body range")
@@ -134,6 +138,42 @@ func TestModel_EventsHome(t *testing.T) {
 		m = startHomeData(t, m, cmd)
 		return m, events
 	}
+
+	t.Run("Now buffers navigation to metrics and Up returns in Events", func(t *testing.T) {
+		m, events := newHome(t)
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+		reads := events.lists
+		press := func(code rune) {
+			t.Helper()
+			var cmd tea.Cmd
+			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: code}))
+			if cmd != nil || m.entityFocused || m.screen != screenEvents || events.lists != reads {
+				t.Fatal("navigation started work or changed panel focus")
+			}
+		}
+		preview := m.events.View()
+		press(tea.KeyUp)
+		if m.events.View() == preview {
+			t.Fatal("Up did not reveal the latest card")
+		}
+		press(tea.KeyDown)
+		if m.events.View() != preview {
+			t.Fatal("Down did not stop at the original Now preview")
+		}
+		press(tea.KeyDown)
+		if m.events.AtTopLevel() || !strings.Contains(m.events.View(), "↑: back/scroll") {
+			t.Fatal("second Down did not open metrics")
+		}
+		press(tea.KeyUp)
+		if !m.events.AtTopLevel() || m.events.View() != preview {
+			t.Fatal("Up did not return to Now inside Events")
+		}
+		press(tea.KeyDown)
+		press(tea.KeyEnd)
+		if m.events.View() != preview {
+			t.Fatal("End did not return to Now")
+		}
+	})
 
 	t.Run("assigned event badge survives thought detail and disappears on collapse", func(t *testing.T) {
 		m, events := newHome(t)
@@ -623,4 +663,113 @@ func (*homeTimelineStub) OpenThoughtsOutsideEventsView(context.Context, string, 
 }
 func (s homeThoughtStore) ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
 	return nil, nil
+}
+
+func (s homeThoughtStore) SubjectTimeInRange(context.Context, string, time.Time, time.Time, time.Time) ([]data.SubjectTimeView, error) {
+	return s.subjectTimes, nil
+}
+
+func (*homeTimelineStub) SubjectTimeInRange(context.Context, string, time.Time, time.Time, time.Time) ([]data.SubjectTimeView, error) {
+	return nil, nil
+}
+
+func TestModel_SubjectTimeHomeFocus(t *testing.T) {
+	for _, width := range []int{100, 40} {
+		t.Run(fmt.Sprintf("%d columns", width), func(t *testing.T) {
+			service := thought.NewService(testutils.NewFakeThoughtStore())
+			now := time.Now().Truncate(time.Second)
+			for i := range 6 {
+				item, err := service.Create(t.Context(), "u", fmt.Sprintf("Mindset %d", i+1), nil, now)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := service.SetMindset(t.Context(), "u", item.ThoughtID, true, now); err != nil {
+					t.Fatal(err)
+				}
+			}
+			store := homeThoughtStore{}
+			for i := range 20 {
+				store.subjectTimes = append(store.subjectTimes, data.SubjectTimeView{SubjectID: int64(i + 1), SubjectName: fmt.Sprintf("Subject %02d", i+1), TimeSpentSeconds: int64(3600 - i*60)})
+			}
+			events := &homeEventStub{items: []data.Event{{EventID: 1, StartedAt: now.Add(-time.Hour)}}}
+			m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, service, &metricsStub{}, events, timeline.NewService(events, store, store), logging.Nop())
+			// Keep recurring mindset timers out of the data-command walkthrough.
+			m.focusHome(homePanelMindset)
+			m, cmd := rootUpdate(m, m.Init()())
+			m = startHomeData(t, m, cmd)
+			m.focusHome(homePanelEvents)
+			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 32})
+			press := func(key tea.Key) { t.Helper(); m, _ = rootUpdate(m, tea.KeyPressMsg(key)) }
+			press(tea.Key{Code: tea.KeyEnd})
+			nowView := m.events.View()
+			press(tea.Key{Code: tea.KeyDown})
+			if m.events.AtTopLevel() || m.homeFocus() != homePanelEvents {
+				t.Fatal("Down did not focus subject time inside Events")
+			}
+			press(tea.Key{Code: tea.KeyDown})
+			press(tea.Key{Code: tea.KeyDown})
+			if text := ansi.Strip(m.events.View()); !strings.Contains(text, "Subject 03") || strings.Contains(text, "Subject 01") {
+				t.Fatalf("got chart %q, want scrolled subjects", text)
+			}
+			for _, step := range []struct {
+				key   tea.Key
+				focus homePanel
+			}{
+				{tea.Key{Code: tea.KeyTab}, homePanelEntities},
+				{tea.Key{Code: tea.KeyTab}, homePanelMindset},
+				{tea.Key{Code: tea.KeyTab}, homePanelEvents},
+				{tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}, homePanelMindset},
+				{tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}, homePanelEntities},
+				{tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}, homePanelEvents},
+			} {
+				press(step.key)
+				if m.homeFocus() != step.focus {
+					t.Fatalf("focus: got %v, want %v", m.homeFocus(), step.focus)
+				}
+				if m.events.AtTopLevel() {
+					t.Fatal("focus switch left subject time")
+				}
+				if text := ansi.Strip(m.events.View()); !strings.Contains(text, "Subject 03") || strings.Contains(text, "Subject 01") || !strings.Contains(text, "Now") {
+					t.Fatalf("focus switch lost chart scroll or Now: %q", text)
+				}
+				var chartBorder string
+				for _, row := range strings.Split(m.events.View(), "\n") {
+					if strings.Contains(ansi.Strip(row), "╭") {
+						chartBorder = row
+						break
+					}
+				}
+				if chartBorder == "" {
+					t.Fatal("missing subject-time card border")
+				}
+				if got, want := chartBorder != ansi.Strip(chartBorder), step.focus == homePanelEvents; got != want {
+					t.Fatalf("chart border highlight: got %v, want %v", got, want)
+				}
+				var dividers []string
+				for _, row := range strings.Split(m.View().Content, "\n") {
+					if ansi.Strip(row) == strings.Repeat("─", width) {
+						dividers = append(dividers, row)
+					}
+				}
+				if len(dividers) != 2 {
+					t.Fatalf("got %d dividers, want 2", len(dividers))
+				}
+				for i, row := range dividers {
+					if got, want := row != ansi.Strip(row), (i == 0 && step.focus == homePanelEvents) || (i == 1 && step.focus == homePanelEntities); got != want {
+						t.Fatalf("divider %d highlight: got %v, want %v", i, got, want)
+					}
+				}
+			}
+			press(tea.Key{Code: tea.KeyLeft})
+			if m.events.AtTopLevel() {
+				t.Fatal("Left exited subject time")
+			}
+			for range 3 {
+				press(tea.Key{Code: tea.KeyUp})
+			}
+			if !m.events.AtTopLevel() || m.events.View() != nowView || m.homeFocus() != homePanelEvents {
+				t.Fatal("Up did not restore the latest-event/Now stop with Events focus")
+			}
+		})
+	}
 }

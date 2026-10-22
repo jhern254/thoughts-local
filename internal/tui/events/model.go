@@ -22,6 +22,7 @@ type Service interface {
 	End(context.Context, string, int64, int64, time.Time) (*data.Event, error)
 }
 type TimelineView interface {
+	SubjectTimeInRange(context.Context, string, time.Time, time.Time, time.Time) ([]data.SubjectTimeView, error)
 	ListEntriesInRange(context.Context, string, time.Time, time.Time) ([]timeline.Entry, error)
 	OpenThoughtsOutsideEventsView(context.Context, string, time.Time) (timeline.ThoughtScope, error)
 	thoughts.TimelineReader
@@ -122,6 +123,7 @@ type Model struct {
 
 	distributions distributionSettings
 	position      timelinePosition
+	subjectTime   subjectTimeState
 	load          dayLoad
 	width, height int
 
@@ -154,7 +156,7 @@ func New(ctx context.Context, userID string, service Service, view TimelineView,
 		clock:         now,
 		day:           displaytime.Day(now),
 		distributions: defaultDistributionSettings(),
-		position:      timelinePosition{followNow: true},
+		position:      timelinePosition{target: targetDayBoundary, followNow: true},
 		width:         80,
 		height:        20,
 
@@ -183,6 +185,7 @@ func (m *Model) Close() {
 	m.form.stopReads()
 	m.distributions.open = false
 	m.load.invalidate()
+	m.subjectTime.stop()
 	m.active = false
 	// Invalidate replies that can outlive this screen opening.
 	m.session++
@@ -213,11 +216,12 @@ func (m Model) FormOpen() bool        { return m.form.open }
 
 // AtTopLevel excludes the nested views and controls owned by Events.
 func (m Model) AtTopLevel() bool {
-	return m.CanLeave() && m.expanded.IsZero() && !m.distributions.open
+	return m.CanLeave() && m.expanded.IsZero() && !m.distributions.open && m.position.target != targetSubjectTime
 }
 func (m *Model) Resize(width, height int) {
 	m.load.retainedBody = ""
 	m.width, m.height = max(1, width), max(1, height)
+	m.clampSubjectTime()
 	m.picker.Resize(max(1, width-12), max(1, height-2))
 	// Leave calendar context around the expanded box, not just room for the picker.
 	m.picker.ResizeTimelineEntryView(m.cardWidth(), max(1, (height-14)/3))
@@ -271,7 +275,7 @@ func (m *Model) loadDay(day time.Time) tea.Cmd {
 		}
 		counts, err := view.ThoughtCounts(ctx, user, day, day.AddDate(0, 0, 1))
 		return eventCountsMsg{owner, request, counts, err}
-	}, feedback)
+	}, feedback, m.loadSubjectTime(day))
 }
 func (m *Model) stopExpansion() {
 	if m.cancelExpansion != nil {
@@ -286,6 +290,7 @@ func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
 	m.stopExpansion()
 	m.expansion++
 	m.expanded = key
+	m.position.target = targetEntry
 	m.opening = true
 	m.expandedSubjectErr = nil
 	m.position.followNow = false
@@ -336,6 +341,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	switch reply := msg.(type) {
+	case subjectTimeMsg:
+		m.acceptSubjectTime(reply)
+		return m, nil
+	case subjectTimeDelayedMsg:
+		if reply.owner == m.owner && m.load.owns(reply.generation) && reply.revision == m.subjectTime.revision && m.subjectTime.pending {
+			m.subjectTime.showStatus = true
+		}
+		return m, nil
 	case subjectsLoaded:
 		m.acceptSubjects(reply)
 		return m, nil
@@ -343,14 +356,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if reply.owner != m.owner || reply.session != m.session {
 			return m, nil
 		}
+		previousClock := m.clock
 		m.clock = reply.at
 		m.load.retainedBody = ""
 		var reload tea.Cmd
 		if m.position.followNow && !m.day.Equal(displaytime.Day(m.clock)) && (!m.load.entriesPending || !m.load.pendingDay.Equal(displaytime.Day(m.clock))) {
 			reload = m.loadDay(displaytime.Day(m.clock))
 		}
+		var subjectRead tea.Cmd
+		if !m.load.entriesPending && m.subjectTimeChangesOnTick(previousClock) {
+			subjectRead = m.loadSubjectTime(m.day)
+		}
 		m.anchor()
-		return m, tea.Batch(reload, m.tick())
+		return m, tea.Batch(reload, subjectRead, m.tick())
 	case loadDelayedMsg:
 		if reply.owner == m.owner {
 			m.load.delayFeedback(reply.request)
@@ -371,6 +389,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if !m.day.Equal(m.load.pendingDay) {
 			m.day = m.load.pendingDay
 			m.position.entryIndex, m.position.topLine, m.expanded = 0, 0, timeline.EntryKey{}
+			m.position.target = targetEntry
+			if m.position.followNow {
+				m.position.target = targetDayBoundary
+			}
 			m.entries = nil
 			m.picker.Reset()
 		}
@@ -399,6 +421,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			selected = m.entries[m.position.entryIndex].Key()
 		}
 		m.entries = reply.entries
+		m.applySubjectTime()
 		m.position.clampSelection(len(m.entries))
 		var latest, open tea.Cmd
 		if m.position.followNow && len(m.entries) > 0 {
@@ -522,6 +545,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.clock = m.now()
 			day = displaytime.Day(m.clock)
 			m.position.followNow = true
+			m.position.target = targetDayBoundary
 		}
 		cmd := m.loadDay(day)
 		return m, cmd
@@ -565,6 +589,39 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.distributions.open = true
 		m.load.retainedBody = ""
 		return m, nil
+	}
+	if m.position.target == targetSubjectTime {
+		m.load.retainedBody = ""
+		switch key.String() {
+		case "down", "j":
+			m.subjectTime.offset++
+			m.clampSubjectTime()
+			return m, nil
+		case "up", "k":
+			if m.subjectTime.offset == 0 {
+				m.position.target = targetDayBoundary
+				m.position.followNow = m.day.Equal(displaytime.Day(m.clock))
+			} else {
+				m.subjectTime.offset--
+				m.clampSubjectTime()
+			}
+			return m, nil
+		case "pgdown":
+			m.subjectTime.offset += max(1, m.bodyHeight()-8)
+			m.clampSubjectTime()
+			return m, nil
+		case "pgup":
+			m.subjectTime.offset -= max(1, m.bodyHeight()-8)
+			m.clampSubjectTime()
+			return m, nil
+		case "esc":
+			m.position.target = targetDayBoundary
+			m.position.followNow = m.day.Equal(displaytime.Day(m.clock))
+			return m, nil
+		case "end", "home", "r":
+		default:
+			return m, nil
+		}
 	}
 	if !m.expanded.IsZero() {
 		if key.String() == "esc" || key.String() == "left" || key.String() == "h" {
@@ -611,16 +668,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	default:
 		m.load.retainedBody = ""
 	}
+	if m.position.target == targetDayBoundary && len(m.entries) > 0 {
+		m.position.entryIndex = len(m.entries) - 1
+	}
 	switch navigation {
 	case "end":
 		m.position.followNow = true
 		m.clock = m.now()
 		day := displaytime.Day(m.clock)
+		var cmd tea.Cmd
 		if !day.Equal(m.day) || m.load.entriesPending {
-			cmd := m.loadDay(day)
-			return m, cmd
+			cmd = m.loadDay(day)
 		}
+		m.position.target = targetDayBoundary
+		m.position.entryIndex = max(0, len(m.entries)-1)
 		m.anchor()
+		return m, cmd
 	case "home":
 		m.position.first()
 		m.revealSelected()
@@ -644,9 +707,35 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if key.String() == "up" || key.String() == "k" {
 			delta = -1
 		}
+		if m.position.target == targetDayBoundary {
+			if delta > 0 {
+				m.position.target = targetSubjectTime
+				m.position.followNow = false
+				m.subjectTime.offset = 0
+				return m, nil
+			}
+			if len(m.entries) == 0 {
+				return m, nil
+			}
+			m.position.target = targetEntry
+			m.position.entryIndex = len(m.entries) - 1
+			m.position.followNow = false
+			m.revealSelected()
+			return m, nil
+		}
+		if delta > 0 && (len(m.entries) == 0 || m.position.entryIndex == len(m.entries)-1) {
+			m.position.target = targetDayBoundary
+			m.position.followNow = m.day.Equal(displaytime.Day(m.clock))
+			m.anchor()
+			return m, nil
+		}
 		m.position.moveEntry(delta, len(m.entries))
 		m.revealSelected()
 	case "pgup", "pgdown":
+		if m.position.target == targetDayBoundary {
+			m.position.topLine = max(0, m.measureTimeline().nowLine-m.bodyHeight()+2)
+		}
+		m.position.target = targetEntry
 		direction := 1
 		if key.String() == "pgup" {
 			direction = -1
@@ -656,6 +745,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case "enter":
 		if len(m.entries) > 0 {
 			cmd := m.openEntry(m.entries[m.position.entryIndex].Key())
+			m.revealSelected()
 			return m, cmd
 		}
 	case "esc":

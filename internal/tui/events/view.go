@@ -242,6 +242,7 @@ type timelineLayout struct {
 	curves            []render.Distribution
 	selectedCurve     int
 	nowLine, curveEnd int
+	subjectTimeTop    int
 }
 
 type timelineCard struct {
@@ -285,7 +286,7 @@ func (m *Model) measureTimeline() timelineLayout {
 			priority:   1,
 			key:        entry.Key(),
 			content:    m.entryContent(entry),
-			selected:   i == m.position.entryIndex,
+			selected:   (m.position.target == targetEntry && i == m.position.entryIndex) || (m.position.target == targetDayBoundary && i == len(m.entries)-1),
 			end:        end,
 			hideEnd:    hideEnd,
 		})
@@ -378,14 +379,20 @@ func (m *Model) measureTimeline() timelineLayout {
 		end = len(lines)
 		lines = append(lines, timelineLabelPadding+"...")
 	}
+	subjectTimeTop := -1
+	if nowLine >= 0 || m.day.Before(displaytime.Day(m.clock)) {
+		subjectTimeTop = len(lines) + 2
+		lines = append(lines, make([]string, 2+max(1, len(m.subjectTime.items))+3)...)
+	}
 	return timelineLayout{
-		lines:         lines,
-		cards:         cards,
-		positions:     positions,
-		curves:        curves,
-		selectedCurve: selectedCurve,
-		nowLine:       nowLine,
-		curveEnd:      end,
+		subjectTimeTop: subjectTimeTop,
+		lines:          lines,
+		cards:          cards,
+		positions:      positions,
+		curves:         curves,
+		selectedCurve:  selectedCurve,
+		nowLine:        nowLine,
+		curveEnd:       end,
 	}
 }
 
@@ -404,7 +411,19 @@ func (m *Model) paintTimeline(layout timelineLayout, offset, height int) []strin
 			lines[row-offset] += painted[row-card.top]
 		}
 	}
-	return m.paintDistributionLane(lines, layout, offset)
+	lines = m.paintDistributionLane(lines, layout, offset)
+	if layout.subjectTimeTop >= 0 {
+		for row := max(offset, layout.subjectTimeTop-2); row < min(end, layout.subjectTimeTop); row++ {
+			lines[row-offset] = ""
+		}
+	}
+	if layout.subjectTimeTop >= 0 && layout.subjectTimeTop < end && offset < len(layout.lines) {
+		panel := m.subjectTimePanel(false)
+		for row := max(offset, layout.subjectTimeTop); row < min(end, layout.subjectTimeTop+len(panel)); row++ {
+			lines[row-offset] = panel[row-layout.subjectTimeTop]
+		}
+	}
+	return lines
 }
 
 func (m *Model) bodyHeight() int { return max(1, m.height-4) }
@@ -417,6 +436,13 @@ func (m *Model) revealSelected() {
 	m.position.clamp(len(layout.lines))
 }
 func (m *Model) anchor() {
+	if m.position.target == targetDayBoundary {
+		return
+	}
+	if m.position.target == targetSubjectTime {
+		m.clampSubjectTime()
+		return
+	}
 	if m.day.IsZero() {
 		return
 	}
@@ -430,6 +456,12 @@ func (m *Model) anchor() {
 }
 
 func (m *Model) timelineBody() string {
+	if m.position.target == targetDayBoundary {
+		return m.boundaryBody()
+	}
+	if m.position.target == targetSubjectTime {
+		return m.subjectTimeBody()
+	}
 	layout := m.measureTimeline()
 	position := m.position
 	position.clamp(len(layout.lines))
@@ -461,6 +493,9 @@ func (m Model) View() string {
 		body = m.timelineBody()
 	}
 	status := m.message
+	if status == "" && m.subjectTime.err != nil {
+		status = "Could not refresh subject time. r: retry"
+	}
 	if status == "" {
 		status = "d: distribution settings"
 	}
@@ -478,6 +513,16 @@ func (m Model) View() string {
 	}
 	if !m.expanded.IsZero() {
 		help = "Q/Esc back • r reload • d distributions • m mindset"
+	}
+	if m.position.target == targetDayBoundary && m.message == "" && m.subjectTime.err == nil && !m.load.showStatus {
+		status = "↑: latest card • ↓: subject time • d: distributions"
+	}
+	if m.position.target == targetSubjectTime {
+		status = "↑: back/scroll • ↓: subjects • PgUp/PgDn: page • Esc: now"
+		help = "Home: first • End: now • r: refresh • d: distributions"
+		if m.subjectTime.err != nil {
+			status = "Could not refresh subject time. r: retry"
+		}
 	}
 	if m.distributions.open {
 		status = m.distributions.label()

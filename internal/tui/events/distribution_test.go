@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -352,7 +353,11 @@ func TestModel_Distributions(t *testing.T) {
 		if !hasDistribution(both) || both == ansi.Cut(ansi.Strip(single[row]), 12, 22) {
 			t.Fatal("neighboring tails did not combine in the separator")
 		}
-		last := combined[len(combined)-1]
+		ending := slices.IndexFunc(combined, func(line string) bool { return strings.TrimSpace(ansi.Strip(line)) == "..." })
+		if ending < 0 {
+			t.Fatal("historical ending missing")
+		}
+		last := combined[ending]
 		if hasDistribution(last) || strings.TrimSpace(last) != "..." {
 			t.Fatal("historical ending covered or changed")
 		}

@@ -265,6 +265,13 @@ func BenchmarkTimelineBurst(b *testing.B) {
 		for i := 0; i < pending; i++ {
 			var cmd tea.Cmd
 			reply := <-replies
+			if batch, ok := reply.(tea.BatchMsg); ok {
+				for _, child := range batch {
+					pending++
+					go func() { replies <- child() }()
+				}
+				continue
+			}
 			if reply == nil {
 				continue // Bubble Tea also ignores nil command results.
 			}
@@ -274,12 +281,12 @@ func BenchmarkTimelineBurst(b *testing.B) {
 			m, cmd = m.Update(reply)
 			m = execute(b, m, cmd)
 			_ = m.View()
-			if finalKey != (time.Time{}) && !m.load.entriesPending && !m.load.countsPending && !m.load.latestPending {
+			if finalKey != (time.Time{}) && !m.load.entriesPending && !m.load.countsPending && !m.load.latestPending && !m.subjectTime.pending {
 				latency += time.Since(finalKey)
 				finalKey = time.Time{}
 			}
 		}
-		if !m.day.Equal(day) || m.load.entriesPending || m.err != nil || m.load.countErr != nil || m.load.latestErr != nil {
+		if !m.day.Equal(day) || m.load.entriesPending || m.err != nil || m.load.countErr != nil || m.load.latestErr != nil || m.subjectTime.pending || m.subjectTime.err != nil {
 			b.Fatal("burst did not settle on the correct day without errors")
 		}
 	}
@@ -336,7 +343,7 @@ func BenchmarkTimelineSQLite(b *testing.B) {
 }
 
 // Compile before measuring and use an idle machine. The database is disposable,
-// migrated and stress-seeded, with event 721 assigned to subject 1. Setup and
+// migrated and stress-seeded; the seed assigns event 721 to subject 1. Setup and
 // initial day loading are outside every timed loop.
 func BenchmarkTimelineExpansion(b *testing.B) {
 	dsn := os.Getenv("THOUGHTS_STRESS_DSN")
@@ -353,7 +360,7 @@ func BenchmarkTimelineExpansion(b *testing.B) {
 		b.Fatal(err)
 	}
 	if current.SubjectID == nil || *current.SubjectID != 1 {
-		b.Fatal("assign stress event 721 to subject 1 before measuring")
+		b.Fatal("reseed the stress database: event 721 must have subject 1")
 	}
 	b.Run("EventScope", func(b *testing.B) {
 		b.ReportAllocs()
@@ -394,4 +401,49 @@ func BenchmarkTimelineExpansion(b *testing.B) {
 			_ = m.View()
 		}
 	})
+}
+
+// Measures only the daily subject-time query; migration, seeding and validation
+// are outside the timer. Use the preceding complete Pacific day so all four
+// subjects are represented even when the seed is created just after midnight.
+// Run without other tests or builds competing for resources.
+func BenchmarkSubjectTimeInRange(b *testing.B) {
+	dsn := os.Getenv("THOUGHTS_STRESS_DSN")
+	if dsn == "" {
+		b.Skip("set THOUGHTS_STRESS_DSN to a disposable stress-seeded database")
+	}
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		b.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	b.Cleanup(func() { _ = db.Close() })
+	var eventCount, thoughtCount int
+	var cutoffSeconds int64
+	if err := db.QueryRowContext(b.Context(), `SELECT
+ (SELECT COUNT(*) FROM events WHERE user_id='demo'),
+ (SELECT COUNT(*) FROM thoughts WHERE user_id='demo'),
+ started_at+3600 FROM events WHERE user_id='demo' AND event_id=721`).Scan(&eventCount, &thoughtCount, &cutoffSeconds); err != nil {
+		b.Fatal(err)
+	}
+	if eventCount != 721 || thoughtCount != 20000 {
+		b.Fatalf("stress seed: got %d events and %d thoughts, want 721 and 20000", eventCount, thoughtCount)
+	}
+	cutoff := time.Unix(cutoffSeconds, 0)
+	from := displaytime.Day(cutoff).AddDate(0, 0, -1)
+	until := from.AddDate(0, 0, 1)
+	store := data.NewSQLiteMetricsStore(db)
+	items, err := store.SubjectTimeInRange(b.Context(), "demo", from, until, cutoff)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if len(items) != 4 {
+		b.Fatalf("subject totals: got %d subjects, want 4; reseed the stress database", len(items))
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := store.SubjectTimeInRange(b.Context(), "demo", from, until, cutoff); err != nil {
+			b.Fatal(err)
+		}
+	}
 }

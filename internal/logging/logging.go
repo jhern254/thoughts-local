@@ -54,6 +54,7 @@ const (
 	TimelineThoughtStats
 	ThoughtMindsetSet
 	ThoughtMindsetList
+	SubjectTime
 )
 
 type FailureCategory uint8
@@ -70,6 +71,8 @@ func (operation Operation) name() string {
 		return "thought_mindset_set"
 	case ThoughtMindsetList:
 		return "thought_mindset_list"
+	case SubjectTime:
+		return "subject_time"
 	case TimelineList:
 		return "timeline_list"
 	case TimelineEntryOpen:

@@ -79,3 +79,33 @@ func (s metricsStub) ThoughtStatsInRange(ctx context.Context, u string, from, un
 func (s metricsStub) ListThoughtGroupsOutsideEvents(context.Context, string, time.Time, time.Time, time.Time) ([]data.ThoughtGroupOutsideEvents, error) {
 	return nil, s.err
 }
+
+func (s metricsStub) SubjectTimeInRange(context.Context, string, time.Time, time.Time, time.Time) ([]data.SubjectTimeView, error) {
+	return nil, nil
+}
+
+type subjectTimeReader struct {
+	metricsStub
+	read func(context.Context, string, time.Time, time.Time, time.Time) ([]data.SubjectTimeView, error)
+}
+
+func (s subjectTimeReader) SubjectTimeInRange(ctx context.Context, user string, from, until, cutoff time.Time) ([]data.SubjectTimeView, error) {
+	return s.read(ctx, user, from, until, cutoff)
+}
+
+func TestService_SubjectTimeInRange(t *testing.T) {
+	t.Run("forwards the displayed interval and explicit ongoing cutoff", func(t *testing.T) {
+		from, until, cutoff := time.Unix(10, 0), time.Unix(100, 0), time.Unix(50, 0)
+		cause := errors.New("metrics failure")
+		reader := subjectTimeReader{read: func(ctx context.Context, user string, gotFrom, gotUntil, gotCutoff time.Time) ([]data.SubjectTimeView, error) {
+			if ctx != t.Context() || user != "u" || gotFrom != from || gotUntil != until || gotCutoff != cutoff {
+				t.Fatalf("got scope %q, %v..%v cutoff %v; want original context and interval", user, gotFrom, gotUntil, gotCutoff)
+			}
+			return []data.SubjectTimeView{{SubjectID: 7, TimeSpentSeconds: 42}}, cause
+		}}
+		rows, err := NewService(nil, nil, reader).SubjectTimeInRange(t.Context(), "u", from, until, cutoff)
+		if len(rows) != 1 || rows[0].TimeSpentSeconds != 42 || err != cause {
+			t.Fatalf("got %v, %v; want original metric results and error", rows, err)
+		}
+	})
+}
