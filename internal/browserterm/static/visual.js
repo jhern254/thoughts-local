@@ -14,17 +14,22 @@ class ThoughtsVisual {
     this.file = document.getElementById('background-file');
     this.preview = document.getElementById('background-preview');
     this.previewContainer = document.getElementById('background-preview-wrap');
-    this.saved = {background: false, darkness: 70, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, kind: 'image'};
+    this.saved = {background: false, darkness: 70, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, videoQuality:'efficient', kind: 'image'};
     this.connected = false;
     this.documentVisible = !document.hidden;
     this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
     this.playbackStatus = document.getElementById('video-status');
+    this.preparationStatus = document.getElementById('video-preparation');
+    this.preparationWave = new ThoughtsPreparationWave(document.getElementById('video-preparation-wave'));
+    this.terminalContainer = document.getElementById('terminal');
     this.motionQuery.addEventListener('change', () => {
       this.motionOverride = false;
       if (this.motionQuery.matches) this.stopPreviewPlayback();
       this.updatePlayback(); this.reportPlayback();
+      this.updatePreparationStatus();
     });
-    document.addEventListener('visibilitychange', () => { this.documentVisible = !document.hidden; this.updatePlayback(); if (document.hidden) this.stopPreviewPlayback(); });
+    document.addEventListener('visibilitychange', () => { this.documentVisible = !document.hidden; this.updatePlayback(); this.updatePreparationStatus(); if (document.hidden) this.stopPreviewPlayback(); });
+    window.addEventListener('pagehide', () => this.preparationWave.setPlayback(false, false, false));
     this.state = {open: false};
     this.videoTrim = new ThoughtsVideoTrim(this);
     this.previewGeneration = 0;
@@ -74,12 +79,13 @@ class ThoughtsVisual {
   }
   reply(action, operationID, connectionGeneration = this.connectionGeneration) {
     if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) {
-      this.sendAction({action, id: operationID, darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing, kind: this.candidateKind || this.saved.kind, speedPercent: this.saved.speedPercent, userPaused: this.saved.userPaused, playbackBlocked: this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride)});
+      this.sendAction({action, id: operationID, videoQuality: this.saved.videoQuality || 'efficient', darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing, kind: this.candidateKind || this.saved.kind, speedPercent: this.saved.speedPercent, userPaused: this.saved.userPaused, playbackBlocked: this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride)});
     }
   }
   async receive(state) {
     const previousState = this.state;
     this.state = state;
+    this.updatePreparationStatus();
     if (!state.open || !state.editing || state.id !== previousState.id) this.cancelFramingDrag();
     this.refreshAfterClose = previousState.open && !state.open;
     if (JSON.stringify(state.preview) !== JSON.stringify(previousState.preview)) this.previewContainer.hidden = true;
@@ -125,6 +131,34 @@ class ThoughtsVisual {
         break;
     }
   }
+  updatePreparationStatus() {
+    // The current request owns the indicator through encoding, validation and
+    // preview acknowledgement. Retired async completions cannot hide a new one.
+    const active = !!(this.connected && this.state.open && this.state.trimming && this.state.request === 'prepareLoop');
+    this.preparationStatus.hidden = !active;
+    this.terminalContainer.dataset.preparing = String(active);
+    this.preparationWave.setPlayback(active, this.documentVisible, this.motionQuery.matches);
+    if (active) this.positionPreparation();
+  }
+  positionPreparation() {
+    if (this.preparationStatus.hidden || !this.state.preview) return;
+    const screen = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
+    const cellWidth = screen.width / this.terminal.cols;
+    const width = this.state.preview.Width * cellWidth;
+    Object.assign(this.preparationStatus.style, {
+      left: `${screen.left + this.state.preview.X * cellWidth}px`, width: `${width}px`
+    });
+    const wave = document.getElementById('video-preparation-wave');
+    const layer = this.preparationWave.trace;
+    // Measure only on layout/terminal paints, never in the animation loop.
+    if (layer.offsetWidth && layer.offsetHeight) {
+      wave.style.setProperty('--wave-width', `${width}px`);
+      wave.style.setProperty('--wave-tail', `${width * 64 / 156}px`);
+      wave.style.setProperty('--wave-dot', `${width / 156}px`);
+      wave.style.setProperty('--wave-scale-x', width / layer.offsetWidth);
+      wave.style.setProperty('--wave-scale-y', wave.clientHeight / layer.offsetHeight);
+    }
+  }
   disconnect() {
     this.connected = false;
     this.motionOverride = false;
@@ -132,6 +166,7 @@ class ThoughtsVisual {
     this.updatePlayback();
     this.connectionGeneration++;
     this.state = {open: false};
+    this.updatePreparationStatus();
     this.refreshAfterClose = false;
     this.discardPreview();
     this.updateDarkness(this.saved.darkness);
@@ -221,6 +256,7 @@ class ThoughtsVisual {
     this.previewFrame = requestAnimationFrame(() => this.positionPreview());
   }
   positionPreview() {
+    this.positionPreparation();
     this.previewContainer.hidden = true;
     const previewRect = this.state.preview;
     if (!this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth)) return;
@@ -399,7 +435,7 @@ class ThoughtsVisual {
     this.saveController = controller;
     try {
       this.stopPreviewPlayback();
-      const preferences = {darkness, framing, speedPercent: this.state.speedPercent || 100, userPaused: !!this.state.userPaused};
+      const preferences = {darkness, framing, videoQuality:this.state.videoQuality || 'efficient', speedPercent: this.state.speedPercent || 100, userPaused: !!this.state.userPaused};
       let requestURL = '/visual/settings';
       let requestOptions = {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(preferences)};
       if (removeBackground) {
@@ -410,7 +446,7 @@ class ThoughtsVisual {
       } else if (this.file.files[0]) {
         const form = new FormData();
         form.append('image', this.file.files[0]); form.append('darkness', darkness);
-        form.append('framing', JSON.stringify(framing));
+        form.append('framing', JSON.stringify(framing)); form.append('videoQuality',preferences.videoQuality);
         requestURL = '/visual/background'; requestOptions = {method: 'POST', body: form};
       }
       const response = await fetch(requestURL, {...requestOptions, signal: controller.signal});

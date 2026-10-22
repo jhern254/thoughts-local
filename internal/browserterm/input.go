@@ -45,6 +45,9 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 		if len(body) > maxOptionsBytes || json.Unmarshal(body, &msg) != nil || msg.ID > 9007199254740991 || msg.Darkness < 0 || msg.Darkness > 95 || (msg.SpeedPercent != 0 && (msg.SpeedPercent < 25 || msg.SpeedPercent > 100)) || (msg.Kind != "" && msg.Kind != "image" && msg.Kind != "video") {
 			return nil, errInput
 		}
+		if (msg.VideoQuality != "" && !msg.VideoQuality.Valid()) || msg.Width < 0 || msg.Height < 0 || msg.Width > 1920 || msg.Height > 1920 || msg.Width*msg.Height > 1920*1080 || (msg.FrameRate.Numerator != 0 && !msg.FrameRate.Valid()) {
+			return nil, errInput
+		}
 		if msg.DurationMS < 0 || msg.DurationMS > visual.MaxVideoSourceDuration*1000 || msg.Trim.StartMS < 0 || msg.Trim.EndMS < 0 || msg.Trim.StartMS > visual.MaxVideoSourceDuration*1000 || msg.Trim.EndMS > visual.MaxVideoSourceDuration*1000 {
 			return nil, errInput
 		}

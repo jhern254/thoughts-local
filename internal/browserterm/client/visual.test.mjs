@@ -174,3 +174,87 @@ test('authoritative paused restore never starts playback before or after connect
  assert.equal(visual.saved.userPaused,true);assert.equal(video.playbackRate,.95);
  assert.equal(video.paused,true);assert.equal(plays,0);
 });
+
+test('preparation indicator follows the current editor through replacement, completion and disconnect', async () => {
+  const {visual} = activationFixture();
+  const preparations = [];
+  Object.assign(visual, {
+    connected: true,
+    state: {open: false},
+    preparationStatus: {hidden: true},
+    preparationWave: {setPlayback() {}},
+    terminalContainer: {dataset: {}},
+    documentVisible: true,
+    motionQuery: {matches: false},
+    previewContainer: {},
+    terminal: {focus() {}},
+    videoTrim: {
+      sync() {},
+      prepare() { return new Promise(resolve => preparations.push(resolve)); },
+      async discard() {}
+    }
+  });
+  visual.cancelFramingDrag = () => {};
+  visual.queuePreview = () => {};
+  visual.updatePlayback = () => {};
+  visual.discardPreview = () => {};
+  const state = {open: true, trimming: true, id: 1, request: 'prepareLoop'};
+  const first = visual.receive(state);
+  assert.equal(visual.preparationStatus.hidden, false);
+  await visual.receive({...state, id: 2, request: 'discardVideo'});
+  assert.equal(visual.preparationStatus.hidden, true);
+  const second = visual.receive({...state, id: 3});
+  assert.equal(visual.preparationStatus.hidden, false);
+  preparations.shift()(); await first;
+  assert.equal(visual.preparationStatus.hidden, false, 'retired completion must not hide the current preparation');
+  preparations.shift()(); await second;
+  assert.equal(visual.preparationStatus.hidden, false, 'keep showing until the TUI accepts the result');
+  await visual.receive({...state, id: 3, request: ''});
+  assert.equal(visual.preparationStatus.hidden, true);
+  const third = visual.receive({...state, id: 4});
+  visual.disconnect();
+  assert.equal(visual.preparationStatus.hidden, true);
+  preparations.shift()(); await third;
+  assert.equal(visual.preparationStatus.hidden, true);
+});
+
+function waveFixture() {
+  const trace = {textContent: ''};
+  const element = {querySelector: () => trace, querySelectorAll: () => [trace], dataset: {}};
+  const context = vm.createContext({element});
+  vm.runInContext(readFileSync(new URL('../static/preparation.js', import.meta.url), 'utf8'), context);
+  return {wave: vm.runInContext('new ThoughtsPreparationWave(element)', context), trace, element};
+}
+
+test('braille activity wave retires motion without rewriting the fixed curve', () => {
+  const {wave, trace, element} = waveFixture();
+  const original = trace.textContent;
+  wave.setPlayback(true, true, false);
+  assert.equal(element.dataset.animating, 'true');
+  for (const state of [[true, false, false], [false, true, false], [true, true, true]]) {
+    wave.setPlayback(...state);
+    assert.equal(element.dataset.animating, 'false');
+    wave.setPlayback(true, true, false);
+    assert.equal(element.dataset.animating, 'true');
+  }
+  wave.setPlayback(false, true, false);
+  assert.equal(element.dataset.animating, 'false');
+  assert.equal(trace.textContent, original);
+});
+
+test('braille activity wave completes two cycles with both endpoints on the center axis', () => {
+  const {trace} = waveFixture();
+  const rows = trace.textContent.split('\n');
+  assert.equal(rows.length, 6);
+  assert.ok(rows.every(row => row.length === 78));
+  function hasDot(x, y) {
+    const bits = [[1, 2, 4, 64], [8, 16, 32, 128]];
+    return !!((rows[Math.floor(y / 4)].charCodeAt(Math.floor(x / 2)) - 0x2800) & bits[x % 2][y % 4]);
+  }
+  assert.ok(hasDot(0, 12), 'left endpoint is on the axis');
+  assert.ok(hasDot(155, 12), 'right endpoint is on the axis');
+  assert.ok(hasDot(19, 2), 'first peak is above the axis');
+  assert.ok(hasDot(58, 22), 'first trough is below the axis');
+  assert.ok(hasDot(97, 2), 'second peak is above the axis');
+  assert.ok(hasDot(136, 22), 'second trough is below the axis');
+});

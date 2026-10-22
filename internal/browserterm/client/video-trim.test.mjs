@@ -67,3 +67,17 @@ for (const preferences of [{reducedMotion:true,userPaused:false},{reducedMotion:
     assert.ok(editor.acceptedVideo);
   });
 }
+
+test('unpreviewed quality edits preserve the acknowledged loop and never prepare automatically',()=>{
+ const {editor}=fixture();editor.source={sourceID:'source'};
+ editor.accepted={previewID:'accepted',videoQuality:'efficient'};
+ editor.showSource=()=>{throw new Error('quality edit sought source');};
+ editor.showAccepted=()=>{throw new Error('quality edit replaced preview');};
+ const before={trimming:true,sourceFrame:false,sourcePositionMS:0,videoQuality:'efficient'};
+ editor.sync({...before,videoQuality:'maximum'},before);
+ assert.equal(editor.accepted.videoQuality,'efficient');
+ const request=JSON.parse(editor.applyRequest({videoQuality:'maximum',darkness:42,speedPercent:50}).body);
+ assert.equal(request.previewID,'accepted');
+ assert.equal(request.videoQuality,undefined); // Native accepted metadata owns persistence.
+ assert.equal(request.speedPercent,50);
+});

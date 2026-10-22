@@ -55,6 +55,12 @@ func (s *Service) Load(ctx context.Context) (data.Visual, error) {
 
 func (s *Service) load(ctx context.Context) (data.Visual, error) {
 	settings, err := s.store.Load(ctx, s.userID)
+	if settings.VideoQuality == "" {
+		settings.VideoQuality = data.DefaultVideoQuality
+	}
+	if err == nil && !VideoQuality(settings.VideoQuality).Valid() {
+		return data.Visual{}, ErrVideoQuality
+	}
 	if settings.Darkness < 0 || settings.Darkness > 95 {
 		settings.Darkness = data.DefaultBackgroundDarkness
 	}
@@ -87,7 +93,7 @@ func (s *Service) root() (*os.Root, error) {
 	return os.OpenRoot(s.directory)
 }
 
-func (s *Service) Import(ctx context.Context, input io.Reader, darkness int, framing data.BackgroundFraming) (data.Visual, bool, error) {
+func (s *Service) Import(ctx context.Context, input io.Reader, darkness int, framing data.BackgroundFraming, quality VideoQuality) (data.Visual, bool, error) {
 	if !s.tryAcquire() {
 		return data.Visual{}, false, ErrBusy
 	}
@@ -97,6 +103,9 @@ func (s *Service) Import(ctx context.Context, input io.Reader, darkness int, fra
 	}
 	if !framing.Valid() {
 		return data.Visual{}, false, ErrFraming
+	}
+	if quality != "" && !quality.Valid() {
+		return data.Visual{}, false, ErrVideoQuality
 	}
 	previous, err := s.load(ctx)
 	if err != nil {
@@ -119,6 +128,9 @@ func (s *Service) Import(ctx context.Context, input io.Reader, darkness int, fra
 		extension = ".jpg"
 	}
 	settings := previous
+	if quality != "" {
+		settings.VideoQuality = string(quality)
+	}
 	settings.Darkness, settings.Framing = darkness, framing
 	return s.commitBackground(ctx, previous, settings, extension, body, nil)
 }
@@ -186,7 +198,11 @@ func (s *Service) ApplyPreparedVideo(ctx context.Context, prepared *PreparedVide
 	if prepared == nil || prepared.directory == "" {
 		return data.Visual{}, false, ErrVideo
 	}
-	body, err := readBoundedVideoAsset(filepath.Join(prepared.directory, "display.mp4"), MaxStoredVideoBytes)
+	limits, err := prepared.info.VideoQuality.limits()
+	if err != nil {
+		return data.Visual{}, false, err
+	}
+	body, err := readBoundedVideoAsset(filepath.Join(prepared.directory, "display.mp4"), limits.MaxBytes)
 	if err != nil {
 		return data.Visual{}, false, err
 	}
@@ -197,6 +213,7 @@ func (s *Service) ApplyPreparedVideo(ctx context.Context, prepared *PreparedVide
 	settings := previous
 	settings.Darkness, settings.Framing = darkness, framing
 	settings.SpeedPercent, settings.UserPaused = speedPercent, userPaused
+	settings.VideoQuality = string(prepared.info.VideoQuality)
 	return s.commitBackground(ctx, previous, settings, ".mp4", body, poster)
 }
 
@@ -215,7 +232,7 @@ func removeAsset(root *os.Root, name string) bool {
 	return warning
 }
 
-func (s *Service) UpdateSettings(ctx context.Context, darkness int, framing data.BackgroundFraming, speedPercent int, userPaused bool) (data.Visual, error) {
+func (s *Service) UpdateSettings(ctx context.Context, darkness int, framing data.BackgroundFraming, speedPercent int, userPaused bool, quality VideoQuality) (data.Visual, error) {
 	if !s.tryAcquire() {
 		return data.Visual{}, ErrBusy
 	}
@@ -232,6 +249,12 @@ func (s *Service) UpdateSettings(ctx context.Context, darkness int, framing data
 	}
 	if speedPercent < 25 || speedPercent > 100 {
 		return data.Visual{}, ErrPlayback
+	}
+	if quality != "" {
+		if !quality.Valid() {
+			return data.Visual{}, ErrVideoQuality
+		}
+		settings.VideoQuality = string(quality)
 	}
 	settings.SpeedPercent, settings.UserPaused = speedPercent, userPaused
 	settings.Darkness = darkness

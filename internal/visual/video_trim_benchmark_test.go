@@ -48,7 +48,7 @@ func BenchmarkVideoTrim(b *testing.B) {
 		b.Run("Preview/"+cut.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				loop, err := source.Prepare(b.Context(), VideoTrim{StartMS: cut.start, EndMS: cut.start + 10000})
+				loop, err := source.Prepare(b.Context(), VideoTrim{StartMS: cut.start, EndMS: cut.start + 10000}, VideoQualityEfficient)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -58,7 +58,7 @@ func BenchmarkVideoTrim(b *testing.B) {
 			}
 		})
 	}
-	loop, err := source.Prepare(b.Context(), VideoTrim{EndMS: 10000})
+	loop, err := source.Prepare(b.Context(), VideoTrim{EndMS: 10000}, VideoQualityEfficient)
 	if err != nil {
 		b.Fatal(err)
 	}

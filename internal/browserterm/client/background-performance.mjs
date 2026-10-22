@@ -2,7 +2,7 @@
 // Run revisions separately; do not run builds/tests alongside measurements.
 import {chromium, expect} from '@playwright/test';
 import {fakeMicrophone} from './capture-fixture.mjs';
-import {openVisual, setDarkness, screen} from './visual-helpers.mjs';
+import {openVisual, setDarkness, screen, setVideoQuality} from './visual-helpers.mjs';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {availableParallelism} from 'node:os';
@@ -15,12 +15,16 @@ if (process.env.THOUGHTS_BACKGROUND_PERF_DISPOSABLE !== '1') throw new Error('Us
 const [url, appPID, output] = process.argv.slice(2);
 if (!url || new URL(url).hostname !== '127.0.0.1' || !/^\d+$/.test(appPID || '') || !output?.startsWith('/tmp/')) throw new Error('Usage: node background-performance.mjs http://127.0.0.1:PORT APP_PID /tmp/results.json');
 const ticks = Number(execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}));
-const count = 5, rows = [];
+const count = Number(process.env.THOUGHTS_PERF_SAMPLES || 5), rows = [];
+if (!Number.isInteger(count) || count < 1 || count > 5) throw new Error('Samples must be between 1 and 5.');
 const fixtureRunID = Date.now(); // Avoid native file-picker deduplication between separate probe runs.
 // Privacy follow-ups measure only one-time import/activation; avoid repeating idle/navigation matrices.
 const importOnly = process.env.THOUGHTS_PERF_IMPORT_ONLY === '1';
 const videoFixturePath = process.env.THOUGHTS_PERF_VIDEO_FIXTURE;
-// Reduce only idle sampling for a quick follow-up; import/interaction runs stay five.
+const qualityStudy = process.env.THOUGHTS_PERF_QUALITY_STUDY === '1';
+const qualityTier=process.env.THOUGHTS_PERF_VIDEO_QUALITY || 'efficient';
+if(!['efficient','high','maximum'].includes(qualityTier))throw new Error('Unknown performance quality tier');
+// Idle-only follow-ups can retain their own sampling count.
 const idleSamples = Number(process.env.THOUGHTS_PERF_IDLE_SAMPLES || 5);
 if (!Number.isInteger(idleSamples) || idleSamples < 1 || idleSamples > 5) throw new Error('Idle samples must be between 1 and 5.');
 const median = values => [...values].sort((a,b)=>a-b)[Math.floor(values.length/2)];
@@ -78,7 +82,7 @@ try {
   const page = await browser.newPage({viewport:null});
   const cdp = await page.context().newCDPSession(page);
   const browserCDP = await browser.newBrowserCDPSession();
-  if(process.env.THOUGHTS_PERF_RECORDING==='1')await fakeMicrophone(page,.25);
+  if(process.env.THOUGHTS_PERF_RECORDING==='1' || qualityStudy)await fakeMicrophone(page,.25);
   if (process.env.THOUGHTS_PERF_INTERACTIONS === '1') await page.addInitScript(() => {
     // Test-only arrival stamp: split application/transport waiting from xterm's
     // queued rendering without adding instrumentation to the shipped adapter.
@@ -86,6 +90,9 @@ try {
     window.WebSocket = class extends NativeWebSocket {
       constructor(...args) {
         super(...args);
+        if (new URL(args[0], location.href).pathname === '/ws') {
+          window.perfTerminalConnections = (window.perfTerminalConnections || 0) + 1;
+        }
         this.addEventListener('message', event => {
           if (event.data instanceof ArrayBuffer && new Uint8Array(event.data)[0] === 49) window.lastTerminalArrival = performance.now();
         });
@@ -100,7 +107,7 @@ try {
   const {windowId} = await cdp.send('Browser.getWindowForTarget');
   const fullscreen = async () => { await cdp.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'fullscreen'}}); await page.waitForTimeout(500); };
   await fullscreen();
-  const metadata = {revision:process.env.THOUGHTS_PERF_REVISION || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),logicalCPUs:availableParallelism(),contentionWorkers:Math.min(4,Math.max(1,Math.floor(availableParallelism()/2))),browser:await browser.version(),go:execFileSync('go',['version'],{encoding:'utf8'}).trim(),system:await browserCDP.send('SystemInfo.getInfo'),viewport:await page.evaluate(()=>[innerWidth,innerHeight,devicePixelRatio]),count,idleSamples,importOnly,appPID};
+  const metadata = {videoQuality:qualityTier,qualityStudy,previousDay:process.env.THOUGHTS_PERF_PREVIOUS_DAY==='1',revision:process.env.THOUGHTS_PERF_REVISION || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),logicalCPUs:availableParallelism(),contentionWorkers:Math.min(4,Math.max(1,Math.floor(availableParallelism()/2))),browser:await browser.version(),go:execFileSync('go',['version'],{encoding:'utf8'}).trim(),system:await browserCDP.send('SystemInfo.getInfo'),viewport:await page.evaluate(()=>[innerWidth,innerHeight,devicePixelRatio]),count,idleSamples,importOnly,appPID};
   metadata.decoderProperties=[];
   await cdp.send('Media.enable');
   cdp.on('Media.playerPropertiesChanged',event=>{
@@ -114,6 +121,14 @@ try {
       const selected = page.locator('.xterm-bg-62').filter({hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')});
       if (await selected.count()) {
         await page.keyboard.press('Enter');
+        if (label === 'Pause video' || label === 'Play video') {
+          // Playback controls acknowledge asynchronously. Wait for that reply
+          // before sending another key, which the busy editor would ignore.
+          await page.waitForFunction(paused => {
+            const state = window.backgroundProbe?.state;
+            return state?.request === '' && state.userPaused === paused;
+          }, label === 'Pause video');
+        }
         return;
       }
       const previous = await page.locator('.xterm-bg-62').allTextContents();
@@ -123,13 +138,17 @@ try {
     throw new Error('Missing focused Visual control: ' + label);
   };
   const chooseImage = async (page, fixture) => {
+    if(fixture.mimeType?.startsWith('video/'))await setVideoQuality(page,qualityTier);
     const chooser = page.waitForEvent('filechooser');
     await clickControl(page, 'Choose image or video');
-    await (await chooser).setFiles(fixture);
+    await (await chooser).setFiles(fixture.path || fixture);
     if(fixture.mimeType?.startsWith('video/')) {
       await expect(screen(page)).toContainText('Set cut points, then Preview loop.',{timeout:15000});
+      const preparedReply=page.waitForResponse(response=>response.url().endsWith('/visual/video/preview')&&response.request().method()==='POST',{timeout:125000});
       await clickControl(page,'Preview loop');
       await expect(screen(page)).toContainText('Preview ready. Done uses this loop.',{timeout:120000});
+      const {videoQuality,width,height,frameRate,frameCount,durationMS,trim}=await(await preparedReply).json();
+      add({phase:'prepared-stream',videoQuality,width,height,frameRate,frameCount,durationMS,trim});
       await clickControl(page,'Done — use previewed loop');
       await expect(screen(page)).toContainText('Background darkness:');
     } else await expect(screen(page)).toContainText('Preview only. Apply to save.', {timeout: 15000});
@@ -185,7 +204,7 @@ try {
   };
   if (process.env.THOUGHTS_PERF_INTERACTIONS === '1') {
     if (!videoFixturePath) throw new Error('Interaction mode requires THOUGHTS_PERF_VIDEO_FIXTURE.');
-    await measureVideoInteractions({page, cdp, url, videoFixturePath, output, add, usage, count, openVisual, chooseImage, clickControl});
+    await measureVideoInteractions({page, cdp, url, videoFixturePath, output, add, usage, count, qualityStudy, openVisual, chooseImage, clickControl});
   } else {
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');
   if(!importOnly&&!videoFixturePath)await idle('opaque');
@@ -311,4 +330,13 @@ try {
   await page.screenshot({path:output.replace('.json','-desktop.png')});
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');
   }
+} catch (error) {
+  const page = browser.contexts()[0]?.pages()[0];
+  if (page) {
+    try {
+      await page.screenshot({path:output.replace('.json','-error.png')});
+      writeFileSync(output.replace('.json','-error.txt'),(await page.locator('.xterm-rows').textContent()).slice(0,16384));
+    } catch { console.error('Probe capture unavailable.'); }
+  }
+  throw error;
 } finally {await browser.close();}

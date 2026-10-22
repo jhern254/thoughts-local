@@ -16,11 +16,12 @@ func (s *SQLiteVisualStore) Load(ctx context.Context, userID string) (Visual, er
 		Darkness:     DefaultBackgroundDarkness,
 		Framing:      DefaultBackgroundFraming(),
 		SpeedPercent: 100,
+		VideoQuality: DefaultVideoQuality,
 	}
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(background_asset, ''), darkness, fit, zoom, position_x, position_y, speed_percent, user_paused
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(background_asset, ''), darkness, fit, zoom, position_x, position_y, speed_percent, user_paused, video_quality
  FROM visual WHERE user_id=?`, userID).Scan(
 		&settings.BackgroundAsset, &settings.Darkness, &settings.Framing.Fit,
-		&settings.Framing.Zoom, &settings.Framing.PositionX, &settings.Framing.PositionY, &settings.SpeedPercent, &settings.UserPaused,
+		&settings.Framing.Zoom, &settings.Framing.PositionX, &settings.Framing.PositionY, &settings.SpeedPercent, &settings.UserPaused, &settings.VideoQuality,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return settings, nil
@@ -28,12 +29,12 @@ func (s *SQLiteVisualStore) Load(ctx context.Context, userID string) (Visual, er
 	return settings, TranslateSQLiteError(err)
 }
 func (s *SQLiteVisualStore) Save(ctx context.Context, userID string, settings Visual) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO visual(user_id,background_asset,darkness,fit,zoom,position_x,position_y,speed_percent,user_paused) VALUES (?,NULLIF(?,''),?,?,?,?,?,?,?)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO visual(user_id,background_asset,darkness,fit,zoom,position_x,position_y,speed_percent,user_paused,video_quality) VALUES (?,NULLIF(?,''),?,?,?,?,?,?,?,?)
  ON CONFLICT(user_id) DO UPDATE SET
  background_asset=excluded.background_asset,darkness=excluded.darkness,fit=excluded.fit,
  zoom=excluded.zoom,position_x=excluded.position_x,position_y=excluded.position_y,
- speed_percent=excluded.speed_percent,user_paused=excluded.user_paused`,
+ speed_percent=excluded.speed_percent,user_paused=excluded.user_paused,video_quality=excluded.video_quality`,
 		userID, settings.BackgroundAsset, settings.Darkness, settings.Framing.Fit,
-		settings.Framing.Zoom, settings.Framing.PositionX, settings.Framing.PositionY, settings.SpeedPercent, settings.UserPaused)
+		settings.Framing.Zoom, settings.Framing.PositionX, settings.Framing.PositionY, settings.SpeedPercent, settings.UserPaused, settings.VideoQuality)
 	return TranslateSQLiteError(err)
 }

@@ -17,6 +17,7 @@ const maxVisualRequestBytes = visual.MaxImageBytes + (64 << 10)
 const maxVisualSettingsBytes = 1024
 
 type visualResponse struct {
+	VideoQuality string `json:"videoQuality"`
 	// Identity lets settings-only updates reuse decoded pixels. It is an opaque
 	// application asset name, not a path or an alternate asset-serving route.
 	BackgroundID   string                 `json:"backgroundID,omitempty"`
@@ -33,6 +34,7 @@ func writeVisual(w http.ResponseWriter, settings data.Visual, warning bool) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(visualResponse{
 		BackgroundID:   settings.BackgroundAsset,
+		VideoQuality:   settings.VideoQuality,
 		Framing:        settings.Framing,
 		Background:     settings.BackgroundAsset != "",
 		Darkness:       settings.Darkness,
@@ -53,6 +55,9 @@ func visualError(w http.ResponseWriter, err error) {
 	message := "Could not update or load the background."
 	var tooLarge *http.MaxBytesError
 	switch {
+	case errors.Is(err, visual.ErrVideoQuality):
+		status = http.StatusBadRequest
+		message = "Choose Efficient, High quality, or Maximum video quality."
 	case errors.Is(err, visual.ErrVideo):
 		status = http.StatusBadRequest
 		message = "Choose a self-contained SDR H.264 MP4 or MOV within the video limits."
@@ -211,6 +216,7 @@ func (s *server) removeVisualBackground(w http.ResponseWriter, r *http.Request) 
 func (s *server) updateVisualSettings(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxVisualSettingsBytes)
 	var input struct {
+		VideoQuality visual.VideoQuality    `json:"videoQuality"`
 		Darkness     *int                   `json:"darkness"`
 		Framing      data.BackgroundFraming `json:"framing"`
 		SpeedPercent *int                   `json:"speedPercent"`
@@ -230,7 +236,7 @@ func (s *server) updateVisualSettings(w http.ResponseWriter, r *http.Request) {
 	if input.SpeedPercent != nil {
 		speedPercent = *input.SpeedPercent
 	}
-	settings, err := s.visual.UpdateSettings(r.Context(), *input.Darkness, input.Framing, speedPercent, input.UserPaused)
+	settings, err := s.visual.UpdateSettings(r.Context(), *input.Darkness, input.Framing, speedPercent, input.UserPaused, input.VideoQuality)
 	if err != nil {
 		visualError(w, err)
 		return
@@ -256,9 +262,22 @@ func (s *server) importVisualBackground(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer r.MultipartForm.RemoveAll()
-	if len(r.MultipartForm.File) != 1 || len(r.MultipartForm.File["image"]) != 1 || len(r.MultipartForm.Value) != 2 || len(r.MultipartForm.Value["darkness"]) != 1 || len(r.MultipartForm.Value["framing"]) != 1 {
-		http.Error(w, "Choose one image and a darkness value.", http.StatusBadRequest)
+	qualityValues, hasQuality := r.MultipartForm.Value["videoQuality"]
+	expectedFields := 2
+	if hasQuality {
+		expectedFields++
+	}
+	if len(r.MultipartForm.File) != 1 || len(r.MultipartForm.File["image"]) != 1 || len(r.MultipartForm.Value) != expectedFields || len(r.MultipartForm.Value["darkness"]) != 1 || len(r.MultipartForm.Value["framing"]) != 1 || (hasQuality && len(qualityValues) != 1) {
+		http.Error(w, "Choose one image and valid visual preferences.", http.StatusBadRequest)
 		return
+	}
+	quality := visual.VideoQuality("")
+	if hasQuality {
+		quality = visual.VideoQuality(qualityValues[0])
+		if !quality.Valid() {
+			visualError(w, visual.ErrVideoQuality)
+			return
+		}
 	}
 	darkness, err := strconv.Atoi(r.MultipartForm.Value["darkness"][0])
 	if err != nil {
@@ -276,7 +295,7 @@ func (s *server) importVisualBackground(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer file.Close()
-	settings, warning, err := s.visual.Import(r.Context(), file, darkness, framing)
+	settings, warning, err := s.visual.Import(r.Context(), file, darkness, framing, quality)
 	if err != nil {
 		visualError(w, err)
 		return

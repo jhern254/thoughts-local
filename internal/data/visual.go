@@ -1,6 +1,7 @@
 package data
 
 const DefaultBackgroundDarkness = 70
+const DefaultVideoQuality = "efficient"
 
 // Visual contains only native-owned browser presentation preferences.
 type Visual struct {
@@ -10,6 +11,8 @@ type Visual struct {
 	Framing      BackgroundFraming
 	SpeedPercent int
 	UserPaused   bool
+	// VideoQuality is a preference for future preparations, not existing asset metadata.
+	VideoQuality string
 }
 
 // BackgroundFraming uses normalized overflow positions so framing adapts to

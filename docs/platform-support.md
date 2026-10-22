@@ -82,3 +82,10 @@ executed with synthetic SDR clips; codec support does not prove hardware decodin
 macOS/Windows video import/playback remain unverified. See the
 [background measurements](browser-background-performance.md) for CPU limits and
 missed targets. Native speech statuses above are unchanged.
+
+The quality extension has runtime coverage on Linux amd64 / FFmpeg 6.1.1 for
+Efficient (720p30), High quality (1080p30), and Maximum (1080p60), including
+portrait output, 23.976/29.97/59.94 FPS and padded-macroblock level selection.
+Chromium and Firefox integration tests decode and persist actual 1080p60
+prepared streams. These Linux results do not upgrade other platforms or imply
+that every browser/device supports Constrained Baseline Level 4.2 playback.

@@ -8,6 +8,7 @@ CREATE TABLE visual (
     position_y INTEGER NOT NULL DEFAULT 5000 CHECK (typeof(position_y) = 'integer' AND position_y BETWEEN 0 AND 10000),
     speed_percent INTEGER NOT NULL DEFAULT 100 CHECK (typeof(speed_percent) = 'integer' AND speed_percent BETWEEN 25 AND 100),
     user_paused INTEGER NOT NULL DEFAULT 0 CHECK (typeof(user_paused) = 'integer' AND user_paused IN (0, 1)),
+    video_quality TEXT NOT NULL DEFAULT 'efficient' CHECK (video_quality IN ('efficient', 'high', 'maximum')),
     CHECK (background_asset IS NULL OR (
         length(background_asset) = 36
         AND substr(background_asset, 1, 32) NOT GLOB '*[^0-9a-f]*'

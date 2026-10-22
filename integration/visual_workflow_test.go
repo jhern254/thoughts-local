@@ -37,7 +37,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		if err := png.Encode(&source, image.NewRGBA(image.Rect(0, 0, 12, 8))); err != nil {
 			t.Fatal(err)
 		}
-		selected, warning, err := firstVisual.Import(t.Context(), bytes.NewReader(source.Bytes()), 42, data.DefaultBackgroundFraming())
+		selected, warning, err := firstVisual.Import(t.Context(), bytes.NewReader(source.Bytes()), 42, data.DefaultBackgroundFraming(), visual.VideoQualityEfficient)
 		if err != nil || warning {
 			t.Fatalf("import error = %v, warning = %v; want success", err, warning)
 		}
@@ -65,7 +65,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 			}
 			t.Fatalf("unselected background error = %v, want not exist", err)
 		}
-		other, warning, err := secondVisual.Import(t.Context(), bytes.NewReader(source.Bytes()), 70, data.DefaultBackgroundFraming())
+		other, warning, err := secondVisual.Import(t.Context(), bytes.NewReader(source.Bytes()), 70, data.DefaultBackgroundFraming(), visual.VideoQualityEfficient)
 		if err != nil || warning {
 			t.Fatalf("second import error = %v, warning = %v; want success", err, warning)
 		}
@@ -110,7 +110,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer staged.Close()
-		prepared, err := staged.Prepare(t.Context(), visual.VideoTrim{EndMS: 2000})
+		prepared, err := staged.Prepare(t.Context(), visual.VideoTrim{EndMS: 2000}, visual.VideoQualityHigh)
 		if err != nil {
 			runtime.Close()
 			t.Fatal(err)
@@ -137,7 +137,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if restored != first || restored.SpeedPercent != 50 || !restored.UserPaused {
+		if restored != first || restored.SpeedPercent != 50 || !restored.UserPaused || restored.VideoQuality != "high" {
 			t.Fatalf("restored=%+v, want %+v", restored, first)
 		}
 		poster, kind, err := service.OpenPoster(t.Context())
@@ -170,7 +170,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		framing := data.BackgroundFraming{Fit: "fill", Zoom: 175, PositionX: 1200, PositionY: 9000}
-		first, warning, err := service.Import(t.Context(), bytes.NewReader(source.Bytes()), 42, framing)
+		first, warning, err := service.Import(t.Context(), bytes.NewReader(source.Bytes()), 42, framing, visual.VideoQualityEfficient)
 		if err != nil || warning {
 			runtime.Close()
 			t.Fatalf("import = %v, warning %v; want success", err, warning)
@@ -214,7 +214,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		var body bytes.Buffer
 		_ = png.Encode(&body, image.NewRGBA(image.Rect(0, 0, 8, 6)))
 		framing := data.BackgroundFraming{Fit: "fill", Zoom: 175, PositionX: 1200, PositionY: 9000}
-		first, warning, err := service.Import(t.Context(), bytes.NewReader(body.Bytes()), 42, framing)
+		first, warning, err := service.Import(t.Context(), bytes.NewReader(body.Bytes()), 42, framing, visual.VideoQualityEfficient)
 		if err != nil || warning {
 			t.Fatalf("import = %v, warning %v", err, warning)
 		}
@@ -250,7 +250,7 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 		if got != first {
 			t.Fatalf("restored = %+v, want %+v", got, first)
 		}
-		if _, _, err = service.Import(t.Context(), bytes.NewReader([]byte("invalid replacement")), 10, data.DefaultBackgroundFraming()); err == nil {
+		if _, _, err = service.Import(t.Context(), bytes.NewReader([]byte("invalid replacement")), 10, data.DefaultBackgroundFraming(), visual.VideoQualityEfficient); err == nil {
 			t.Fatal("invalid replacement accepted")
 		}
 		file, _, err := service.OpenBackground(t.Context())

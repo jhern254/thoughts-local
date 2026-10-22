@@ -79,6 +79,7 @@ class ThoughtsVideoTrim {
   }
   showSource(positionMS) {
     if (!this.sourceVideo) return;
+    if (this.source) this.visual.previewSourceSize = {width:this.source.width,height:this.source.height};
     if (this.visual.previewVideo !== this.sourceVideo) this.attach(this.sourceVideo);
     // Coalesce seek requests: one in flight and one latest target. No playback
     // timer, frame copying or FFmpeg work occurs while moving cut controls.
@@ -110,7 +111,7 @@ class ThoughtsVideoTrim {
     this.controller = controller;
     let candidate, videoURL, posterURL;
     try {
-      const response = await this.request('/visual/video/preview', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceID:this.source.sourceID, trim:state.trim})},controller.signal);
+      const response = await this.request('/visual/video/preview', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceID:this.source.sourceID, trim:state.trim,videoQuality:state.videoQuality})},controller.signal);
       const prepared = await response.json();
       if (!this.owns(generation)) return;
       if (this.accepted?.previewID !== prepared.previewID) {
@@ -135,7 +136,7 @@ class ThoughtsVideoTrim {
         this.accepted = prepared;
       }
       this.showAccepted(true);
-      visual.sendAction({action:'loopReady',id:operationID,trim:this.accepted.trim,durationMS:this.accepted.durationMS});
+      visual.sendAction({action:'loopReady',id:operationID,trim:this.accepted.trim,durationMS:this.accepted.durationMS,videoQuality:this.accepted.videoQuality,width:this.accepted.width,height:this.accepted.height,frameRate:this.accepted.frameRate});
     } catch {
       if (this.owns(generation) && !controller.signal.aborted) {
         if (this.acceptedVideo) this.showAccepted(false);
@@ -151,6 +152,7 @@ class ThoughtsVideoTrim {
   showAccepted(play) {
     if (!this.acceptedVideo) return;
     const visual = this.visual;
+    if (this.accepted) visual.previewSourceSize = {width:this.accepted.width,height:this.accepted.height};
     this.attach(this.acceptedVideo);
     visual.preview.src = this.acceptedPosterURL;
     // Decoding/acknowledgement makes a loop applicable, independently of motion
@@ -170,7 +172,8 @@ class ThoughtsVideoTrim {
   }
   applyRequest(preferences) {
     if (!this.accepted) throw new Error('Preview a loop first.');
-    return {method:'POST',headers:{...this.headers(),'Content-Type':'application/json'},body:JSON.stringify({previewID:this.accepted.previewID,...preferences})};
+    const {videoQuality, ...displayPreferences} = preferences;
+    return {method:'POST',headers:{...this.headers(),'Content-Type':'application/json'},body:JSON.stringify({previewID:this.accepted.previewID,...displayPreferences})};
   }
   close() {
     this.generation++;

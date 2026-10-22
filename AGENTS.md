@@ -51,6 +51,23 @@ Operational logging accepts only approved typed metadata and uses fixed event me
 
 Event updates replace the complete editable event state. A nil `SubjectID` explicitly clears the subject assignment; callers making unrelated corrections must supply the current `SubjectID` to preserve it.
 
+### Presentation ownership and rendering efficiency
+
+Choose presentation mechanisms for clear ownership, small implementations, and demonstrated benefit.
+
+Follow the [app style guide](docs/app-style-guide.md) for approved visual patterns,
+including clean distribution curves and the video-preparation activity wave.
+
+* Keep Bubble Tea/Lip Gloss as the current default for terminal screens, navigation, and forms. Use browser-native HTML/CSS and APIs for focused browser presentation such as media previews, loading indicators, and file selection when they simplify the implementation or improve the experience.
+* Keep application behavior in Go. Browser enhancements must use existing services and authoritative operation state; do not duplicate validation, persistence rules, or entire workflows in JavaScript.
+* Keep visual animation with the renderer that owns the display. Prefer local animation over repeated application-state updates solely to produce motion. CSS or browser APIs may serve the current browser interface; a future Go rendering engine may own animation directly. Keep rendering updates separate from domain mutations and persistence, and measure total cost when comparing implementations. This is a boundary and ownership rule, not a restriction on implementation language.
+* Prefer inexpensive rendering primitives. For simple browser animations, prefer `transform` or `opacity` over properties that repeatedly trigger layout or painting. Do not assume CSS or a particular renderer automatically provides GPU acceleration or better performance.
+* Preserve keyboard focus, cancellation, accessibility, reduced-motion support, and narrow-window usability. Apply the existing ownership and stale-result rules, and retire unnecessary work when its owner closes.
+* Browser enhancements should supplement the terminal interface. Essential status and actions must remain understandable wherever the underlying workflow is supported.
+* Match evidence to the claim. Explain what work a change removes or what capability it improves. Claim speed, CPU, or memory improvements only after a relevant comparison. Small presentation additions need focused interaction checks; substantial rendering changes need measurements on reference hardware. Compare combined browser and native CPU, memory, input/navigation latency, and transport traffic as relevant; moving work between processes alone does not establish an improvement.
+
+This guidance supports small, deliberate presentation choices. It does not authorize broad UI rewrites or a second frontend architecture; a future rendering engine remains a separately scoped project.
+
 ### Cross-entity coordination
 
 When a use case combines multiple entities, put that coordination in a small, dedicated application service with narrow, consumer-defined interfaces. Keep each entity service focused on its own operations rather than accumulating dependencies for combined views or workflows.

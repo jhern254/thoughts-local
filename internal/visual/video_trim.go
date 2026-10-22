@@ -3,6 +3,7 @@ package visual
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -25,11 +26,11 @@ func (trim VideoTrim) Valid(durationMS int64) bool {
 }
 
 func videoSeconds(milliseconds int64) string {
-	return strconv.FormatFloat(float64(milliseconds)/1000, 'f', 3, 64)
+	return fmt.Sprintf("%d.%03d", milliseconds/1000, milliseconds%1000)
 }
 
-// VideoSourceInfo reports source-relative time and the eventual display-oriented
-// stored dimensions, so preview framing does not depend on browser rounding.
+// VideoSourceInfo reports source-relative time and square-pixel display geometry.
+// PreparedVideoInfo supplies actual encoded geometry after quality selection.
 type VideoSourceInfo struct {
 	DurationMS int64 `json:"durationMS"`
 	Width      int   `json:"width"`
@@ -108,16 +109,10 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 	}
 	stream, _ := probe.video()
 	duration, _ := strconv.ParseFloat(stream.Duration, 64)
-	rotation, _ := stream.displayRotation()
-	sar := videoRatio(stream.SampleAspectRatio, ":")
-	if !finitePositive(sar) {
-		sar = 1
+	width, height, err := displayVideoDimensions(stream)
+	if err != nil {
+		return nil, err
 	}
-	width, height := int(math.Round(float64(stream.Width)*sar)), stream.Height
-	if rotation == 90 || rotation == 270 {
-		width, height = height, width
-	}
-	width, height = storedVideoDimensions(width, height)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -138,10 +133,13 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 // Trim records the requested source interval; DurationMS records the validated
 // whole-frame output duration, which can differ by at most one frame.
 type PreparedVideoInfo struct {
-	Trim       VideoTrim `json:"trim"`
-	DurationMS int64     `json:"durationMS"`
-	Width      int       `json:"width"`
-	Height     int       `json:"height"`
+	FrameCount   int64          `json:"frameCount"`
+	VideoQuality VideoQuality   `json:"videoQuality"`
+	FrameRate    VideoFrameRate `json:"frameRate"`
+	Trim         VideoTrim      `json:"trim"`
+	DurationMS   int64          `json:"durationMS"`
+	Width        int            `json:"width"`
+	Height       int            `json:"height"`
 }
 
 // PreparedVideo can only be populated by validated native preparation. Browsers
@@ -175,7 +173,10 @@ func (video *PreparedVideo) Open(ctx context.Context, poster bool) (*os.File, er
 	}
 	return os.Open(filepath.Join(video.directory, name))
 }
-func (source *VideoSource) Prepare(ctx context.Context, trim VideoTrim) (*PreparedVideo, error) {
+func (source *VideoSource) Prepare(ctx context.Context, trim VideoTrim, quality VideoQuality) (*PreparedVideo, error) {
+	if !quality.Valid() {
+		return nil, ErrVideoQuality
+	}
 	if !trim.Valid(source.info.DurationMS) || source.directory == "" {
 		return nil, ErrVideo
 	}
@@ -190,7 +191,7 @@ func (source *VideoSource) Prepare(ctx context.Context, trim VideoTrim) (*Prepar
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := encodeVideoLoop(ctx, source.ffmpeg, source.ffprobe, filepath.Join(source.directory, "source.mp4"), directory, source.probe, trim)
+	prepared, err := encodeVideoLoop(ctx, source.ffmpeg, source.ffprobe, filepath.Join(source.directory, "source.mp4"), directory, source.probe, trim, quality)
 	if err != nil {
 		_ = os.RemoveAll(directory)
 	}
@@ -200,13 +201,21 @@ func (source *VideoSource) Prepare(ctx context.Context, trim VideoTrim) (*Prepar
 // validateLoop checks the requested span as well as the independent codec and
 // resource limits. A successful processor exit or a valid short file alone must
 // not turn a truncated source/output into a silently shorter accepted loop.
-func (info videoProbe) validateLoop(trim VideoTrim) error {
+func (info videoProbe) validateLoop(trim VideoTrim, plan videoOutputPlan) error {
 	if err := info.validate(true); err != nil {
 		return err
 	}
 	stream, _ := info.video()
 	duration, _ := strconv.ParseFloat(stream.Duration, 64)
-	fps := videoRatio(stream.AvgFrameRate, "/")
+	rate, err := parseVideoFrameRate(stream.AvgFrameRate)
+	if err != nil {
+		return err
+	}
+	count, err := strconv.ParseInt(stream.FrameCount, 10, 64)
+	if err != nil || count != plan.FrameCount || stream.Width != plan.Width || stream.Height != plan.Height || rate != plan.FrameRate || stream.Level != plan.Level || stream.Refs != 1 {
+		return ErrVideo
+	}
+	fps := float64(rate.Numerator) / float64(rate.Denominator)
 	requested := float64(trim.EndMS-trim.StartMS) / 1000
 	// Frame quantization may round either edge. One microsecond accommodates
 	// ffprobe's decimal timestamp precision, not another displayed frame.

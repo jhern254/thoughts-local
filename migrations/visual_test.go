@@ -21,13 +21,16 @@ func TestVisual(t *testing.T) {
 		if _, err := db.Exec("INSERT INTO visual(user_id) VALUES ('user-1')"); err != nil {
 			t.Fatal(err)
 		}
-		var fit string
+		var fit, quality string
 		var darkness, zoom, x, y int
-		if err := db.QueryRow("SELECT darkness,fit,zoom,position_x,position_y FROM visual").Scan(&darkness, &fit, &zoom, &x, &y); err != nil {
+		if err := db.QueryRow("SELECT darkness,fit,zoom,position_x,position_y,video_quality FROM visual").Scan(&darkness, &fit, &zoom, &x, &y, &quality); err != nil {
 			t.Fatal(err)
 		}
 		if darkness != 70 || fit != "fill" || zoom != 100 || x != 5000 || y != 5000 {
 			t.Fatalf("defaults = %d %s %d %d %d, want 70 fill 100 5000 5000", darkness, fit, zoom, x, y)
+		}
+		if quality != "efficient" {
+			t.Fatalf("video quality = %q, want efficient", quality)
 		}
 		applyMigrationFiles(t, db, "000012_create_visual.down.sql", false)
 		applyMigrationFiles(t, db, "000012_create_visual.up.sql", false)

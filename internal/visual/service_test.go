@@ -40,7 +40,7 @@ func TestService_Background(t *testing.T) {
 		t.Run(failure+" preserves previous selection", func(t *testing.T) {
 			store := &memoryStore{}
 			service := NewService(store, "user", t.TempDir())
-			first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
+			first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming(), VideoQualityEfficient)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -77,7 +77,7 @@ func TestService_Background(t *testing.T) {
 				ctx, cancel = context.WithCancel(ctx)
 				cancel()
 			}
-			if _, _, err = service.Import(ctx, bytes.NewReader(body), 30, data.DefaultBackgroundFraming()); err == nil {
+			if _, _, err = service.Import(ctx, bytes.NewReader(body), 30, data.DefaultBackgroundFraming(), VideoQualityEfficient); err == nil {
 				t.Fatal("replacement succeeded")
 			}
 			if store.settings != first {
@@ -107,11 +107,11 @@ func TestService_Background(t *testing.T) {
 	t.Run("replacement and removal clean selected assets", func(t *testing.T) {
 		store := &memoryStore{}
 		service := NewService(store, "user", filepath.Join(t.TempDir(), "backgrounds"))
-		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
+		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming(), VideoQualityEfficient)
 		if err != nil {
 			t.Fatal(err)
 		}
-		second, warning, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35, data.DefaultBackgroundFraming())
+		second, warning, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35, data.DefaultBackgroundFraming(), VideoQualityEfficient)
 		if err != nil || warning {
 			t.Fatalf("replace: %v, warning %v", err, warning)
 		}
@@ -162,7 +162,7 @@ func TestService_FilesystemFailure(t *testing.T) {
 		store := &memoryStore{settings: data.Visual{BackgroundAsset: "0123456789abcdef0123456789abcdef.png", Darkness: 70}}
 		before := store.settings
 		service := NewService(store, "user", directory)
-		if _, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35, data.DefaultBackgroundFraming()); err == nil {
+		if _, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35, data.DefaultBackgroundFraming(), VideoQualityEfficient); err == nil {
 			t.Fatal("import succeeded")
 		}
 		if store.settings != before {
@@ -180,7 +180,7 @@ func TestService_FilesystemFailure(t *testing.T) {
 		}
 		store := &memoryStore{settings: data.Visual{BackgroundAsset: name, Darkness: 70}}
 		service := NewService(store, "user", directory)
-		got, warning, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35, data.DefaultBackgroundFraming())
+		got, warning, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 35, data.DefaultBackgroundFraming(), VideoQualityEfficient)
 		if err != nil || !warning {
 			t.Fatalf("import = %v, cleanup warning %v; want success with warning", err, warning)
 		}
@@ -203,12 +203,12 @@ func TestService_Framing(t *testing.T) {
 	t.Run("updates framing without replacing the image and rejects invalid framing", func(t *testing.T) {
 		store := &memoryStore{}
 		service := NewService(store, "user", t.TempDir())
-		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming())
+		first, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 70, data.DefaultBackgroundFraming(), VideoQualityEfficient)
 		if err != nil {
 			t.Fatal(err)
 		}
 		framing := data.BackgroundFraming{Fit: "fill", Zoom: 175, PositionX: 1200, PositionY: 9000}
-		updated, err := service.UpdateSettings(t.Context(), 69, framing, 100, false)
+		updated, err := service.UpdateSettings(t.Context(), 69, framing, 100, false, VideoQualityEfficient)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -216,7 +216,7 @@ func TestService_Framing(t *testing.T) {
 			t.Fatalf("updated = %+v", updated)
 		}
 		for _, invalid := range []data.BackgroundFraming{{Fit: "other", Zoom: 100}, {Fit: "fill", Zoom: 99}, {Fit: "fill", Zoom: 301}, {Fit: "fit", Zoom: 100, PositionY: 10001}} {
-			if _, err := service.UpdateSettings(t.Context(), 70, invalid, 100, false); !errors.Is(err, ErrFraming) {
+			if _, err := service.UpdateSettings(t.Context(), 70, invalid, 100, false, VideoQualityEfficient); !errors.Is(err, ErrFraming) {
 				t.Fatalf("invalid framing error = %v", err)
 			}
 			if store.settings != updated {
@@ -224,7 +224,7 @@ func TestService_Framing(t *testing.T) {
 			}
 		}
 		store.fail = true
-		if _, err := service.UpdateSettings(t.Context(), 30, data.DefaultBackgroundFraming(), 100, false); err == nil {
+		if _, err := service.UpdateSettings(t.Context(), 30, data.DefaultBackgroundFraming(), 100, false, VideoQualityEfficient); err == nil {
 			t.Fatal("expected persistence failure")
 		}
 		if store.settings != updated {
@@ -251,6 +251,39 @@ func TestService_LoadOwnership(t *testing.T) {
 		}
 		if settings.SpeedPercent != 100 {
 			t.Fatalf("speed=%d, want 100", settings.SpeedPercent)
+		}
+	})
+}
+
+func TestService_VideoQualityPreference(t *testing.T) {
+	t.Run("saves a future import preference without invoking video tools or changing the selected bytes", func(t *testing.T) {
+		store := &memoryStore{}
+		service := NewService(store, "user", t.TempDir())
+		selected, _, err := service.Import(t.Context(), bytes.NewReader(samplePNG(t)), 42, data.DefaultBackgroundFraming(), VideoQualityEfficient)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before, err := os.ReadFile(filepath.Join(service.directory, selected.BackgroundAsset))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", t.TempDir())
+		updated, err := service.UpdateSettings(t.Context(), 42, data.DefaultBackgroundFraming(), 100, false, VideoQualityMaximum)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, err := os.ReadFile(filepath.Join(service.directory, selected.BackgroundAsset))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if updated.VideoQuality != "maximum" || updated.BackgroundAsset != selected.BackgroundAsset || !bytes.Equal(before, after) {
+			t.Fatal("quality preference rewrote the current selection")
+		}
+		if _, err := service.UpdateSettings(t.Context(), 42, data.DefaultBackgroundFraming(), 100, false, VideoQuality("unknown")); !errors.Is(err, ErrVideoQuality) {
+			t.Fatalf("invalid tier: %v", err)
+		}
+		if store.settings != updated {
+			t.Fatal("invalid quality changed persisted preferences")
 		}
 	})
 }

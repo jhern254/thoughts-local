@@ -7,12 +7,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
 const (
 	trimFocusSource = iota
 	trimFocusStart
 	trimFocusEnd
+	trimFocusQuality
 	trimFocusSpeed
 	trimFocusPreview
 	trimFocusDone
@@ -22,18 +24,28 @@ const (
 
 func trimSeconds(milliseconds int64) string { return fmt.Sprintf("%.2f", float64(milliseconds)/1000) }
 
+func (m Model) videoTrimEndLimit() int64 {
+	return min(m.options.sourceDurationMS, m.options.trim.StartMS+visual.MaxVideoDuration*1000)
+}
+
 func (m *Model) activateVideoTrim() {
+	if m.options.request == "discardVideo" {
+		return
+	}
 	switch m.options.trimFocus {
 	case trimFocusStart:
 		m.options.trim.StartMS = m.options.sourcePositionMS
+		m.options.trim.EndMS = min(m.options.trim.EndMS, m.videoTrimEndLimit())
 	case trimFocusEnd:
-		m.options.trim.EndMS = m.options.sourcePositionMS
+		m.options.trim.EndMS = min(m.options.sourcePositionMS, m.videoTrimEndLimit())
+	case trimFocusQuality:
+		m.cycleVideoQuality()
 	case trimFocusPreview:
 		if !m.options.trim.Valid(m.options.sourceDurationMS) {
 			m.options.status = "Choose 1–30 seconds within the source."
 			return
 		}
-		m.options.status = "Preparing exact loop… Esc: cancel upload"
+		m.options.status = "Preparing video…"
 		m.requestOptions("prepareLoop")
 	case trimFocusDone:
 		if !m.options.loopReady {
@@ -44,6 +56,7 @@ func (m *Model) activateVideoTrim() {
 		m.options.focus = optionsFocusTrim
 		m.requestOptions("")
 	case trimFocusCancel:
+		m.options.status = "Cancelling upload…"
 		m.requestOptions("discardVideo")
 	}
 }
@@ -53,10 +66,21 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		key := msg.String()
 		if key == "esc" || key == "q" {
-			m.requestOptions("discardVideo")
+			m.options.trimFocus = trimFocusCancel
+			m.activateVideoTrim()
 			return m, nil
 		}
 		if m.options.request != "" {
+			if m.options.request == "prepareLoop" {
+				switch key {
+				case "tab", "shift+tab", "up", "down":
+					m.options.trimFocus = trimFocusCancel
+				case "enter", "space":
+					if m.options.trimFocus == trimFocusCancel {
+						m.activateVideoTrim()
+					}
+				}
+			}
 			return m, nil
 		}
 		switch key {
@@ -67,6 +91,10 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", "space":
 			m.activateVideoTrim()
 		case "left", "right", "shift+left", "shift+right", "home", "end":
+			if m.options.trimFocus == trimFocusQuality {
+				m.setVideoQuality(key)
+				return m, nil
+			}
 			if m.options.trimFocus == trimFocusSpeed {
 				if strings.Contains(key, "left") {
 					m.options.speedPercent = max(25, m.options.speedPercent-5)
@@ -107,6 +135,9 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 					*value = min(m.options.sourceDurationMS, *value+step)
 				}
 			}
+			if m.options.trimFocus == trimFocusStart || m.options.trimFocus == trimFocusEnd {
+				m.options.trim.EndMS = min(m.options.trim.EndMS, m.videoTrimEndLimit())
+			}
 		}
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
@@ -130,14 +161,14 @@ func (m *Model) clickVideoTrim(x, y int, activate bool) {
 	if rect.Height > 0 {
 		top = rect.Y + rect.Height + 2
 	}
-	if m.options.request != "" && (!activate || y != top+7) {
+	if m.options.request != "" && (!activate || y != top+8) {
 		return
 	}
 	if y == top+1 {
 		m.options.trimFocus = trimFocusSource
 		m.options.sourceFrame = true
 		m.options.sourcePositionMS = int64(max(0, min(width-1, x-left))) * m.options.sourceDurationMS / int64(max(1, width-1))
-	} else if activate && y >= top+2 && y <= top+7 {
+	} else if activate && y >= top+2 && y <= top+8 {
 		m.options.trimFocus = trimFocusStart + y - (top + 2)
 		if m.options.trimFocus >= trimFocusPreview {
 			m.activateVideoTrim()
@@ -175,15 +206,21 @@ func (m Model) viewVideoTrim() tea.View {
 	lines = append(lines,
 		label(trimFocusSource, "Source: "+trimSeconds(m.options.sourcePositionMS)+" / "+trimSeconds(m.options.sourceDurationMS)+"s"), muted.Render(rail),
 		label(trimFocusStart, "Start: "+trimSeconds(m.options.trim.StartMS)+"s"),
-		label(trimFocusEnd, "End: "+trimSeconds(m.options.trim.EndMS)+"s"),
+		label(trimFocusEnd, "End: "+trimSeconds(m.options.trim.EndMS)+"s (max "+trimSeconds(m.videoTrimEndLimit())+"s)"),
+		label(trimFocusQuality, "Video quality: "+m.options.videoQuality.Description()),
 		label(trimFocusSpeed, fmt.Sprintf("Playback speed: %d%%", m.options.speedPercent)),
 		label(trimFocusPreview, "Preview loop"), label(trimFocusDone, "Done — use previewed loop"), label(trimFocusCancel, "Cancel upload"))
 	if m.options.loopReady {
-		lines = append(lines, fmt.Sprintf("Previewed: %s–%ss · plays %.2fs", trimSeconds(m.options.acceptedTrim.StartMS), trimSeconds(m.options.acceptedTrim.EndMS), float64(m.options.loopDurationMS)/float64(max(25, m.options.speedPercent)*10)))
+		lines = append(lines, m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
 	} else {
 		lines = append(lines, "No prepared loop yet.")
 	}
-	lines = append(lines, muted.Render(m.options.status), muted.Render("←/→: 0.1s · Shift: 1s · ↑/↓: focus"), muted.Render("Enter on Start/End: use source position"))
+	lines = append(lines, muted.Render(m.options.status))
+	if m.options.request == "prepareLoop" {
+		lines = append(lines, muted.Render("Tab: Cancel · Esc: cancel upload"), muted.Render("Cut and quality controls resume when ready."))
+	} else {
+		lines = append(lines, muted.Render("←/→: 0.1s · Shift: 1s · ↑/↓: focus"), muted.Render("Enter on Start/End: use source position"))
+	}
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")
 	}
