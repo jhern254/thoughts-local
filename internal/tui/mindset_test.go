@@ -44,14 +44,14 @@ func TestModel_MindsetHome(t *testing.T) {
 		if got, want := rows[2], " Mindset  ..."; got != want {
 			t.Fatalf("mindset row: got %q, want %q", got, want)
 		}
-		if got, want := rows[3], strings.Repeat("─", 80); got != want {
+		if rows[3] != "" {
+			t.Fatalf("row after Mindset: got %q, want blank", rows[3])
+		}
+		if got, want := rows[4], strings.Repeat("─", 80); got != want {
 			t.Fatalf("panel separator: got %q, want %q", got, want)
 		}
-		if rows[4] != "" {
-			t.Fatalf("row after separator: got %q, want blank", rows[4])
-		}
 		if !strings.HasPrefix(rows[5], " Events ") {
-			t.Fatalf("row after gap: got %q, want Events header", rows[5])
+			t.Fatalf("row below separator: got %q, want Events header", rows[5])
 		}
 	})
 	t.Run("expansion pushes Events down and returning from detail restores selection", func(t *testing.T) {
