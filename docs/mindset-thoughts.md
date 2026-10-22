@@ -15,6 +15,9 @@ the first/last thought. Left and Q leave the picker and its cursor unchanged.
 Esc opens the app exit prompt; canceling it preserves the picker. Returning
 from a thought restores the panel's selection and scroll position.
 
+The divider above Events or the entity strip turns purple when that section
+has focus. Mindset uses its picker highlight to show focus.
+
 When focus leaves Mindset, the selected thought stays in the collapsed preview
 for 15 seconds before cycling to the next thought. Rotation pauses
 while focused, expanded, or offscreen. Expanded, it shows up to five text rows,

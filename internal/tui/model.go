@@ -10,6 +10,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
@@ -488,6 +489,14 @@ func (m Model) entityStrip() string {
 	return ansi.Truncate(line, max(1, m.width), "…") + "\n" + ansi.Truncate(help, max(1, m.width), "…")
 }
 
+func (m Model) homeDivider(focused bool) string {
+	line := strings.Repeat("─", max(1, m.width))
+	if focused {
+		return lipgloss.NewStyle().Foreground(m.subjects.list.Styles.Title.GetBackground()).Render(line)
+	}
+	return line
+}
+
 func (m Model) View() tea.View {
 	view := m.viewUnderlying()
 	if m.exitPromptOpen {
@@ -537,9 +546,9 @@ func (m Model) viewUnderlying() tea.View {
 	case screenEvents:
 		content = m.events.View()
 		if m.events.TimelineVisible() {
-			content = m.mindsets.View() + "\n\n" + strings.Repeat("─", max(1, m.width)) + "\n" + content
+			content = m.mindsets.View() + "\n\n" + m.homeDivider(m.homeFocus() == 1) + "\n" + content
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content
-			content += "\n" + strings.Repeat("─", max(1, m.width)) + "\n" + m.entityStrip()
+			content += "\n" + m.homeDivider(m.entityFocused) + "\n" + m.entityStrip()
 		}
 	case screenSubjectList:
 		content = m.viewSubjectList()

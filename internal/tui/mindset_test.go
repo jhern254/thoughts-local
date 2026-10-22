@@ -37,6 +37,29 @@ func newMindsetHome(t *testing.T, count int) Model {
 }
 
 func TestModel_MindsetHome(t *testing.T) {
+	t.Run("highlights only the divider above the focused Events or entity section", func(t *testing.T) {
+		for _, width := range []int{80, 40} {
+			m := newMindsetHome(t, 0)
+			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
+			for _, focus := range []int{1, 2, 0, 1} {
+				dividers := []string{}
+				for _, row := range strings.Split(m.View().Content, "\n") {
+					if ansi.Strip(row) == strings.Repeat("─", width) {
+						dividers = append(dividers, row)
+					}
+				}
+				if len(dividers) != 2 {
+					t.Fatalf("width %d: got %d dividers, want 2", width, len(dividers))
+				}
+				for i, want := range []bool{focus == 1, focus == 2} {
+					if got := strings.Contains(dividers[i], "\x1b[38;5;62m"); got != want {
+						t.Fatalf("focus %d, divider %d at width %d: highlighted=%v, want %v: %q", focus, i, width, got, want, dividers[i])
+					}
+				}
+				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+			}
+		}
+	})
 	t.Run("separates the inline mindset header from Events", func(t *testing.T) {
 		m := newMindsetHome(t, 0)
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})

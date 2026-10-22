@@ -498,7 +498,7 @@ func TestModel_EventsHome(t *testing.T) {
 				m, cmd = rootUpdate(m, enterKey())
 				m = runHomeData(t, m, cmd)
 			}
-			separator := "\n" + strings.Repeat("─", 80) + "\n"
+			separator := strings.Repeat("─", 80)
 			focused := m.events.View()
 			expected := m.events
 			expected.SetFocused(true)
