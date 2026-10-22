@@ -28,14 +28,14 @@ func TestModel_TimelinePosition(t *testing.T) {
 			t.Fatal("focused Events did not accept keyboard input")
 		}
 	})
-	t.Run("last event can stay at the top with unused rows below", func(t *testing.T) {
+	t.Run("last event can stay at the top with the metrics preview below", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		for _, height := range []int{27, 35} {
 			m.Resize(80, height)
 			m, _ = m.Update(eventKey("home"))
 			lines := strings.Split(ansi.Strip(m.timelineBody()), "\n")
-			if !strings.HasPrefix(timelineCardText(lines[0]), "10:37 AM  ╭") || lines[len(lines)-1] != "" {
-				t.Fatalf("got body %q, want selected final event at top with blank rows below", lines)
+			if !strings.HasPrefix(timelineCardText(lines[0]), "10:37 AM  ╭") || !strings.Contains(strings.Join(lines, "\n"), "Subject time today") {
+				t.Fatalf("got body %q, want selected final event at top with the metrics preview below", lines)
 			}
 		}
 	})
@@ -53,8 +53,8 @@ func TestModel_TimelinePosition(t *testing.T) {
 			t.Fatal("PageDown must restore the same rendered-line position")
 		}
 		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
-		if got := strings.Split(ansi.Strip(m.timelineBody()), "\n")[0]; !strings.Contains(got, "Now") {
-			t.Fatalf("got first row %q, want final Now row at the top", got)
+		if got := strings.Split(ansi.Strip(m.timelineBody()), "\n")[0]; !strings.Contains(got, "╰") {
+			t.Fatalf("got first row %q, want the final metrics border at the top", got)
 		}
 		m, _ = m.Update(eventKey("home"))
 		if m.View() != before {

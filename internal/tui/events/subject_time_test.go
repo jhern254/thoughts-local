@@ -224,6 +224,29 @@ func TestModel_SubjectTimeRefresh(t *testing.T) {
 }
 
 func TestModel_SubjectTimePresentation(t *testing.T) {
+	t.Run("lays out metrics directly below Now independently of the selected event", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m.subjectTime.items = []data.SubjectTimeView{{SubjectID: 1, SubjectName: "Coding", TimeSpentSeconds: 3600}, {SubjectID: 2, SubjectName: "Reading", TimeSpentSeconds: 1800}}
+		end := m.entries[0].StartedAt()
+		m.entries = append(eventEntries([]data.Event{{EventID: 2, StartedAt: end.Add(-time.Hour), EndedAt: &end}}), m.entries...)
+		m.position.entryIndex = 0
+		m.position.followNow = false
+		layout := m.measureTimeline()
+		m.position.topLine = layout.nowLine - 8
+		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
+		if !strings.Contains(rows[8], "Now") || strings.TrimSpace(rows[9]) != "" || strings.TrimSpace(rows[10]) != "" || !strings.Contains(rows[11], "╭") || !strings.Contains(rows[12], "Subject time today") || !strings.Contains(rows[13], "Coding") || !strings.Contains(rows[14], "Reading") || !strings.Contains(rows[15], "╰") {
+			t.Fatalf("got rows %q, want the complete card immediately after Now and a two-row gap", rows)
+		}
+		m.position.entryIndex = 1
+		if got := ansi.Strip(m.timelineBody()); got != strings.Join(rows, "\n") {
+			t.Fatal("selection changed the metric card's position or visibility")
+		}
+		m.position.topLine = 0
+		if strings.Contains(m.timelineBody(), "Subject time today") {
+			t.Fatal("metrics remained pinned while browsing earlier timeline rows")
+		}
+	})
+
 	t.Run("keeps durations and Unicode names inside a narrow card without a chart lane", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.Resize(40, 20)

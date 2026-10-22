@@ -19,9 +19,9 @@
                         ── Now · 11:37 AM ──
 
 
-
-
-
-
+                        ╭──────────────────────────────────────────────────────╮
+                        │Subject time today                                    │
+                        │No subject time recorded.                             │
+                        ╰──────────────────────────────────────────────────────╯
 ←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll
 Q/Esc back • r reload • d distributions • m mindset

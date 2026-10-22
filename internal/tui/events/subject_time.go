@@ -164,7 +164,7 @@ func subjectTimeColor(id int64) color.Color {
 	return lipgloss.Color(palette[index])
 }
 
-func (m *Model) subjectTimePanel(preview bool) []string {
+func (m *Model) subjectTimePanel(windowed bool) []string {
 	s := &m.subjectTime
 	heading := "Subject time"
 	if m.day.Equal(displaytime.Day(m.clock)) {
@@ -173,10 +173,8 @@ func (m *Model) subjectTimePanel(preview bool) []string {
 	content := []string{ansi.Truncate(heading, m.cardWidth(), "…")}
 	var bars []render.Bar
 	var barSubjects []int64
-	start, end := s.offset, len(s.items)
-	if preview {
-		start, end = 0, min(1, len(s.items))
-	} else {
+	start, end := 0, len(s.items)
+	if windowed {
 		m.clampSubjectTime()
 		start = s.offset
 		capacity := max(1, m.bodyHeight()-6)
@@ -196,7 +194,7 @@ func (m *Model) subjectTimePanel(preview bool) []string {
 			label = "Subject time unavailable"
 		case s.pending && s.showStatus:
 			label = "Loading subject time…"
-		case s.pending:
+		case s.pending && !s.result.day.Equal(m.day):
 			label = ""
 		}
 		content = append(content, ansi.Truncate(label, m.cardWidth(), "…"))
@@ -210,13 +208,10 @@ func (m *Model) subjectTimePanel(preview bool) []string {
 		bars = append(bars, render.Bar{Row: len(content), Value: item.TimeSpentSeconds})
 		barSubjects = append(barSubjects, item.SubjectID)
 	}
-	if !preview && end < len(s.items) {
+	if windowed && end < len(s.items) {
 		content = append(content, "...")
 	}
-	panel := m.paintCard(content, !preview)
-	if preview {
-		panel = panel[:3]
-	}
+	panel := m.paintCard(content, m.position.target == targetMetrics)
 	var cells [][]render.Cell
 	if m.width >= distributionMinWidth && len(s.items) > 0 {
 		_, exponent := m.distributions.boostPreset()
@@ -270,13 +265,13 @@ func (m *Model) boundaryBody() string {
 	rows := make([]string, max(0, height-6-len(contextRows)))
 	rows = append(rows, contextRows...)
 	rows = append(rows, m.boundaryLine(), "", "")
-	rows = append(rows, m.subjectTimePanel(true)...)
+	rows = append(rows, m.subjectTimePanel(false)[:3]...)
 	return strings.Join(rows, "\n")
 }
 
 func (m *Model) subjectTimeBody() string {
 	rows := []string{m.boundaryLine(), "", ""}
-	rows = append(rows, m.subjectTimePanel(false)...)
+	rows = append(rows, m.subjectTimePanel(true)...)
 	for len(rows) < m.bodyHeight() {
 		rows = append(rows, "")
 	}

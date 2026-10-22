@@ -52,6 +52,6 @@ func (p *timelinePosition) showSelected(row, bodyHeight int, expanded bool) {
 
 func (p *timelinePosition) showNow(row, bodyHeight int) {
 	if p.followNow && row >= 0 {
-		p.topLine = max(0, row-bodyHeight+2)
+		p.topLine = max(0, row-bodyHeight+6)
 	}
 }

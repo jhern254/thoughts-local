@@ -92,7 +92,7 @@ func TestModel_Layout(t *testing.T) {
 	t.Run("Now owns the ongoing end label and repeated minute labels leave boundaries intact", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		lines, _, now := m.layout()
-		if now != len(lines)-1 || !strings.HasPrefix(timelineCardText(lines[now-1]), "          ╰") {
+		if now < 0 || !strings.HasPrefix(timelineCardText(lines[now-1]), "          ╰") {
 			t.Fatal("Now should appear below an unlabeled ongoing bottom border")
 		}
 		end := m.entries[0].Event.StartedAt.Add(10 * time.Second)
@@ -155,7 +155,8 @@ func TestModel_Layout(t *testing.T) {
 		m.entries[0].Event.EndedAt = nil
 		m.day = m.day.AddDate(0, 0, -1)
 		lines, positions, now := m.layout()
-		if now != -1 || !strings.HasPrefix(timelineCardText(lines[len(lines)-2]), "12:00 AM  ╰") || positions[1] >= len(lines)-2 || strings.TrimSpace(lines[len(lines)-1]) != "..." {
+		ending := slices.IndexFunc(lines, func(line string) bool { return strings.TrimSpace(ansi.Strip(line)) == "..." })
+		if now != -1 || ending < 1 || !strings.HasPrefix(timelineCardText(lines[ending-1]), "12:00 AM  ╰") || positions[1] >= ending-1 {
 			t.Fatal("ongoing event on completed day did not end at the midnight boundary")
 		}
 	})
@@ -254,21 +255,22 @@ func TestModel_Layout(t *testing.T) {
 			t.Fatal("expanded event start should use Pacific time without a timezone suffix")
 		}
 	})
-	t.Run("current day ends at Now and completed days retain every hour", func(t *testing.T) {
+	t.Run("current day reaches Now before metrics and completed days retain every hour", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.entries = nil
 		lines, _, now := m.layout()
-		if now != len(lines)-1 || strings.TrimSpace(lines[now]) != "── Now · 11:37 AM ──" || strings.Contains(strings.Join(lines, "\n"), "...") {
+		if now < 0 || strings.TrimSpace(lines[now]) != "── Now · 11:37 AM ──" || strings.Contains(strings.Join(lines, "\n"), "...") {
 			t.Fatalf("got current rail %q, want midnight through 11 AM ending at Now", lines)
 		}
 		m.clock = m.day.Add(12 * time.Hour)
 		lines, _, now = m.layout()
-		if now != len(lines)-1 || !strings.HasPrefix(lines[now-1], "12:00 PM") {
+		if now < 0 || !strings.HasPrefix(lines[now-1], "12:00 PM") {
 			t.Fatalf("got noon rail %q, want noon hour followed by Now", lines)
 		}
 		m.day = m.day.AddDate(0, 0, -1)
 		lines, _, now = m.layout()
-		if now != -1 || !strings.HasPrefix(lines[len(lines)-2], "11:00 PM") || strings.TrimSpace(lines[len(lines)-1]) != "..." {
+		ending := slices.IndexFunc(lines, func(line string) bool { return strings.TrimSpace(ansi.Strip(line)) == "..." })
+		if now != -1 || ending < 1 || !strings.HasPrefix(lines[ending-1], "11:00 PM") || !strings.Contains(lines[ending+4], "Subject time") {
 			t.Fatalf("got past rail %q, want 24 hours ending in ... without Now", lines)
 		}
 		m.day = m.day.AddDate(0, 0, 2)

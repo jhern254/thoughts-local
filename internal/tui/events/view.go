@@ -242,6 +242,7 @@ type timelineLayout struct {
 	curves            []render.Distribution
 	selectedCurve     int
 	nowLine, curveEnd int
+	subjectTimeTop    int
 }
 
 type timelineCard struct {
@@ -378,14 +379,20 @@ func (m *Model) measureTimeline() timelineLayout {
 		end = len(lines)
 		lines = append(lines, timelineLabelPadding+"...")
 	}
+	subjectTimeTop := -1
+	if nowLine >= 0 || m.day.Before(displaytime.Day(m.clock)) {
+		subjectTimeTop = len(lines) + 2
+		lines = append(lines, make([]string, 2+max(1, len(m.subjectTime.items))+3)...)
+	}
 	return timelineLayout{
-		lines:         lines,
-		cards:         cards,
-		positions:     positions,
-		curves:        curves,
-		selectedCurve: selectedCurve,
-		nowLine:       nowLine,
-		curveEnd:      end,
+		subjectTimeTop: subjectTimeTop,
+		lines:          lines,
+		cards:          cards,
+		positions:      positions,
+		curves:         curves,
+		selectedCurve:  selectedCurve,
+		nowLine:        nowLine,
+		curveEnd:       end,
 	}
 }
 
@@ -404,7 +411,19 @@ func (m *Model) paintTimeline(layout timelineLayout, offset, height int) []strin
 			lines[row-offset] += painted[row-card.top]
 		}
 	}
-	return m.paintDistributionLane(lines, layout, offset)
+	lines = m.paintDistributionLane(lines, layout, offset)
+	if layout.subjectTimeTop >= 0 {
+		for row := max(offset, layout.subjectTimeTop-2); row < min(end, layout.subjectTimeTop); row++ {
+			lines[row-offset] = ""
+		}
+	}
+	if layout.subjectTimeTop >= 0 && layout.subjectTimeTop < end && offset < len(layout.lines) {
+		panel := m.subjectTimePanel(false)
+		for row := max(offset, layout.subjectTimeTop); row < min(end, layout.subjectTimeTop+len(panel)); row++ {
+			lines[row-offset] = panel[row-layout.subjectTimeTop]
+		}
+	}
+	return lines
 }
 
 func (m *Model) bodyHeight() int { return max(1, m.height-4) }
