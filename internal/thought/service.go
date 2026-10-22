@@ -14,6 +14,8 @@ import (
 const maxThoughtCharacters = 1_000_000
 
 type Store interface {
+	SetThoughtMindset(context.Context, string, int64, bool, time.Time) (bool, error)
+	ListMindsetsInRange(context.Context, string, time.Time, time.Time) ([]data.ThoughtSummaryView, error)
 	BrowseThoughtsView(context.Context, string, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error)
 	UpdateThought(context.Context, string, int64, string, int64, time.Time) (*data.Thought, error)
 	DeleteThought(context.Context, string, int64, int64) error

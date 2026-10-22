@@ -40,6 +40,8 @@ func Classify(operation logging.Operation, err error) (logging.FailureCategory, 
 		return logging.UnexpectedFailure, false
 	case (operation == logging.SubjectGet || operation == logging.SubjectDelete) && errors.Is(err, data.ErrRecordNotFound):
 		return logging.UnexpectedFailure, false
+	case operation == logging.ThoughtMindsetSet && (errors.As(err, &validation) || errors.Is(err, data.ErrRecordNotFound) || errors.Is(err, data.ErrMindsetChronology)):
+		return logging.UnexpectedFailure, false
 	case operation == logging.ThoughtCreate && (errors.As(err, &validation) || errors.Is(err, data.ErrRecordNotFound)):
 		return logging.UnexpectedFailure, false
 	case operation == logging.ThoughtGet && errors.Is(err, data.ErrRecordNotFound):

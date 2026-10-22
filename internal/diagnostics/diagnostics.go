@@ -59,6 +59,8 @@ func ThoughtMessage(err error, fallback string) string {
 	switch {
 	case errors.Is(cause, data.ErrRecordNotFound):
 		return "The requested resource was not found."
+	case errors.Is(cause, data.ErrMindsetChronology):
+		return "This action precedes the latest mindset change. Check the clock and reload."
 	case errors.As(cause, &validation):
 		return validationMessage(validation.PublicFields(), "The thought details are invalid.")
 	default:

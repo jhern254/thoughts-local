@@ -208,7 +208,7 @@ try {
   } else {
   await openVisual(page);await clickControl(page,'Remove background');await expect(screen(page)).not.toContainText('Background darkness:');
   if(!importOnly&&!videoFixturePath)await idle('opaque');
-  await page.bringToFront();await page.locator('.xterm-helper-textarea').focus();await page.keyboard.press('Tab');await expect(screen(page)).toContainText('Tab/Q: events');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Background darkness:');await expect(screen(page)).not.toContainText('Loading visual');
+  await page.bringToFront();await page.locator('.xterm-helper-textarea').focus();await page.keyboard.press('Tab');await expect(screen(page)).toContainText('Tab: mindset • Q: events');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Background darkness:');await expect(screen(page)).not.toContainText('Loading visual');
   for(const fixture of fixtures) {
     const image=`${fixture.width}x${fixture.height}`;
     for(let run=0;run<count;run++) {
@@ -284,7 +284,7 @@ try {
           await idle('video-synthetic-recording');
           await page.keyboard.press('F8');await expect(screen(page)).toContainText('F8: Record');
           await page.keyboard.press('Escape');await page.keyboard.press('Tab');await page.keyboard.press('q');await page.keyboard.press('Tab');
-          await expect(screen(page)).toContainText('Tab/Q: events');
+          await expect(screen(page)).toContainText('Tab: mindset • Q: events');
         }
       }
     }

@@ -24,4 +24,4 @@
 
 
 ←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll
-Q/Esc back • r reload • d distributions
+Q/Esc back • r reload • d distributions • m mindset

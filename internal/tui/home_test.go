@@ -1,27 +1,25 @@
 package tui
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"context"
 	"strings"
 	"testing"
 	"time"
 	"unicode"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/testutils"
 	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
-	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
 // Existing screen tests begin with Subjects selected in the entity strip.
 // Home-specific tests use NewModel directly and exercise its real startup.
-func newScreenTestModel(ctx context.Context, user *data.User, subjects SubjectService, thoughtService thoughts.Service, metrics MetricsService, logger logging.Logger) Model {
+func newScreenTestModel(ctx context.Context, user *data.User, subjects SubjectService, thoughtService ThoughtService, metrics MetricsService, logger logging.Logger) Model {
 	m := NewModel(ctx, user, subjects, thoughtService, metrics, &homeEventStub{}, &homeTimelineStub{}, logger)
 	m.entityFocused = true
 	m.events.SetFocused(false)
@@ -167,6 +165,26 @@ func TestModel_EventsHome(t *testing.T) {
 		}
 	})
 
+	t.Run("marks event picker thoughts without moving the home layout", func(t *testing.T) {
+		m, _ := newHome(t)
+		m, cmd := rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		height := m.homeEventsHeight
+		m, cmd = rootUpdate(m, runeKey('m'))
+		if m.homeEventsHeight != height || !strings.Contains(m.View().Content, "mindset") {
+			t.Fatal("pending marking moved or hid the panel")
+		}
+		m = runHomeData(t, m, cmd)
+		if !strings.Contains(ansi.Strip(m.events.View()), " M ") {
+			t.Fatalf("event thought badge: got %q", m.events.View())
+		}
+		m, cmd = rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		if !strings.Contains(ansi.Strip(m.events.View()), " M ") {
+			t.Fatal("event thought detail lost mindset status")
+		}
+	})
+
 	t.Run("Left from event thought detail restores the expanded event", func(t *testing.T) {
 		m, _ := newHome(t)
 		m, cmd := rootUpdate(m, enterKey())
@@ -211,7 +229,8 @@ func TestModel_EventsHome(t *testing.T) {
 		if strings.Contains(m.events.View(), "Distributions:") {
 			t.Fatal("entity panel key opened Events controls")
 		}
-		press(tea.KeyTab)
+		press(tea.KeyTab) // Mindset
+		press(tea.KeyTab) // Events
 		press('d')
 		if !strings.Contains(ansi.Strip(m.events.View()), "medium boost · 95% size · outline") {
 			t.Fatal("panel switch lost settings")
@@ -241,6 +260,7 @@ func TestModel_EventsHome(t *testing.T) {
 		m = startHomeData(t, m, cmd)
 		if m.entityFocused {
 			press(tea.KeyTab)
+			press(tea.KeyTab)
 		}
 		press('d')
 		if !strings.Contains(m.events.View(), "outline") {
@@ -262,7 +282,7 @@ func TestModel_EventsHome(t *testing.T) {
 		if !m.entityFocused || ansi.Strip(m.events.View()) != ansi.Strip(before) {
 			t.Fatal("focus switch moved the timeline")
 		}
-		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		if m.events.View() != before {
 			t.Fatal("returning focus did not restore curve styling")
 		}
@@ -288,7 +308,7 @@ func TestModel_EventsHome(t *testing.T) {
 				t.Fatal("panel switch changed thought plot geometry")
 			}
 		}
-		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		if m.events.View() != expanded {
 			t.Fatal("focus return changed thought plot highlight")
 		}
@@ -477,7 +497,7 @@ func TestModel_EventsHome(t *testing.T) {
 				m, cmd = rootUpdate(m, enterKey())
 				m = runHomeData(t, m, cmd)
 			}
-			separator := "\n" + strings.Repeat("─", 80) + "\n"
+			separator := strings.Repeat("─", 80)
 			focused := m.events.View()
 			expected := m.events
 			expected.SetFocused(true)
@@ -485,7 +505,7 @@ func TestModel_EventsHome(t *testing.T) {
 				t.Fatal("timeline must own focus before rendering home")
 			}
 			before := strings.Split(m.View().Content, separator)
-			if len(before) != 2 {
+			if len(before) != 3 {
 				t.Fatal("missing divider between timeline and entities")
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
@@ -494,17 +514,17 @@ func TestModel_EventsHome(t *testing.T) {
 			if !m.entityFocused || m.events.View() == focused {
 				t.Fatal("Tab must blur Events during Update, before root View")
 			}
-			blurred := strings.Split(m.View().Content, separator)[0]
-			beforeText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(before[0]), "│", " ")), " ")
+			blurred := strings.Split(m.View().Content, separator)[1]
+			beforeText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(before[1]), "│", " ")), " ")
 			blurredText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(blurred), "│", " ")), " ")
-			if before[0] == blurred || beforeText != blurredText {
+			if before[1] == blurred || beforeText != blurredText {
 				t.Fatal("Tab should change calendar highlighting without changing its contents")
 			}
-			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 			if m.entityFocused || m.events.View() != focused {
-				t.Fatal("Tab back must restore Events focus before root View")
+				t.Fatal("Shift+Tab back must restore Events focus before root View")
 			}
-			if strings.Split(m.View().Content, separator)[0] != before[0] {
+			if strings.Split(m.View().Content, separator)[1] != before[1] {
 				t.Fatal("returning focus did not restore selected event and thought")
 			}
 		}
@@ -533,11 +553,11 @@ func TestModel_EventsHome(t *testing.T) {
 				if cmd != nil || m.selectedEntity == entity {
 					t.Fatal("entity strip did not retain horizontal keyboard navigation")
 				}
-				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 				m, cmd = rootUpdate(m, runeKey('l'))
 				m = runHomeData(t, m, cmd)
 				if m.entityFocused || !strings.Contains(m.events.View(), "←: collapse") {
-					t.Fatal("Tab back did not restore timeline keyboard navigation")
+					t.Fatal("Shift+Tab back did not restore timeline keyboard navigation")
 				}
 			})
 		}

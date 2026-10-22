@@ -22,6 +22,7 @@ const (
 	ThoughtCreated
 	EventCreated
 	EventEnded
+	ThoughtMindsetChanged
 )
 
 type Operation uint8
@@ -51,6 +52,8 @@ const (
 	TimelineEntryOpen
 	TimelineThoughtList
 	TimelineThoughtStats
+	ThoughtMindsetSet
+	ThoughtMindsetList
 )
 
 type FailureCategory uint8
@@ -63,6 +66,10 @@ const (
 
 func (operation Operation) name() string {
 	switch operation {
+	case ThoughtMindsetSet:
+		return "thought_mindset_set"
+	case ThoughtMindsetList:
+		return "thought_mindset_list"
 	case TimelineList:
 		return "timeline_list"
 	case TimelineEntryOpen:
@@ -118,6 +125,8 @@ func (operation Operation) name() string {
 
 func (event MutationEvent) message() string {
 	switch event {
+	case ThoughtMindsetChanged:
+		return "thought mindset changed"
 	case EventCreated:
 		return "event created"
 	case EventEnded:
@@ -238,7 +247,7 @@ func (l Logger) Mutation(event MutationEvent, recordID int64) {
 	}
 	if event == EventCreated || event == EventEnded {
 		entry.Int64("event_id", recordID)
-	} else if event == ThoughtCreated {
+	} else if event == ThoughtCreated || event == ThoughtMindsetChanged {
 		entry.Int64("thought_id", recordID)
 	} else {
 		entry.Int64("subject_id", recordID)

@@ -477,7 +477,7 @@ func (m Model) View() string {
 		help = "← day / → open • Home/End: first/now • r: refresh • n: start • e: end"
 	}
 	if !m.expanded.IsZero() {
-		help = "Q/Esc back • r reload • d distributions"
+		help = "Q/Esc back • r reload • d distributions • m mindset"
 	}
 	if m.distributions.open {
 		status = m.distributions.label()

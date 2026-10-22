@@ -406,7 +406,7 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 		}
 		return content
 	}
-	return strings.Join(visible, "\n") + fmt.Sprintf("\n%s\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • Home/r: latest", count, strings.TrimSpace(status))
+	return strings.Join(visible, "\n") + fmt.Sprintf("\n%s\n%s\n↑/↓: select • PgUp/PgDn: scroll\nEnter: open • r: latest • m: mindset", count, strings.TrimSpace(status))
 }
 
 // SummaryPreview renders a selectable row for the Browse Thoughts view and expanded events.
@@ -430,6 +430,9 @@ func (m Model) summaryPreview(item data.ThoughtSummaryView, width int, selected 
 		subject = summaryText(*item.SubjectName)
 	}
 	title := m.list.Styles.Title.Render(subject) + " " + summaryText(item.Preview)
+	if item.IsMindset {
+		title = MindsetBadge() + " " + title
+	}
 	description := fmt.Sprintf("Thought %d • %s", item.ThoughtID, displaytime.Format(item.ObservedAt, layout))
 	title = titleStyle.Render(ansi.Truncate(title, max(0, width-titleStyle.GetHorizontalFrameSize()), "…"))
 	description = descStyle.Render(ansi.Truncate(description, max(0, width-descStyle.GetHorizontalFrameSize()), "…"))

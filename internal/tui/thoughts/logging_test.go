@@ -16,7 +16,10 @@ import (
 	"github.com/jhern254/go-thoughts/internal/thought"
 )
 
-type failingService struct{ err error }
+type failingService struct {
+	Service
+	err error
+}
 
 func (s failingService) BrowseView(context.Context, string, data.ThoughtSummaryViewRequest) (data.ThoughtSummaryViewResult, error) {
 	return data.ThoughtSummaryViewResult{}, s.err

@@ -40,6 +40,7 @@ type Thought struct {
 	ObservedAt time.Time
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	IsMindset  bool // Derived from an open mindset period.
 }
 
 // Event is an activity interval. A nil EndedAt means the event is ongoing.

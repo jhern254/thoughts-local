@@ -11,7 +11,8 @@ test('renders newlines at the same column as native terminal output', async ({pa
   await ready(page);
   // A pipe does not apply the PTY's ONLCR output translation. Without the
   // corresponding xterm option, each new line incorrectly moves to the right.
-  await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Events/);
+  await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Mindset/);
+  await expect.poll(() => screen(page).locator('div').nth(5).textContent()).toMatch(/^ Events/);
 });
 
 test('second tab is busy; quit and reload start independent sessions', async ({page, context}) => {
@@ -174,10 +175,15 @@ test('backpressured resize converges to the latest backend size without replayin
     return page.evaluate(() => {
       const term = window.resizeProbe.terminal;
       const rows = Array.from({length: term.rows}, (_, i) => term.buffer.active.getLine(i)?.translateToString(true) || '');
-      // The backend divider precedes two navigation rows and the final blank
-      // row. Summing wrapped divider rows also catches stale backend widths.
-      const divider = rows.findIndex(row => /^─+$/.test(row));
-      return {cols: term.cols, rows: term.rows, dividerWidth: rows.filter(row => /^─+$/.test(row)).reduce((sum, row) => sum + row.length, 0), divider};
+      // The entity divider precedes two navigation rows and the final blank
+      // row. Measure only its contiguous rows, excluding the Mindset divider;
+      // summing wrapped rows still catches stale backend widths.
+      const isDivider = row => /^─+$/.test(row);
+      const dividerEnd = rows.findLastIndex(isDivider);
+      let divider = dividerEnd;
+      while (divider > 0 && isDivider(rows[divider - 1])) divider--;
+      const dividerWidth = divider < 0 ? 0 : rows.slice(divider, dividerEnd + 1).reduce((sum, row) => sum + row.length, 0);
+      return {cols: term.cols, rows: term.rows, dividerWidth, divider};
     });
   };
   const initial = await geometry();
