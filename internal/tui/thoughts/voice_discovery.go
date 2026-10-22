@@ -72,15 +72,17 @@ func (m *Model) refreshSpokenSubject(candidatesChanged bool) {
 	if suggestion.commandEligible {
 		prefix, recognized := subjectdiscovery.ParseSpokenPrefix(suggestion.transcript)
 		cue = ""
-		if recognized && suggestion.snapshot.ConfirmsCommand(prefix) {
-			cue = prefix.Cue
-		} else if recognized && prefix.SingleWord && suggestion.loaded && suggestion.snapshot.MatchVoiceName(prefix.Cue).Outcome == subjectdiscovery.Unknown {
+		if recognized && prefix.SingleWord && suggestion.loaded && suggestion.snapshot.MatchVoiceName(prefix.Cue).Outcome == subjectdiscovery.Unknown {
 			cue, proposal = prefix.Cue, true
+		} else if recognized && suggestion.snapshot.ConfirmsCommand(prefix) {
+			cue = prefix.Cue
 		}
 	} else if !candidatesChanged || cue == "" {
 		return
 	} else if suggestion.snapshot.MatchVoiceName(cue).Outcome == subjectdiscovery.NameCollision {
 		cue = ""
+	} else if suggestion.frozenCommand.SingleWord && suggestion.snapshot.MatchVoiceName(cue).Outcome == subjectdiscovery.Unknown {
+		proposal = true
 	}
 	if !candidatesChanged && suggestion.cue == cue {
 		return
@@ -157,8 +159,8 @@ func (m *Model) finishSpokenSubject() {
 	}
 }
 
-// Optional proposals may save as Misc. Only an explicit selection/creation
-// authorizes their cleanup; canceled creation keeps the proposal optional.
+// Subject creation remains explicit even when command intent permits cleanup.
+// An optional proposal must not prevent saving the resulting Thought as Misc.
 func (m Model) unconfirmedVoiceProposal() bool {
 	return m.voice.suggestion.proposedName != "" && m.voice.query.Value() == m.voice.suggestion.proposedName
 }

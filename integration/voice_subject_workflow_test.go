@@ -124,7 +124,9 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 				saveUnassigned = true
 			}
 			if saveUnassigned {
-				expectedBody = full
+				if scenario != "single word Misc" {
+					expectedBody = full
+				}
 				subjectName = ""
 			}
 			if !saveUnassigned {
@@ -158,8 +160,8 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 				expectedSubject = nil
 			}
 			if createSubject {
-				if scenario == "single word creation" && !strings.Contains(ansi.Strip(model.View().Content), full) {
-					t.Fatal("unknown one-word prefix removed before Subject confirmation")
+				if scenario == "single word creation" && !strings.Contains(ansi.Strip(model.View().Content), expectedBody) {
+					t.Fatal("confirmed one-word command was not cleaned before Subject creation")
 				}
 				execute(update(tea.KeyPressMsg{Code: tea.KeyTab}))
 				execute(update(tea.KeyPressMsg{Code: tea.KeyEnter}))

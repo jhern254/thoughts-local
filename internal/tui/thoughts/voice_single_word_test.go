@@ -9,6 +9,46 @@ import (
 )
 
 func TestModel_SingleWordVoiceSubjects(t *testing.T) {
+	for _, arrival := range []string{"before recording", "during recording", "after Stop", "after recording ends"} {
+		t.Run("unknown Fitness cleans command/"+arrival, func(t *testing.T) {
+			m, load, subjects := discoveryModel(t)
+			subjects.items = nil
+			reply := load()
+			stamp := m.draftObservedAt
+			if arrival == "before recording" {
+				m, _ = m.Update(reply)
+			}
+			m, recording := startDiscoveryRecording(m)
+			const text = "Fitness thought I'm trying to start"
+			m = transcript(m, recording, 1, text)
+			if arrival == "during recording" {
+				m, _ = m.Update(reply)
+			}
+			if m.input.Value() != text {
+				t.Fatalf("live text=%q, want %q", m.input.Value(), text)
+			}
+			m, _ = m.Update(VoiceAction{Action: "stop", DraftID: 1, RecordingID: recording.RecordingID})
+			if arrival == "after Stop" {
+				m, _ = m.Update(reply)
+			}
+			m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+			if arrival == "after recording ends" {
+				m, _ = m.Update(reply)
+			}
+			if m.subjectID != nil || m.voice.query.Value() != "Fitness" || m.input.Value() != "I'm trying to start" {
+				t.Fatalf("subject=%v query=%q text=%q, want optional Fitness and cleaned body", m.subjectID, m.voice.query.Value(), m.input.Value())
+			}
+			_, save := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+			if save == nil {
+				t.Fatal("proposed Subject blocked Misc save")
+			}
+			result := save().(Result)
+			if result.err != nil || result.item.SubjectID != nil || result.item.Thought != "I'm trying to start" || !result.item.ObservedAt.Equal(stamp) {
+				t.Fatalf("save=%+v error=%v", result.item, result.err)
+			}
+		})
+	}
+
 	for _, tc := range []struct {
 		cue, name string
 		id        int64
@@ -77,6 +117,7 @@ func TestModel_SingleWordVoiceSubjects(t *testing.T) {
 			text := "meditation thought, étudier la respiration."
 			m = transcript(m, r, 1, text)
 			m, _ = m.Update(voice.RecordingEnded{Recording: r})
+			text = "Étudier la respiration."
 			if m.subjectID != nil || m.voice.query.Value() != "meditation" || m.input.Value() != text {
 				t.Fatalf("proposal subject=%v query=%q text=%q", m.subjectID, m.voice.query.Value(), m.input.Value())
 			}
@@ -103,15 +144,11 @@ func TestModel_SingleWordVoiceSubjects(t *testing.T) {
 					created = &data.Subject{SubjectID: 30, SubjectName: "meditation"}
 				}
 				m.ReturnFromVoiceSubject(request, created)
-				if action == "create" {
-					text = "Étudier la respiration."
-				}
 			case "select":
 				m, _ = m.Update(key(tea.KeyTab))
 				m, _ = m.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 				m, _ = m.Update(key(tea.KeyDown))
 				m, _ = m.Update(key(tea.KeyEnter))
-				text = "Étudier la respiration."
 			}
 			if m.input.Value() != text || m.draftObservedAt != stamp {
 				t.Fatalf("body=%q, want %q at original opening time", m.input.Value(), text)

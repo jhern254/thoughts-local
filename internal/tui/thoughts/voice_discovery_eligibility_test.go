@@ -21,11 +21,13 @@ func TestModel_VoiceCommandEligibility(t *testing.T) {
 			{name: "conversational introduction", text: "Here's another thought about Go."},
 			{name: "uncertain noun phrase", text: "Just an ordinary thought about today."},
 			{name: "uncertain comparative", text: "One more thought about my goals."},
-			{name: "possible exact name", text: "Fitness thought, exercise afterward.", body: "Exercise afterward.", query: "Fitness", subjectID: 8, needsExactEvidence: true},
+			{name: "possible title", text: "My Learning Journal thought, exercise afterward.", body: "Exercise afterward.", query: "My Learning Journal", subjectID: 30, needsExactEvidence: true},
+			{name: "single-word name", text: "Fitness thought, exercise afterward.", body: "Exercise afterward.", query: "Fitness", subjectID: 8},
 		} {
 			for _, arrival := range []string{"before recording", "during recording", "after Stop", "after recording ends"} {
 				t.Run(tc.name+"/"+arrival, func(t *testing.T) {
-					m, load, _ := discoveryModel(t)
+					m, load, subjects := discoveryModel(t)
+					subjects.items = append(subjects.items, data.Subject{SubjectID: 30, SubjectName: "My Learning Journal"})
 					reply := load()
 					stamp := m.draftObservedAt
 					if arrival == "before recording" {
@@ -120,10 +122,11 @@ func TestModel_VoiceCommandEligibility(t *testing.T) {
 		for _, stopAction := range []string{"stop", "failed", "stopped", "denied", "unavailable", "revoked", "ended"} {
 			for _, arrival := range []string{"before ended", "after ended"} {
 				t.Run(stopAction+"/"+arrival, func(t *testing.T) {
-					m, load, _ := discoveryModel(t)
+					m, load, subjects := discoveryModel(t)
+					subjects.items = append(subjects.items, data.Subject{SubjectID: 30, SubjectName: "My Learning Journal"})
 					reply := load()
 					m, recording := startDiscoveryRecording(m)
-					text := "Fitness thought, exercise afterward."
+					text := "My Learning Journal thought, exercise afterward."
 					m = transcript(m, recording, 1, text)
 					if stopAction != "ended" {
 						if stopAction == "revoked" {

@@ -80,16 +80,19 @@ form a collision even if one spelling matches exactly: no automatic selection,
 candidate list, or prefix removal occurs, and Misc saving remains available.
 Aliases differing only by case for the same Subject are not a collision.
 
-Single-word cues and sentence-like titles are possible commands. A unique folded
-name can confirm them; fuzzy scores and usage cannot establish their intent.
-This preserves known names such as “The Art of Learning”, “I Ching”, “I Want to
-Learn Go”, and “My Learning Journal”. An unfamiliar single word such as
-“meditation” appears as an optional proposal. Saving without confirming it retains
-the entire transcript as Misc. The existing Create subject flow or an explicit
-picker selection confirms it and removes the prefix once, capitalizing the first
-Unicode letter. Canceling creation leaves the proposal optional. Editing the body
-or recording again prevents later confirmation from replacing that text; a new
-recording retires the earlier cleanup permission.
+Neutral single-word cues such as “fitness” or “meditation” are commands even
+when the name is new. After Stop, their prefix is removed and the first Unicode
+letter of the body is capitalized. An unfamiliar single word remains an optional
+Subject proposal: creating it still requires the existing explicit creation flow,
+and saving without creating or selecting a Subject saves the cleaned body as Misc.
+
+Sentence-like titles and conversational phrases such as “random thought” remain
+possible commands. A unique folded name can confirm them; fuzzy scores and usage
+cannot establish their intent. This preserves known names such as “The Art of
+Learning”, “I Ching”, “I Want to Learn Go”, and “My Learning Journal”.
+Unconfirmed possible commands retain their text. Editing the body or recording
+again prevents later confirmation from replacing that text; a new recording
+retires the earlier cleanup permission.
 
 Neutral multiword names such as “Machine Learning Research” retain the existing
 recommendation and creation flow. If name data has not arrived by Stop, a possible

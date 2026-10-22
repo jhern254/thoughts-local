@@ -28,7 +28,7 @@ type SpokenPrefix struct {
 	Cue       string
 	BodyStart int
 	Intent    CommandIntent
-	// Single-word possible cues can be offered without authorizing text removal.
+	// Single-word unknown names remain optional proposals in the Subject picker.
 	SingleWord bool
 }
 
@@ -134,10 +134,11 @@ func spokenCommandIntent(words []string, body string) CommandIntent {
 	// ordinary thought"). Comparative "more thought" is likewise not enough
 	// evidence for an unknown Subject. These are grammatical positions, not a
 	// growing list of conversational opening words.
-	// Single words can modify the ordinary noun thought ("Random thought").
+	// The conversational idiom "random thought" remains uncertain. A neutral
+	// single-word name is otherwise a command, just like a multiword name.
 	// Sentence-like titles also need exact identity evidence; fuzzy similarity
 	// and popularity must never turn these uncertain fragments into commands.
-	if len(words) == 1 || containsPronoun || containsArticle || last == "more" || first == "remember" {
+	if (len(words) == 1 && first == "random") || containsPronoun || containsArticle || last == "more" || first == "remember" {
 		return PossibleCommand
 	}
 	return ConfirmedCommand
