@@ -26,6 +26,36 @@ type Candidate struct {
 
 type Snapshot struct{ Candidates []Candidate }
 
+// ConfirmsCommand adds exact, case-sensitive identity evidence to a possible
+// command. Narrative vetoes survive even an exact match; ranking/usage are not
+// evidence of intent. An empty snapshot leaves uncertain dictation untouched.
+func (s Snapshot) ConfirmsCommand(prefix SpokenPrefix) bool {
+	switch prefix.Intent {
+	case ConfirmedCommand:
+		return true
+	case PossibleCommand:
+		return s.subjectForExactName(prefix.Cue) != nil
+	default:
+		return false
+	}
+}
+
+func (s Snapshot) subjectForExactName(cue string) *data.Subject {
+	for _, candidate := range s.Candidates {
+		if candidate.Subject.SubjectName == cue {
+			return &candidate.Subject
+		}
+	}
+	for _, candidate := range s.Candidates {
+		for _, alias := range candidate.Aliases {
+			if alias == cue {
+				return &candidate.Subject
+			}
+		}
+	}
+	return nil
+}
+
 // NewSnapshot prepares immutable matching features once per voice draft.
 func NewSnapshot(candidates []Candidate) Snapshot {
 	result := Snapshot{Candidates: make([]Candidate, 0, len(candidates))}
@@ -123,17 +153,8 @@ func (s *Service) Resolve(ctx context.Context, cue string, snapshot Snapshot) (R
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	for _, candidate := range snapshot.Candidates {
-		if candidate.Subject.SubjectName == cue {
-			return Result{Outcome: Existing, Subject: &candidate.Subject}, nil
-		}
-	}
-	for _, candidate := range snapshot.Candidates {
-		for _, alias := range candidate.Aliases {
-			if alias == cue {
-				return Result{Outcome: Existing, Subject: &candidate.Subject}, nil
-			}
-		}
+	if subject := snapshot.subjectForExactName(cue); subject != nil {
+		return Result{Outcome: Existing, Subject: subject}, nil
 	}
 	matches, err := s.recommender.Rank(ctx, cue, snapshot.Candidates)
 	if err != nil {

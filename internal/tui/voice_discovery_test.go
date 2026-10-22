@@ -59,7 +59,7 @@ func TestModel_VoiceSubjectDiscovery(t *testing.T) {
 	})
 	t.Run("ambiguous recommendation is selectable and editor fits narrow widths", func(t *testing.T) {
 		service := subject.NewService(testutils.NewFakeSubjectStore())
-		for _, name := range []string{"coding", "coDing", "Coding"} {
+		for _, name := range []string{"coding practice", "coDing practice", "Coding practice"} {
 			if _, err := service.Create(t.Context(), "local-user-id", name); err != nil {
 				t.Fatal(err)
 			}
@@ -68,7 +68,7 @@ func TestModel_VoiceSubjectDiscovery(t *testing.T) {
 		model, _ = rootUpdate(model, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
 		model = runModelCommand(t, model, tea.KeyPressMsg{Code: tea.KeyF8})
 		recording := model.VoiceState().TranscriptAuthority.Recording()
-		model, _ = rootUpdate(model, voice.TranscriptUpdate{Recording: recording, Revision: 1, Text: "CODING thought practice"})
+		model, _ = rootUpdate(model, voice.TranscriptUpdate{Recording: recording, Revision: 1, Text: "CODING practice thought practice"})
 		for _, width := range []int{80, 32} {
 			model, _ = rootUpdate(model, tea.WindowSizeMsg{Width: width, Height: 24})
 			view := model.View().Content

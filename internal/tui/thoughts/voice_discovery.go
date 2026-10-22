@@ -50,20 +50,18 @@ func (m *Model) refreshSpokenSubject(candidatesChanged bool) {
 	if m.discovery == nil || suggestion.origin == subjectExplicit || m.voice.suspended {
 		return
 	}
-	if !candidatesChanged {
-		if !suggestion.commandEligible {
-			return
-		}
-		prefix, recognized := subjectdiscovery.ParseSpokenPrefix(suggestion.transcript)
-		cue := ""
-		if recognized {
-			cue = prefix.Cue
-		}
-		if suggestion.cue == cue {
-			return
-		}
-		suggestion.cue = cue
+	if !candidatesChanged && !suggestion.commandEligible {
+		return
 	}
+	prefix, recognized := subjectdiscovery.ParseSpokenPrefix(suggestion.transcript)
+	cue := ""
+	if recognized && suggestion.snapshot.ConfirmsCommand(prefix) {
+		cue = prefix.Cue
+	}
+	if !candidatesChanged && suggestion.cue == cue {
+		return
+	}
+	suggestion.cue = cue
 	if suggestion.cue == "" {
 		if suggestion.origin == subjectAutomatic {
 			m.subjectID = nil
@@ -100,7 +98,7 @@ func (m *Model) finishSpokenSubject() {
 	suggestion := &m.voice.suggestion
 	if m.discovery != nil && suggestion.commandEligible {
 		prefix, recognized := subjectdiscovery.ParseSpokenPrefix(suggestion.transcript)
-		if recognized {
+		if recognized && suggestion.snapshot.ConfirmsCommand(prefix) {
 			body := strings.TrimSpace(suggestion.transcript[prefix.BodyStart:])
 			// A prefix alone remains editable: stripping must not destroy all input.
 			if body != "" {

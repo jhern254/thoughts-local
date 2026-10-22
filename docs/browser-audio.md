@@ -64,15 +64,31 @@ later recordings and recordings appended to typed text are literal. Empty or
 denied recording attempts do not consume that initial opportunity.
 
 `internal/subjectdiscovery` separates a pure parser, candidate reads, and ranking.
-The conservative English command grammar accepts a standalone case-insensitive
-“thought” after at most eight words and 255 Unicode characters. Articles and
-pronouns may start names such as “The Art of Learning”, “I Ching”, or “I Want to
-Learn Go”. Bare conversational words and personal-pronoun fragments ending in
-common auxiliaries, modifiers, or indefinite articles are declined (for example,
-“I thought”, “I never thought”, and “I had a thought”). These conservative
-English heuristics cannot distinguish every title from ordinary speech; this is
-a command convention, not full natural-language understanding. Subject spelling
-and persisted identity remain case-sensitive.
+The bounded parser considers only the first standalone case-insensitive
+“thought” after at most eight words and 255 Unicode characters. Intent precedes
+identity resolution: pronouns immediately before the delimiter (including after
+introductory phrases), auxiliary/passive endings, pronoun/adverb constructions,
+and determiner-led noun readings such as “My first thought was ...” are ordinary
+speech even if the prefix happens to be a saved name or alias. Noun readings use
+only a bounded lookahead at the body's first word, not body classification.
+
+Other single-word cues and sentence-like titles are possible commands: an exact
+case-sensitive name or alias can confirm them, but fuzzy scores and usage cannot.
+This preserves known names such as “The Art of Learning”, “I Ching”, “I Want to
+Learn Go”, and “My Learning Journal”. Uncertain unknown speech such as “random
+thought, perhaps ...” stays literal, leaves the Subject empty, and permits Misc
+saving. Neutral multiword names such as “Machine Learning Research” can confirm
+an unknown command and use the existing creation flow. If exact-name data has not
+arrived by Stop, a possible command is retained rather than destructively cleaned
+on speculative evidence.
+
+Accepted revisions reevaluate intent even when the cue spelling is unchanged;
+ordinary revisions withdraw automatic suggestions. Stop-time cleanup independently
+checks the final accepted text. These conservative English heuristics cannot
+distinguish every title from ordinary speech; names containing the delimiter or
+grammatically ambiguous titles may need manual selection. Subject spelling and
+persisted identity remain case-sensitive. No uncertain prefix is removed or
+command-capitalized.
 
 Candidates (Subjects, aliases, and usage) load once per draft under its context.
 Live revisions reuse prepared matching features, with no database reads per

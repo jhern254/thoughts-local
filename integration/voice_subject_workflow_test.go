@@ -17,7 +17,7 @@ import (
 )
 
 func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
-	for _, scenario := range []string{"exact alias", "unknown Subject creation", "no command remains Misc"} {
+	for _, scenario := range []string{"exact alias", "unknown Subject creation", "no command remains Misc", "narrative exact alias remains Misc", "uncertain speech remains Misc"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, dsn := openMigratedSQLite(t)
 			runtime, err := application.Open(t.Context(), dsn)
@@ -32,6 +32,11 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 			}
 			if _, err := runtime.Subjects().CreateAlias(t.Context(), user, canonical.SubjectID, "Programming in Go"); err != nil {
 				t.Fatal(err)
+			}
+			if scenario == "narrative exact alias remains Misc" {
+				if _, err := runtime.Subjects().CreateAlias(t.Context(), user, canonical.SubjectID, "Yesterday I"); err != nil {
+					t.Fatal(err)
+				}
 			}
 			for range 3 {
 				if _, err := runtime.Thoughts().Create(t.Context(), user, "Existing history", &canonical.SubjectID, time.Time{}); err != nil {
@@ -73,12 +78,23 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 			}
 			full := cue + " thought, today I learned about interfaces."
 			expectedBody := "Today I learned about interfaces."
-			if scenario == "no command remains Misc" {
+			saveUnassigned := false
+			switch scenario {
+			case "no command remains Misc":
 				full = "I thought about learning Go today."
+				saveUnassigned = true
+			case "narrative exact alias remains Misc":
+				full = "Yesterday I thought about learning Go."
+				saveUnassigned = true
+			case "uncertain speech remains Misc":
+				full = "random thought, perhaps I should learn Go."
+				saveUnassigned = true
+			}
+			if saveUnassigned {
 				expectedBody = full
 				subjectName = ""
 			}
-			if scenario != "no command remains Misc" {
+			if !saveUnassigned {
 				update(voice.TranscriptUpdate{Recording: key, Revision: 1, Text: cue + " thought"})
 			}
 			update(voice.TranscriptUpdate{Recording: key, Revision: 2, Text: full})
@@ -97,7 +113,7 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("Thoughts before Save: got %d want %d", got, want)
 			}
 			expectedSubject := &canonical.SubjectID
-			if scenario == "no command remains Misc" {
+			if saveUnassigned {
 				expectedSubject = nil
 			}
 			if scenario == "unknown Subject creation" {

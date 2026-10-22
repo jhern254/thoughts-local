@@ -101,6 +101,45 @@ func TestService_Load(t *testing.T) {
 		}
 	})
 }
+
+func TestSnapshot_ConfirmsCommand(t *testing.T) {
+	snapshot := NewSnapshot([]Candidate{{
+		Subject:      data.Subject{SubjectID: 1, SubjectName: "I Ching"},
+		Aliases:      []string{"The Art of Learning", "I Want to Learn Go", "My Learning Journal", "Remember Tomorrow", "Yesterday I", "My first", "It was"},
+		ThoughtCount: 1_000_000,
+		UsageKnown:   true,
+	}})
+	for _, tc := range []struct {
+		text string
+		want bool
+	}{
+		{"I Ching thought, review notes.", true},
+		{"The Art of Learning thought, review notes.", true},
+		{"I Want to Learn Go thought, review notes.", true},
+		{"My Learning Journal thought, review notes.", true},
+		{"Remember Tomorrow thought, review notes.", true},
+		{"i ching thought, review notes.", false},
+		{"Random thought, perhaps I should learn Go.", false},
+		{"My unknown journal thought, review notes.", false},
+		{"Yesterday I thought about Go.", false},
+		{"My first thought was to practice.", false},
+		{"It was thought to be finished.", false},
+		{"Machine Learning Research thought, study embeddings.", true},
+	} {
+		t.Run(tc.text, func(t *testing.T) {
+			prefix, _ := ParseSpokenPrefix(tc.text)
+			if got := snapshot.ConfirmsCommand(prefix); got != tc.want {
+				t.Fatalf("confirmed=%v, want %v (prefix=%+v)", got, tc.want, prefix)
+			}
+		})
+	}
+	t.Run("absent candidate data cannot confirm an uncertain name", func(t *testing.T) {
+		prefix, _ := ParseSpokenPrefix("I Ching thought, review notes.")
+		if (Snapshot{}).ConfirmsCommand(prefix) {
+			t.Fatal("empty snapshot confirmed a possible command")
+		}
+	})
+}
 func TestService_ExactIdentity(t *testing.T) {
 	t.Run("exact identity bypasses heuristic ranking", func(t *testing.T) {
 		snapshot := NewSnapshot([]Candidate{{Subject: data.Subject{SubjectID: 1, SubjectName: "coding"}, Aliases: []string{"coDing"}}})

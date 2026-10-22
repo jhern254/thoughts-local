@@ -64,6 +64,99 @@ func transcript(m Model, recording voice.RecordingKey, revision uint64, text str
 	return m
 }
 func TestModel_VoiceDiscovery(t *testing.T) {
+	t.Run("narrative remains literal and saveable even when its prefix is an exact alias", func(t *testing.T) {
+		for _, text := range []string{
+			"Yesterday I thought about Go.",
+			"Last night I thought about work.",
+			"My first thought was to practice.",
+			"It was thought to be finished.",
+			"I suddenly thought about something.",
+			"For a moment I thought it worked.",
+			"Today I thought about my goals.",
+			"Earlier we thought about moving.",
+			"The first thought I had was interesting.",
+			"I really thought this would work.",
+			"Yesterday, I thought，about 日本語.",
+		} {
+			t.Run(text, func(t *testing.T) {
+				m, _, subjects := discoveryModel(t)
+				cue, _, _ := strings.Cut(text, " thought")
+				subjects.aliases = append(subjects.aliases, data.SubjectAlias{UserID: "u", SubjectID: 7, AliasName: cue})
+				m, _ = m.Update(m.loadVoiceSubjects(subjects)())
+				stamp := m.draftObservedAt
+				m, recording := startDiscoveryRecording(m)
+				m = transcript(m, recording, 1, text)
+				if m.subjectID != nil || m.voice.query.Value() != "" || m.input.Value() != text {
+					t.Fatalf("live subject=%v query=%q text=%q, want literal unassigned dictation", m.subjectID, m.voice.query.Value(), m.input.Value())
+				}
+				m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+				m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+				if m.input.Value() != text || m.draftObservedAt != stamp {
+					t.Fatalf("ended text=%q, want unchanged %q and opening time", m.input.Value(), text)
+				}
+				_, save := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+				if save == nil {
+					t.Fatal("ordinary speech blocked Misc save")
+				}
+				result := save().(Result)
+				if result.err != nil || result.item.SubjectID != nil || result.item.Thought != text || !result.item.ObservedAt.Equal(stamp) {
+					t.Fatalf("saved=%+v error=%v, want literal Misc Thought at opening time", result.item, result.err)
+				}
+			})
+		}
+	})
+	t.Run("uncertain unknown speech bypasses ranking and remains saveable as Misc", func(t *testing.T) {
+		m, _, subjects := discoveryModel(t)
+		ranker := &countedRecommender{}
+		m.ConfigureVoiceSubjectDiscovery(subjectdiscovery.NewService(subjects, discoveryUsage{}, ranker))
+		m, _ = m.Update(m.loadVoiceSubjects(subjects)())
+		m, recording := startDiscoveryRecording(m)
+		text := "random thought, perhaps I should learn Go."
+		m = transcript(m, recording, 1, text)
+		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		if ranker.calls != 0 || m.subjectID != nil || m.voice.query.Value() != "" || m.input.Value() != text {
+			t.Fatalf("ranking=%d subject=%v query=%q text=%q, want untouched uncertain speech", ranker.calls, m.subjectID, m.voice.query.Value(), m.input.Value())
+		}
+		_, save := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+		if save == nil || save().(Result).err != nil {
+			t.Fatal("uncertain speech blocked Misc save")
+		}
+	})
+	t.Run("body revision withdraws exact-name confirmation before final cleanup", func(t *testing.T) {
+		m, _, subjects := discoveryModel(t)
+		subjects.aliases = append(subjects.aliases, data.SubjectAlias{UserID: "u", SubjectID: 7, AliasName: "The first"})
+		m, _ = m.Update(m.loadVoiceSubjects(subjects)())
+		m, recording := startDiscoveryRecording(m)
+		m = transcript(m, recording, 1, "The first thought")
+		if m.subjectID == nil || *m.subjectID != 7 {
+			t.Fatal("possible exact alias did not confirm live")
+		}
+		final := "The first thought I had was interesting."
+		m = transcript(m, recording, 2, final)
+		if m.subjectID != nil || m.voice.query.Value() != "" {
+			t.Fatal("body revision retained provisional command with unchanged cue")
+		}
+		m, _ = m.Update(VoiceAction{Action: "stop", DraftID: 1, RecordingID: 1})
+		m = transcript(m, recording, 3, "Go Programming thought, late command.")
+		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		if m.input.Value() != final || m.subjectID != nil {
+			t.Fatalf("got %q subject=%v, want final accepted literal dictation", m.input.Value(), m.subjectID)
+		}
+	})
+	t.Run("delayed exact-name evidence cannot revive a revised narrative", func(t *testing.T) {
+		m, _, subjects := discoveryModel(t)
+		subjects.aliases = append(subjects.aliases, data.SubjectAlias{UserID: "u", SubjectID: 7, AliasName: "The first"})
+		reply := m.loadVoiceSubjects(subjects)()
+		m, recording := startDiscoveryRecording(m)
+		m = transcript(m, recording, 1, "The first thought")
+		text := "The first thought I had was interesting."
+		m = transcript(m, recording, 2, text)
+		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		m, _ = m.Update(reply)
+		if m.subjectID != nil || m.voice.query.Value() != "" || m.input.Value() != text {
+			t.Fatalf("subject=%v query=%q text=%q, want unchanged unassigned final narrative", m.subjectID, m.voice.query.Value(), m.input.Value())
+		}
+	})
 	t.Run("sentence-like names resolve live and cleanup capitalizes only the body", func(t *testing.T) {
 		for _, name := range []string{"The Art of Learning", "I Ching", "I Want to Learn Go"} {
 			t.Run(name, func(t *testing.T) {
@@ -191,7 +284,7 @@ func TestModel_VoiceDiscovery(t *testing.T) {
 		m.subjectID = &id
 		m.EnableVoice(1, &voiceSubjects{}, "Go Programming")
 		m, r = startDiscoveryRecording(m)
-		m = transcript(m, r, 1, "Fitness thought hello")
+		m = transcript(m, r, 1, "Fitness Training thought hello")
 		m, _ = m.Update(voice.RecordingEnded{Recording: r})
 		if *m.subjectID != 7 || m.voice.query.Value() != "Go Programming" || m.input.Value() != "Hello" {
 			t.Fatal("contextual subject overwritten")
