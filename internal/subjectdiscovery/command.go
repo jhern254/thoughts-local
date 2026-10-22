@@ -92,12 +92,16 @@ func spokenCommandIntent(words []string, body string) CommandIntent {
 	// Pronouns immediately before "thought" make it a verb, including after
 	// introductory phrases ("Last night I thought"). An auxiliary ending gives
 	// the same evidence in passive/perfect constructions ("It was thought").
-	if personalPronoun(last) || thoughtAuxiliary(last) {
+	// An indefinite article directly before it introduces the ordinary noun
+	// ("Here's a thought"), independently of the opening words.
+	if personalPronoun(last) || thoughtAuxiliary(last) || indefiniteArticle(last) {
 		return OrdinarySpeech
 	}
 	containsPronoun := false
-	for _, word := range words {
+	containsArticle := false
+	for index, word := range words {
 		containsPronoun = containsPronoun || personalPronoun(word)
+		containsArticle = containsArticle || (index > 0 && indefiniteArticle(word))
 	}
 	if containsPronoun {
 		// English -ly adverbs cover modifiers such as "suddenly" without an
@@ -107,7 +111,7 @@ func spokenCommandIntent(words []string, body string) CommandIntent {
 			return OrdinarySpeech
 		}
 		switch last {
-		case "a", "an", "another", "just", "never", "always", "often", "once", "sometimes", "also":
+		case "just", "never", "always", "often", "once", "sometimes", "also":
 			return OrdinarySpeech
 		}
 	}
@@ -124,13 +128,25 @@ func spokenCommandIntent(words []string, body string) CommandIntent {
 		}
 		return PossibleCommand
 	}
+	// An indefinite article inside a longer phrase is uncertain ("Just an
+	// ordinary thought"). Comparative "more thought" is likewise not enough
+	// evidence for an unknown Subject. These are grammatical positions, not a
+	// growing list of conversational opening words.
 	// Single words can modify the ordinary noun thought ("Random thought").
 	// Sentence-like titles also need exact identity evidence; fuzzy similarity
 	// and popularity must never turn these uncertain fragments into commands.
-	if len(words) == 1 || containsPronoun || first == "remember" {
+	if len(words) == 1 || containsPronoun || containsArticle || last == "more" || first == "remember" {
 		return PossibleCommand
 	}
 	return ConfirmedCommand
+}
+
+func indefiniteArticle(word string) bool {
+	switch word {
+	case "a", "an", "another":
+		return true
+	}
+	return false
 }
 
 func personalPronoun(word string) bool {

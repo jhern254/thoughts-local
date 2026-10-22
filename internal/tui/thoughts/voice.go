@@ -238,12 +238,14 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 		if m.voice.transcriptAuthority != nil {
 			m.voice.transcriptAuthority.Revoke()
 		}
+		m.freezeSpokenSubject()
 		if m.voice.recordingStatus == "requesting" || m.voice.recordingStatus == "recording" {
 			m.voice.recordingStatus = "stopping"
 		}
 	case "stopped", "denied", "unavailable", "failed":
 		if m.voice.transcriptAuthority != nil && m.voiceLocked() {
 			m.voice.transcriptAuthority.Revoke()
+			m.freezeSpokenSubject()
 			m.voice.recordingStatus = "stopping"
 			m.voice.message = map[string]string{"denied": "Microphone permission was denied. Draft unchanged.", "unavailable": "Microphone unavailable. Draft preserved.", "failed": "Microphone capture failed. Draft preserved."}[action.Action]
 			return m, nil
@@ -365,6 +367,11 @@ func (m Model) acceptVoiceSubjects(reply VoiceSubjectsLoaded) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.voice.loading = false
+	// Transport failure can revoke authority before RecordingEnded reaches the
+	// editor. Freeze against the old snapshot before a read adds new evidence.
+	if m.voice.transcriptAuthority != nil && !m.voice.transcriptAuthority.Active() {
+		m.freezeSpokenSubject()
+	}
 	if reply.err != nil {
 		if category, emit := failure.Classify(logging.SubjectList, reply.err); emit {
 			m.logger.Failure(logging.SubjectList, category)

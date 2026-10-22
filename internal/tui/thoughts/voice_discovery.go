@@ -26,6 +26,7 @@ type voiceSubjectSuggestion struct {
 	transcript        string
 	commandEligible   bool
 	beginningConsumed bool
+	frozenCommand     subjectdiscovery.SpokenPrefix
 }
 
 // ConfigureVoiceSubjectDiscovery supplies the read-only coordinator at application
@@ -37,6 +38,8 @@ func (m *Model) ConfigureVoiceSubjectDiscovery(service *subjectdiscovery.Service
 func (m *Model) beginSpokenSubject() {
 	suggestion := &m.voice.suggestion
 	suggestion.transcript = ""
+	suggestion.cue = ""
+	suggestion.frozenCommand = subjectdiscovery.SpokenPrefix{}
 	// Only a recording at the beginning of an empty draft can contain a command.
 	// Denied/empty attempts leave that opportunity available; later dictation is literal.
 	if strings.TrimSpace(m.voice.recordingBaseText) != "" {
@@ -50,13 +53,15 @@ func (m *Model) refreshSpokenSubject(candidatesChanged bool) {
 	if m.discovery == nil || suggestion.origin == subjectExplicit || m.voice.suspended {
 		return
 	}
-	if !candidatesChanged && !suggestion.commandEligible {
+	cue := suggestion.frozenCommand.Cue
+	if suggestion.commandEligible {
+		prefix, recognized := subjectdiscovery.ParseSpokenPrefix(suggestion.transcript)
+		cue = ""
+		if recognized && suggestion.snapshot.ConfirmsCommand(prefix) {
+			cue = prefix.Cue
+		}
+	} else if !candidatesChanged || cue == "" {
 		return
-	}
-	prefix, recognized := subjectdiscovery.ParseSpokenPrefix(suggestion.transcript)
-	cue := ""
-	if recognized && suggestion.snapshot.ConfirmsCommand(prefix) {
-		cue = prefix.Cue
 	}
 	if !candidatesChanged && suggestion.cue == cue {
 		return
@@ -94,29 +99,44 @@ func (m *Model) refreshSpokenSubject(candidatesChanged bool) {
 	m.voice.row = 0
 }
 
-func (m *Model) finishSpokenSubject() {
+// Freeze permission alongside transcript revocation. Candidate reads may still
+// resolve this confirmed cue, but cannot promote uncertain speech after Stop.
+// The accepted transcript and byte boundary remain owned by this recording until
+// RecordingEnded; a new recording retires them in beginSpokenSubject.
+func (m *Model) freezeSpokenSubject() {
 	suggestion := &m.voice.suggestion
-	if m.discovery != nil && suggestion.commandEligible {
+	if !suggestion.commandEligible {
+		return
+	}
+	suggestion.commandEligible = false
+	if m.discovery != nil {
 		prefix, recognized := subjectdiscovery.ParseSpokenPrefix(suggestion.transcript)
 		if recognized && suggestion.snapshot.ConfirmsCommand(prefix) {
-			body := strings.TrimSpace(suggestion.transcript[prefix.BodyStart:])
-			// A prefix alone remains editable: stripping must not destroy all input.
-			if body != "" {
-				for offset, character := range body {
-					if unicode.IsLetter(character) {
-						body = body[:offset] + string(unicode.ToUpper(character)) + body[offset+len(string(character)):]
-						break
-					}
+			suggestion.frozenCommand = prefix
+		}
+	}
+}
+
+func (m *Model) finishSpokenSubject() {
+	m.freezeSpokenSubject()
+	suggestion := &m.voice.suggestion
+	if suggestion.frozenCommand.Cue != "" {
+		body := strings.TrimSpace(suggestion.transcript[suggestion.frozenCommand.BodyStart:])
+		// A prefix alone remains editable: stripping must not destroy all input.
+		if body != "" {
+			for offset, character := range body {
+				if unicode.IsLetter(character) {
+					body = body[:offset] + string(unicode.ToUpper(character)) + body[offset+len(string(character)):]
+					break
 				}
-				m.input.SetValue(body)
-				m.input.CursorEnd()
 			}
+			m.input.SetValue(body)
+			m.input.CursorEnd()
 		}
 	}
 	if strings.TrimSpace(suggestion.transcript) != "" {
 		suggestion.beginningConsumed = true
 	}
-	suggestion.commandEligible = false
 }
 
 func (m Model) voiceSubjectLabel() string {

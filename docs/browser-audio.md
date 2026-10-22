@@ -79,12 +79,19 @@ Learn Go”, and “My Learning Journal”. Uncertain unknown speech such as “
 thought, perhaps ...” stays literal, leaves the Subject empty, and permits Misc
 saving. Neutral multiword names such as “Machine Learning Research” can confirm
 an unknown command and use the existing creation flow. If exact-name data has not
-arrived by Stop, a possible command is retained rather than destructively cleaned
-on speculative evidence.
+arrived by Stop, a possible command remains literal and unassigned even after a
+late read. An indefinite article immediately before “thought” introduces ordinary
+speech (“Just a thought”, “Here's another thought”). Interior indefinite articles
+and comparative “more thought” phrases remain uncertain without exact evidence.
 
 Accepted revisions reevaluate intent even when the cue spelling is unchanged;
-ordinary revisions withdraw automatic suggestions. Stop-time cleanup independently
-checks the final accepted text. These conservative English heuristics cannot
+ordinary revisions withdraw automatic suggestions. Transcript revocation freezes
+the final accepted command decision and byte boundary; `RecordingEnded` removes
+only that authorized prefix once. Late candidate data may resolve a frozen,
+confirmed cue, but cannot reopen intent classification. Starting another recording
+clears the previous cue and permission; appended/subsequent recordings remain
+literal regardless of candidate arrival timing. Manual selections still take
+precedence. These conservative English heuristics cannot
 distinguish every title from ordinary speech; names containing the delimiter or
 grammatically ambiguous titles may need manual selection. Subject spelling and
 persisted identity remain case-sensitive. No uncertain prefix is removed or
