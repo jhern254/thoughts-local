@@ -597,8 +597,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.clampSubjectTime()
 			return m, nil
 		case "up", "k":
-			m.subjectTime.offset--
-			m.clampSubjectTime()
+			if m.subjectTime.offset == 0 {
+				m.position.target = targetBoundary
+				m.position.followNow = m.day.Equal(displaytime.Day(m.clock))
+			} else {
+				m.subjectTime.offset--
+				m.clampSubjectTime()
+			}
 			return m, nil
 		case "pgdown":
 			m.subjectTime.offset += max(1, m.bodyHeight()-8)
@@ -608,7 +613,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.subjectTime.offset -= max(1, m.bodyHeight()-8)
 			m.clampSubjectTime()
 			return m, nil
-		case "esc", "left", "h":
+		case "esc":
 			m.position.target = targetBoundary
 			m.position.followNow = m.day.Equal(displaytime.Day(m.clock))
 			return m, nil

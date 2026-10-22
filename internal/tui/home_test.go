@@ -135,7 +135,7 @@ func TestModel_EventsHome(t *testing.T) {
 		return m, events
 	}
 
-	t.Run("Now buffers navigation to metrics and Escape stays in Events", func(t *testing.T) {
+	t.Run("Now buffers navigation to metrics and Up returns in Events", func(t *testing.T) {
 		m, events := newHome(t)
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
 		reads := events.lists
@@ -157,12 +157,12 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal("Down did not stop at the original Now preview")
 		}
 		press(tea.KeyDown)
-		if m.events.AtTopLevel() || !strings.Contains(m.events.View(), "Esc/←: now") {
+		if m.events.AtTopLevel() || !strings.Contains(m.events.View(), "↑: back/scroll") {
 			t.Fatal("second Down did not open metrics")
 		}
-		press(tea.KeyEscape)
+		press(tea.KeyUp)
 		if !m.events.AtTopLevel() || m.events.View() != preview {
-			t.Fatal("Escape did not return to Now inside Events")
+			t.Fatal("Up did not return to Now inside Events")
 		}
 		press(tea.KeyDown)
 		press(tea.KeyEnd)

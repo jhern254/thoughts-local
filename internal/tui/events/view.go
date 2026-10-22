@@ -499,7 +499,7 @@ func (m Model) View() string {
 		status = "↑: latest card • ↓: subject time • d: distributions"
 	}
 	if m.position.target == targetMetrics {
-		status = "↑/↓: subjects • PgUp/PgDn: page • Esc/←: now"
+		status = "↑: back/scroll • ↓: subjects • PgUp/PgDn: page • Esc: now"
 		help = "Home: first • End: now • r: refresh • d: distributions"
 		if m.subjectTime.err != nil {
 			status = "Could not refresh subject time. r: retry"

@@ -23,5 +23,5 @@
 
 
 
-↑/↓: subjects • PgUp/PgDn: page • Esc/←: now
+↑: back/scroll • ↓: subjects • PgUp/PgDn: page • Esc: now
 Home: first • End: now • r: refresh • d: distributions

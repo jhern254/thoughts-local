@@ -44,7 +44,7 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 		if !strings.Contains(rows[0], "Now") || rows[1] != "" || rows[2] != "" || !strings.Contains(rows[3], "╭") || !strings.Contains(rows[4], "Subject time today") {
 			t.Fatalf("pinned header: got %q", rows[:5])
 		}
-		m, _ = m.Update(eventKey("left"))
+		m, _ = m.Update(eventKey("up"))
 		if m.position.target != targetBoundary {
 			t.Fatal("collapse skipped the Now stop")
 		}
@@ -72,6 +72,21 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 		layout = m.measureTimeline()
 		if layout.cards[len(layout.cards)-1].selected {
 			t.Fatal("metrics retained event focus")
+		}
+	})
+
+	t.Run("Up returns from the top of metrics while Left stays in the chart", func(t *testing.T) {
+		m, _, store := fixture(t)
+		m, _ = m.Update(eventKey("end"))
+		m, _ = m.Update(eventKey("down"))
+		reads := store.subjectReads
+		m, cmd := m.Update(eventKey("left"))
+		if cmd != nil || m.position.target != targetMetrics {
+			t.Fatal("Left exited metrics")
+		}
+		m, cmd = m.Update(eventKey("up"))
+		if cmd != nil || m.position.target != targetBoundary || store.subjectReads != reads {
+			t.Fatal("Up did not return to the latest event and Now without a read")
 		}
 	})
 
@@ -276,7 +291,7 @@ func BenchmarkModel_SubjectTimeNavigation(b *testing.B) {
 	for b.Loop() {
 		m, _ = m.Update(eventKey("down"))
 		_ = m.View()
-		m, _ = m.Update(eventKey("left"))
+		m, _ = m.Update(eventKey("up"))
 		_ = m.View()
 	}
 	b.StopTimer()
