@@ -27,20 +27,21 @@ type voicePrefixCleanup struct {
 	cleaned   string
 }
 
+// Draft-local recommendation state; recording boundaries retire cleanup permission.
 type voiceSubjectSuggestion struct {
-	snapshot          subjectdiscovery.Snapshot
-	loaded            bool
-	origin            subjectOrigin
-	outcome           subjectdiscovery.Outcome
-	matches           []data.Subject
-	cue               string
-	transcript        string
-	commandEligible   bool
-	beginningConsumed bool
-	frozenCommand     subjectdiscovery.SpokenPrefix
-	proposedName      string
-	proposedCommand   subjectdiscovery.SpokenPrefix
-	cleanup           *voicePrefixCleanup
+	snapshot          subjectdiscovery.Snapshot     // Preloaded names, aliases and usage; no reads during transcription.
+	loaded            bool                          // Distinguishes pending data from a successfully loaded empty snapshot.
+	origin            subjectOrigin                 // Explicit user/context choices take precedence over suggestions.
+	outcome           subjectdiscovery.Outcome      // Last resolution result, used for the Subject field label.
+	matches           []data.Subject                // Ranked shortlist for the deliberately opened picker.
+	cue               string                        // Last evaluated cue; unchanged revisions need no reranking.
+	transcript        string                        // Latest accepted contribution from this recording, before cleanup.
+	commandEligible   bool                          // This recording may still supply the draft's initial command.
+	beginningConsumed bool                          // Existing text or completed dictation makes later recordings literal.
+	frozenCommand     subjectdiscovery.SpokenPrefix // Confirmed boundary retained at Stop for cleanup and late resolution.
+	proposedName      string                        // Optional unknown name; must not block saving as Misc.
+	proposedCommand   subjectdiscovery.SpokenPrefix // Uncertain boundary awaiting explicit Subject confirmation.
+	cleanup           *voicePrefixCleanup           // One-shot F9 restoration; retired by restore or another recording.
 }
 
 // ConfigureVoiceSubjectDiscovery supplies the read-only coordinator at application
