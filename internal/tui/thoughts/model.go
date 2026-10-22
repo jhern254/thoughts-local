@@ -16,6 +16,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/subjectdiscovery"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 	"github.com/jhern254/go-thoughts/internal/voice"
@@ -49,6 +50,7 @@ type Model struct {
 	service                    Service
 	logger                     logging.Logger
 	now                        func() time.Time
+	discovery                  *subjectdiscovery.Service
 
 	// owner separates model instances. request owns list/get/create and cursor
 	// replies; statsRequest lets a full-scope statistics refresh independently.
@@ -299,6 +301,9 @@ func (m *Model) createThought(body string) tea.Cmd {
 	m.err = nil
 	if m.voice.cancelRead != nil {
 		m.voice.cancelRead()
+		// Cancellation cannot retract a reply already queued before Save.
+		m.voice.revision++
+		m.voice.loading = false
 	}
 	owner := m.owner
 	request, ctx, userID, subjectID, service := m.request, m.ctx, m.userID, m.subjectID, m.service
@@ -339,7 +344,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if action, ok := msg.(VoiceAction); ok {
 		return m.updateVoiceAction(action)
 	}
-	if reply, ok := msg.(voiceSubjectsLoaded); ok {
+	if reply, ok := msg.(VoiceSubjectsLoaded); ok {
 		return m.acceptVoiceSubjects(reply)
 	}
 	if m.VoiceOpen() && m.screen == create && m.voice.suspended {
@@ -461,6 +466,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if m.voiceLocked() {
 				return m, nil
 			}
+			if m.VoiceOpen() && key.String() == "f9" {
+				m.restoreVoicePrefix()
+				return m, nil
+			}
 			if m.VoiceOpen() && (key.String() == "tab" || key.String() == "shift+tab") {
 				m.stopClipboard()
 				m.voice.subjectFocused = !m.voice.subjectFocused
@@ -483,7 +492,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.screen = browse
 				return m, nil
 			case "ctrl+s":
-				if m.VoiceOpen() && m.voice.query.Value() != "" && m.subjectID == nil {
+				if m.VoiceOpen() && m.voice.query.Value() != "" && m.subjectID == nil && !m.unconfirmedVoiceProposal() {
 					m.voice.message = "Select a subject, create one, or clear the optional field."
 					m.voice.subjectFocused = true
 					m.resizeVoice(m.voice.width, m.voice.height)

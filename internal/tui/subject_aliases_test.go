@@ -20,12 +20,19 @@ import (
 )
 
 type subjectAliasServiceStub struct {
-	listAliases func(context.Context, string, int64) ([]data.SubjectAlias, error)
-	createAlias func(context.Context, string, int64, string) (*data.SubjectAlias, error)
-	updateAlias func(context.Context, string, int64, int64, string) (*data.SubjectAlias, error)
-	removeAlias func(context.Context, string, int64, int64) error
+	listUserAliases func(context.Context, string) ([]data.SubjectAlias, error)
+	listAliases     func(context.Context, string, int64) ([]data.SubjectAlias, error)
+	createAlias     func(context.Context, string, int64, string) (*data.SubjectAlias, error)
+	updateAlias     func(context.Context, string, int64, int64, string) (*data.SubjectAlias, error)
+	removeAlias     func(context.Context, string, int64, int64) error
 }
 
+func (s *subjectAliasServiceStub) ListAliasesForUser(ctx context.Context, user string) ([]data.SubjectAlias, error) {
+	if s.listUserAliases != nil {
+		return s.listUserAliases(ctx, user)
+	}
+	return nil, nil
+}
 func (s *subjectAliasServiceStub) ListAliases(ctx context.Context, user string, id int64) ([]data.SubjectAlias, error) {
 	return s.listAliases(ctx, user, id)
 }

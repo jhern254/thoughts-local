@@ -45,6 +45,108 @@ recording in Go memory. Returned words replace that recording's contribution to
 the unsaved draft as recognition improves. Tests can still use a fake consumer
 to check capture and draft ownership independently of the speech engine.
 
+## Spoken Subject prefixes
+
+Start an empty voice draft with a name followed by “thought”, for example
+“Programming in Go thought, today I learned about interfaces.” Unique voice-name
+matches select the canonical Subject. The full transcript remains visible during
+recording. Confirmed cleanup removes the prefix once and capitalizes the body's
+first Unicode letter. Nothing is saved until Ctrl+S.
+
+The Subject label identifies provisional suggestions and fuzzy ambiguities.
+Unknown names fill the existing Subject input without creating anything; after
+Stop, use Tab and “Create subject…” or choose an existing Subject. An ambiguous
+fuzzy match requires selection to assign a Subject. Ordinary speech such as
+“I thought about learning Go” remains unchanged and may be saved as Misc.
+Existing Subject context and manual
+choices take precedence. Subject and text controls remain locked while recording.
+Only the initial recording into an otherwise empty draft recognizes a command;
+later recordings and recordings appended to typed text are literal. Empty or
+denied recording attempts do not consume that initial opportunity.
+
+`internal/subjectdiscovery` separates a pure parser, candidate reads, and ranking.
+The bounded parser considers only the first standalone case-insensitive
+“thought” after at most eight words and 255 Unicode characters. Intent precedes
+identity resolution: pronouns immediately before the delimiter (including after
+introductory phrases), auxiliary/passive endings, pronoun/adverb constructions,
+and determiner-led noun readings such as “My first thought was ...” are ordinary
+speech even if the prefix happens to be a saved name or alias. Noun readings use
+only a bounded lookahead at the body's first word, not body classification.
+
+Voice spelling is compared with `strings.EqualFold` across preloaded canonical
+names and aliases, counting distinct canonical Subject IDs. A unique match selects
+the canonical Subject, regardless of transcription capitalization. Multiple IDs
+form a collision even if one spelling matches exactly: no automatic selection,
+candidate list, or prefix removal occurs, and Misc saving remains available.
+Aliases differing only by case for the same Subject are not a collision.
+
+Neutral single-word cues such as “fitness” or “meditation” are commands even
+when the name is new. After Stop, their prefix is removed and the first Unicode
+letter of the body is capitalized. An unfamiliar single word remains an optional
+Subject proposal: creating it still requires the existing explicit creation flow,
+and saving without creating or selecting a Subject saves the cleaned body as Misc.
+
+Sentence-like titles and conversational phrases such as “random thought” remain
+possible commands. A unique folded name can confirm them; fuzzy scores and usage
+cannot establish their intent. This preserves known names such as “The Art of
+Learning”, “I Ching”, “I Want to Learn Go”, and “My Learning Journal”.
+Unconfirmed possible commands retain their text. Editing the body or recording
+again prevents later confirmation from replacing that text; a new recording
+retires the earlier cleanup permission.
+
+After automatic cleanup, **F9: Restore prefix** appears in the voice editor help.
+It restores an untouched transcript exactly, or prepends the original prefix to
+the current edited body. It clears only automatic Subject choices; explicit
+selections and created Subjects remain. Restoration is one-shot and retires
+delayed cleanup permission. Starting another recording or leaving the draft
+discards it. F9 is unavailable during recording, Stop, saving, or Subject creation.
+Restoration exceeding the existing character/line limits leaves the draft unchanged.
+
+Neutral multiword names such as “Machine Learning Research” retain the existing
+recommendation and creation flow. If name data has not arrived by Stop, a possible
+command remains literal and unassigned after a late read. Confirmed commands can
+resolve late, but automatic cleanup waits until the snapshot rules out a folded
+identity collision; any intervening edits remain untouched. An indefinite article
+immediately before “thought” introduces ordinary
+speech (“Just a thought”, “Here's another thought”). Interior indefinite articles
+and comparative “more thought” phrases remain uncertain without name evidence.
+
+Accepted revisions reevaluate intent even when the cue spelling is unchanged;
+ordinary revisions withdraw automatic suggestions. Transcript revocation freezes
+the final accepted command decision and byte boundary; `RecordingEnded` removes
+only that authorized prefix once. Late candidate data may resolve a frozen,
+confirmed cue, but cannot reopen intent classification. Starting another recording
+clears the previous cue and permission; appended/subsequent recordings remain
+literal regardless of candidate arrival timing. Manual selections still take
+precedence. These conservative English heuristics cannot
+distinguish every title from ordinary speech; names containing the delimiter or
+grammatically ambiguous titles may need manual selection. Subject spelling and
+persisted identity remain case-sensitive. No uncertain prefix is removed or
+command-capitalized.
+
+Candidates (Subjects, aliases, and usage) load once per draft under its context.
+Live revisions reuse prepared matching features, with no database reads per
+transcript. Alias/count failures degrade to the remaining data. This is not a
+transactional database snapshot: concurrent changes in another session may
+require reopening the draft; save/creation still use authoritative validation.
+
+Unique folded canonical/alias matches bypass scoring. Collisions stop resolution
+before fuzzy ranking or usage; database identity and `ResolveName` remain strictly
+case-sensitive. For confirmed commands without a folded match,
+ranking takes the larger Dice overlap of significant word sets and Unicode
+character trigrams, using the best canonical/alias spelling per Subject. A 0.75
+minimum and 0.10 winner margin govern selection. Close relevant ties may use
+Thought counts only when all counts are known and one Subject has at least three
+Thoughts, at least three more than each competitor, and at least twice their
+usage. Other ties remain ambiguous. These are tunable heuristics, not calibrated
+probabilities. No extra model, persistence, or inference is involved.
+
+Recommendations share transcript authority with editor mutation. Stop revokes
+that authority immediately; `RecordingEnded` cleans only the last accepted
+initial contribution, once. Prefix-only input is retained for editing. Candidate
+replies carry draft, request, session and component identity, and cannot override
+manual selection/creation or a retired draft. No transcript or cue is logged.
+
 ## Give sound its own connection
 
 Typing and recording have different needs. Sound arrives continuously and
@@ -70,6 +172,14 @@ The server also limits both recording time and the amount of sound received to
 20 minutes. These checks apply even if the browser misbehaves. The browser has
 its own sending bound and stops capture if it cannot keep up; an abandoned
 connection times out.
+
+The worklet permits ten unacknowledged 100 ms frames (32,000 bytes), giving the
+browser about one second to recover from a brief main-thread stall. The browser
+socket remains bounded at 48,000 queued bytes, below Go's twenty-frame waiting
+queue (64,000 bytes). A recovered worklet burst therefore fits the downstream
+ceilings. These limits do not batch or delay normal audio: each frame is sent
+immediately. Sustained overload still ends capture instead of silently dropping
+sound or accumulating an unbounded recording. Stop clears late frames as before.
 
 ## Make Stop freeze the draft
 

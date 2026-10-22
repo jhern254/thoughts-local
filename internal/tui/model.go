@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/subjectdiscovery"
 	"github.com/jhern254/go-thoughts/internal/tui/events"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 	"github.com/jhern254/go-thoughts/internal/tui/mindset"
@@ -141,6 +142,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if next.screen == screenSubjectDetail && next.subjects.selected != nil {
 			name = next.subjects.selected.SubjectName
 		}
+		next.thoughts.ConfigureVoiceSubjectDiscovery(subjectdiscovery.NewService(next.subjects.service, next.metrics, subjectdiscovery.NameRecommender{}))
 		voiceCmd := next.thoughts.EnableVoice(next.voiceDraftID, next.subjects.service, name)
 		return next, tea.Batch(cmd, voiceCmd)
 	}
@@ -232,7 +234,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.thoughts, _ = m.thoughts.Update(message)
 		return m, nil
-	case voice.TranscriptUpdate, voice.RecordingEnded:
+	case voice.TranscriptUpdate, voice.RecordingEnded, thoughts.VoiceSubjectsLoaded:
 		var cmd tea.Cmd
 		m.thoughts, cmd = m.thoughts.Update(message)
 		return m, cmd
@@ -595,6 +597,7 @@ func (m *Model) openThoughtDraft() tea.Cmd {
 	m.subjects.stopRead()
 	m.screen = screenVoiceThought
 	m.voiceDraftID++
+	m.thoughts.ConfigureVoiceSubjectDiscovery(subjectdiscovery.NewService(m.subjects.service, m.metrics, subjectdiscovery.NameRecommender{}))
 	return m.thoughts.OpenVoice(m.voiceDraftID, m.subjects.service)
 }
 

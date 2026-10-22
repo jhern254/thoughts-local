@@ -11,7 +11,9 @@ import (
 	"github.com/jhern254/go-thoughts/internal/validator"
 )
 
-const maxThoughtCharacters = 1_000_000
+// MaxThoughtCharacters matches the persisted Unicode code-point limit and is
+// shared with editors that must reject an oversized operation without truncation.
+const MaxThoughtCharacters = 1_000_000
 
 type Store interface {
 	SetThoughtMindset(context.Context, string, int64, bool, time.Time) (bool, error)
@@ -105,5 +107,5 @@ func (s *Service) Delete(ctx context.Context, userID string, thoughtID, expected
 func validateThought(v *validator.Validator, item *data.Thought) {
 	v.Check(item.UserID != "", "user_id", "must be provided")
 	v.Check(utf8.RuneCountInString(strings.Trim(item.Thought, " ")) > 0, "thought", "must be provided")
-	v.Check(utf8.RuneCountInString(item.Thought) <= maxThoughtCharacters, "thought", "must not be more than 1000000 characters long")
+	v.Check(utf8.RuneCountInString(item.Thought) <= MaxThoughtCharacters, "thought", "must not be more than 1000000 characters long")
 }

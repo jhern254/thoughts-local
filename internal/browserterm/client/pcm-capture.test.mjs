@@ -16,7 +16,11 @@ function setup() {
     get destination() { return {}; }
   }
   class AudioWorkletNode {
-    constructor() { this.port = {postMessage() {}, close() {}}; processors.push(this); }
+    constructor() {
+      this.messages = [];
+      this.port = {postMessage: message => this.messages.push(message), close() {}};
+      processors.push(this);
+    }
     connect() {} disconnect() {}
   }
   class WebSocket {
@@ -123,4 +127,26 @@ test('a non fixed worklet frame stops capture before sending audio', async () =>
   assert.ok(new Uint8Array(pcm).every(byte => byte === 0));
   assert.equal(fixture.events.at(-1).status, 'failed');
   assert.equal(fixture.stopped(), 1);
+});
+
+test('one second of delayed worklet frames fits the existing outbound budget', async () => {
+  const fixture = setup();
+  const socket = await startRecording(fixture);
+  const processor = fixture.processors[0];
+  assert.deepEqual(processor.messages.map(message => message.credit), [10]);
+  const returnedCredits = [];
+  processor.port.postMessage = message => returnedCredits.push(message);
+  const send = socket.send.bind(socket);
+  socket.send = frame => { send(frame); socket.bufferedAmount += frame.byteLength; };
+  for (let frame = 0; frame < 10; frame++) {
+    const pcm = new ArrayBuffer(3200);
+    new Uint8Array(pcm).fill(frame + 1);
+    processor.port.onmessage({data: {pcm}});
+    assert.ok(new Uint8Array(pcm).every(byte => byte === 0));
+  }
+  assert.equal(socket.bufferedAmount, 32000);
+  assert.equal(socket.sent.length, 11); // Handshake, then ten bounded PCM messages.
+  assert.deepEqual(returnedCredits.map(message => message.credit), Array(10).fill(1));
+  assert.deepEqual(fixture.events.map(event => event.status), ['recording']);
+  fixture.capture.stop();
 });

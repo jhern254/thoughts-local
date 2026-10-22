@@ -2,6 +2,9 @@
 (() => {
   'use strict';
   const maximumOutboundBytes = 48000;
+  // Match the worklet's one-second ceiling. Even a complete delayed window is
+  // only 32,000 bytes, leaving room under the existing outbound limit.
+  const maximumPendingPCMFrames = 10;
   const maximumRecordingMilliseconds = 20 * 60 * 1000;
   globalThis.ThoughtsPCMRecording = class {
     constructor(onState) {
@@ -51,7 +54,7 @@
         });
         run.processor.port.onmessage = event => this.sendPCM(run, event.data);
         run.processor.onprocessorerror = () => this.finish(run, 'failed');
-        run.processor.port.postMessage({credit: 4});
+        run.processor.port.postMessage({credit: maximumPendingPCMFrames});
         run.source = run.audioContext.createMediaStreamSource(stream);
         run.source.connect(run.processor);
         run.processor.connect(run.audioContext.destination);

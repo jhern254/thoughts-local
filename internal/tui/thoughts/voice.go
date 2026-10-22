@@ -11,6 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/subjectdiscovery"
 	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
@@ -64,7 +65,11 @@ type VoiceSubjectRequest struct {
 	owner   *int
 	draftID uint64
 }
-type voiceSubjectsLoaded struct {
+
+// VoiceSubjectsLoaded is routed back to Thoughts even while Subject creation owns the screen.
+type VoiceSubjectsLoaded struct {
+	sessionID         string
+	discovery         *subjectdiscovery.LoadResult
 	owner             *int
 	draftID, revision uint64
 	items             []data.Subject
@@ -85,6 +90,7 @@ type voiceDraft struct {
 	loading                        bool
 	subjectName                    string
 	originalSubjectID              *int64
+	suggestion                     voiceSubjectSuggestion
 }
 
 func (m *Model) stopVoice() {
@@ -125,6 +131,9 @@ func (m *Model) EnableVoice(draftID uint64, reader VoiceSubjectReader, subjectNa
 		subjectName:       subjectName,
 		originalSubjectID: m.subjectID,
 	}
+	if m.subjectID != nil || subjectName != "" {
+		m.voice.suggestion.origin = subjectExplicit
+	}
 	m.resizeVoice(m.voice.width, m.voice.height)
 	return m.loadVoiceSubjects(reader)
 }
@@ -149,7 +158,9 @@ func (m Model) voiceLocked() bool {
 }
 func (m *Model) resizeVoice(width, height int) {
 	m.voice.width, m.voice.height = max(1, width), max(1, height)
-	m.voice.query.SetWidth(max(1, width-2))
+	// Bubbles adds a trailing cursor cell beyond the input width, in addition
+	// to its two-cell prompt. Reserve both so narrow editors do not wrap.
+	m.voice.query.SetWidth(max(1, width-3))
 	reserved := 5
 	if m.voice.subjectFocused {
 		reserved += 4
@@ -165,15 +176,30 @@ func (m *Model) loadVoiceSubjects(reader VoiceSubjectReader) tea.Cmd {
 	m.voice.revision++
 	m.voice.loading = true
 	owner, draftID, revision, user := m.owner, m.voice.draftID, m.voice.revision, m.userID
+	sessionID, discovery := m.browserSessionID, m.discovery
 	return func() tea.Msg {
 		if ctx.Err() != nil {
 			return nil
 		}
-		items, err := reader.List(ctx, user)
+		reply := VoiceSubjectsLoaded{
+			sessionID: sessionID,
+			owner:     owner,
+			draftID:   draftID,
+			revision:  revision,
+		}
+		if discovery != nil {
+			result, err := discovery.Load(ctx, user)
+			reply.discovery, reply.err = &result, err
+			for _, candidate := range result.Snapshot.Candidates {
+				reply.items = append(reply.items, candidate.Subject)
+			}
+		} else {
+			reply.items, reply.err = reader.List(ctx, user)
+		}
 		if ctx.Err() != nil {
 			return nil
 		}
-		return voiceSubjectsLoaded{owner, draftID, revision, items, err}
+		return reply
 	}
 }
 func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
@@ -196,6 +222,7 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 		}
 		m.voice.recordingID++
 		m.voice.recordingBaseText = m.input.Value()
+		m.beginSpokenSubject()
 		if m.browserSessionID != "" {
 			m.voice.transcriptAuthority = voice.NewTranscriptAuthority(voice.RecordingKey{SessionID: m.browserSessionID, DraftID: m.voice.draftID, RecordingID: m.voice.recordingID})
 		}
@@ -211,12 +238,14 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 		if m.voice.transcriptAuthority != nil {
 			m.voice.transcriptAuthority.Revoke()
 		}
+		m.freezeSpokenSubject()
 		if m.voice.recordingStatus == "requesting" || m.voice.recordingStatus == "recording" {
 			m.voice.recordingStatus = "stopping"
 		}
 	case "stopped", "denied", "unavailable", "failed":
 		if m.voice.transcriptAuthority != nil && m.voiceLocked() {
 			m.voice.transcriptAuthority.Revoke()
+			m.freezeSpokenSubject()
 			m.voice.recordingStatus = "stopping"
 			m.voice.message = map[string]string{"denied": "Microphone permission was denied. Draft unchanged.", "unavailable": "Microphone unavailable. Draft preserved.", "failed": "Microphone capture failed. Draft preserved."}[action.Action]
 			return m, nil
@@ -233,6 +262,9 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 	return m, nil
 }
 func (m Model) matchingVoiceSubjects() []data.Subject {
+	if m.voice.suggestion.origin == subjectAutomatic && m.voice.suggestion.outcome == subjectdiscovery.Ambiguous {
+		return m.voice.suggestion.matches
+	}
 	query := strings.ToLower(m.voice.query.Value())
 	items := []data.Subject{}
 	for _, item := range m.voice.items {
@@ -250,6 +282,7 @@ func (m *Model) ReturnFromVoiceSubject(request VoiceSubjectRequest, subject *dat
 		return nil
 	}
 	m.voice.suspended = false
+	m.voice.suggestion.origin = subjectExplicit
 	if subject != nil {
 		if m.voice.cancelRead != nil {
 			m.voice.cancelRead()
@@ -260,6 +293,7 @@ func (m *Model) ReturnFromVoiceSubject(request VoiceSubjectRequest, subject *dat
 		m.subjectID = &subject.SubjectID
 		m.voice.subjectName = subject.SubjectName
 		m.voice.query.SetValue(subject.SubjectName)
+		m.confirmSpokenSubject()
 		m.voice.query.CursorEnd()
 		m.voice.subjectFocused = false
 		m.resizeVoice(m.voice.width, m.voice.height)
@@ -279,15 +313,18 @@ func (m Model) updateVoicePicker(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			if m.voice.row == 0 {
+				m.voice.suggestion.origin = subjectExplicit
 				m.voice.suspended = true
 				m.voice.query.Blur()
 				request := VoiceSubjectRequest{m.voice.query.Value(), m.owner, m.voice.draftID}
 				return m, func() tea.Msg { return request }
 			}
 			item := m.matchingVoiceSubjects()[m.voice.row-1]
+			m.voice.suggestion.origin = subjectExplicit
 			m.subjectID = &item.SubjectID
 			m.voice.subjectName = item.SubjectName
 			m.voice.query.SetValue(item.SubjectName)
+			m.confirmSpokenSubject()
 			m.voice.query.CursorEnd()
 			m.voice.subjectFocused = false
 			m.voice.query.Blur()
@@ -320,6 +357,7 @@ func (m Model) updateVoicePicker(msg tea.Msg) (Model, tea.Cmd) {
 	before := m.voice.query.Value()
 	m.voice.query, cmd = m.voice.query.Update(msg)
 	if m.voice.query.Value() != before {
+		m.voice.suggestion.origin = subjectExplicit
 		m.subjectID = nil
 		m.voice.subjectName = ""
 		m.voice.message = ""
@@ -327,11 +365,16 @@ func (m Model) updateVoicePicker(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	return m, cmd
 }
-func (m Model) acceptVoiceSubjects(reply voiceSubjectsLoaded) (Model, tea.Cmd) {
-	if reply.owner != m.owner || reply.draftID != m.voice.draftID || reply.revision != m.voice.revision || m.voice.draftID == 0 {
+func (m Model) acceptVoiceSubjects(reply VoiceSubjectsLoaded) (Model, tea.Cmd) {
+	if reply.sessionID != m.browserSessionID || m.loading || reply.owner != m.owner || reply.draftID != m.voice.draftID || reply.revision != m.voice.revision || m.voice.draftID == 0 {
 		return m, nil
 	}
 	m.voice.loading = false
+	// Transport failure can revoke authority before RecordingEnded reaches the
+	// editor. Freeze against the old snapshot before a read adds new evidence.
+	if m.voice.transcriptAuthority != nil && !m.voice.transcriptAuthority.Active() {
+		m.freezeSpokenSubject()
+	}
 	if reply.err != nil {
 		if category, emit := failure.Classify(logging.SubjectList, reply.err); emit {
 			m.logger.Failure(logging.SubjectList, category)
@@ -339,6 +382,22 @@ func (m Model) acceptVoiceSubjects(reply voiceSubjectsLoaded) (Model, tea.Cmd) {
 		m.voice.message = "Could not load subjects. You can still create one."
 	} else {
 		m.voice.items = reply.items
+		if reply.discovery != nil {
+			m.voice.suggestion.snapshot = reply.discovery.Snapshot
+			m.voice.suggestion.loaded = true
+			for _, problem := range []struct {
+				operation logging.Operation
+				err       error
+			}{
+				{logging.SubjectList, reply.discovery.AliasErr},
+				{logging.ThoughtCountsBySubject, reply.discovery.UsageErr},
+			} {
+				if category, emit := failure.Classify(problem.operation, problem.err); emit {
+					m.logger.Failure(problem.operation, category)
+				}
+			}
+			m.refreshSpokenSubject(true)
+		}
 	}
 	return m, nil
 }
@@ -369,6 +428,8 @@ func (m Model) applyTranscriptUpdate(update voice.TranscriptUpdate) (Model, tea.
 		}
 		m.input.SetValue(draftText)
 		m.input.CursorEnd()
+		m.voice.suggestion.transcript = transcriptText
+		m.refreshSpokenSubject(false)
 		return true
 	})
 	return m, nil
@@ -380,6 +441,7 @@ func (m Model) recordingEnded(ended voice.RecordingEnded) (Model, tea.Cmd) {
 	}
 	m.voice.transcriptAuthority.Revoke()
 	m.voice.transcriptAuthority = nil
+	m.finishSpokenSubject()
 	m.voice.recordingBaseText = ""
 	m.voice.recordingStatus = "idle"
 	if ended.Failed && m.voice.message == "" {

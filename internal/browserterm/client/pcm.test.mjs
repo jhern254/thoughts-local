@@ -52,3 +52,31 @@ test('Stop and invalid samples release the private partial frame', () => {
   assert.ok(new Uint8Array(partial).every(byte => byte === 0));
   assert.equal(processor.process([[new Float32Array(1600)]], []), false);
 });
+
+test('a 750ms main-thread pause preserves ordered PCM and recovers on returned credit', () => {
+  const {processor, frames} = processorAt(16000);
+  processor.port.onmessage({data: {credit: 10}});
+  // No main-thread acknowledgements arrive during these eight 100ms frames.
+  for (let frame = 0; frame < 8; frame++) {
+    processor.process([[new Float32Array(1600).fill((frame + 1) / 16)]], []);
+  }
+  assert.equal(frames.filter(frame => frame.pcm).length, 8);
+  assert.equal(frames.some(frame => frame.status === 'failed'), false);
+  for (let index = 0; index < 8; index++) {
+    assert.equal(new DataView(frames[index].pcm).getInt16(0, true), (index + 1) * 2048);
+    processor.port.onmessage({data: {credit: 1}});
+  }
+  const previousFrames = frames.length;
+  for (let frame = 0; frame < 10; frame++) processor.process([[new Float32Array(1600)]], []);
+  assert.equal(frames.length - previousFrames, 10);
+  assert.equal(processor.active, true);
+});
+
+test('excessive credit cannot exceed one second of queued PCM', () => {
+  const {processor, frames} = processorAt(16000);
+  processor.port.onmessage({data: {credit: 1000000}});
+  for (let frame = 0; frame < 100; frame++) processor.process([[new Float32Array(1600)]], []);
+  assert.equal(frames.filter(frame => frame.pcm).length, 10);
+  assert.equal(frames.filter(frame => frame.status === 'failed').length, 1);
+  assert.equal(processor.pcmFrameStorage, undefined);
+});

@@ -8,12 +8,19 @@ const screen = page => page.locator('.xterm-rows');
 async function prepareAudioDraft(page) {
   await fakeMicrophone(page, 0.25, test.info().project.name === 'firefox');
   await page.addInitScript(() => {
-    window.audioProbe = {audioFrames: 0, terminalAudioFrames: 0, audioConnections: 0, capabilityInURL: false};
+    window.audioProbe = {
+      audioFrames: 0,
+      terminalAudioFrames: 0,
+      audioConnections: 0,
+      terminalConnections: 0,
+      capabilityInURL: false
+    };
     const NativeWebSocket = window.WebSocket;
     window.WebSocket = class extends NativeWebSocket {
       constructor(address, ...options) {
         super(address, ...options);
         this.audioPath = new URL(address).pathname === '/voice/audio';
+        if (new URL(address).pathname === '/ws') window.audioProbe.terminalConnections++;
         if (this.audioPath) {
           window.audioProbe.audioConnections++;
           window.audioProbe.capabilityInURL ||= new URL(address).search !== '';
@@ -123,3 +130,45 @@ test('video import during recording preserves microphone, audio socket and draft
  await page.keyboard.press('F8');await expect(screen(page)).toContainText('F8: Record');
  await openVisual(page);await clickControl(page,'Remove background');
 });
+
+
+// Blocking this page leaves the real AudioWorklet running, reproducing scheduling
+// pressure without physical microphone input or machine-wide CPU throttling.
+for (const stallMilliseconds of [750, 1500]) {
+  test(`recording tolerates bounded browser stalls and stops safely beyond them (${stallMilliseconds}ms)`, async ({page}, testInfo) => {
+    await prepareAudioDraft(page);
+    await startCapture(page, 0);
+    const before = await page.evaluate(() => ({...window.audioProbe}));
+    await page.evaluate(milliseconds => {
+      const started = performance.now();
+      while (performance.now() - started < milliseconds) { /* Intentional diagnostic stall. */ }
+    }, stallMilliseconds);
+    if (stallMilliseconds === 750) {
+      await expect.poll(() => page.evaluate(() => window.audioProbe.audioFrames)).toBeGreaterThan(before.audioFrames + 8);
+      await expect(page.locator('#status')).toHaveText('Transcribing…');
+      await expect(screen(page)).toContainText('F8: Stop');
+      expect(await page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(0);
+      expect(await page.evaluate(() => window.audioProbe.audioConnections)).toBe(before.audioConnections);
+      await page.keyboard.press('F8');
+    } else {
+      await expect(screen(page)).toContainText('F8: Record');
+      // Socket close and the browser failure control can arrive in either order.
+      // Both fixed messages preserve the last accepted transcript.
+      await expect(screen(page)).toContainText(/Microphone capture failed\. Draft preserved\.|Audio capture stopped\. Draft preserved\./);
+      await expect.poll(() => page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(1);
+      await startCapture(page, 1);
+      await expect.poll(async () => ((await screen(page).innerText()).match(/synthetic speech/g) || []).length).toBe(2);
+      await expect.poll(() => page.evaluate(() => window.audioProbe.audioFrames)).toBeGreaterThan(before.audioFrames + 12);
+      await page.keyboard.press('F8');
+    }
+    await expect(screen(page)).toContainText('F8: Record');
+    await expect(screen(page)).toContainText('typed draft');
+    await expect(screen(page)).toContainText('synthetic speech');
+    expect(await page.evaluate(() => window.audioProbe.terminalConnections)).toBe(before.terminalConnections);
+    expect(await page.evaluate(() => window.audioProbe.terminalAudioFrames)).toBe(0);
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+    if (process.env.THOUGHTS_BROWSER_ARTIFACTS) {
+      await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-stall-${stallMilliseconds}.png`});
+    }
+  });
+}

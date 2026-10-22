@@ -8,21 +8,22 @@ export async function openVisual(page) {
   await expect(screen(page)).not.toContainText('Loading visual');
 }
 export async function clickControl(page, label) {
-  const point = await screen(page).evaluate((el, label) => {
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      if (node.textContent.trim() !== label) continue;
-      const index = node.textContent.indexOf(label);
-      if (index < 0) continue;
-      const range = document.createRange();
-      range.setStart(node, index); range.setEnd(node, index + label.length);
-      const rect = range.getBoundingClientRect();
-      return {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2};
-    }
-    throw new Error('Missing TUI control');
+  const terminal = page.locator('.xterm-screen');
+  // xterm replaces text spans during rendering. Wait on its persistent input
+  // surface, then measure the current label relative to that stable surface.
+  // The text layer itself ignores pointer events.
+  await terminal.scrollIntoViewIfNeeded();
+  const position = await screen(page).getByText(label, {exact: true}).evaluate((element, label) => {
+    const node = element.firstChild;
+    const start = node.textContent.indexOf(label);
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + label.length);
+    const text = range.getBoundingClientRect();
+    const bounds = element.closest('.xterm-screen').getBoundingClientRect();
+    return {x: text.x - bounds.x + text.width / 2, y: text.y - bounds.y + text.height / 2};
   }, label);
-  await page.mouse.click(point.x, point.y);
+  await terminal.click({position});
 }
 export async function setDarkness(page, value) {
   await page.keyboard.press('Tab');
