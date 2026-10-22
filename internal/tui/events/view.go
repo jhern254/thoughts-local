@@ -285,7 +285,7 @@ func (m *Model) measureTimeline() timelineLayout {
 			priority:   1,
 			key:        entry.Key(),
 			content:    m.entryContent(entry),
-			selected:   i == m.position.entryIndex && m.position.target == targetEntry,
+			selected:   (m.position.target == targetEntry && i == m.position.entryIndex) || (m.position.target == targetBoundary && i == len(m.entries)-1),
 			end:        end,
 			hideEnd:    hideEnd,
 		})

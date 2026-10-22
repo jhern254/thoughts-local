@@ -138,9 +138,6 @@ func (m *Model) boundaryLine() string {
 	if m.day.Equal(displaytime.Day(m.clock)) {
 		label = "── Now · " + displaytime.Format(m.clock, "03:04 PM") + " ──"
 	}
-	if m.position.target == targetBoundary && !m.blurred {
-		label = lipgloss.NewStyle().Foreground(lipgloss.Color(selectedEntryColor)).Render(label)
-	}
 	return strings.Repeat(" ", m.cardColumn()) + label
 }
 
@@ -262,7 +259,7 @@ func (m *Model) boundaryBody() string {
 		end := last.top + len(last.content) + 2
 		available := max(0, height-6)
 		if len(last.content)+2 > available && available >= 4 {
-			card := m.paintCard(last.content[:available-2], false)
+			card := m.paintCard(last.content[:available-2], last.selected)
 			for _, row := range card {
 				contextRows = append(contextRows, strings.Repeat(" ", m.cardColumn())+row)
 			}

@@ -57,6 +57,24 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 			t.Fatal("Down skipped the buffer stop")
 		}
 	})
+	t.Run("Now stop keeps the latest event focused and the boundary unstyled", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m, _ = m.Update(eventKey("end"))
+		layout := m.measureTimeline()
+		if !layout.cards[len(layout.cards)-1].selected {
+			t.Fatal("Now stop removed focus from the latest event")
+		}
+		want := strings.Repeat(" ", 24) + "── Now · 11:37 AM ──"
+		if got := m.boundaryLine(); got != want {
+			t.Fatalf("got boundary %q, want plain %q", got, want)
+		}
+		m, _ = m.Update(eventKey("down"))
+		layout = m.measureTimeline()
+		if layout.cards[len(layout.cards)-1].selected {
+			t.Fatal("metrics retained event focus")
+		}
+	})
+
 	t.Run("End retains historical metrics until today's cards arrive", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.day = m.day.AddDate(0, 0, -1)
