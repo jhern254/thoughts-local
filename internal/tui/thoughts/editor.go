@@ -34,6 +34,9 @@ func (m Model) editorView(status string) string {
 			action = "F8: Stop"
 		}
 		help = action + " • Tab: subject/text • " + help
+		if m.canRestoreVoicePrefix() {
+			help += " • F9: Restore prefix"
+		}
 		if m.voiceLocked() {
 			help = action + " • Esc: cancel"
 		}

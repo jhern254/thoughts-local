@@ -466,6 +466,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if m.voiceLocked() {
 				return m, nil
 			}
+			if m.VoiceOpen() && key.String() == "f9" {
+				m.restoreVoicePrefix()
+				return m, nil
+			}
 			if m.VoiceOpen() && (key.String() == "tab" || key.String() == "shift+tab") {
 				m.stopClipboard()
 				m.voice.subjectFocused = !m.voice.subjectFocused

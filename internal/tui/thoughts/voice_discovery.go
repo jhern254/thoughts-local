@@ -3,9 +3,12 @@ package thoughts
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/subjectdiscovery"
+	"github.com/jhern254/go-thoughts/internal/thought"
+	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 type subjectOrigin uint8
@@ -15,6 +18,14 @@ const (
 	subjectAutomatic
 	subjectExplicit
 )
+
+// The original text remains in suggestion.transcript until this recording is
+// retired. Keep only its boundary and cleaned result to distinguish later edits.
+type voicePrefixCleanup struct {
+	recording voice.RecordingKey
+	bodyStart int
+	cleaned   string
+}
 
 type voiceSubjectSuggestion struct {
 	snapshot          subjectdiscovery.Snapshot
@@ -29,6 +40,7 @@ type voiceSubjectSuggestion struct {
 	frozenCommand     subjectdiscovery.SpokenPrefix
 	proposedName      string
 	proposedCommand   subjectdiscovery.SpokenPrefix
+	cleanup           *voicePrefixCleanup
 }
 
 // ConfigureVoiceSubjectDiscovery supplies the read-only coordinator at application
@@ -39,6 +51,7 @@ func (m *Model) ConfigureVoiceSubjectDiscovery(service *subjectdiscovery.Service
 
 func (m *Model) beginSpokenSubject() {
 	suggestion := &m.voice.suggestion
+	suggestion.cleanup = nil
 	suggestion.transcript = ""
 	suggestion.cue = ""
 	suggestion.frozenCommand = subjectdiscovery.SpokenPrefix{}
@@ -193,8 +206,56 @@ func (m *Model) cleanUneditedSpokenPrefix(prefix subjectdiscovery.SpokenPrefix) 
 				break
 			}
 		}
+		m.voice.suggestion.cleanup = &voicePrefixCleanup{
+			recording: voice.RecordingKey{SessionID: m.browserSessionID, DraftID: m.voice.draftID, RecordingID: m.voice.recordingID},
+			bodyStart: prefix.BodyStart,
+			cleaned:   body,
+		}
 		m.input.SetValue(body)
 		m.input.CursorEnd()
+	}
+}
+
+func (m Model) canRestoreVoicePrefix() bool {
+	cleanup := m.voice.suggestion.cleanup
+	return m.VoiceOpen() && m.screen == create && !m.loading && !m.voice.suspended && !m.voiceLocked() &&
+		cleanup != nil && cleanup.recording == (voice.RecordingKey{SessionID: m.browserSessionID, DraftID: m.voice.draftID, RecordingID: m.voice.recordingID})
+}
+
+func (m *Model) restoreVoicePrefix() {
+	if !m.canRestoreVoicePrefix() {
+		return
+	}
+	suggestion := &m.voice.suggestion
+	cleanup := suggestion.cleanup
+	restored := suggestion.transcript
+	if m.input.Value() != cleanup.cleaned {
+		restored = suggestion.transcript[:cleanup.bodyStart] + m.input.Value()
+	}
+	if utf8.RuneCountInString(restored) > thought.MaxThoughtCharacters || strings.Count(restored, "\n")+1 > textareaMaxLines {
+		m.inputWarning = "Cannot restore prefix: the result exceeds the Thought or editor length limit. Draft unchanged."
+		return
+	}
+	m.input.SetValue(restored)
+	m.input.CursorEnd()
+	m.inputWarning = ""
+	// F9 intentionally restores transcript equality. Retire the permission itself,
+	// rather than relying on the unedited-text check to reject delayed reads.
+	suggestion.cleanup = nil
+	suggestion.frozenCommand = subjectdiscovery.SpokenPrefix{}
+	suggestion.proposedCommand = subjectdiscovery.SpokenPrefix{}
+	suggestion.commandEligible = false
+	suggestion.beginningConsumed = true
+	suggestion.cue = ""
+	suggestion.proposedName = ""
+	if suggestion.origin == subjectAutomatic {
+		m.subjectID = nil
+		m.voice.subjectName = ""
+		m.voice.query.SetValue("")
+		m.voice.row = 0
+		suggestion.origin = subjectUnset
+		suggestion.matches = nil
+		suggestion.outcome = subjectdiscovery.Unknown
 	}
 }
 

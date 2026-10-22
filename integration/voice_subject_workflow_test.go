@@ -17,7 +17,7 @@ import (
 )
 
 func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
-	for _, scenario := range []string{"exact alias", "unknown Subject creation", "no command remains Misc", "narrative exact alias remains Misc", "uncertain speech remains Misc", "folded alias", "folded canonical", "single word creation", "single word Misc", "folded collision Misc"} {
+	for _, scenario := range []string{"exact alias", "unknown Subject creation", "no command remains Misc", "narrative exact alias remains Misc", "uncertain speech remains Misc", "folded alias", "folded canonical", "single word creation", "single word Misc", "folded collision Misc", "restore alias as Misc", "restore unknown as Misc", "restore created Subject"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, dsn := openMigratedSQLite(t)
 			runtime, err := application.Open(t.Context(), dsn)
@@ -92,7 +92,7 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 			key := state.TranscriptAuthority.Recording()
 			cue := "Programming in Go"
 			subjectName := selected.SubjectName
-			createSubject := scenario == "unknown Subject creation" || scenario == "single word creation"
+			createSubject := scenario == "unknown Subject creation" || scenario == "single word creation" || scenario == "restore created Subject"
 			if scenario == "unknown Subject creation" {
 				cue = "Machine Learning Research"
 				subjectName = cue
@@ -102,7 +102,7 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 				cue = "golang"
 			case "folded canonical":
 				cue = "fitness"
-			case "single word creation", "single word Misc":
+			case "single word creation", "single word Misc", "restore unknown as Misc", "restore created Subject":
 				cue, subjectName = "meditation", "meditation"
 			case "folded collision Misc":
 				cue = "coding"
@@ -147,7 +147,7 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 			if got, want := count, 3; got != want {
 				t.Fatalf("Thoughts before Save: got %d want %d", got, want)
 			}
-			if scenario == "single word creation" || scenario == "single word Misc" {
+			if cue == "meditation" {
 				if err := db.QueryRow("SELECT COUNT(*) FROM subjects WHERE subject_name='meditation'").Scan(&count); err != nil {
 					t.Fatal(err)
 				}
@@ -160,7 +160,7 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 				expectedSubject = nil
 			}
 			if createSubject {
-				if scenario == "single word creation" && !strings.Contains(ansi.Strip(model.View().Content), expectedBody) {
+				if (scenario == "single word creation" || scenario == "restore created Subject") && !strings.Contains(ansi.Strip(model.View().Content), expectedBody) {
 					t.Fatal("confirmed one-word command was not cleaned before Subject creation")
 				}
 				execute(update(tea.KeyPressMsg{Code: tea.KeyTab}))
@@ -174,6 +174,22 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 					t.Fatal(err)
 				}
 				expectedSubject = &created.SubjectID
+			}
+			if strings.HasPrefix(scenario, "restore ") {
+				execute(update(tea.KeyPressMsg{Code: tea.KeyF9}))
+				expectedBody = full
+				if scenario != "restore created Subject" {
+					expectedSubject = nil
+				} else {
+					persisted, err := runtime.Subjects().ResolveName(t.Context(), user, subjectName)
+					if err != nil || persisted.SubjectID != *expectedSubject {
+						t.Fatalf("created Subject after restore: got %v, %v; want selected Subject %d", persisted, err, *expectedSubject)
+					}
+				}
+				execute(update(tea.KeyPressMsg{Code: tea.KeyF9}))
+				if !strings.Contains(ansi.Strip(model.View().Content), full) {
+					t.Fatal("F9 did not restore original transcript through root dispatch")
+				}
 			}
 			execute(update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}))
 			reopened := openSQLite(t, dsn)

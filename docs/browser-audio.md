@@ -94,6 +94,14 @@ Unconfirmed possible commands retain their text. Editing the body or recording
 again prevents later confirmation from replacing that text; a new recording
 retires the earlier cleanup permission.
 
+After automatic cleanup, **F9: Restore prefix** appears in the voice editor help.
+It restores an untouched transcript exactly, or prepends the original prefix to
+the current edited body. It clears only automatic Subject choices; explicit
+selections and created Subjects remain. Restoration is one-shot and retires
+delayed cleanup permission. Starting another recording or leaving the draft
+discards it. F9 is unavailable during recording, Stop, saving, or Subject creation.
+Restoration exceeding the existing character/line limits leaves the draft unchanged.
+
 Neutral multiword names such as “Machine Learning Research” retain the existing
 recommendation and creation flow. If name data has not arrived by Stop, a possible
 command remains literal and unassigned after a late read. Confirmed commands can

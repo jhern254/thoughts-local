@@ -113,7 +113,7 @@ func TestThoughtService_Create(t *testing.T) {
 	})
 
 	t.Run("accepts one million Unicode characters", func(t *testing.T) {
-		body := strings.Repeat("界", maxThoughtCharacters)
+		body := strings.Repeat("界", MaxThoughtCharacters)
 		store := &thoughtServiceStoreStub{create: func(_ context.Context, item *data.Thought) (*data.Thought, error) {
 			return item, nil
 		}}
@@ -151,7 +151,7 @@ func TestThoughtService_Create(t *testing.T) {
 		}{
 			{name: "missing user", body: "learn Go", field: "user_id"},
 			{name: "empty body", userID: "test-user", body: " ", field: "thought"},
-			{name: "oversized body", userID: "test-user", body: strings.Repeat("x", maxThoughtCharacters+1), field: "thought"},
+			{name: "oversized body", userID: "test-user", body: strings.Repeat("x", MaxThoughtCharacters+1), field: "thought"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -261,7 +261,7 @@ func TestThoughtService_Update(t *testing.T) {
 		}
 	})
 	t.Run("accepts the schema Unicode limit without trimming text", func(t *testing.T) {
-		body := strings.Repeat("界", maxThoughtCharacters)
+		body := strings.Repeat("界", MaxThoughtCharacters)
 		store := &thoughtServiceStoreStub{update: func(_ context.Context, _ string, _ int64, got string, _ int64, _ time.Time) (*data.Thought, error) {
 			if got != body {
 				t.Fatal("got changed body, want original Unicode content")
@@ -279,7 +279,7 @@ func TestThoughtService_Update(t *testing.T) {
 		}{
 			{"missing owner", "", "PRIVATE-INPUT", "user_id", "must be provided", 1},
 			{"empty text", "owner", "   ", "thought", "must be provided", 1},
-			{"oversized text", "owner", strings.Repeat("界", maxThoughtCharacters) + "PRIVATE-INPUT", "thought", "must not be more than 1000000 characters long", 1},
+			{"oversized text", "owner", strings.Repeat("界", MaxThoughtCharacters) + "PRIVATE-INPUT", "thought", "must not be more than 1000000 characters long", 1},
 			{"zero version", "owner", "PRIVATE-INPUT", "version", "must be greater than zero", 0},
 			{"negative version", "owner", "PRIVATE-INPUT", "version", "must be greater than zero", -1},
 		} {
