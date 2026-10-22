@@ -126,7 +126,7 @@ func (m *Model) acceptSubjectTime(reply subjectTimeMsg) {
 }
 
 func (m *Model) clampSubjectTime() {
-	capacity := max(1, m.bodyHeight()-7)
+	capacity := max(1, m.bodyHeight()-6)
 	last := 0
 	if len(m.subjectTime.items) > capacity {
 		last = len(m.subjectTime.items) - max(1, capacity-1)
@@ -172,7 +172,7 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 		heading += " today"
 	}
 	// Align the duration column using the whole day, so scrolling cannot move it.
-	nameWidth := 0
+	nameWidth := ansi.StringWidth(heading)
 	timeWidth := len("Goals")
 	for _, item := range s.items {
 		nameWidth = max(nameWidth, ansi.StringWidth(singleLine(item.SubjectName))+2)
@@ -181,17 +181,16 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 	gap := min(3, max(0, m.cardWidth()-timeWidth))
 	nameWidth = max(0, min(nameWidth, m.cardWidth()-gap-timeWidth))
 	timeColumn := nameWidth + gap
-	content := []string{
-		ansi.Truncate(heading, m.cardWidth(), "…"),
-		ansi.Truncate(strings.Repeat(" ", timeColumn)+"Goals", m.cardWidth(), "…"),
-	}
+	header := ansi.Truncate(heading, nameWidth, "…")
+	header += strings.Repeat(" ", max(0, timeColumn-ansi.StringWidth(header))) + "Goals"
+	content := []string{ansi.Truncate(header, m.cardWidth(), "…")}
 	var bars []render.Bar
 	var barSubjects []int64
 	start, end := 0, len(s.items)
 	if windowed {
 		m.clampSubjectTime()
 		start = s.offset
-		capacity := max(1, m.bodyHeight()-7)
+		capacity := max(1, m.bodyHeight()-6)
 		if start > 0 {
 			content = append(content, "...")
 			capacity--
@@ -265,7 +264,7 @@ func (m *Model) boundaryBody() string {
 	if len(m.entries) > 0 {
 		layout := m.measureTimeline()
 		last := layout.cards[len(layout.cards)-1]
-		available := max(0, height-7)
+		available := max(0, height-6)
 		if len(last.content)+2 > available && available >= 4 {
 			card := m.paintCard(last.content[:available-2], last.selected)
 			for i, row := range card {

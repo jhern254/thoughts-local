@@ -10,12 +10,12 @@
 
 
                         ╭──────────────────────────────────────────────────────╮
-                        │Subject time today                                    │
-                        │             Goals                                    │
-             ⢸⣿⣿⣿⣿⣿⣿⣿⣿  │ Coding      3h 20m                                   │
-                 ⢸⣿⣿⣿⣿  │ Reading     1h 40m                                   │
-                    ⢸⣿  │ Planning    20m                                      │
+                        │Subject time today   Goals                            │
+             ⢸⣿⣿⣿⣿⣿⣿⣿⣿  │ Coding              3h 20m                           │
+                 ⢸⣿⣿⣿⣿  │ Reading             1h 40m                           │
+                    ⢸⣿  │ Planning            20m                              │
                         ╰──────────────────────────────────────────────────────╯
+
 
 
 

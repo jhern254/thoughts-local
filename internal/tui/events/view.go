@@ -382,7 +382,7 @@ func (m *Model) measureTimeline() timelineLayout {
 	subjectTimeTop := -1
 	if nowLine >= 0 || m.day.Before(displaytime.Day(m.clock)) {
 		subjectTimeTop = len(lines) + 2
-		lines = append(lines, make([]string, 2+max(1, len(m.subjectTime.items))+4)...)
+		lines = append(lines, make([]string, 2+max(1, len(m.subjectTime.items))+3)...)
 	}
 	return timelineLayout{
 		subjectTimeTop: subjectTimeTop,

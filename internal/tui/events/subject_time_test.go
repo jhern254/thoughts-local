@@ -31,7 +31,7 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 			t.Fatal("startup did not focus Now")
 		}
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
-		if !strings.HasPrefix(rows[0], "10:37 AM") || !strings.Contains(rows[6], "Now") || !strings.Contains(rows[10], "Subject time today") || !strings.Contains(rows[12], "Coding") || !strings.Contains(rows[13], "Reading") || !strings.Contains(rows[14], "╰") {
+		if !strings.HasPrefix(rows[0], "10:37 AM") || !strings.Contains(rows[6], "Now") || !strings.Contains(rows[10], "Subject time today") || !strings.Contains(rows[11], "Coding") || !strings.Contains(rows[12], "Reading") || !strings.Contains(rows[13], "╰") {
 			t.Fatalf("got Now stop %q, want latest event at top, Now below, and the full chart fitting beneath it", rows)
 		}
 		reads := store.subjectReads
@@ -120,7 +120,7 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 		m, _ = m.Update(eventKey("down"))
 		m, _ = m.Update(eventKey("down"))
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
-		if !strings.Contains(rows[0], "Now") || !strings.Contains(rows[4], "Subject time today") || !strings.Contains(rows[6], "...") || !strings.Contains(rows[7], "Subject 01") {
+		if !strings.Contains(rows[0], "Now") || !strings.Contains(rows[4], "Subject time today") || !strings.Contains(rows[5], "...") || !strings.Contains(rows[6], "Subject 01") {
 			t.Fatalf("scrolled header: got %q", rows[:7])
 		}
 		if !strings.Contains(rows[len(rows)-2], "...") || !strings.Contains(rows[len(rows)-1], "╰") {
@@ -237,7 +237,10 @@ func TestModel_SubjectTimePresentation(t *testing.T) {
 			{SubjectID: 2, SubjectName: "Reading", TimeSpentSeconds: 6000},
 		}
 		rows := m.subjectTimePanel(false)
-		heading, first, second := ansi.Strip(rows[2]), ansi.Strip(rows[3]), ansi.Strip(rows[4])
+		heading, first, second := ansi.Strip(rows[1]), ansi.Strip(rows[2]), ansi.Strip(rows[3])
+		if !strings.Contains(heading, "Subject time today") {
+			t.Fatalf("got header %q, want title and Goals together", heading)
+		}
 		column := ansi.StringWidth(first[:strings.Index(first, "3h 20m")])
 		for _, row := range []string{heading, second} {
 			label := "Goals"
@@ -267,7 +270,7 @@ func TestModel_SubjectTimePresentation(t *testing.T) {
 		layout := m.measureTimeline()
 		m.position.topLine = layout.nowLine - 8
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
-		if !strings.Contains(rows[8], "Now") || strings.TrimSpace(rows[9]) != "" || strings.TrimSpace(rows[10]) != "" || !strings.Contains(rows[11], "╭") || !strings.Contains(rows[12], "Subject time today") || !strings.Contains(rows[14], "Coding") || !strings.Contains(rows[15], "Reading") || !strings.Contains(rows[16], "╰") {
+		if !strings.Contains(rows[8], "Now") || strings.TrimSpace(rows[9]) != "" || strings.TrimSpace(rows[10]) != "" || !strings.Contains(rows[11], "╭") || !strings.Contains(rows[12], "Subject time today") || !strings.Contains(rows[13], "Coding") || !strings.Contains(rows[14], "Reading") || !strings.Contains(rows[15], "╰") {
 			t.Fatalf("got rows %q, want the complete card immediately after Now and a two-row gap", rows)
 		}
 		m.position.entryIndex = 1
@@ -286,8 +289,11 @@ func TestModel_SubjectTimePresentation(t *testing.T) {
 		m.position.target = targetMetrics
 		m.subjectTime.items = []data.SubjectTimeView{{SubjectID: 7, SubjectName: strings.Repeat("学習", 30), TimeSpentSeconds: 5400}}
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
-		if !strings.Contains(rows[6], "1h 30m") || !strings.Contains(rows[6], "…") {
-			t.Fatalf("got %q, want truncated name and full duration", rows[6])
+		if !strings.Contains(rows[4], "Subject time today") || !strings.Contains(rows[4], "Goals") {
+			t.Fatalf("got narrow header %q, want both labels on one row", rows[4])
+		}
+		if !strings.Contains(rows[5], "1h 30m") || !strings.Contains(rows[5], "…") {
+			t.Fatalf("got %q, want truncated name and full duration", rows[5])
 		}
 		for _, row := range rows {
 			if ansi.StringWidth(row) > 40 {
@@ -310,10 +316,10 @@ func TestModel_SubjectTimePresentation(t *testing.T) {
 		m, _ = m.Update(eventKey("down"))
 		after := strings.Split(ansi.Strip(m.timelineBody()), "\n")
 		lane := func(row string) string { return ansi.Truncate(row, m.cardColumn(), "") }
-		if lane(before[7]) != lane(after[7]) || lane(after[7]) == lane(before[6]) {
+		if lane(before[6]) != lane(after[6]) || lane(after[6]) == lane(before[5]) {
 			t.Fatal("scrolling rescaled the second subject to the offscreen leader")
 		}
-		if strings.TrimSpace(lane(after[6])) != "" || strings.TrimSpace(lane(after[len(after)-2])) != "" {
+		if strings.TrimSpace(lane(after[5])) != "" || strings.TrimSpace(lane(after[len(after)-2])) != "" {
 			t.Fatal("overflow marker carries a chart bar")
 		}
 	})
@@ -323,7 +329,7 @@ func TestModel_SubjectTimePresentation(t *testing.T) {
 		m.entries = nil
 		m.position.target = targetBoundary
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
-		if len(rows) != m.bodyHeight() || !strings.Contains(rows[0], "Now") || !strings.Contains(rows[6], "No subject time recorded") || !strings.Contains(rows[7], "╰") {
+		if len(rows) != m.bodyHeight() || !strings.Contains(rows[0], "Now") || !strings.Contains(rows[5], "No subject time recorded") || !strings.Contains(rows[6], "╰") {
 			t.Fatalf("got empty preview %q", rows)
 		}
 		m.day = m.day.AddDate(0, 0, -1)
