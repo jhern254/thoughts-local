@@ -247,26 +247,30 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 
 func (m *Model) boundaryBody() string {
 	height := m.bodyHeight()
-	var contextRows []string
+	var rows []string
 	if len(m.entries) > 0 {
 		layout := m.measureTimeline()
 		last := layout.cards[len(layout.cards)-1]
-		end := last.top + len(last.content) + 2
 		available := max(0, height-6)
 		if len(last.content)+2 > available && available >= 4 {
 			card := m.paintCard(last.content[:available-2], last.selected)
-			for _, row := range card {
-				contextRows = append(contextRows, strings.Repeat(" ", m.cardColumn())+row)
+			for i, row := range card {
+				prefix := strings.Repeat(" ", m.cardColumn())
+				if i == 0 {
+					prefix = layout.lines[last.top] + strings.Repeat(" ", m.cardColumn()-timelineLabelWidth)
+				}
+				rows = append(rows, prefix+row)
 			}
 		} else {
-			contextRows = m.paintTimeline(layout, max(0, end-available), min(available, end))
+			rows = m.paintTimeline(layout, last.top, len(last.content)+2)
 		}
 	}
-	rows := make([]string, max(0, height-6-len(contextRows)))
-	rows = append(rows, contextRows...)
 	rows = append(rows, m.boundaryLine(), "", "")
-	rows = append(rows, m.subjectTimePanel(false)[:3]...)
-	return strings.Join(rows, "\n")
+	rows = append(rows, m.subjectTimePanel(false)...)
+	for len(rows) < height {
+		rows = append(rows, "")
+	}
+	return strings.Join(rows[:min(height, len(rows))], "\n")
 }
 
 func (m *Model) subjectTimeBody() string {

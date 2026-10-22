@@ -1,16 +1,5 @@
  Events  September 11, 2026
 
-                        │
-                        │
-09:00 AM                │
-                        │
-                        │
-                        │
-                        │
-10:00 AM                │
-                        │
-                        │
-                     ⣼  │
 10:37 AM           ⣠⣼⣿  ╭──────────────────────────────────────────────────────╮
                ⢀⣠⣴⣾⣿⣿⣿  │ Reading  · 1h · Started at 10:37 AM · ongoing        │
              ⢠⣾⣿⣿⣿⣿⣿⣿⣿  │230 thoughts                                          │
@@ -23,5 +12,16 @@
                         ╭──────────────────────────────────────────────────────╮
                         │Subject time today                                    │
              ⢸⣿⣿⣿⣿⣿⣿⣿⣿  │ Coding                                         3h 20m│
+                    ⢸⣿  │ Reading                                        1h 40m│
+                     ⣿  │ Planning                                          20m│
+                        ╰──────────────────────────────────────────────────────╯
+
+
+
+
+
+
+
+
 ↑: latest card • ↓: subject time • d: distributions
 ← day / → open • Home/End: first/now • r: refresh • n: start • e: end

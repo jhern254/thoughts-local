@@ -29,11 +29,8 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 			t.Fatal("startup did not focus Now")
 		}
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
-		if !strings.Contains(rows[len(rows)-1], "Coding") || strings.Contains(rows[len(rows)-1], "╰") {
-			t.Fatalf("bottom preview: got %q, want leading subject at bottom edge", rows)
-		}
-		if !strings.Contains(rows[len(rows)-6], "Now") {
-			t.Fatalf("Now position: got %q, want five preview rows beneath Now", rows)
+		if !strings.HasPrefix(rows[0], "10:37 AM") || !strings.Contains(rows[6], "Now") || !strings.Contains(rows[10], "Subject time today") || !strings.Contains(rows[11], "Coding") || !strings.Contains(rows[12], "Reading") || !strings.Contains(rows[13], "╰") {
+			t.Fatalf("got Now stop %q, want latest event at top, Now below, and the full chart fitting beneath it", rows)
 		}
 		reads := store.subjectReads
 		m, cmd := m.Update(eventKey("down"))
@@ -57,9 +54,16 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 			t.Fatal("Down skipped the buffer stop")
 		}
 	})
-	t.Run("Now stop keeps the latest event focused and the boundary unstyled", func(t *testing.T) {
+	t.Run("Now stop keeps only the latest event focused at the top and the boundary unstyled", func(t *testing.T) {
 		m, _, _ := fixture(t)
+		end := m.entries[0].StartedAt()
+		label := "Earlier event"
+		m.entries = append(eventEntries([]data.Event{{EventID: 2, ActivityType: &label, StartedAt: end.Add(-time.Hour), EndedAt: &end}}), m.entries...)
 		m, _ = m.Update(eventKey("end"))
+		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
+		if !strings.HasPrefix(rows[0], "10:37 AM") || !strings.Contains(rows[6], "Now") || strings.Contains(strings.Join(rows, "\n"), label) {
+			t.Fatalf("got body %q, want only the latest card at the top followed by Now", rows)
+		}
 		layout := m.measureTimeline()
 		if !layout.cards[len(layout.cards)-1].selected {
 			t.Fatal("Now stop removed focus from the latest event")
@@ -285,12 +289,12 @@ func TestModel_SubjectTimePresentation(t *testing.T) {
 		}
 	})
 
-	t.Run("pads above empty and short previews and labels historical days", func(t *testing.T) {
+	t.Run("anchors empty and short charts below Now and labels historical days", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		m.entries = nil
 		m.position.target = targetBoundary
 		rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
-		if len(rows) != m.bodyHeight() || !strings.Contains(rows[len(rows)-1], "No subject time recorded") || !strings.Contains(rows[len(rows)-6], "Now") {
+		if len(rows) != m.bodyHeight() || !strings.Contains(rows[0], "Now") || !strings.Contains(rows[5], "No subject time recorded") || !strings.Contains(rows[6], "╰") {
 			t.Fatalf("got empty preview %q", rows)
 		}
 		m.day = m.day.AddDate(0, 0, -1)
