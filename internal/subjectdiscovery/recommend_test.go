@@ -30,15 +30,17 @@ func TestService_Resolve(t *testing.T) {
 		kind       Outcome
 		subjectID  int64
 	}{
-		{"exact canonical", "coding", []Candidate{lowerCoding, mixedCoding}, Existing, 1},
+		{"unique canonical", "coding", []Candidate{lowerCoding}, Existing, 1},
+		{"exact casing cannot override collision", "coding", []Candidate{lowerCoding, mixedCoding}, NameCollision, 0},
 		{"exact alias", "Programming in Go", []Candidate{goWithAliases}, Existing, 7},
 		{"word order", "Programming in Go", []Candidate{goSubject}, Existing, 7},
 		{"similar phrase", "Go programming practice", []Candidate{goSubject}, Existing, 7},
 		{"approximate alias", "GO DEVELOPMENT", []Candidate{goWithAliases}, Existing, 7},
-		{"ambiguous cases", "CODING", []Candidate{lowerCoding, mixedCoding, upperCoding}, Ambiguous, 0},
-		{"usage breaks close tie", "CODING", []Candidate{popularCoding, rareCoding}, Existing, 1},
-		{"small usage difference remains ambiguous", "CODING", []Candidate{smallCoding, unusedCoding}, Ambiguous, 0},
-		{"missing counts cannot break tie", "CODING", []Candidate{popularCoding, upperCoding}, Ambiguous, 0},
+		{"case collision", "CODING", []Candidate{lowerCoding, mixedCoding, upperCoding}, NameCollision, 0},
+		{"usage cannot override collision", "CODING", []Candidate{popularCoding, rareCoding}, NameCollision, 0},
+		{"usage breaks fuzzy tie", "coding-", []Candidate{popularCoding, rareCoding}, Existing, 1},
+		{"small usage difference remains ambiguous", "coding-", []Candidate{smallCoding, unusedCoding}, Ambiguous, 0},
+		{"missing counts cannot break fuzzy tie", "coding-", []Candidate{popularCoding, upperCoding}, Ambiguous, 0},
 		{"popularity cannot override relevance", "Go programming practice", []Candidate{goSubject, unrelated}, Existing, 7},
 		{"unknown", "Machine Learning Research", []Candidate{goSubject}, Unknown, 0},
 		{"empty candidates", "Fitness", nil, Unknown, 0},

@@ -28,6 +28,8 @@ type SpokenPrefix struct {
 	Cue       string
 	BodyStart int
 	Intent    CommandIntent
+	// Single-word possible cues can be offered without authorizing text removal.
+	SingleWord bool
 }
 
 // ParseSpokenPrefix recognizes only a short leading name before the first
@@ -81,7 +83,7 @@ func spokenPrefix(text string, start, end int) (SpokenPrefix, bool) {
 	if intent == OrdinarySpeech {
 		return SpokenPrefix{}, false
 	}
-	return SpokenPrefix{Cue: cue, BodyStart: end, Intent: intent}, true
+	return SpokenPrefix{Cue: cue, BodyStart: end, Intent: intent, SingleWord: len(words) == 1}, true
 }
 
 func spokenCommandIntent(words []string, body string) CommandIntent {

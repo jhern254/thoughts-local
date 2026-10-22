@@ -85,7 +85,7 @@ func TestModel_VoiceCommandEligibility(t *testing.T) {
 						base = text
 						if previous == "confirmed recording" {
 							text = "Programming in Go thought, learned interfaces."
-							base, query = "Learned interfaces.", "Programming in Go"
+							base, query = text, "Programming in Go"
 						}
 						m = transcript(m, first, 1, text)
 						m, _ = m.Update(voice.RecordingEnded{Recording: first})

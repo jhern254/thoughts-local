@@ -68,7 +68,7 @@ func TestModel_VoiceSubjectDiscovery(t *testing.T) {
 		model, _ = rootUpdate(model, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
 		model = runModelCommand(t, model, tea.KeyPressMsg{Code: tea.KeyF8})
 		recording := model.VoiceState().TranscriptAuthority.Recording()
-		model, _ = rootUpdate(model, voice.TranscriptUpdate{Recording: recording, Revision: 1, Text: "CODING practice thought practice"})
+		model, _ = rootUpdate(model, voice.TranscriptUpdate{Recording: recording, Revision: 1, Text: "CODING practice skills thought practice"})
 		for _, width := range []int{80, 32} {
 			model, _ = rootUpdate(model, tea.WindowSizeMsg{Width: width, Height: 24})
 			view := model.View().Content

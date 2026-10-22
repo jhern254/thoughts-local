@@ -118,7 +118,7 @@ func TestSnapshot_ConfirmsCommand(t *testing.T) {
 		{"I Want to Learn Go thought, review notes.", true},
 		{"My Learning Journal thought, review notes.", true},
 		{"Remember Tomorrow thought, review notes.", true},
-		{"i ching thought, review notes.", false},
+		{"i ching thought, review notes.", true},
 		{"Random thought, perhaps I should learn Go.", false},
 		{"My unknown journal thought, review notes.", false},
 		{"Yesterday I thought about Go.", false},
@@ -140,14 +140,14 @@ func TestSnapshot_ConfirmsCommand(t *testing.T) {
 		}
 	})
 }
-func TestService_ExactIdentity(t *testing.T) {
-	t.Run("exact identity bypasses heuristic ranking", func(t *testing.T) {
+func TestService_VoiceNameIdentity(t *testing.T) {
+	t.Run("unique folded identity bypasses heuristic ranking", func(t *testing.T) {
 		snapshot := NewSnapshot([]Candidate{{Subject: data.Subject{SubjectID: 1, SubjectName: "coding"}, Aliases: []string{"coDing"}}})
 		service := &Service{recommender: rankFunc(func(context.Context, string, []Candidate) ([]Match, error) {
 			t.Fatal("exact match invoked ranking")
 			return nil, nil
 		})}
-		for _, cue := range []string{"coding", "coDing"} {
+		for _, cue := range []string{"coding", "coDing", "CODING"} {
 			result, err := service.Resolve(t.Context(), cue, snapshot)
 			if err != nil || result.Subject == nil || result.Subject.SubjectID != 1 {
 				t.Fatalf("cue %q got %+v,%v", cue, result, err)
@@ -162,4 +162,38 @@ func TestService_ExactIdentity(t *testing.T) {
 			t.Fatalf("got %v want cancellation", err)
 		}
 	})
+}
+
+func TestService_VoiceNames(t *testing.T) {
+	for _, tc := range []struct {
+		cue        string
+		candidates []Candidate
+		wantID     int64
+	}{
+		{"fitness", []Candidate{{Subject: data.Subject{SubjectID: 1, SubjectName: "Fitness"}}}, 1},
+		{"FITNESS", []Candidate{{Subject: data.Subject{SubjectID: 1, SubjectName: "Fitness"}}}, 1},
+		{"work", []Candidate{{Subject: data.Subject{SubjectID: 1, SubjectName: "Work"}}}, 1},
+		{"golang", []Candidate{{Subject: data.Subject{SubjectID: 7, SubjectName: "Go Programming"}, Aliases: []string{"Golang", "GOLANG"}}}, 7},
+		{"études", []Candidate{{Subject: data.Subject{SubjectID: 1, SubjectName: "ÉTUDES"}}}, 1},
+		{"coding", []Candidate{{Subject: data.Subject{SubjectID: 1, SubjectName: "coding"}, ThoughtCount: 1000000, UsageKnown: true}, {Subject: data.Subject{SubjectID: 2, SubjectName: "coDing"}}}, 0},
+		{"CODING", []Candidate{{Subject: data.Subject{SubjectID: 1, SubjectName: "coding"}}, {Subject: data.Subject{SubjectID: 2, SubjectName: "Other"}, Aliases: []string{"coDing"}}}, 0},
+	} {
+		t.Run(tc.cue, func(t *testing.T) {
+			service := &Service{recommender: rankFunc(func(context.Context, string, []Candidate) ([]Match, error) {
+				t.Fatal("voice identity matching invoked fuzzy ranking")
+				return nil, nil
+			})}
+			got, err := service.Resolve(t.Context(), tc.cue, NewSnapshot(tc.candidates))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantID == 0 {
+				if got.Subject != nil || len(got.Matches) != 0 {
+					t.Fatalf("got %+v, want no selection or candidates", got)
+				}
+			} else if got.Subject == nil || got.Subject.SubjectID != tc.wantID {
+				t.Fatalf("got %+v, want Subject %d", got, tc.wantID)
+			}
+		})
+	}
 }

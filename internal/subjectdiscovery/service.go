@@ -1,9 +1,10 @@
 // Package subjectdiscovery supplies read-only, provisional Subject suggestions.
-// Exact persisted names are authoritative; heuristic normalization never changes identity.
+// Voice spelling comparisons never change persisted Subject identity.
 package subjectdiscovery
 
 import (
 	"context"
+	"strings"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 )
@@ -26,34 +27,46 @@ type Candidate struct {
 
 type Snapshot struct{ Candidates []Candidate }
 
-// ConfirmsCommand adds exact, case-sensitive identity evidence to a possible
-// command. Narrative vetoes survive even an exact match; ranking/usage are not
+// ConfirmsCommand adds unique case-insensitive voice-name evidence to a possible
+// command. Narrative vetoes survive even a unique match; ranking/usage are not
 // evidence of intent. An empty snapshot leaves uncertain dictation untouched.
 func (s Snapshot) ConfirmsCommand(prefix SpokenPrefix) bool {
+	match := s.MatchVoiceName(prefix.Cue)
+	if match.Outcome == NameCollision {
+		return false
+	}
 	switch prefix.Intent {
 	case ConfirmedCommand:
 		return true
 	case PossibleCommand:
-		return s.subjectForExactName(prefix.Cue) != nil
+		return match.Subject != nil
 	default:
 		return false
 	}
 }
 
-func (s Snapshot) subjectForExactName(cue string) *data.Subject {
+// MatchVoiceName ignores transcription capitalization, counting canonical IDs
+// rather than spellings. A collision is terminal: neither exact casing, usage,
+// nor fuzzy ranking may choose between distinct persisted identities.
+func (s Snapshot) MatchVoiceName(cue string) Result {
+	var matched *data.Subject
 	for _, candidate := range s.Candidates {
-		if candidate.Subject.SubjectName == cue {
-			return &candidate.Subject
-		}
-	}
-	for _, candidate := range s.Candidates {
+		matches := strings.EqualFold(candidate.Subject.SubjectName, cue)
 		for _, alias := range candidate.Aliases {
-			if alias == cue {
-				return &candidate.Subject
-			}
+			matches = matches || strings.EqualFold(alias, cue)
 		}
+		if !matches {
+			continue
+		}
+		if matched != nil && matched.SubjectID != candidate.Subject.SubjectID {
+			return Result{Outcome: NameCollision}
+		}
+		matched = &candidate.Subject
 	}
-	return nil
+	if matched != nil {
+		return Result{Outcome: Existing, Subject: matched}
+	}
+	return Result{Outcome: Unknown}
 }
 
 // NewSnapshot prepares immutable matching features once per voice draft.
@@ -139,6 +152,7 @@ const (
 	Unknown Outcome = iota
 	Existing
 	Ambiguous
+	NameCollision
 )
 
 type Result struct {
@@ -147,14 +161,14 @@ type Result struct {
 	Matches []data.Subject
 }
 
-// Resolve separates exact identity and confidence decisions from the scoring
+// Resolve separates voice-name matching and confidence decisions from the scoring
 // algorithm. It performs no I/O and is safe inside a synchronous draft mutation.
 func (s *Service) Resolve(ctx context.Context, cue string, snapshot Snapshot) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	if subject := snapshot.subjectForExactName(cue); subject != nil {
-		return Result{Outcome: Existing, Subject: subject}, nil
+	if match := snapshot.MatchVoiceName(cue); match.Outcome != Unknown {
+		return match, nil
 	}
 	matches, err := s.recommender.Rank(ctx, cue, snapshot.Candidates)
 	if err != nil {

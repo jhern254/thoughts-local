@@ -48,16 +48,17 @@ to check capture and draft ownership independently of the speech engine.
 ## Spoken Subject prefixes
 
 Start an empty voice draft with a name followed by “thought”, for example
-“Programming in Go thought, today I learned about interfaces.” Exact canonical
-names and aliases select the canonical Subject. The full transcript remains
-visible during recording. After Stop, the command is removed and the body's
-first Unicode letter is capitalized. Nothing is saved until Ctrl+S.
+“Programming in Go thought, today I learned about interfaces.” Unique voice-name
+matches select the canonical Subject. The full transcript remains visible during
+recording. Confirmed cleanup removes the prefix once and capitalizes the body's
+first Unicode letter. Nothing is saved until Ctrl+S.
 
-The Subject label identifies provisional suggestions and ambiguous matches.
+The Subject label identifies provisional suggestions and fuzzy ambiguities.
 Unknown names fill the existing Subject input without creating anything; after
 Stop, use Tab and “Create subject…” or choose an existing Subject. An ambiguous
-match requires selection. Ordinary speech such as “I thought about learning Go”
-remains unchanged and may be saved as Misc. Existing Subject context and manual
+fuzzy match requires selection to assign a Subject. Ordinary speech such as
+“I thought about learning Go” remains unchanged and may be saved as Misc.
+Existing Subject context and manual
 choices take precedence. Subject and text controls remain locked while recording.
 Only the initial recording into an otherwise empty draft recognizes a command;
 later recordings and recordings appended to typed text are literal. Empty or
@@ -72,17 +73,32 @@ and determiner-led noun readings such as “My first thought was ...” are ordi
 speech even if the prefix happens to be a saved name or alias. Noun readings use
 only a bounded lookahead at the body's first word, not body classification.
 
-Other single-word cues and sentence-like titles are possible commands: an exact
-case-sensitive name or alias can confirm them, but fuzzy scores and usage cannot.
+Voice spelling is compared with `strings.EqualFold` across preloaded canonical
+names and aliases, counting distinct canonical Subject IDs. A unique match selects
+the canonical Subject, regardless of transcription capitalization. Multiple IDs
+form a collision even if one spelling matches exactly: no automatic selection,
+candidate list, or prefix removal occurs, and Misc saving remains available.
+Aliases differing only by case for the same Subject are not a collision.
+
+Single-word cues and sentence-like titles are possible commands. A unique folded
+name can confirm them; fuzzy scores and usage cannot establish their intent.
 This preserves known names such as “The Art of Learning”, “I Ching”, “I Want to
-Learn Go”, and “My Learning Journal”. Uncertain unknown speech such as “random
-thought, perhaps ...” stays literal, leaves the Subject empty, and permits Misc
-saving. Neutral multiword names such as “Machine Learning Research” can confirm
-an unknown command and use the existing creation flow. If exact-name data has not
-arrived by Stop, a possible command remains literal and unassigned even after a
-late read. An indefinite article immediately before “thought” introduces ordinary
+Learn Go”, and “My Learning Journal”. An unfamiliar single word such as
+“meditation” appears as an optional proposal. Saving without confirming it retains
+the entire transcript as Misc. The existing Create subject flow or an explicit
+picker selection confirms it and removes the prefix once, capitalizing the first
+Unicode letter. Canceling creation leaves the proposal optional. Editing the body
+or recording again prevents later confirmation from replacing that text; a new
+recording retires the earlier cleanup permission.
+
+Neutral multiword names such as “Machine Learning Research” retain the existing
+recommendation and creation flow. If name data has not arrived by Stop, a possible
+command remains literal and unassigned after a late read. Confirmed commands can
+resolve late, but automatic cleanup waits until the snapshot rules out a folded
+identity collision; any intervening edits remain untouched. An indefinite article
+immediately before “thought” introduces ordinary
 speech (“Just a thought”, “Here's another thought”). Interior indefinite articles
-and comparative “more thought” phrases remain uncertain without exact evidence.
+and comparative “more thought” phrases remain uncertain without name evidence.
 
 Accepted revisions reevaluate intent even when the cue spelling is unchanged;
 ordinary revisions withdraw automatic suggestions. Transcript revocation freezes
@@ -103,7 +119,9 @@ transcript. Alias/count failures degrade to the remaining data. This is not a
 transactional database snapshot: concurrent changes in another session may
 require reopening the draft; save/creation still use authoritative validation.
 
-Exact case-sensitive canonical names and aliases bypass scoring. Otherwise,
+Unique folded canonical/alias matches bypass scoring. Collisions stop resolution
+before fuzzy ranking or usage; database identity and `ResolveName` remain strictly
+case-sensitive. For confirmed commands without a folded match,
 ranking takes the larger Dice overlap of significant word sets and Unicode
 character trigrams, using the best canonical/alias spelling per Subject. A 0.75
 minimum and 0.10 winner margin govern selection. Close relevant ties may use

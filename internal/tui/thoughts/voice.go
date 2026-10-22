@@ -293,6 +293,7 @@ func (m *Model) ReturnFromVoiceSubject(request VoiceSubjectRequest, subject *dat
 		m.subjectID = &subject.SubjectID
 		m.voice.subjectName = subject.SubjectName
 		m.voice.query.SetValue(subject.SubjectName)
+		m.confirmSpokenSubject()
 		m.voice.query.CursorEnd()
 		m.voice.subjectFocused = false
 		m.resizeVoice(m.voice.width, m.voice.height)
@@ -311,17 +312,19 @@ func (m Model) updateVoicePicker(msg tea.Msg) (Model, tea.Cmd) {
 			m.voice.row = max(0, min(m.voice.row+step, len(m.matchingVoiceSubjects())))
 			return m, nil
 		case "enter":
-			m.voice.suggestion.origin = subjectExplicit
 			if m.voice.row == 0 {
+				m.voice.suggestion.origin = subjectExplicit
 				m.voice.suspended = true
 				m.voice.query.Blur()
 				request := VoiceSubjectRequest{m.voice.query.Value(), m.owner, m.voice.draftID}
 				return m, func() tea.Msg { return request }
 			}
 			item := m.matchingVoiceSubjects()[m.voice.row-1]
+			m.voice.suggestion.origin = subjectExplicit
 			m.subjectID = &item.SubjectID
 			m.voice.subjectName = item.SubjectName
 			m.voice.query.SetValue(item.SubjectName)
+			m.confirmSpokenSubject()
 			m.voice.query.CursorEnd()
 			m.voice.subjectFocused = false
 			m.voice.query.Blur()

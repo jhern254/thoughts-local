@@ -105,7 +105,7 @@ func TestModel_VoiceDiscovery(t *testing.T) {
 			})
 		}
 	})
-	t.Run("uncertain unknown speech bypasses ranking and remains saveable as Misc", func(t *testing.T) {
+	t.Run("one-word proposal bypasses ranking and remains saveable as Misc", func(t *testing.T) {
 		m, _, subjects := discoveryModel(t)
 		ranker := &countedRecommender{}
 		m.ConfigureVoiceSubjectDiscovery(subjectdiscovery.NewService(subjects, discoveryUsage{}, ranker))
@@ -114,7 +114,7 @@ func TestModel_VoiceDiscovery(t *testing.T) {
 		text := "random thought, perhaps I should learn Go."
 		m = transcript(m, recording, 1, text)
 		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
-		if ranker.calls != 0 || m.subjectID != nil || m.voice.query.Value() != "" || m.input.Value() != text {
+		if ranker.calls != 0 || m.subjectID != nil || m.voice.query.Value() != "random" || m.input.Value() != text {
 			t.Fatalf("ranking=%d subject=%v query=%q text=%q, want untouched uncertain speech", ranker.calls, m.subjectID, m.voice.query.Value(), m.input.Value())
 		}
 		_, save := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})

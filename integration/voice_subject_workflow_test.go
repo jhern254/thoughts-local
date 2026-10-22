@@ -17,7 +17,7 @@ import (
 )
 
 func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
-	for _, scenario := range []string{"exact alias", "unknown Subject creation", "no command remains Misc", "narrative exact alias remains Misc", "uncertain speech remains Misc"} {
+	for _, scenario := range []string{"exact alias", "unknown Subject creation", "no command remains Misc", "narrative exact alias remains Misc", "uncertain speech remains Misc", "folded alias", "folded canonical", "single word creation", "single word Misc", "folded collision Misc"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, dsn := openMigratedSQLite(t)
 			runtime, err := application.Open(t.Context(), dsn)
@@ -32,6 +32,26 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 			}
 			if _, err := runtime.Subjects().CreateAlias(t.Context(), user, canonical.SubjectID, "Programming in Go"); err != nil {
 				t.Fatal(err)
+			}
+			if _, err := runtime.Subjects().CreateAlias(t.Context(), user, canonical.SubjectID, "Golang"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := runtime.Subjects().CreateAlias(t.Context(), user, canonical.SubjectID, "GOLANG"); err != nil {
+				t.Fatal(err)
+			}
+			selected := canonical
+			if scenario == "folded canonical" {
+				selected, err = runtime.Subjects().Create(t.Context(), user, "Fitness")
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario == "folded collision Misc" {
+				for _, name := range []string{"coding", "coDing"} {
+					if _, err := runtime.Subjects().Create(t.Context(), user, name); err != nil {
+						t.Fatal(err)
+					}
+				}
 			}
 			if scenario == "narrative exact alias remains Misc" {
 				if _, err := runtime.Subjects().CreateAlias(t.Context(), user, canonical.SubjectID, "Yesterday I"); err != nil {
@@ -71,10 +91,21 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 			}
 			key := state.TranscriptAuthority.Recording()
 			cue := "Programming in Go"
-			subjectName := "Go Programming"
+			subjectName := selected.SubjectName
+			createSubject := scenario == "unknown Subject creation" || scenario == "single word creation"
 			if scenario == "unknown Subject creation" {
 				cue = "Machine Learning Research"
 				subjectName = cue
+			}
+			switch scenario {
+			case "folded alias":
+				cue = "golang"
+			case "folded canonical":
+				cue = "fitness"
+			case "single word creation", "single word Misc":
+				cue, subjectName = "meditation", "meditation"
+			case "folded collision Misc":
+				cue = "coding"
 			}
 			full := cue + " thought, today I learned about interfaces."
 			expectedBody := "Today I learned about interfaces."
@@ -88,6 +119,8 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 				saveUnassigned = true
 			case "uncertain speech remains Misc":
 				full = "random thought, perhaps I should learn Go."
+				saveUnassigned = true
+			case "single word Misc", "folded collision Misc":
 				saveUnassigned = true
 			}
 			if saveUnassigned {
@@ -112,11 +145,22 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 			if got, want := count, 3; got != want {
 				t.Fatalf("Thoughts before Save: got %d want %d", got, want)
 			}
-			expectedSubject := &canonical.SubjectID
+			if scenario == "single word creation" || scenario == "single word Misc" {
+				if err := db.QueryRow("SELECT COUNT(*) FROM subjects WHERE subject_name='meditation'").Scan(&count); err != nil {
+					t.Fatal(err)
+				}
+				if count != 0 {
+					t.Fatalf("Subjects before confirmation: got %d, want 0", count)
+				}
+			}
+			expectedSubject := &selected.SubjectID
 			if saveUnassigned {
 				expectedSubject = nil
 			}
-			if scenario == "unknown Subject creation" {
+			if createSubject {
+				if scenario == "single word creation" && !strings.Contains(ansi.Strip(model.View().Content), full) {
+					t.Fatal("unknown one-word prefix removed before Subject confirmation")
+				}
 				execute(update(tea.KeyPressMsg{Code: tea.KeyTab}))
 				execute(update(tea.KeyPressMsg{Code: tea.KeyEnter}))
 				if !strings.Contains(ansi.Strip(model.View().Content), "Create subject") {
@@ -149,6 +193,24 @@ func TestVoiceSubjectWorkflow_SQLite(t *testing.T) {
 			resolved, err := runtime.Subjects().ResolveName(t.Context(), user, "Programming in Go")
 			if err != nil || resolved.SubjectID != canonical.SubjectID {
 				t.Fatalf("existing alias: got %+v,%v want unchanged canonical mapping", resolved, err)
+			}
+			if scenario == "folded alias" {
+				if _, err := runtime.Subjects().ResolveName(t.Context(), user, "golang"); err == nil {
+					t.Fatal("voice matching changed case-sensitive alias lookup")
+				}
+			}
+			if scenario == "folded collision Misc" {
+				lower, err := runtime.Subjects().ResolveName(t.Context(), user, "coding")
+				if err != nil {
+					t.Fatal(err)
+				}
+				mixed, err := runtime.Subjects().ResolveName(t.Context(), user, "coDing")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if lower.SubjectID == mixed.SubjectID {
+					t.Fatal("case-sensitive Subjects lost their independent identities")
+				}
 			}
 		})
 	}

@@ -488,7 +488,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.screen = browse
 				return m, nil
 			case "ctrl+s":
-				if m.VoiceOpen() && m.voice.query.Value() != "" && m.subjectID == nil {
+				if m.VoiceOpen() && m.voice.query.Value() != "" && m.subjectID == nil && !m.unconfirmedVoiceProposal() {
 					m.voice.message = "Select a subject, create one, or clear the optional field."
 					m.voice.subjectFocused = true
 					m.resizeVoice(m.voice.width, m.voice.height)
