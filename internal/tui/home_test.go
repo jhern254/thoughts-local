@@ -1,15 +1,14 @@
 package tui
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"context"
 	"strings"
 	"testing"
 	"time"
 	"unicode"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/testutils"

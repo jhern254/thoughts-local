@@ -3,17 +3,17 @@ package tui
 import (
 	"context"
 	"fmt"
-	"github.com/charmbracelet/x/ansi"
-	"github.com/jhern254/go-thoughts/internal/tui/events"
-	"github.com/jhern254/go-thoughts/internal/tui/mindset"
 	"strings"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/events"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
+	"github.com/jhern254/go-thoughts/internal/tui/mindset"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 	"github.com/jhern254/go-thoughts/internal/voice"
 )
@@ -395,11 +395,11 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok && m.events.CanLeave() {
 		if key.String() == "tab" || key.String() == "shift+tab" {
-			step := 1
+			panel := (m.homeFocus() + 1) % homePanelCount
 			if key.String() == "shift+tab" {
-				step = 2
+				panel = (m.homeFocus() + homePanelCount - 1) % homePanelCount
 			}
-			return m, m.focusHome((m.homeFocus() + step) % 3)
+			return m, m.focusHome(panel)
 		}
 		if m.mindsets.Focused() {
 			var cmd tea.Cmd
@@ -492,7 +492,8 @@ func (m Model) entityStrip() string {
 func (m Model) homeDivider(focused bool) string {
 	line := strings.Repeat("─", max(1, m.width))
 	if focused {
-		return lipgloss.NewStyle().Foreground(m.subjects.list.Styles.Title.GetBackground()).Render(line)
+		sectionHighlightColor := m.subjects.list.Styles.Title.GetBackground()
+		return lipgloss.NewStyle().Foreground(sectionHighlightColor).Render(line)
 	}
 	return line
 }
@@ -546,7 +547,7 @@ func (m Model) viewUnderlying() tea.View {
 	case screenEvents:
 		content = m.events.View()
 		if m.events.TimelineVisible() {
-			content = m.mindsets.View() + "\n\n" + m.homeDivider(m.homeFocus() == 1) + "\n" + content
+			content = m.mindsets.View() + "\n\n" + m.homeDivider(m.homeFocus() == homePanelEvents) + "\n" + content
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content
 			content += "\n" + m.homeDivider(m.entityFocused) + "\n" + m.entityStrip()
 		}

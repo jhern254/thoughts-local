@@ -2,14 +2,14 @@ package thoughts
 
 import (
 	"bytes"
-	"charm.land/bubbles/v2/list"
-	"github.com/charmbracelet/x/ansi"
 	"image/color"
 	"io"
 	"strings"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"

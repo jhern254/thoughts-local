@@ -29,10 +29,10 @@ func newMindsetHome(t *testing.T, count int) Model {
 	m := NewModel(t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{}, service, &metricsStub{}, &homeEventStub{}, &homeTimelineStub{}, logging.Nop())
 	// Focus the panel before delivery; timer behavior is tested with explicit ticks
 	// in the panel package, while this test executes real data command batches.
-	m.focusHome(0)
+	m.focusHome(homePanelMindset)
 	m, cmd := rootUpdate(m, m.Init()())
 	m = startHomeData(t, m, cmd)
-	m.focusHome(1)
+	m.focusHome(homePanelEvents)
 	return m
 }
 
@@ -41,7 +41,7 @@ func TestModel_MindsetHome(t *testing.T) {
 		for _, width := range []int{80, 40} {
 			m := newMindsetHome(t, 0)
 			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
-			for _, focus := range []int{1, 2, 0, 1} {
+			for _, focus := range []homePanel{homePanelEvents, homePanelEntities, homePanelMindset, homePanelEvents} {
 				dividers := []string{}
 				for _, row := range strings.Split(m.View().Content, "\n") {
 					if ansi.Strip(row) == strings.Repeat("─", width) {
@@ -51,7 +51,7 @@ func TestModel_MindsetHome(t *testing.T) {
 				if len(dividers) != 2 {
 					t.Fatalf("width %d: got %d dividers, want 2", width, len(dividers))
 				}
-				for i, want := range []bool{focus == 1, focus == 2} {
+				for i, want := range []bool{focus == homePanelEvents, focus == homePanelEntities} {
 					if got := strings.Contains(dividers[i], "\x1b[38;5;62m"); got != want {
 						t.Fatalf("focus %d, divider %d at width %d: highlighted=%v, want %v: %q", focus, i, width, got, want, dividers[i])
 					}
@@ -106,11 +106,11 @@ func TestModel_MindsetHome(t *testing.T) {
 			t.Fatal("return lost panel selection, scroll, or timeline")
 		}
 		m, cmd = rootUpdate(m, runeKey('q'))
-		if cmd != nil || m.View().Content != selected || m.homeFocus() != 0 {
+		if cmd != nil || m.View().Content != selected || m.homeFocus() != homePanelMindset {
 			t.Fatal("Q must leave the focused picker and cursor unchanged")
 		}
 		m, _ = rootUpdate(m, escapeKey())
-		if !m.exitPromptOpen || m.homeFocus() != 0 || !m.mindsets.Expanded() || !strings.Contains(m.View().Content, "Exit app?") {
+		if !m.exitPromptOpen || m.homeFocus() != homePanelMindset || !m.mindsets.Expanded() || !strings.Contains(m.View().Content, "Exit app?") {
 			t.Fatal("Escape must open the app exit prompt without leaving Mindset")
 		}
 		m, _ = rootUpdate(m, escapeKey())
@@ -131,7 +131,7 @@ func TestModel_MindsetHome(t *testing.T) {
 				if cmd != nil {
 					t.Fatal("Left returned a command, want no action")
 				}
-				if m.homeFocus() != 0 || !m.mindsets.Expanded() || m.View().Content != before || !m.events.Day().Equal(day) {
+				if m.homeFocus() != homePanelMindset || !m.mindsets.Expanded() || m.View().Content != before || !m.events.Day().Equal(day) {
 					t.Fatalf("Left with %d thoughts: got focus %d expanded=%v day=%v, want unchanged expanded Mindset on %v", count, m.homeFocus(), m.mindsets.Expanded(), m.events.Day(), day)
 				}
 			}
@@ -155,14 +155,14 @@ func TestModel_MindsetHome(t *testing.T) {
 	})
 	t.Run("Tab cycles all three panels and reverse Tab returns", func(t *testing.T) {
 		m := newMindsetHome(t, 0)
-		for _, want := range []int{2, 0, 1} {
+		for _, want := range []homePanel{homePanelEntities, homePanelMindset, homePanelEvents} {
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 			if got := m.homeFocus(); got != want {
 				t.Fatalf("focus: got %d, want %d", got, want)
 			}
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
-		if m.homeFocus() != 0 {
+		if m.homeFocus() != homePanelMindset {
 			t.Fatal("reverse Tab did not focus Mindset")
 		}
 	})

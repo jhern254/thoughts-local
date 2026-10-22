@@ -6,6 +6,15 @@ import (
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
+type homePanel uint8
+
+const (
+	homePanelMindset homePanel = iota
+	homePanelEvents
+	homePanelEntities
+	homePanelCount
+)
+
 type ThoughtService interface {
 	thoughts.Service
 	mindset.Reader
@@ -36,20 +45,20 @@ func (m *Model) syncMindsets() tea.Cmd {
 	return tea.Batch(load, timer)
 }
 
-func (m *Model) focusHome(panel int) tea.Cmd {
+func (m *Model) focusHome(panel homePanel) tea.Cmd {
 	// Focus follows the vertical order: Mindset, Events, entity strip.
-	m.entityFocused = panel == 2
+	m.entityFocused = panel == homePanelEntities
 	var cmd tea.Cmd
-	m.mindsets, cmd = m.mindsets.SetFocused(panel == 0)
-	m.events.SetFocused(panel == 1)
+	m.mindsets, cmd = m.mindsets.SetFocused(panel == homePanelMindset)
+	m.events.SetFocused(panel == homePanelEvents)
 	return cmd
 }
-func (m Model) homeFocus() int {
+func (m Model) homeFocus() homePanel {
 	if m.mindsets.Focused() {
-		return 0
+		return homePanelMindset
 	}
 	if m.entityFocused {
-		return 2
+		return homePanelEntities
 	}
-	return 1
+	return homePanelEvents
 }
