@@ -65,10 +65,14 @@ denied recording attempts do not consume that initial opportunity.
 
 `internal/subjectdiscovery` separates a pure parser, candidate reads, and ranking.
 The conservative English command grammar accepts a standalone case-insensitive
-“thought” after at most eight words and 255 Unicode characters. It declines
-pronoun/article-led narrative fragments; this is a command convention, not
-full natural-language understanding. Subject spelling and persisted identity
-remain case-sensitive.
+“thought” after at most eight words and 255 Unicode characters. Articles and
+pronouns may start names such as “The Art of Learning”, “I Ching”, or “I Want to
+Learn Go”. Bare conversational words and personal-pronoun fragments ending in
+common auxiliaries, modifiers, or indefinite articles are declined (for example,
+“I thought”, “I never thought”, and “I had a thought”). These conservative
+English heuristics cannot distinguish every title from ordinary speech; this is
+a command convention, not full natural-language understanding. Subject spelling
+and persisted identity remain case-sensitive.
 
 Candidates (Subjects, aliases, and usage) load once per draft under its context.
 Live revisions reuse prepared matching features, with no database reads per

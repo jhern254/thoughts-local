@@ -58,10 +58,7 @@ func spokenPrefix(text string, start, end int) (SpokenPrefix, bool) {
 	if len(words) == 0 || len(words) > maximumCueWords || utf8.RuneCountInString(cue) > maximumCueCharacters || strings.ContainsAny(cue, "\n\r;!?") {
 		return SpokenPrefix{}, false
 	}
-	// Pronoun/article-led fragments are more likely narrative than a Subject cue.
-	// Declining these phrases is safer than removing ordinary dictated sentences.
-	switch strings.ToLower(strings.Trim(words[0], "\"'“”")) {
-	case "i", "i'm", "i’ve", "i've", "i’d", "i'd", "i’ll", "i'll", "we", "we're", "we’ve", "we've", "you", "you're", "he", "she", "it", "they", "this", "that", "these", "those", "there", "here", "a", "an", "the", "another", "some", "my", "our", "your", "remember":
+	if narrativeBeforeThought(words) {
 		return SpokenPrefix{}, false
 	}
 	for end < len(text) {
@@ -72,4 +69,28 @@ func spokenPrefix(text string, start, end int) (SpokenPrefix, bool) {
 		end += size
 	}
 	return SpokenPrefix{Cue: cue, BodyStart: end}, true
+}
+
+func narrativeBeforeThought(words []string) bool {
+	first := strings.ToLower(strings.Trim(words[0], "\"'“”"))
+	// A leading article or pronoun does not disqualify a title: "The Art of
+	// Learning" and "I Ching" are usable cues. Reject bare conversational words,
+	// and personal-pronoun phrases that introduce thought as a verb or noun
+	// ("I never thought", "I had a thought"). This is a narrow English heuristic,
+	// not proof that an arbitrary sentence is a command or a persisted Subject.
+	if len(words) == 1 {
+		switch first {
+		case "i", "i'm", "i’ve", "i've", "i’d", "i'd", "i’ll", "i'll", "we", "we're", "we’ve", "we've", "you", "you're", "he", "she", "it", "they", "this", "that", "these", "those", "there", "here", "a", "an", "the", "another", "some", "my", "our", "your", "remember":
+			return true
+		}
+		return false
+	}
+	switch first {
+	case "i", "i'm", "i’ve", "i've", "i’d", "i'd", "i’ll", "i'll", "we", "we're", "we’ve", "we've", "you", "you're", "he", "she", "it", "they":
+		switch strings.ToLower(words[len(words)-1]) {
+		case "a", "an", "another", "had", "have", "has", "just", "never", "always", "really", "also", "actually", "only", "often", "sometimes", "once", "would", "could", "should":
+			return true
+		}
+	}
+	return false
 }

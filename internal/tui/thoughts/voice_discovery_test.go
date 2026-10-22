@@ -64,6 +64,25 @@ func transcript(m Model, recording voice.RecordingKey, revision uint64, text str
 	return m
 }
 func TestModel_VoiceDiscovery(t *testing.T) {
+	t.Run("sentence-like names resolve live and cleanup capitalizes only the body", func(t *testing.T) {
+		for _, name := range []string{"The Art of Learning", "I Ching", "I Want to Learn Go"} {
+			t.Run(name, func(t *testing.T) {
+				m, _, subjects := discoveryModel(t)
+				subjects.aliases = append(subjects.aliases, data.SubjectAlias{UserID: "u", SubjectID: 7, AliasName: name})
+				m, _ = m.Update(m.loadVoiceSubjects(subjects)())
+				m, recording := startDiscoveryRecording(m)
+				text := name + " thought, étudier les interfaces."
+				m = transcript(m, recording, 1, text)
+				if m.subjectID == nil || *m.subjectID != 7 || m.voice.query.Value() != "Go Programming" || m.input.Value() != text {
+					t.Fatalf("live subject=%v query=%q text=%q, want canonical alias selection and full transcript", m.subjectID, m.voice.query.Value(), m.input.Value())
+				}
+				m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+				if got, want := m.input.Value(), "Étudier les interfaces."; got != want {
+					t.Fatalf("body=%q, want %q", got, want)
+				}
+			})
+		}
+	})
 	t.Run("recommends canonical alias live and strips only after recording ends", func(t *testing.T) {
 		m, cmd, subjects := discoveryModel(t)
 		m, _ = m.Update(cmd())
