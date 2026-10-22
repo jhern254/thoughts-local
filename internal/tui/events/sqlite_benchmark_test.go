@@ -402,3 +402,46 @@ func BenchmarkTimelineExpansion(b *testing.B) {
 		}
 	})
 }
+
+// Measures only the daily subject-time query; migration, seeding and validation
+// are outside the timer. Run without other tests or builds competing for resources.
+func BenchmarkSubjectTimeInRange(b *testing.B) {
+	dsn := os.Getenv("THOUGHTS_STRESS_DSN")
+	if dsn == "" {
+		b.Skip("set THOUGHTS_STRESS_DSN to a disposable stress-seeded database")
+	}
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		b.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	b.Cleanup(func() { _ = db.Close() })
+	var eventCount, thoughtCount int
+	var cutoffSeconds int64
+	if err := db.QueryRowContext(b.Context(), `SELECT
+ (SELECT COUNT(*) FROM events WHERE user_id='demo'),
+ (SELECT COUNT(*) FROM thoughts WHERE user_id='demo'),
+ started_at+3600 FROM events WHERE user_id='demo' AND event_id=721`).Scan(&eventCount, &thoughtCount, &cutoffSeconds); err != nil {
+		b.Fatal(err)
+	}
+	if eventCount != 721 || thoughtCount != 20000 {
+		b.Fatalf("stress seed: got %d events and %d thoughts, want 721 and 20000", eventCount, thoughtCount)
+	}
+	cutoff := time.Unix(cutoffSeconds, 0)
+	from := displaytime.Day(cutoff)
+	until := from.AddDate(0, 0, 1)
+	store := data.NewSQLiteMetricsStore(db)
+	items, err := store.SubjectTimeInRange(b.Context(), "demo", from, until, cutoff)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if len(items) != 4 {
+		b.Fatalf("subject totals: got %d subjects, want 4; reseed the stress database", len(items))
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := store.SubjectTimeInRange(b.Context(), "demo", from, until, cutoff); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
