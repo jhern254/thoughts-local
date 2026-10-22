@@ -404,7 +404,9 @@ func BenchmarkTimelineExpansion(b *testing.B) {
 }
 
 // Measures only the daily subject-time query; migration, seeding and validation
-// are outside the timer. Run without other tests or builds competing for resources.
+// are outside the timer. Use the preceding complete Pacific day so all four
+// subjects are represented even when the seed is created just after midnight.
+// Run without other tests or builds competing for resources.
 func BenchmarkSubjectTimeInRange(b *testing.B) {
 	dsn := os.Getenv("THOUGHTS_STRESS_DSN")
 	if dsn == "" {
@@ -428,7 +430,7 @@ func BenchmarkSubjectTimeInRange(b *testing.B) {
 		b.Fatalf("stress seed: got %d events and %d thoughts, want 721 and 20000", eventCount, thoughtCount)
 	}
 	cutoff := time.Unix(cutoffSeconds, 0)
-	from := displaytime.Day(cutoff)
+	from := displaytime.Day(cutoff).AddDate(0, 0, -1)
 	until := from.AddDate(0, 0, 1)
 	store := data.NewSQLiteMetricsStore(db)
 	items, err := store.SubjectTimeInRange(b.Context(), "demo", from, until, cutoff)
