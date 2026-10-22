@@ -343,7 +343,7 @@ func BenchmarkTimelineSQLite(b *testing.B) {
 }
 
 // Compile before measuring and use an idle machine. The database is disposable,
-// migrated and stress-seeded, with event 721 assigned to subject 1. Setup and
+// migrated and stress-seeded; the seed assigns event 721 to subject 1. Setup and
 // initial day loading are outside every timed loop.
 func BenchmarkTimelineExpansion(b *testing.B) {
 	dsn := os.Getenv("THOUGHTS_STRESS_DSN")
@@ -360,7 +360,7 @@ func BenchmarkTimelineExpansion(b *testing.B) {
 		b.Fatal(err)
 	}
 	if current.SubjectID == nil || *current.SubjectID != 1 {
-		b.Fatal("assign stress event 721 to subject 1 before measuring")
+		b.Fatal("reseed the stress database: event 721 must have subject 1")
 	}
 	b.Run("EventScope", func(b *testing.B) {
 		b.ReportAllocs()
