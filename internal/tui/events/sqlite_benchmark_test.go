@@ -24,7 +24,7 @@ import (
 )
 
 // Measures read readiness, not terminal rendering or the loading-feedback timer.
-// List and Counts run as concurrent Bubble Tea commands; Latest starts only
+// List, Counts and SubjectTime run as concurrent Bubble Tea commands; Latest starts only
 // after List reveals the ongoing event. ListOnly is a matched contention control.
 func BenchmarkTimelineDaySwitch(b *testing.B) {
 	dsn := os.Getenv("THOUGHTS_STRESS_DSN")
@@ -110,7 +110,7 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 					msg   tea.Msg
 					ready time.Duration
 				}
-				var listReady, countsReady, latestReady, settled time.Duration
+				var listReady, countsReady, subjectTimeReady, latestReady, settled time.Duration
 				var countsFirst, iteration int
 				waitsBefore := db.Stats().WaitCount
 				ctx := b.Context()
@@ -118,7 +118,7 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 				for b.Loop() {
 					day := scenario.days[iteration%2]
 					iteration++
-					replies := make(chan completion, 3)
+					replies := make(chan completion, 4)
 					var workers sync.WaitGroup
 					start := time.Now()
 					launch := func(cmd tea.Cmd) {
@@ -140,6 +140,11 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 						launch(func() tea.Msg {
 							counts, err := view.ThoughtCounts(ctx, "demo", day, day.AddDate(0, 0, 1))
 							return eventCountsMsg{counts: counts, err: err}
+						})
+						pending++
+						launch(func() tea.Msg {
+							items, err := view.SubjectTimeInRange(ctx, "demo", day, day.AddDate(0, 0, 1), ongoing.StartedAt.Add(time.Hour))
+							return subjectTimeMsg{items: items, err: err}
 						})
 					}
 					var listAt, countAt, fullAt time.Duration
@@ -170,6 +175,11 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 							if result.err != nil {
 								readErr = result.err
 							}
+						case subjectTimeMsg:
+							subjectTimeReady += reply.ready
+							if result.err != nil {
+								readErr = result.err
+							}
 						case latestEventThoughtMsg:
 							latestReady += reply.ready
 							if result.err != nil {
@@ -194,6 +204,7 @@ func BenchmarkTimelineDaySwitch(b *testing.B) {
 				b.ReportMetric(float64(listReady)/float64(b.N)/1e6, "list-ready-ms/op")
 				b.ReportMetric(float64(db.Stats().WaitCount-waitsBefore)/float64(b.N), "pool-waits/op")
 				if concurrent {
+					b.ReportMetric(float64(subjectTimeReady)/float64(b.N)/1e6, "subject-time-ready-ms/op")
 					b.ReportMetric(float64(countsReady)/float64(b.N)/1e6, "counts-ready-ms/op")
 					b.ReportMetric(100*float64(countsFirst)/float64(b.N), "counts-first-%")
 					if scenario.current {
@@ -320,6 +331,18 @@ func BenchmarkTimelineSQLite(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			if _, err := events.ListEvents(b.Context(), "demo", day, day.AddDate(0, 0, 1)); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	// This read is part of ListEntriesInRange, even when every Thought is
+	// covered. Keep the fixture's complete history: old Events caused repeated
+	// scans for each observed Thought before the interval was materialized.
+	b.Run("HistoricalThoughtGroups", func(b *testing.B) {
+		from := day.AddDate(0, 0, -3)
+		b.ReportAllocs()
+		for b.Loop() {
+			if _, err := metrics.ListThoughtGroupsOutsideEvents(b.Context(), "demo", from, from.AddDate(0, 0, 1), now.Add(time.Second)); err != nil {
 				b.Fatal(err)
 			}
 		}

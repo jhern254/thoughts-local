@@ -31,6 +31,12 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
   async function ready(reducedMotion = false) {
     await page.goto(url);
     await expect(page.locator('#status')).toHaveText('Connected');
+    if (process.env.THOUGHTS_PERF_DISMISS_SPEECH_SETUP === '1') {
+      await expect(page.locator('.xterm-rows')).toContainText('Not now');
+      await page.locator('.xterm-helper-textarea').focus();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.xterm-rows')).not.toContainText('Not now');
+    }
     await expect(page.locator('#background-image')).toBeVisible();
     if (mode !== 'static') await expect.poll(() => page.locator('#background-video').evaluate(video => video.paused)).toBe(mode === 'paused' || reducedMotion);
     await page.waitForFunction(() => window.backgroundProbe && document.querySelector('.xterm-rows').textContent.includes('Make my own timeline feel instant'));
@@ -68,11 +74,13 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
     }
   }
 
-  async function key(key, expected) {
+  async function key(key, expected, repeat = false) {
+    const keys = Array.isArray(key) ? key : [key];
+    expected = {...expected, keyCount:keys.length};
     await page.evaluate(expected => {
       const terminal = window.backgroundProbe.terminal;
       window.measuredInteraction = new Promise(resolve => {
-        let start;
+        let start, lastKey, keyCount = 0;
         const matches = snapshot => {
           if (expected.event) return snapshot.event.includes(expected.event);
           if (expected.eventChanged) return !!snapshot.event && snapshot.event !== expected.eventChanged;
@@ -83,20 +91,24 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
           return false;
         };
         const finish = value => {clearTimeout(timeout);listener.dispose();document.removeEventListener('keydown', started, true);resolve(value);};
-        const started = () => {start=performance.now();};
-        document.addEventListener('keydown', started, {once:true,capture:true});
+        const started = () => {lastKey=performance.now();start ??= lastKey;keyCount++;};
+        document.addEventListener('keydown', started, {capture:true});
         const listener = terminal.onRender(() => {
-          const renderedAt=performance.now();
-          if (start === undefined || !matches(window.interactionSnapshot())) return;
+          const renderedAt=performance.now(), arrivedAt=window.lastTerminalArrival;
+          if (keyCount !== expected.keyCount || !matches(window.interactionSnapshot())) return;
           listener.dispose();
           // An animation callback is a rendering opportunity, not proof of GPU
           // presentation. Browser traces supply paint/compositor evidence.
-          requestAnimationFrame(() => finish({renderMs:renderedAt-start, arrivalMs:window.lastTerminalArrival-start, opportunityMs:performance.now()-start}));
+          requestAnimationFrame(() => finish({renderMs:renderedAt-start, lastKeyMs:renderedAt-lastKey, keys:keyCount, arrivalMs:arrivedAt-start, opportunityMs:performance.now()-start}));
         });
         const timeout = setTimeout(() => finish({timeout:true, screen:window.interactionSnapshot()}), 3000);
       });
     }, expected);
-    await page.keyboard.press(key);
+    for (const value of keys) {
+      if (repeat) await page.keyboard.down(value);
+      else await page.keyboard.press(value);
+    }
+    if (repeat) await page.keyboard.up(keys.at(-1));
     const measured = await page.evaluate(() => window.measuredInteraction);
     if (measured.timeout) throw new Error(`Transition failed for ${key}: ${JSON.stringify(measured.screen)}`);
     return measured;
@@ -107,7 +119,7 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
     const sorted = field => values.map(value => value[field]).sort((a,b) => a-b);
     const render=sorted('renderMs'), opportunity=sorted('opportunityMs');
     add({phase:'video-interaction', mode, run, window:phase, viewport:page.viewportSize(), workload:name, samples:values.length,
-      medianMs:render[Math.floor(render.length/2)], p95Ms:render[Math.ceil(render.length*.95)-1],
+      medianMs:render[Math.floor(render.length/2)], p95Ms:render[Math.ceil(render.length*.95)-1], p99Ms:render[Math.ceil(render.length*.99)-1],
       opportunityP95Ms:opportunity[Math.ceil(opportunity.length*.95)-1], values});
   }
 
@@ -159,6 +171,58 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
       for(let n=0;n<10;n++) {values.push(await key('ArrowLeft',{day:previous}));values.push(await key('ArrowRight',{day:current}));}
       return values;
     });
+  }
+
+  // Focused historical-day probe: every sample requires the requested date
+  // AND populated cards. Bursts end on a date not visited earlier in the burst,
+  // so an intermediate frame cannot be mistaken for completed navigation.
+  if (process.env.THOUGHTS_PERF_DAY_ONLY === '1') {
+    const narrow = process.env.THOUGHTS_PERF_INTERACTION_NARROW_ONLY === '1';
+    for (let run=0;run<count;run++) for (const selected of ['static','paused','playing'].slice(run%3).concat(['static','paused','playing'].slice(0,run%3))) {
+      mode=selected;
+      await page.setViewportSize(narrow ? {width:650,height:600} : {width:1200,height:850});
+      await ready();
+      let date = new Date(await page.evaluate(() => window.interactionSnapshot().day.replace(/^\s*Events\s*/, '').trim()));
+      const label = () => date.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+      for (let n=0;n<3;n++) {date.setDate(date.getDate()-1);await key('ArrowLeft',{day:label()});}
+      const before=await usage();
+      const frames = () => page.evaluate(() => {
+        const video=window.backgroundProbe.video;
+        if (!video) return null;
+        const quality=video.getVideoPlaybackQuality();
+        return {frames:quality.totalVideoFrames,dropped:quality.droppedVideoFrames,paused:video.paused,speed:video.playbackRate};
+      });
+      const framesBefore=await frames(), started=performance.now();
+      await workload('historical-day-single',run,narrow?'narrow':'normal',async () => {
+        const values=[];
+        for (let n=0;n<20;n++) {
+          const left=n%2===0;
+          date.setDate(date.getDate()+(left?-1:1));
+          values.push(await key(left?'ArrowLeft':'ArrowRight',{day:label()}));
+        }
+        return values;
+      });
+      const bursts = [
+        {name:'same-direction',keys:Array(8).fill('ArrowLeft'),delta:-8},
+        {name:'repeat-keydown',keys:Array(8).fill('ArrowRight'),delta:8,repeat:true},
+        {name:'alternating',keys:[...Array.from({length:10},(_,i)=>i%2?'ArrowRight':'ArrowLeft'),'ArrowLeft','ArrowLeft','ArrowLeft'],delta:-3},
+      ];
+      for (const burst of bursts) {
+        date.setDate(date.getDate()+burst.delta);
+        const value=await key(burst.keys,{day:label()},burst.repeat);
+        // Allow obsolete replies a chance to arrive, then verify the accepted
+        // day remains the accumulated destination and the panel stays focused.
+        await page.waitForTimeout(200);
+        const snapshot=await page.evaluate(() => window.interactionSnapshot());
+        expect(snapshot.day).toContain(label());
+        expect(snapshot.event).not.toBe('');
+        add({phase:'historical-day-burst',mode,run,burst:burst.name,expectedDay:label(),actualDay:snapshot.day,...value});
+      }
+      const seconds=(performance.now()-started)/1000, after=await usage();
+      add({phase:'historical-day-resources',mode,run,seconds,browserCPUMs:1000*(after.browserCPU-before.browserCPU),appCPUMs:1000*(after.appCPU-before.appCPU),browserRSS:after.browserRSS,appRSS:after.appRSS,framesBefore,framesAfter:await frames()});
+      if (run===0) await page.screenshot({path:output.replace(/\.json$/,`-${mode}.png`)});
+    }
+    return;
   }
 
   const conditionsOnly = qualityStudy && process.env.THOUGHTS_PERF_CONDITIONS_ONLY === '1';
