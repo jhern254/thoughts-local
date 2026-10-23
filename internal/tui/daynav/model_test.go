@@ -198,3 +198,51 @@ func TestModel_ZoomAfterInvalidation(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_UnlabeledPlot(t *testing.T) {
+	t.Run("uses the old heading row as space without moving curves or Events", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		for _, focused := range []bool{false, true} {
+			m.SetFocused(focused)
+			rows := strings.Split(m.View(), "\n")
+			if got, want := rows[0], ""; got != want {
+				t.Fatalf("row above plot: got %q, want blank", got)
+			}
+			if got, want := strings.Join(rows[1:], "\n"), m.plot; got != want {
+				t.Fatal("removing heading changed curve rows")
+			}
+			if len(rows) != m.Height() {
+				t.Fatalf("view height: got %d, want %d", len(rows), m.Height())
+			}
+		}
+	})
+	t.Run("pending refresh retains the plot and shows read feedback", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		before := m.plot
+		cmd := m.Key("r")
+		rows := strings.Split(m.View(), "\n")
+		if rows[0] != "Loading activity…" || strings.Join(rows[1:], "\n") != before {
+			t.Fatal("refresh lost feedback or accepted curves")
+		}
+		m = m.Update(cmd())
+		if strings.Split(m.View(), "\n")[0] != "" {
+			t.Fatal("completed refresh kept status text")
+		}
+	})
+	t.Run("explicit style controls and read failures remain understandable", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		m.SetFocused(true)
+		m.Key("d")
+		if !strings.Contains(m.View(), "normal boost · 100% · filled") {
+			t.Fatal("missing style values")
+		}
+		m.Key("esc")
+		m.err = errors.New("private details")
+		if got := m.View(); !strings.Contains(got, "Activity unavailable · r retry") || strings.Contains(got, "private details") {
+			t.Fatalf("unsafe or missing error feedback: %q", got)
+		}
+	})
+}

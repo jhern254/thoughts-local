@@ -342,24 +342,13 @@ func (m *Model) rebuild() {
 	m.plot = out.String()
 }
 func (m Model) View() string {
-	heading := "Days"
-	if m.focused {
-		heading = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230")).Render(heading)
-	}
-	label := " · Loading activity…"
-	if !m.from.IsZero() {
-		days := data.CalendarDays(m.from, m.until)
-		bins := max(1, len(m.values))
-		resolution := "daily"
-		if days > bins {
-			resolution = fmt.Sprintf("%d–%d-day avg", days/bins, (days+bins-1)/bins)
-		}
-		label = fmt.Sprintf(" %s—%s · %s", displaytime.Format(m.from, "Jan 2 2006"), displaytime.Format(m.until.AddDate(0, 0, -1), "Jan 2 2006"), resolution)
-	}
+	// Keep space above the plot without shifting the timeline. Only explicit
+	// controls and exceptional status use this row.
+	line := ""
 	if m.err != nil {
-		label = " · Activity unavailable · r retry"
-	} else if m.pending && !m.from.IsZero() {
-		label += " · Loading…"
+		line = "Activity unavailable · r retry"
+	} else if m.pending {
+		line = "Loading activity…"
 	}
 	if m.tuning {
 		name, _ := m.boostPreset()
@@ -367,9 +356,9 @@ func (m Model) View() string {
 		if m.outline {
 			mode = "outline"
 		}
-		label = fmt.Sprintf(" · %s boost · %d%% · %s", name, m.size, mode)
+		line = fmt.Sprintf("%s boost · %d%% · %s", name, m.size, mode)
 	}
-	line := ansi.Truncate(heading+label, m.width, "…")
+	line = ansi.Truncate(line, m.width, "…")
 	if m.rows > 0 {
 		if m.compact && !m.tuning && m.err == nil {
 			return m.plot

@@ -12,7 +12,7 @@ test('renders newlines at the same column as native terminal output', async ({pa
   // A pipe does not apply the PTY's ONLCR output translation. Without the
   // corresponding xterm option, each new line incorrectly moves to the right.
   await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Mindset/);
-  await expect.poll(() => screen(page).locator('div').nth(4).textContent()).toMatch(/^Days/);
+  await expect.poll(() => screen(page).locator('div').nth(4).textContent()).toMatch(/^\s*$/);
   await expect.poll(() => screen(page).locator('div').nth(9).textContent()).toMatch(/^ Events/);
 });
 
@@ -232,7 +232,7 @@ test('backpressured resize converges to the latest backend size without replayin
 
 test('day activity focus navigates one day and preserves Events through tuning', async ({page}) => {
   await ready(page);
-  await expect(screen(page)).toContainText('Days');
+  await expect(screen(page)).not.toContainText('Days');
   const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
   const original = await date();
   await page.keyboard.press('Shift+Tab');

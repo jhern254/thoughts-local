@@ -12,7 +12,7 @@ func drawDayActivity(width int, options render.Options, plain bool) string {
 	var out strings.Builder
 	out.WriteString(" Mindset  Practice deliberately.\n\n")
 	for _, focused := range []bool{false, true} {
-		out.WriteString(fit("Days  Oct 1—Oct 31 2026 · relative activity", width) + "\n")
+		out.WriteByte('\n')
 		cells := render.RenderDayActivity(width, 3, values, render.DayActivityOptions{Total: true, Events: focused, Thoughts: focused, Outline: options.Mode == render.Outline, Exponent: options.CountExponent, Size: options.Size})
 		for _, row := range cells {
 			for _, cell := range row {
