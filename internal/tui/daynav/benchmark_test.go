@@ -97,5 +97,26 @@ func BenchmarkDayActivity(b *testing.B) {
 				_ = m.Marker()
 			}
 		})
+		b.Run("Pan/"+name, func(b *testing.B) {
+			from, until := m.from, m.until
+			b.ReportAllocs()
+			i := 0
+			for b.Loop() {
+				selected := from.AddDate(0, 0, -1)
+				if i%2 != 0 {
+					selected = until.AddDate(0, 0, -1)
+				}
+				i++
+				cmd := m.Sync(selected, true, false)
+				if cmd == nil {
+					b.Fatal("expected a viewport pan")
+				}
+				m = m.Update(cmd())
+				if m.err != nil {
+					b.Fatal(m.err)
+				}
+			}
+		})
+
 	}
 }

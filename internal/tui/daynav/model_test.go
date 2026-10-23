@@ -3,6 +3,7 @@ package daynav
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -317,8 +318,8 @@ func TestModel_MountainSizing(t *testing.T) {
 				cmd = m.Key("r")
 			}
 			reply := cmd().(loadedMsg)
-			if got := len(reply.counts); got != scenario.buckets {
-				t.Fatalf("width %d: got %d buckets, want %d", scenario.width, got, scenario.buckets)
+			if got := len(reply.counts); got > scenario.buckets || got-2 <= scenario.width {
+				t.Fatalf("width %d: got %d buckets, want more than one sample per cell and at most %d including context", scenario.width, got, scenario.buckets)
 			}
 			m = m.Update(reply)
 		}
@@ -381,7 +382,7 @@ func TestModel_CalendarMonthWindow(t *testing.T) {
 }
 
 func TestModel_ViewportContext(t *testing.T) {
-	t.Run("reads neighboring days in the same bounded request without widening the viewport", func(t *testing.T) {
+	t.Run("refreshes the history scale and reads neighbors without widening the viewport", func(t *testing.T) {
 		m, reader := fixture(t)
 		defer m.Close()
 		from, until, reads := m.from, m.until, reader.reads
@@ -397,8 +398,202 @@ func TestModel_ViewportContext(t *testing.T) {
 		if m.before == nil || m.after == nil || m.before.Thoughts != 0 || m.after.Thoughts != 4 {
 			t.Fatalf("neighboring samples: got before=%v after=%v, want supplied edge counts", m.before, m.after)
 		}
-		if reader.reads != reads+1 {
-			t.Fatalf("count reads: got %d, want %d", reader.reads, reads+1)
+		// This yearly fixture needs two bounded daily history batches on refresh,
+		// followed by one viewport read. Panning does not repeat those batches.
+		if reader.reads != reads+3 {
+			t.Fatalf("refresh count reads: got %d, want %d", reader.reads, reads+3)
+		}
+	})
+}
+
+// Counts are tied to dates, so scrolling cannot change the synthetic data itself.
+type datedActivityReader struct {
+	first    time.Time
+	counts   map[time.Time]data.ActivityCount
+	requests [][]time.Time
+}
+
+func (s *datedActivityReader) ActivityStart(context.Context, string, time.Time) (time.Time, error) {
+	return s.first, nil
+}
+func (s *datedActivityReader) ActivityCounts(ctx context.Context, _ string, boundaries []time.Time, _ time.Time) ([]data.ActivityCount, error) {
+	s.requests = append(s.requests, append([]time.Time(nil), boundaries...))
+	counts := make([]data.ActivityCount, len(boundaries)-1)
+	for i := range counts {
+		for day := boundaries[i]; day.Before(boundaries[i+1]); day = day.AddDate(0, 0, 1) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			counts[i].EventDays += s.counts[day].EventDays
+			counts[i].Thoughts += s.counts[day].Thoughts
+		}
+	}
+	return counts, nil
+}
+
+func TestModel_ScrollingLandscape(t *testing.T) {
+	t.Run("a larger peak entering the window does not rescale shared mountains", func(t *testing.T) {
+		for _, outline := range []bool{false, true} {
+			t.Run(map[bool]string{false: "filled", true: "outline"}[outline], func(t *testing.T) {
+				today := displaytime.Day(time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC))
+				reader := &datedActivityReader{first: today.AddDate(0, 0, -80), counts: map[time.Time]data.ActivityCount{}}
+				for i := 0; i <= 80; i++ {
+					reader.counts[today.AddDate(0, 0, -i)] = data.ActivityCount{EventDays: int64(20 + i%7), Thoughts: int64(100 + i%13)}
+				}
+				// It is just outside the original viewport and its neighboring sample.
+				reader.counts[today.AddDate(0, 0, -32)] = data.ActivityCount{EventDays: 30, Thoughts: 180}
+				m := New(t.Context(), "u", reader)
+				defer m.Close()
+				m.now = func() time.Time { return today.Add(12 * time.Hour) }
+				m.Resize(93, 40) // 31 days: exactly three terminal columns per day.
+				m = m.Update(m.Sync(today, true, false)())
+				m.boost, m.outline = 4, outline
+				m.SetHighlighted(true)
+				before := strings.Split(m.plot, "\n")
+				if strings.TrimSpace(ansi.Strip(before[len(before)-2])) == "" {
+					t.Fatal("fixture must have mountain detail above the baseline")
+				}
+				requests := len(reader.requests)
+				m = m.Update(m.Sync(m.from.AddDate(0, 0, -1), true, false)())
+				after := strings.Split(m.plot, "\n")
+				for y := range before {
+					a, b := []rune(ansi.Strip(before[y])), []rune(ansi.Strip(after[y]))
+					// Exclude only the newly exposed three columns and edge interpolation.
+					for x := 6; x+3 < len(b); x++ {
+						if a[x-3] != b[x] {
+							t.Fatalf("row %d column %d: scrolling rescaled an unchanged dated mountain", y, x)
+						}
+					}
+				}
+				if got := len(reader.requests) - requests; got != 1 {
+					t.Fatalf("pan count reads: got %d, want one viewport read", got)
+				}
+			})
+		}
+	})
+	t.Run("wide-range buckets keep the same dates when scrolling one day", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		m.Resize(80, 40)
+		m.span = 400
+		before := m.Key("r")().(loadedMsg)
+		m = m.Update(before)
+		after := m.Sync(m.from.AddDate(0, 0, -1), true, false)().(loadedMsg)
+		// Compare interior bucket starts, away from either clipped boundary.
+		shared := 0
+		for _, a := range before.boundaries[2 : len(before.boundaries)-2] {
+			for _, b := range after.boundaries[2 : len(after.boundaries)-2] {
+				if a.Equal(b) {
+					shared++
+					break
+				}
+			}
+		}
+		if shared < len(before.boundaries)-6 {
+			t.Fatalf("shared bucket boundaries: got %d of %d, want only edge changes", shared, len(before.boundaries)-4)
+		}
+	})
+}
+
+func TestModel_HistoryScale(t *testing.T) {
+	t.Run("finds a remote peak through bounded batches and keeps it while holding either direction", func(t *testing.T) {
+		today := displaytime.Day(time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC))
+		reader := &datedActivityReader{first: today.AddDate(0, 0, -700), counts: map[time.Time]data.ActivityCount{}}
+		reader.counts[reader.first.AddDate(0, 0, 10)] = data.ActivityCount{EventDays: 30, Thoughts: 180}
+		for i := 0; i < 100; i++ {
+			reader.counts[today.AddDate(0, 0, -i)] = data.ActivityCount{EventDays: 20, Thoughts: 100}
+		}
+		m := New(t.Context(), "u", reader)
+		defer m.Close()
+		m.now = func() time.Time { return today.Add(12 * time.Hour) }
+		m.Resize(93, 40)
+		m = m.Update(m.Sync(today, true, false)())
+		if got, want := m.reference, 75.0; math.Abs(got-want) > 1e-12 {
+			t.Fatalf("history reference: got %v, want %v", got, want)
+		}
+		if got := len(reader.requests); got != 4 {
+			t.Fatalf("initial count reads: got %d, want three bounded history batches and one viewport", got)
+		}
+		for _, bounds := range reader.requests {
+			if len(bounds) > 257 {
+				t.Fatalf("request has %d boundaries, want at most 257", len(bounds))
+			}
+		}
+		scale := m.reference
+		for _, direction := range []int{-1, 1} {
+			for range 40 {
+				selected := m.from.AddDate(0, 0, -1)
+				if direction > 0 {
+					selected = m.until
+				}
+				reads := len(reader.requests)
+				m = m.Update(m.Sync(selected, true, false)())
+				if m.reference != scale || len(reader.requests) != reads+1 {
+					t.Fatal("holding day navigation recomputed the scale or repeated the history read")
+				}
+			}
+		}
+		m.Invalidate()
+		reader.counts[reader.first] = data.ActivityCount{Thoughts: 1000}
+		m = m.Update(m.Sync(m.selected, true, false)())
+		if m.reference != 300 {
+			t.Fatalf("refreshed reference: got %v, want 300", m.reference)
+		}
+	})
+	t.Run("a failed scale refresh keeps accepted mountains and scale together", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		plot, scale := m.plot, m.reference
+		msg := m.Key("r")().(loadedMsg)
+		msg.reference = 999
+		msg.err = errors.New("synthetic failure")
+		m = m.Update(msg)
+		if m.plot != plot || m.reference != scale {
+			t.Fatal("failed refresh replaced part of the accepted landscape")
+		}
+	})
+	t.Run("cancellation stops scale batches before more reads", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		reader := &datedActivityReader{}
+		_, err := readHistoryReference(ctx, reader, "u", time.Now().AddDate(-10, 0, 0), time.Now(), 1, time.Now())
+		if !errors.Is(err, context.Canceled) || len(reader.requests) != 0 {
+			t.Fatalf("canceled scale: got error %v and %d reads, want cancellation without reads", err, len(reader.requests))
+		}
+	})
+	t.Run("bucket anchoring keeps civil spacing through DST and before the epoch", func(t *testing.T) {
+		for _, date := range []string{"1969-12-30", "2026-03-07", "2026-11-01"} {
+			day, err := time.Parse("2006-01-02", date)
+			if err != nil {
+				t.Fatal(err)
+			}
+			day = displaytime.Day(day.Add(12 * time.Hour))
+			start := alignedBucketStart(day, 3)
+			if calendarDayIndex(start)%3 != 0 || start.After(day) || !day.Before(start.AddDate(0, 0, 3)) {
+				t.Fatalf("%s aligned to %v, want enclosing epoch-anchored three-day bucket", date, start)
+			}
+		}
+	})
+}
+
+func TestModel_HistoryRefreshReplacement(t *testing.T) {
+	t.Run("zoom replacing a pending refresh still reads the changed history scale", func(t *testing.T) {
+		today := displaytime.Day(time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC))
+		reader := &datedActivityReader{first: today.AddDate(0, 0, -80), counts: map[time.Time]data.ActivityCount{today: {Thoughts: 10}}}
+		m := New(t.Context(), "u", reader)
+		defer m.Close()
+		m.now = func() time.Time { return today.Add(12 * time.Hour) }
+		m.Resize(93, 40)
+		m = m.Update(m.Sync(today, true, false)())
+		reader.counts[reader.first] = data.ActivityCount{Thoughts: 1000}
+		obsolete := m.Key("r")
+		m = m.Update(m.Key("+")()) // Both spans still use daily buckets.
+		if m.reference != 300 {
+			t.Fatalf("replacement reference: got %v, want 300 from refreshed history", m.reference)
+		}
+		m = m.Update(obsolete())
+		if m.reference != 300 {
+			t.Fatal("retired history read replaced the accepted scale")
 		}
 	})
 }

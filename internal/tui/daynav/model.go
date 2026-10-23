@@ -33,6 +33,8 @@ type loadedMsg struct {
 	first, from, until time.Time
 	boundaries         []time.Time
 	counts             []data.ActivityCount
+	bucketDays         int
+	reference          float64
 	err                error
 }
 
@@ -56,14 +58,19 @@ type Model struct {
 	tuning                           bool
 	compact                          bool
 	boundsDirty                      bool
+	refreshingHistory                bool
 	calendarDay                      time.Time
 	boost, size                      int
 	outline                          bool
 	values                           []render.DayActivity
 	// Neighboring buckets keep clipped mountain flanks stable during a pan.
 	before, after *render.DayActivity
-	plot          string
-	err           error
+	// Scale belongs to the historical snapshot and bucket resolution, not the
+	// moving viewport. Only refresh/invalidation or a new resolution replaces it.
+	reference                  float64
+	bucketDays, firstBucketDay int
+	plot                       string
+	err                        error
 }
 
 func New(ctx context.Context, user string, reader Reader) Model {
@@ -84,6 +91,11 @@ func New(ctx context.Context, user string, reader Reader) Model {
 	}
 }
 func (m *Model) Close() {
+	// Retiring a read must not retire a still-unfulfilled history refresh.
+	if m.refreshingHistory {
+		m.boundsDirty = true
+	}
+	m.refreshingHistory = false
 	if m.cancel != nil {
 		m.cancel()
 		m.cancel = nil
@@ -219,17 +231,20 @@ func window(first, selected, today, previousFrom, previousUntil time.Time, span 
 func (m *Model) load(refreshBounds bool) tea.Cmd {
 	// Zoom may replace an in-flight read, but must not discard a mutation's
 	// request to include newly recorded history in the available range.
-	refreshBounds = refreshBounds || m.boundsDirty
+	refreshBounds = refreshBounds || m.boundsDirty || m.refreshingHistory
 	m.Close()
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
 	m.pending = true
+	m.refreshingHistory = refreshBounds
 	m.dirty, m.boundsDirty = false, false
 	owner, request, reader, user := m.owner, m.request, m.reader, m.user
 	first, selected, oldFrom, oldUntil, span := m.first, m.selected, m.from, m.until, m.span
 	// Each Braille cell has two horizontal dots. Read enough bounded samples
 	// to use that detail instead of averaging it away before drawing.
-	columns := min(data.MaxActivityBuckets-edgeBuckets, m.width*2)
+	// One extra visible bucket may straddle the viewport's final boundary.
+	columns := min(data.MaxActivityBuckets-edgeBuckets-1, m.width*2)
+	reference, referenceDays := m.reference, m.bucketDays
 	cutoff := m.now().Truncate(time.Second).Add(time.Second)
 	today := displaytime.Day(cutoff.Add(-time.Second))
 	return func() tea.Msg {
@@ -248,20 +263,28 @@ func (m *Model) load(refreshBounds bool) tea.Cmd {
 		result.first = first
 		result.from, result.until = window(first, selected, today, oldFrom, oldUntil, span)
 		days := data.CalendarDays(result.from, result.until)
-		count := min(columns, max(1, days))
-
-		visibleBounds := make([]time.Time, count+1)
-		for i := range visibleBounds {
-			visibleBounds[i] = result.from.AddDate(0, 0, days*i/count)
+		result.bucketDays = max(1, (days+columns-1)/columns)
+		if refreshBounds || referenceDays != result.bucketDays {
+			var err error
+			reference, err = readHistoryReference(ctx, reader, user, first, today.AddDate(0, 0, 1), result.bucketDays, cutoff)
+			if ctx.Err() != nil {
+				return nil
+			}
+			if err != nil {
+				result.err = err
+				return result
+			}
 		}
-		// The same bounded read includes one adjacent bucket per edge. These are
-		// context for interpolation, not additional dates in the visible window.
+		result.reference = reference
+		from := alignedBucketStart(result.from, result.bucketDays)
+		until := alignedBucketStart(result.until.AddDate(0, 0, -1), result.bucketDays).AddDate(0, 0, result.bucketDays)
+		// Whole buckets stay anchored to civil dates across pans, including the
+		// two neighboring samples that continue each edge's slope.
+		count := data.CalendarDays(from, until) / result.bucketDays
 		result.boundaries = make([]time.Time, count+edgeBuckets+1)
-		copy(result.boundaries[1:], visibleBounds)
-		firstSpan := data.CalendarDays(visibleBounds[0], visibleBounds[1])
-		lastSpan := data.CalendarDays(visibleBounds[count-1], visibleBounds[count])
-		result.boundaries[0] = result.from.AddDate(0, 0, -firstSpan)
-		result.boundaries[len(result.boundaries)-1] = result.until.AddDate(0, 0, lastSpan)
+		for i := range result.boundaries {
+			result.boundaries[i] = from.AddDate(0, 0, (i-1)*result.bucketDays)
+		}
 		result.counts, result.err = reader.ActivityCounts(ctx, user, result.boundaries, cutoff)
 		if ctx.Err() != nil {
 			return nil
@@ -275,6 +298,7 @@ func (m Model) Update(msg tea.Msg) Model {
 		return m
 	}
 	m.pending = false
+	m.refreshingHistory = false
 	if m.cancel != nil {
 		m.cancel()
 		m.cancel = nil
@@ -299,6 +323,8 @@ func (m Model) Update(msg tea.Msg) Model {
 	}
 	m.before, m.after = &projected[0], &projected[len(projected)-1]
 	m.values = projected[1 : len(projected)-1]
+	m.reference, m.bucketDays = result.reference, result.bucketDays
+	m.firstBucketDay = calendarDayIndex(result.boundaries[1])
 	m.rebuild()
 	return m
 }
@@ -375,15 +401,18 @@ func (m *Model) rebuild() {
 	visible := m.series
 	_, exponent := m.boostPreset()
 	cells := render.RenderDayActivity(m.width, m.rows, m.values, render.DayActivityOptions{
-		FirstDay: calendarDayIndex(m.from),
-		Days:     data.CalendarDays(m.from, m.until),
-		Before:   m.before,
-		After:    m.after,
-		Total:    visible[0],
-		Events:   visible[1],
-		Thoughts: visible[2],
-		Outline:  m.outline,
-		Exponent: exponent,
+		FirstDay:       calendarDayIndex(m.from),
+		Days:           data.CalendarDays(m.from, m.until),
+		SampleFirstDay: m.firstBucketDay,
+		SampleDays:     m.bucketDays,
+		Reference:      m.reference,
+		Before:         m.before,
+		After:          m.after,
+		Total:          visible[0],
+		Events:         visible[1],
+		Thoughts:       visible[2],
+		Outline:        m.outline,
+		Exponent:       exponent,
 		// 100% adopts the former 300% amplitude; controls scale from this look.
 		Size: 3 * float64(m.size) / 100,
 	})

@@ -7,7 +7,7 @@ import (
 
 func TestDayActivity(t *testing.T) {
 	t.Run("weights actual counts on one shared scale", func(t *testing.T) {
-		levels := DayActivityLevels([]DayActivity{{Events: 10, Thoughts: 100}, {Events: 5}}, 1)
+		levels := DayActivityLevels([]DayActivity{{Events: 10, Thoughts: 100}, {Events: 5}}, 1, 0)
 		for i, want := range []DayActivityLevel{{Total: 1, Events: .75 * 7.0 / 37, Thoughts: .75 * 30.0 / 37}, {Total: 3.5 / 37, Events: .75 * 3.5 / 37}} {
 			got := levels[i]
 			if math.Abs(got.Total-want.Total) > 1e-12 || math.Abs(got.Events-want.Events) > 1e-12 || math.Abs(got.Thoughts-want.Thoughts) > 1e-12 {
@@ -65,7 +65,7 @@ func TestDayActivity_Geometry(t *testing.T) {
 
 func TestDayActivity_MountainScaling(t *testing.T) {
 	t.Run("default low boost retains quieter mountain slopes", func(t *testing.T) {
-		levels := DayActivityLevels([]DayActivity{{Events: 10}, {Events: 5}, {}}, 0)
+		levels := DayActivityLevels([]DayActivity{{Events: 10}, {Events: 5}, {}}, 0, 0)
 		if math.Abs(levels[1].Events-.75*math.Pow(.5, .8)) > 1e-12 || levels[2].Total != 0 {
 			t.Fatalf("default valley: got %+v, want the low-boost half-count slope and a zero final day", levels)
 		}
@@ -88,7 +88,7 @@ func TestDayActivity_MountainScaling(t *testing.T) {
 
 func TestDayActivity_SharedScale(t *testing.T) {
 	t.Run("Thought-heavy days leave a quarter-height Total ridge without changing component ratios", func(t *testing.T) {
-		level := DayActivityLevels([]DayActivity{{Events: 1, Thoughts: 200}}, 1)[0]
+		level := DayActivityLevels([]DayActivity{{Events: 1, Thoughts: 200}}, 1, 0)[0]
 		if level.Thoughts > .75*level.Total || level.Events > .75*level.Total {
 			t.Fatalf("component peaks: got %+v, want at least 25%% Total headroom", level)
 		}
@@ -97,7 +97,7 @@ func TestDayActivity_SharedScale(t *testing.T) {
 		}
 	})
 	t.Run("Thought-rich days use the same count scale as Events", func(t *testing.T) {
-		levels := DayActivityLevels([]DayActivity{{Events: 10, Thoughts: 100}, {Events: 5}}, 1)
+		levels := DayActivityLevels([]DayActivity{{Events: 10, Thoughts: 100}, {Events: 5}}, 1, 0)
 		if got := levels[0]; got.Thoughts <= got.Events || got.Total < got.Thoughts || got.Total < got.Events {
 			t.Fatalf("shared peak: got %+v, want Total >= Thoughts > Events", got)
 		}
@@ -280,6 +280,47 @@ func TestDayActivity_PanBoundaryShape(t *testing.T) {
 						}
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestDayActivity_FixedReference(t *testing.T) {
+	t.Run("the same counts keep their height when a larger peak enters", func(t *testing.T) {
+		before := DayActivityLevels([]DayActivity{{Events: 20, Thoughts: 100}}, 2.4, 75)
+		after := DayActivityLevels([]DayActivity{{Events: 20, Thoughts: 100}, {Events: 30, Thoughts: 180}}, 2.4, 75)
+		if before[0] != after[0] {
+			t.Fatalf("unchanged mountain: got %+v, want %+v", after[0], before[0])
+		}
+		if before[0].Total >= 1 || before[0].Total <= 0 {
+			t.Fatal("a smaller historical mountain must remain below the reference summit")
+		}
+	})
+	t.Run("a concurrent larger count cannot overflow the fixed canvas", func(t *testing.T) {
+		cells := RenderDayActivity(80, 5, []DayActivity{{Thoughts: 1000}}, DayActivityOptions{Total: true, Reference: 1, Size: 9})
+		if len(cells) != 5 || len(cells[0]) != 80 {
+			t.Fatal("fixed reference overflowed canvas")
+		}
+	})
+}
+
+func TestDayActivity_AlignedSamples(t *testing.T) {
+	for _, outline := range []bool{false, true} {
+		t.Run(map[bool]string{false: "filled", true: "outline"}[outline], func(t *testing.T) {
+			values := make([]DayActivity, 29)
+			for i := range values {
+				values[i] = DayActivity{Events: float64(2 + i%5), Thoughts: float64(5 + i%11)}
+			}
+			options := DayActivityOptions{FirstDay: 20000, Days: 80, SampleFirstDay: 19998, SampleDays: 3, Reference: 10, Total: true, Events: true, Thoughts: true, Outline: outline, Exponent: 2.4, Size: 9}
+			before := RenderDayActivity(160, 5, values, options)
+			options.FirstDay++
+			after := RenderDayActivity(160, 5, values, options)
+			for y := range before {
+				for x := 1; x+2 < 160; x++ {
+					if before[y][x+2] != after[y][x] {
+						t.Fatalf("row %d column %d: panning changed the profile of a calendar-aligned bucket", y, x)
+					}
+				}
 			}
 		})
 	}
