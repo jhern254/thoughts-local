@@ -138,8 +138,9 @@ type Model struct {
 	form               eventForm
 
 	// blurred preserves selection while the root entity strip owns keyboard focus.
-	active  bool
-	blurred bool
+	active                 bool
+	blurred                bool
+	highlightDistributions bool
 }
 
 func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, subjects SubjectReader, logger logging.Logger) Model {
@@ -207,6 +208,21 @@ func (m *Model) SetFocused(focused bool) {
 	m.blurred = blurred
 	m.picker.SetFocused(focused)
 }
+
+// SetDistributionHighlight lets the day overview emphasize every Event curve
+// without changing card selection, keyboard ownership or interval geometry.
+func (m *Model) SetDistributionHighlight(highlight bool) {
+	if m.highlightDistributions != highlight {
+		m.load.retainedBody = ""
+	}
+	m.highlightDistributions = highlight
+}
+
+// AtTimelineStart excludes nested editors, pending days and the metrics card.
+func (m Model) AtTimelineStart() bool {
+	return m.DayReady() && m.AtTopLevel() && (len(m.entries) == 0 || (m.position.target == targetEntry && m.position.entryIndex == 0))
+}
+
 func (m Model) CanLeave() bool {
 	return m.TimelineVisible() && !m.picker.SavingMindset()
 }

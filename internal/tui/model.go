@@ -412,11 +412,18 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok && m.events.CanLeave() {
 		if key.String() == "tab" || key.String() == "shift+tab" {
-			panel := (m.homeFocus() + 1) % homePanelCount
+			current := m.homeFocus()
+			if current == homePanelDays {
+				current = homePanelEvents
+			}
+			panel := (current + 1) % homePanelCount
 			if key.String() == "shift+tab" {
-				panel = (m.homeFocus() + homePanelCount - 1) % homePanelCount
+				panel = (current + homePanelCount - 1) % homePanelCount
 			}
 			return m, m.focusHome(panel)
+		}
+		if m.homeFocus() == homePanelEvents && (key.String() == "up" || key.String() == "k") && m.events.AtTimelineStart() {
+			return m, m.focusHome(homePanelDays)
 		}
 		if m.days.Focused() {
 			if m.days.Tuning() {
@@ -427,7 +434,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.events.MoveDay(-1)
 			case "right", "l":
 				return m, m.events.MoveDay(1)
-			case "q":
+			case "down", "j", "q":
 				return m, m.focusHome(homePanelEvents)
 			}
 			return m, m.days.Key(key.String())
@@ -502,6 +509,9 @@ func (m Model) entityStrip() string {
 		}
 	}
 	help := "Tab/Shift+Tab: panels"
+	if m.homeFocus() == homePanelEvents && m.events.AtTimelineStart() {
+		help = "↑: day activity • " + help
+	}
 	if m.mindsets.Focused() {
 		help = "Enter: open • ↑/↓: read/select • PgUp/PgDn: page • r: refresh"
 	}

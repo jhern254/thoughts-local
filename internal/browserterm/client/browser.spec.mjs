@@ -232,7 +232,8 @@ test('day activity focus navigates one day and preserves Events through tuning',
   await expect(screen(page)).not.toContainText('Days');
   const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
   const original = await date();
-  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
   await expect(screen(page)).toContainText('1 Total');
   await expect(screen(page)).toContainText('2 Events');
   await page.keyboard.press('ArrowLeft');
@@ -253,8 +254,8 @@ test('day activity focus navigates one day and preserves Events through tuning',
   await expect(screen(page)).toContainText('normal boost');
   await expect.poll(eventRow).toBe(defaultRow);
   await page.keyboard.press('Escape');
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowUp');
   await expect(screen(page)).toContainText('2 Events off');
   expect(await date()).toBe(previous);
   await page.keyboard.press('Escape');
