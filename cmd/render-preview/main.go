@@ -35,7 +35,7 @@ func run(args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	width := flags.Int("width", 100, "terminal columns (at least 32)")
 	height := flags.Int("height", 36, "terminal rows (at least 12)")
-	scenario := flags.String("scenario", "main", "distributions, thought-lengths, expanded, expanded-similar, main, adjacent, gapped, crowded, scale, or empty")
+	scenario := flags.String("scenario", "main", "day-activity, distributions, thought-lengths, expanded, expanded-similar, main, adjacent, gapped, crowded, scale, or empty")
 	selectedThought := flags.Int("selected-thought", 1, "selected Thought bar, numbered from 1; 0 means none")
 	mode := flags.String("mode", "filled", "filled or outline")
 	selected := flags.Int("selected", 3, "selected event, numbered from 1; 0 means none")
@@ -63,6 +63,10 @@ func run(args []string, output io.Writer) error {
 		options.Mode = render.Outline
 	default:
 		return fmt.Errorf("mode must be filled or outline")
+	}
+	if *scenario == "day-activity" {
+		_, err := io.WriteString(output, drawDayActivity(*width, options, *plain))
+		return err
 	}
 	if *scenario == "thought-lengths" {
 		_, err := io.WriteString(output, drawThoughtLengths(*width, *height, *selectedThought-1, options, *plain))

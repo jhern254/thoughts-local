@@ -12,6 +12,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subjectdiscovery"
+	"github.com/jhern254/go-thoughts/internal/tui/daynav"
 	"github.com/jhern254/go-thoughts/internal/tui/events"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 	"github.com/jhern254/go-thoughts/internal/tui/mindset"
@@ -83,8 +84,10 @@ type Model struct {
 	speechSetup                       speechSetupState
 	exitPromptOpen                    bool
 	exitYes                           bool
+	days                              daynav.Model
 	mindsets                          mindset.Model
 	mindsetsNeedRefresh               bool
+	dayActivityRevision               uint64
 	homeEventsHeight, homeEventsWidth int
 	events                            events.Model
 	subjects                          subjectState
@@ -105,6 +108,7 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 		thoughts: thoughts.New(ctx, user.UserID, thoughtService, logger),
 		metrics:  metrics,
 		mindsets: mindset.New(ctx, user.UserID, thoughtService, logger),
+		days:     daynav.New(ctx, user.UserID, metrics),
 	}
 	model.resizeHome()
 	return model
@@ -123,7 +127,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) openHome() (tea.Model, tea.Cmd) {
 	m.subjects.stopRead()
 	m.screen = screenEvents
-	m.events.SetFocused(!m.entityFocused && !m.mindsets.Focused())
+	m.events.SetFocused(!m.entityFocused && !m.mindsets.Focused() && !m.days.Focused())
 	m.mindsetsNeedRefresh = true
 	cmd := m.events.Open()
 	return m, cmd
@@ -193,11 +197,21 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "esc":
+			if m.screen == screenEvents && m.days.Focused() {
+				if m.days.Tuning() {
+					return m, m.days.Key("esc")
+				}
+				return m, m.focusHome(homePanelEvents)
+			}
 			if m.canExit() {
 				m.exitPromptOpen, m.exitYes = true, false
 				return m, nil
 			}
 		}
+	}
+	if daynav.Owns(message) {
+		m.days = m.days.Update(message)
+		return m, nil
 	}
 	if mindset.Owns(message) {
 		var cmd tea.Cmd
@@ -293,6 +307,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.events, eventCmd = m.events.Update(message)
 		return m, tea.Batch(cmd, eventCmd)
 	case thoughts.ChangedMsg:
+		m.days.Invalidate()
 		m.subjects.listStale = true
 		if m.screen == screenSubjectList && !m.subjects.loading {
 			return m.openSubjects()
@@ -403,6 +418,20 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.focusHome(panel)
 		}
+		if m.days.Focused() {
+			if m.days.Tuning() {
+				return m, m.days.Key(key.String())
+			}
+			switch key.String() {
+			case "left", "h":
+				return m, m.events.MoveDay(-1)
+			case "right", "l":
+				return m, m.events.MoveDay(1)
+			case "q":
+				return m, m.focusHome(homePanelEvents)
+			}
+			return m, m.days.Key(key.String())
+		}
 		if m.mindsets.Focused() {
 			var cmd tea.Cmd
 			m.mindsets, cmd = m.mindsets.Update(message)
@@ -488,6 +517,10 @@ func (m Model) entityStrip() string {
 	if m.browserRecordingEnabled && ansi.StringWidth(help+" • t: create thought") <= m.width {
 		help += " • t: create thought"
 	}
+	if m.days.Focused() {
+		help = m.days.Help()
+		line = m.days.Legend()
+	}
 	return ansi.Truncate(line, max(1, m.width), "…") + "\n" + ansi.Truncate(help, max(1, m.width), "…")
 }
 
@@ -549,7 +582,7 @@ func (m Model) viewUnderlying() tea.View {
 	case screenEvents:
 		content = m.events.View()
 		if m.events.TimelineVisible() {
-			content = m.mindsets.View() + "\n\n" + m.homeDivider(m.homeFocus() == homePanelEvents) + "\n" + content
+			content = m.mindsets.View() + "\n\n" + m.days.View() + "\n" + m.dayDivider() + "\n" + content
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content
 			content += "\n" + m.homeDivider(m.entityFocused) + "\n" + m.entityStrip()
 		}

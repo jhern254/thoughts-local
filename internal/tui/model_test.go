@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -114,4 +115,11 @@ func assertQuitCommand(t *testing.T, command tea.Cmd) {
 	if _, ok := message.(tea.QuitMsg); !ok {
 		t.Fatalf("got command message %T, want tea.QuitMsg", message)
 	}
+}
+
+func (s *metricsStub) ActivityStart(context.Context, string, time.Time) (time.Time, error) {
+	return time.Time{}, nil
+}
+func (s *metricsStub) ActivityCounts(_ context.Context, _ string, b []time.Time, _ time.Time) ([]data.ActivityCount, error) {
+	return make([]data.ActivityCount, len(b)-1), nil
 }

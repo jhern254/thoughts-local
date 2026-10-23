@@ -12,7 +12,8 @@ test('renders newlines at the same column as native terminal output', async ({pa
   // A pipe does not apply the PTY's ONLCR output translation. Without the
   // corresponding xterm option, each new line incorrectly moves to the right.
   await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Mindset/);
-  await expect.poll(() => screen(page).locator('div').nth(5).textContent()).toMatch(/^ Events/);
+  await expect.poll(() => screen(page).locator('div').nth(4).textContent()).toMatch(/^Days/);
+  await expect.poll(() => screen(page).locator('div').nth(9).textContent()).toMatch(/^ Events/);
 });
 
 test('second tab is busy; quit and reload start independent sessions', async ({page, context}) => {
@@ -224,4 +225,31 @@ test('backpressured resize converges to the latest backend size without replayin
   expect(newSession).toBeGreaterThan(currentSession);
   const next = await page.evaluate(newSession => window.resizeProbe.frames.filter(frame => frame.session === newSession && (frame.kind === '2' || frame.mutating)), newSession);
   expect(next).toEqual([{kind: '2', size: {cols: initial.cols, rows: initial.rows}, session: newSession}]);
+});
+
+test('day activity focus navigates one day and preserves Events through tuning', async ({page}) => {
+  await ready(page);
+  await expect(screen(page)).toContainText('Days');
+  const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
+  const original = await date();
+  await page.keyboard.press('Shift+Tab');
+  await expect(screen(page)).toContainText('1 Total');
+  await expect(screen(page)).toContainText('2 Events');
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(date).not.toBe(original);
+  const previous = await date();
+  await page.keyboard.press('2');
+  await expect(screen(page)).toContainText('2 Events off');
+  await page.keyboard.press('d');
+  await page.keyboard.press('ArrowRight');
+  await expect(screen(page)).toContainText('medium boost');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(screen(page)).toContainText('2 Events off');
+  expect(await date()).toBe(previous);
+  await page.keyboard.press('Escape');
+  await expect(screen(page)).not.toContainText('1 Total');
+  await expect(screen(page)).not.toContainText('Exit app?');
+  await expect(page.locator('#status')).toHaveText('Connected');
 });
