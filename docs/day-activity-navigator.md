@@ -47,11 +47,20 @@ There are at most 256 buckets, also bounded by calendar days and twice the
 terminal width, using both horizontal dots in each Braille cell.
 A wider bucket reports average daily counts, not totals that grow solely because
 of zooming out.
-Each channel is normalized against its own maximum in the visible range:
+All channels share the maximum weighted total in the visible range:
 
-    Event level   = 0.7 × (Event daily average / maximum Event average)^boost
-    Thought level = 0.3 × (Thought daily average / maximum Thought average)^boost
-    Total         = Event level + Thought level
+    Event activity   = 0.7 × Event daily average
+    Thought activity = 0.3 × Thought daily average
+    Combined         = Event activity + Thought activity
+    Total level      = (Combined / maximum Combined)^boost
+    Event level      = Total level × Event activity / Combined
+    Thought level    = Total level × Thought activity / Combined
+
+Zero combined activity produces zero levels. An Event retains greater per-record
+weight, while many Thoughts naturally outweigh fewer Events. All three traces
+use the same scale and Total is their sum, so it cannot fall below either
+component. Component order reflects the data rather than being forced. If only
+one component contributes, its curve coincides with Total.
 
 Zero channels remain zero. The fixed weights give Events greater visual weight;
 there is no user-facing weight setting. Boost presets use exponents
@@ -65,9 +74,10 @@ peaks into artificial flat ridges. These are relative activity shapes, not proba
 axes. Piecewise linear interpolation connects samples without invented peaks.
 
 Total is a dim background; Events and Thoughts use teal and amber traces.
-Hiding a channel does not renormalize the others. A Braille cell has one color,
-so intersecting traces can share that color; the stronger component wins, with
-Events breaking ties. Filled Total dots in the same cell inherit that color too.
+The grey Total crest is painted last so component colors cannot hide its upper
+edge. Hiding a channel does not renormalize the others. A Braille cell has one color,
+so intersecting traces can share that color. Total wins boundary cells; the
+stronger component wins interior cells, with Events breaking ties.
 
 ## Ownership and cost
 
