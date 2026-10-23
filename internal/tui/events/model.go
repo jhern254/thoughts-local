@@ -390,7 +390,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if !m.day.Equal(m.load.pendingDay) {
 			m.day = m.load.pendingDay
 			m.position.entryIndex, m.position.topLine, m.expanded = 0, 0, timeline.EntryKey{}
-			m.position.target = targetEntry
+			if m.position.target != targetSubjectTime {
+				m.position.target = targetEntry
+			}
 			if m.position.followNow {
 				m.position.target = targetDayBoundary
 			}
@@ -593,6 +595,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.position.target == targetSubjectTime {
+		switch key.String() {
+		case "left", "h":
+			return m, m.MoveDay(-1)
+		case "right", "l":
+			return m, m.MoveDay(1)
+		}
 		m.load.retainedBody = ""
 		switch key.String() {
 		case "down", "j":

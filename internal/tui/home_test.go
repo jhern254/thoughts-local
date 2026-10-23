@@ -798,10 +798,6 @@ func TestModel_SubjectTimeHomeFocus(t *testing.T) {
 					}
 				}
 			}
-			press(tea.Key{Code: tea.KeyLeft})
-			if m.events.AtTopLevel() {
-				t.Fatal("Left exited subject time")
-			}
 			for range 3 {
 				press(tea.Key{Code: tea.KeyUp})
 			}

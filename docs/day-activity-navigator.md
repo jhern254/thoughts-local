@@ -24,6 +24,10 @@ single plot row so the timeline remains usable; the accepted date stays in the
 Events heading and controls remain in the footer. Very small terminals retain
 the existing resize guidance. No custom key acceleration is included.
 
+The end-of-day metrics card also accepts Left/Right (h/l) to cycle calendar
+days while keeping the card focused. A new day's subject list starts at the top;
+Right at today stays put. Up returns to the timeline boundary.
+
 ## Counts and rendering
 
 Full history starts at the earliest active Event or observed Thought, including
