@@ -54,7 +54,7 @@ test('cancel pending permission stops a late stream without reviving capture', a
   await fakeMicrophone(page); await ready(page);
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
-  await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.press('Escape');
+  await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.press('Control+d');
   await expect(screen(page)).toContainText('Events');
   await page.evaluate(() => window.voiceProbe.grant(0));
   await expect.poll(() => page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(1);
@@ -111,7 +111,7 @@ test('regular thought creation uses the same form and recording action', async (
   await expect(screen(page)).not.toContainText('F8: Record');
   await page.keyboard.press('F8');
   await expect(screen(page)).toContainText('F8: Record');
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+d');
   await expect(screen(page)).toContainText('Create thought…');
   await expect(screen(page)).not.toContainText('F8: Record');
 });
@@ -127,7 +127,7 @@ test('visual preserves recording and terminal focus ownership', async ({page}) =
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
-  await page.keyboard.press('Control+,');
+  await openVisual(page);
   await page.evaluate(() => window.voiceProbe.grant(0));
   await expect(page.locator('#status')).toHaveText('Transcribing…');
   await expect(screen(page)).toContainText('Background darkness:');
