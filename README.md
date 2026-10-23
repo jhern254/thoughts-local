@@ -139,7 +139,7 @@ Some JPEG/PNG color encodings are unsupported. When an image is rejected for com
 See [Media handling and privacy](docs/media-handling-policy.md) for the distinction between background display copies and future private media attachments. Metadata removal does not anonymize what is visible in a picture.
 
 Video imports require installed **FFmpeg and ffprobe** with H.264 encoding support.
-Sources may be up to two hours, at most 8 GiB, 4,096 pixels per side, 9MP per frame,
+Sources may be up to four hours, at most 8 GiB, 4,096 pixels per side, 9MP per frame,
 and 60 FPS. Choose **Video quality** before preparing a loop:
 
 | Quality | Resolution ceiling | FPS ceiling |

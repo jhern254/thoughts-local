@@ -89,7 +89,7 @@ data streams, chapters, source location/device/date metadata and comments are
 not retained. Display rotation is normalized into frames; only supported SDR
 color interpretation and necessary playback/container information remain.
 
-Source limits are 8 GiB, 1–7,200 seconds, 4,096 pixels per axis, 9 million pixels
+Source limits are 8 GiB, 1–14,400 seconds, 4,096 pixels per axis, 9 million pixels
 per frame and 60 FPS. Selected footage is 1–30 seconds. Import quality is a
 persisted preference, initially Efficient, with these output ceilings:
 
@@ -121,7 +121,7 @@ references, limits work and joins canceled subprocesses before cleanup. FFmpeg
 and ffprobe are installed separately and must be maintained by the user. This
 boundary is not an OS sandbox; protocol restrictions alone do not confine files.
 Staging bounds the source bytes/container/stream declarations without rejecting
-a two-hour source merely because its full duration exceeds a decoded
+a four-hour source merely because its full duration exceeds a decoded
 pixel budget. Each preparation instead counts decoded frames before timestamp
 trimming and FPS reduction, including preceding-keyframe seek preroll. Exceeding
 four billion nominal source pixels or 7,200 frames cancels and joins FFmpeg.

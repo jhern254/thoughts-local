@@ -72,11 +72,11 @@ func TestModel_VideoTrim(t *testing.T) {
 	t.Run("inline timecode entry confirms or cancels without closing the editor", func(t *testing.T) {
 		m := newRootTestModel()
 		m.browserOptionsEnabled = true
-		m.options = optionsState{open: true, trimming: true, sourceDurationMS: 7200000, trim: visual.VideoTrim{EndMS: 30000}}
+		m.options = optionsState{open: true, trimming: true, sourceDurationMS: 14400000, trim: visual.VideoTrim{EndMS: 30000}}
 		m, _ = rootUpdate(m, enterKey())
-		m.options.trimTimecode.SetValue("01:24:10.125")
+		m.options.trimTimecode.SetValue("03:24:10.125")
 		m, _ = rootUpdate(m, enterKey())
-		if got, want := m.options.trim, (visual.VideoTrim{StartMS: 5050125, EndMS: 5080125}); got != want {
+		if got, want := m.options.trim, (visual.VideoTrim{StartMS: 12250125, EndMS: 12280125}); got != want {
 			t.Fatalf("trim = %+v, want %+v", got, want)
 		}
 		m, _ = rootUpdate(m, enterKey())

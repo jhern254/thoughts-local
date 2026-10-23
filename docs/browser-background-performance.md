@@ -1040,7 +1040,7 @@ review artifacts, not required runtime assets or a new performance framework.
 ## Long video sources
 
 The long-source editor accepts compatible local MP4/MOV sources from one second
-to two hours, up to **8 GiB**. Prepared backgrounds remain **1–30 seconds** at the
+to four hours, up to **8 GiB**. Prepared backgrounds remain **1–30 seconds** at the
 existing Efficient, High quality and Maximum ceilings. Selection opens a paused
 browser-local File/object URL; Start is its sole source cursor. Moving Start
 proposes the next 30 seconds, with a one-second minimum remaining at the source
@@ -1177,3 +1177,15 @@ from that comparison. Short-source staging medians from the shared-load series
 were 146 ms baseline and 137 ms current; those are not controlled speedup claims.
 The source copy/probe boundary changed, while the encoder arguments and bounded
 prepared-output checks remain the same.
+
+### Four-hour source ceiling
+
+The source ceiling is now four hours, with the same 8 GiB byte limit, 32 MiB
+source-index limit, 1–30-second derivative, quality tiers, transfer/processing
+deadlines and per-preparation decoded-work budgets. Increasing duration alone
+adds no recurring playback work. Transfer cost still depends on source bytes;
+index size and keyframe spacing can affect validation and seeking. The measured
+2.64 GiB/two-hour results above are not four-hour performance measurements.
+Small synthetic four-hour sources verify late native cuts and browser-local
+seeking/upload reuse. MKV remains outside this PR: container validation and
+cross-browser local preview require a separate compatibility design.

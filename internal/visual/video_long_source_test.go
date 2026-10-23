@@ -66,8 +66,8 @@ func TestVideoSource_LongTrim(t *testing.T) {
 	if err != nil {
 		t.Skip("requires ffmpeg")
 	}
-	path := filepath.Join(t.TempDir(), "two-hours.mp4")
-	command := exec.CommandContext(t.Context(), tool, "-v", "error", "-f", "lavfi", "-i", "nullsrc=size=32x24:rate=1:duration=7200,geq=lum='32+3*mod(T,60)':cb=128:cr=128", "-c:v", "libx264", "-threads", "1", "-g", "60", "-pix_fmt", "yuv420p", "-movflags", "+faststart", path)
+	path := filepath.Join(t.TempDir(), "four-hours.mp4")
+	command := exec.CommandContext(t.Context(), tool, "-v", "error", "-f", "lavfi", "-i", "nullsrc=size=32x24:rate=1:duration=14400,geq=lum='32+3*mod(T,60)':cb=128:cr=128", "-c:v", "libx264", "-threads", "1", "-g", "60", "-pix_fmt", "yuv420p", "-movflags", "+faststart", path)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("fixture: %v %s", err, output)
 	}
@@ -94,10 +94,10 @@ func TestVideoSource_LongTrim(t *testing.T) {
 			t.Fatalf("staging mode=%v, want %v", got, want)
 		}
 	}
-	if got := source.Info().DurationMS; got != 7200000 {
-		t.Fatalf("duration=%d, want 7200000", got)
+	if got := source.Info().DurationMS; got != 14400000 {
+		t.Fatalf("duration=%d, want 14400000", got)
 	}
-	loop, err := source.Prepare(t.Context(), VideoTrim{StartMS: 7196250, EndMS: 7199250}, VideoQualityEfficient)
+	loop, err := source.Prepare(t.Context(), VideoTrim{StartMS: 14396250, EndMS: 14399250}, VideoQualityEfficient)
 	if err != nil {
 		t.Fatal(err)
 	}

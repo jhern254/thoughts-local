@@ -92,8 +92,8 @@ Chromium and Firefox integration tests decode and persist actual 1080p60
 prepared streams. These Linux results do not upgrade other platforms or imply
 that every browser/device supports Constrained Baseline Level 4.2 playback.
 
-Long-source imports (up to two hours / 8 GiB) retain these platform statuses.
-Linux amd64 exercised small synthetic two-hour sources in Chromium/Firefox and
+Long-source imports (up to four hours / 8 GiB) retain these platform statuses.
+Linux amd64 exercised small synthetic two- and four-hour sources in Chromium/Firefox and
 a real 2.64 GiB source in Brave on the T480s. The exact 8 GiB boundary uses
 controlled streaming readers rather than a huge routine test fixture. Windows
 video-write feedback recognizes Win32 disk-full codes 112 and 39; macOS/Windows

@@ -18,9 +18,9 @@ test.beforeAll(() => {
     const path = join(directory,'source.mp4');
     execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=96x64:rate=24:duration=60','-c:v','libx264','-threads','1','-g','120','-pix_fmt','yuv420p','-movflags','+faststart',path]);
     source = {name:'synthetic-minute.mp4',mimeType:'video/mp4',buffer:readFileSync(path)};
-    const longPath=join(directory,'two-hours.mp4');
-    execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=32x24:rate=1:duration=7200','-c:v','libx264','-threads','1','-g','60','-pix_fmt','yuv420p','-movflags','+faststart',longPath]);
-    longSource={name:'two-hours.mp4',mimeType:'video/mp4',buffer:readFileSync(longPath)};
+    const longPath=join(directory,'four-hours.mp4');
+    execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=32x24:rate=1:duration=14400','-c:v','libx264','-threads','1','-g','60','-pix_fmt','yuv420p','-movflags','+faststart',longPath]);
+    longSource={name:'four-hours.mp4',mimeType:'video/mp4',buffer:readFileSync(longPath)};
     const offsetPath=join(directory,'offset.mp4');
     execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','color=size=32x24:rate=24:duration=2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-output_ts_offset','5','-movflags','+faststart',offsetPath]);
     offsetSource={name:'offset.mp4',mimeType:'video/mp4',buffer:readFileSync(offsetPath)};
@@ -356,34 +356,34 @@ test('a decoded loop stays applicable with reduced motion or rejected preview pl
 });
 
 
-test('two-hour source stays local while Start seeks and uploads once for repeated previews',async({page},testInfo)=>{
+test('four-hour source stays local while Start seeks and uploads once for repeated previews',async({page},testInfo)=>{
  let uploads=0,prepares=0,sockets=0;
  page.on('websocket',()=>sockets++);
  page.on('request',request=>{const url=new URL(request.url());if(request.method()==='POST'&&url.pathname==='/visual/video/source')uploads++;if(request.method()==='POST'&&url.pathname==='/visual/video/preview')prepares++;});
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
  await openVisual(page);
  const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(longSource);
- await expect(screen(page)).toContainText('Source / Start: 00:00:00.000 / 02:00:00.000');
+ await expect(screen(page)).toContainText('Source / Start: 00:00:00.000 / 04:00:00.000');
  expect(uploads).toBe(0);expect(prepares).toBe(0);
- await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('01:24:10.000');await page.keyboard.press('Enter');
- await expect(screen(page)).toContainText('End: 01:24:40.000');
- await expect.poll(()=>page.locator('#background-preview-video').evaluate(v=>v.currentTime)).toBe(5050);
+ await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('03:24:10.000');await page.keyboard.press('Enter');
+ await expect(screen(page)).toContainText('End: 03:24:40.000');
+ await expect.poll(()=>page.locator('#background-preview-video').evaluate(v=>v.currentTime)).toBe(12250);
  await expect(page.locator('#background-preview-video')).toBeVisible();
  await page.screenshot({path:`/tmp/long-source-${testInfo.project.name}-paused.png`});
  await page.setViewportSize({width:650,height:600});
- await expect(screen(page)).toContainText('Source / Start: 01:24:10.000');
+ await expect(screen(page)).toContainText('Source / Start: 03:24:10.000');
  await expect.poll(()=>page.locator('#background-preview-wrap').evaluate(element=>{const rect=element.getBoundingClientRect();return !element.hidden&&rect.left>=0&&rect.right<=innerWidth;})).toBe(true);
  await page.screenshot({path:`/tmp/long-source-${testInfo.project.name}-narrow.png`});
- await page.keyboard.press('PageDown');await expect(screen(page)).toContainText('Source / Start: 01:25:10.000');
- await page.keyboard.press('End');await expect(screen(page)).toContainText('Source / Start: 01:59:59.000');
- await expect.poll(()=>page.locator('#background-preview-video').evaluate(v=>v.currentTime)).toBe(7199);
+ await page.keyboard.press('PageDown');await expect(screen(page)).toContainText('Source / Start: 03:25:10.000');
+ await page.keyboard.press('End');await expect(screen(page)).toContainText('Source / Start: 03:59:59.000');
+ await expect.poll(()=>page.locator('#background-preview-video').evaluate(v=>v.currentTime)).toBe(14399);
  expect(uploads).toBe(0);expect(prepares).toBe(0);
  await page.keyboard.press('Shift+ArrowLeft');
  await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
  expect(uploads).toBe(1);expect(prepares).toBe(1);
- await clickControl(page,'Source / Start: 01:59:58.000 / 02:00:00.000');
+ await clickControl(page,'Source / Start: 03:59:58.000 / 04:00:00.000');
  await page.keyboard.press('Shift+ArrowLeft');
- await expect(screen(page)).toContainText('Source / Start: 01:59:57.000');
+ await expect(screen(page)).toContainText('Source / Start: 03:59:57.000');
  const reused=page.waitForResponse(r=>new URL(r.url()).pathname==='/visual/video/preview'&&r.request().method()==='POST');
  await clickControl(page,'Preview loop');await reused;
  await expect(page.locator('#video-preparation')).toBeHidden();

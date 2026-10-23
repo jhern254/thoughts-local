@@ -231,7 +231,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		case "sourceTimeout":
 			m.options.status = "Video operation timed out. Retry with a smaller source or shorter cut."
 		case "sourceUnsupported":
-			m.options.status = "Choose a self-contained SDR H.264 MP4/MOV, 1s–2h, up to 8 GiB."
+			m.options.status = "Choose a self-contained SDR H.264 MP4/MOV, 1s–4h, up to 8 GiB."
 		}
 	case "loopReady":
 		if m.options.request != "prepareLoop" || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
@@ -277,7 +277,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if msg.Framing.Valid() {
 			m.options.framing = msg.Framing
 		}
-		m.options.status = "JPEG/PNG · MP4/MOV SDR H.264 · source ≤2h / 8 GiB · loop 1–30s"
+		m.options.status = "JPEG/PNG · MP4/MOV SDR H.264 · source ≤4h / 8 GiB · loop 1–30s"
 	case "selected":
 		if m.options.request != "choose" {
 			return m, nil

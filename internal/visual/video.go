@@ -25,7 +25,7 @@ const (
 	MaxVideoFPS               = 60
 	// Duration bounds are source footage seconds, independent of playbackRate.
 	MaxVideoDuration       = 30
-	MaxVideoSourceDuration = 7200
+	MaxVideoSourceDuration = 14400
 	maxVideoStreams        = 4
 	maxVideoDecodedPixels  = 4_000_000_000
 	// Per-preparation work includes seek preroll, independent of source length.
