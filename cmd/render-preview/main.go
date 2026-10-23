@@ -40,7 +40,7 @@ func run(args []string, output io.Writer) error {
 	mode := flags.String("mode", "filled", "filled or outline")
 	selected := flags.Int("selected", 3, "selected event, numbered from 1; 0 means none")
 	exponent := flags.Float64("count-exponent", 0.8, "positive exponent; day-activity defaults to low boost (0.8) and higher values sharpen its peaks")
-	size := flags.Float64("size", 1, "distribution size from 0.5 to 1.25 (day-activity: up to 3)")
+	size := flags.Float64("size", 1, "distribution size from 0.5 to 1.25 (day-activity: 0.5 to 3, default 3)")
 	plain := flags.Bool("plain", false, "omit ANSI colors")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -69,14 +69,20 @@ func run(args []string, output io.Writer) error {
 		return fmt.Errorf("mode must be filled or outline")
 	}
 	if *scenario == "day-activity" {
-		explicitExponent := false
+		explicitExponent, explicitSize := false, false
 		flags.Visit(func(f *flag.Flag) {
 			if f.Name == "count-exponent" {
 				explicitExponent = true
 			}
+			if f.Name == "size" {
+				explicitSize = true
+			}
 		})
 		if !explicitExponent {
 			options.CountExponent = render.DayActivityDefaultExponent
+		}
+		if !explicitSize {
+			options.Size = 3
 		}
 		_, err := io.WriteString(output, drawDayActivity(*width, *height, options, *plain))
 		return err

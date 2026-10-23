@@ -308,5 +308,11 @@ func TestPreview_DramaticDayActivity(t *testing.T) {
 		if strings.Contains(dramatic, "Days ") {
 			t.Fatal("mountain preview reintroduced a heading")
 		}
+		for _, view := range []string{normal, dramatic} {
+			rows := strings.Split(view, "\n")
+			if !strings.HasPrefix(rows[9], " Events ") {
+				t.Fatalf("preview row 9: got %q, want Events below five plot rows", rows[9])
+			}
+		}
 	})
 }

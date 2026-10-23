@@ -11,7 +11,7 @@ func drawDayActivity(width, height int, options render.Options, plain bool) stri
 	values := []render.DayActivity{{}, {Events: 1}, {Events: 4, Thoughts: 10}, {Events: 2, Thoughts: 80}, {}, {Thoughts: 20}, {Events: 3, Thoughts: 5}, {Events: 7, Thoughts: 40}, {Events: 5, Thoughts: 10}, {Events: 1}, {}}
 	// Two comparisons share the requested preview height. Size scales within their
 	// fixed canvas as it does in the app; tuning cannot move Events down.
-	rows := max(1, min(12, (height-12)/2))
+	rows := max(1, min(5, (height-12)/2))
 	var out strings.Builder
 	out.WriteString(" Mindset  Practice deliberately.\n\n")
 	for _, focused := range []bool{false, true} {

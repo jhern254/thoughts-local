@@ -159,3 +159,28 @@ func TestModel_DistributionColorsOutsideTimeline(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_DayMountainHeightDuringMindsetLoad(t *testing.T) {
+	t.Run("keeps the graph canvas steady while longer Mindset text arrives", func(t *testing.T) {
+		m := newMindsetHomeTexts(t, strings.Repeat("Keep a deliberately long reminder readable. ", 80))
+		m, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 40})
+		m = runHomeData(t, m, cmd)
+		reload := m.mindsets.Load(m.events.Day())
+		m.resizeHome()
+		loadingHeight := m.days.Height()
+		m, _ = rootUpdate(m, reload())
+		if got := m.days.Height(); got != loadingHeight {
+			t.Fatalf("graph height after Mindset reply: got %d, want unchanged %d", got, loadingHeight)
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
+		mountain := m.days.View()
+		for _, key := range []rune{tea.KeyLeft, tea.KeyRight} {
+			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
+			m = runHomeData(t, m, cmd)
+			if got := m.days.View(); got != mountain {
+				t.Fatal("day navigation or a Mindset reply changed the cached mountain geometry")
+			}
+		}
+	})
+}

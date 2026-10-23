@@ -23,10 +23,11 @@ type ThoughtService interface {
 }
 
 func (m *Model) resizeHome() {
-	// Mindset keeps its reading space; enlarged mountains use the remaining
-	// budget while leaving room for the timeline and a minimum graph row.
-	m.mindsets.Resize(m.width, max(1, min(12, m.height-6-16-2-2)))
-	m.days.Resize(m.width, m.height, m.mindsets.Height())
+	// Reserve the graph independently of asynchronous Mindset content. Otherwise
+	// loading a longer reminder can resize the mountain between adjacent frames.
+	m.days.Resize(m.width, m.height)
+	m.mindsets.Resize(m.width, max(1, min(12, m.height-6-14-2-m.days.Height())))
+
 	height := max(1, m.height-6)
 	if m.events.TimelineVisible() {
 		height = max(1, height-m.mindsets.Height()-2-m.days.Height())

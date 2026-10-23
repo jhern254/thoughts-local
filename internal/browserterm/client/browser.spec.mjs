@@ -27,7 +27,7 @@ test('renders newlines at the same column as native terminal output', async ({pa
   // corresponding xterm option, each new line incorrectly moves to the right.
   await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Mindset/);
   await expect.poll(() => screen(page).locator('div').nth(4).textContent()).toMatch(/^\s*$/);
-  await expect.poll(() => screen(page).locator('div').nth(18).textContent()).toMatch(/^ Events/);
+  await expect.poll(() => screen(page).locator('div').nth(11).textContent()).toMatch(/^ Events/);
 });
 
 test('second tab is busy; quit and reload start independent sessions', async ({page, context}) => {
@@ -368,7 +368,13 @@ test('mountain redraws stay above Event cards during tuning and resize', async (
         // and metrics distributions occupy columns 12–21, outside this check.
         for (let x = 24; x < term.cols; x++) {
           if (/[\u2801-\u28ff]/.test(lines[y]?.getCell(x)?.getChars() || '')) {
-            window.mountainOverlap = {x, y, heading};
+            window.mountainOverlap = {
+              x, y, heading, cols: term.cols, rows: term.rows,
+              phase: window.mountainPhase,
+              synchronized: term.modes.synchronizedOutputMode,
+              buffer: lines[y]?.translateToString(true),
+              painted: document.querySelectorAll('.xterm-rows > div')[y]?.textContent,
+            };
             return;
           }
         }
@@ -385,6 +391,7 @@ test('mountain redraws stay above Event cards during tuning and resize', async (
   await page.keyboard.press('Escape');
   const eventRow = () => screen(page).locator('div').evaluateAll(rows => rows.findIndex(row => /^ Events\s+[A-Z]/.test(row.textContent)));
   for (const viewport of [{width:480, height:480}, {width:800, height:550}, {width:1200, height:850}]) {
+    await page.evaluate(size => { window.mountainPhase = `resize ${size.width}x${size.height}`; }, viewport);
     await page.setViewportSize(viewport);
     for (let step = 0; step < 3; step++) {
       await page.keyboard.press('-');

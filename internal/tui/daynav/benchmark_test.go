@@ -66,7 +66,7 @@ func BenchmarkDayActivity(b *testing.B) {
 			}
 		})
 		m := New(ctx, "demo", store)
-		m.Resize(width, 40, 1)
+		m.Resize(width, 40)
 		m = m.Update(m.Sync(today, true, false)())
 		defer m.Close()
 		b.Run("Load/"+name, func(b *testing.B) {
