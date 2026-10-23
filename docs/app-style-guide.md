@@ -155,3 +155,11 @@ compacts the heading and footer, retaining the full 12-row media preview and
 scrolling controls. The minimum is 48 columns by 20 rows. Full-size layouts retain
 their existing presentation. During preparation, essential status and Stop/Cancel
 remain available even when there is no room for the optional activity wave.
+
+## Day activity overview
+
+The [day activity navigator](day-activity-navigator.md) uses a dim Total curve
+with independently toggled Event and Thought traces above the Events divider.
+Its samples represent daily activity (or daily averages over wider ranges), not
+probability. Keep its accepted-date marker, focus order and compact-height
+behavior aligned with the daily timeline.

@@ -276,3 +276,24 @@ func TestPreview_ThoughtLengths(t *testing.T) {
 		}
 	})
 }
+
+func TestPreview_DayActivity(t *testing.T) {
+	t.Run("focused comparison keeps the divider and date while revealing component traces", func(t *testing.T) {
+		plain := preview(t, "-scenario", "day-activity", "-plain", "-width", "40")
+		colored := preview(t, "-scenario", "day-activity", "-width", "40")
+		if ansi.Strip(colored) != plain {
+			t.Fatal("color changed graph geometry")
+		}
+		if strings.Count(plain, "┬") != 2 || strings.Count(plain, "October 16, 2026") != 2 {
+			t.Fatal("missing accepted-date markers")
+		}
+		if !strings.Contains(plain, "1 Total · 2 Events · 3 Thoughts") {
+			t.Fatal("missing component legend")
+		}
+		for _, line := range strings.Split(plain, "\n") {
+			if ansi.StringWidth(line) > 40 {
+				t.Fatalf("row exceeds width: %q", line)
+			}
+		}
+	})
+}

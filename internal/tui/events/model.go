@@ -109,6 +109,7 @@ type Model struct {
 	// Clock, expansion, and form lifetimes are independent of a day load.
 	owner                    *int
 	session, expansion, save uint64
+	activityRevision         uint64
 
 	// Day and expansion failures share the screen's safe status message.
 	err     error
@@ -547,6 +548,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			mutation = logging.EventEnded
 		}
 		m.logger.Mutation(mutation, reply.event.EventID)
+		m.activityRevision++
 		m.form.stopReads()
 		m.form = eventForm{}
 		day := m.day
@@ -701,12 +703,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if key.String() == "left" || key.String() == "h" {
 			delta = -1
 		}
-		day := day.AddDate(0, 0, delta)
-		if day.After(displaytime.Day(m.now())) {
-			return m, nil
-		}
-		m.position.followNow = false
-		cmd := m.loadDay(day)
+		cmd := m.MoveDay(delta)
 		return m, cmd
 	case "r":
 		cmd := m.loadDay(day)
@@ -776,3 +773,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+// MoveDay is shared by the overview and daily timeline. It advances the pending
+// destination during bursts and retains loadDay's cancellation/ownership rules.
+func (m *Model) MoveDay(delta int) tea.Cmd {
+	day := m.day
+	if m.load.entriesPending {
+		day = m.load.pendingDay
+	}
+	day = day.AddDate(0, 0, delta)
+	if day.After(displaytime.Day(m.now())) {
+		return nil
+	}
+	m.position.followNow = false
+	return m.loadDay(day)
+}
+
+// ActivityRevision advances only after an accepted successful Event mutation.
+func (m Model) ActivityRevision() uint64 { return m.activityRevision }

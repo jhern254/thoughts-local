@@ -10,6 +10,7 @@ type homePanel uint8
 
 const (
 	homePanelMindset homePanel = iota
+	homePanelDays
 	homePanelEvents
 	homePanelEntities
 	homePanelCount
@@ -21,10 +22,11 @@ type ThoughtService interface {
 }
 
 func (m *Model) resizeHome() {
-	m.mindsets.Resize(m.width, max(1, min(12, m.height-6-14-2)))
+	m.days.Resize(m.width, m.height)
+	m.mindsets.Resize(m.width, max(1, min(12, m.height-6-14-2-m.days.Height())))
 	height := max(1, m.height-6)
 	if m.events.TimelineVisible() {
-		height = max(1, height-m.mindsets.Height()-2)
+		height = max(1, height-m.mindsets.Height()-2-m.days.Height())
 	}
 	if m.homeEventsHeight != height || m.homeEventsWidth != m.width {
 		m.homeEventsHeight, m.homeEventsWidth = height, m.width
@@ -34,6 +36,11 @@ func (m *Model) resizeHome() {
 
 func (m *Model) syncMindsets() tea.Cmd {
 	var load tea.Cmd
+	refresh := m.mindsetsNeedRefresh
+	if revision := m.events.ActivityRevision(); revision != m.dayActivityRevision {
+		m.dayActivityRevision = revision
+		m.days.Invalidate()
+	}
 	if m.screen == screenEvents && m.events.DayReady() && (m.mindsetsNeedRefresh || !m.mindsets.Day().Equal(m.events.Day())) {
 		load = m.mindsets.Load(m.events.Day())
 		m.mindsetsNeedRefresh = false
@@ -42,12 +49,17 @@ func (m *Model) syncMindsets() tea.Cmd {
 	var timer tea.Cmd
 	m.mindsets, timer = m.mindsets.SetVisible(visible)
 	m.resizeHome()
-	return tea.Batch(load, timer)
+	var dayLoad tea.Cmd
+	if m.events.DayReady() || !visible {
+		dayLoad = m.days.Sync(m.events.Day(), visible, refresh)
+	}
+	return tea.Batch(load, timer, dayLoad)
 }
 
 func (m *Model) focusHome(panel homePanel) tea.Cmd {
-	// Focus follows the vertical order: Mindset, Events, entity strip.
+	// Focus follows the vertical order: Mindset, Days, Events, entity strip.
 	m.entityFocused = panel == homePanelEntities
+	m.days.SetFocused(panel == homePanelDays)
 	var cmd tea.Cmd
 	m.mindsets, cmd = m.mindsets.SetFocused(panel == homePanelMindset)
 	m.events.SetFocused(panel == homePanelEvents)
@@ -56,6 +68,9 @@ func (m *Model) focusHome(panel homePanel) tea.Cmd {
 func (m Model) homeFocus() homePanel {
 	if m.mindsets.Focused() {
 		return homePanelMindset
+	}
+	if m.days.Focused() {
+		return homePanelDays
 	}
 	if m.entityFocused {
 		return homePanelEntities

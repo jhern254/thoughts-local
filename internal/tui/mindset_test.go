@@ -49,18 +49,21 @@ func TestModel_MindsetHome(t *testing.T) {
 	t.Run("highlights only the divider above the focused Events or entity section", func(t *testing.T) {
 		for _, width := range []int{80, 40} {
 			m := newMindsetHome(t, 0)
-			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
-			for _, focus := range []homePanel{homePanelEvents, homePanelEntities, homePanelMindset, homePanelEvents} {
+			{
+				resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
+				m = runHomeData(t, resized, resizeCmd)
+			}
+			for _, focus := range []homePanel{homePanelEvents, homePanelEntities, homePanelMindset, homePanelDays, homePanelEvents} {
 				dividers := []string{}
 				for _, row := range strings.Split(m.View().Content, "\n") {
-					if ansi.Strip(row) == strings.Repeat("─", width) {
+					if strings.ReplaceAll(ansi.Strip(row), "┬", "─") == strings.Repeat("─", width) {
 						dividers = append(dividers, row)
 					}
 				}
 				if len(dividers) != 2 {
 					t.Fatalf("width %d: got %d dividers, want 2", width, len(dividers))
 				}
-				for i, want := range []bool{focus == homePanelEvents, focus == homePanelEntities} {
+				for i, want := range []bool{focus == homePanelEvents || focus == homePanelDays, focus == homePanelEntities} {
 					if got := strings.Contains(dividers[i], "\x1b[38;5;62m"); got != want {
 						t.Fatalf("focus %d, divider %d at width %d: highlighted=%v, want %v: %q", focus, i, width, got, want, dividers[i])
 					}
@@ -71,7 +74,10 @@ func TestModel_MindsetHome(t *testing.T) {
 	})
 	t.Run("separates the inline mindset header from Events", func(t *testing.T) {
 		m := newMindsetHome(t, 0)
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
+		{
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
+			m = runHomeData(t, resized, resizeCmd)
+		}
 		rows := strings.Split(ansi.Strip(m.View().Content), "\n")
 		if got, want := rows[2], " Mindset  ..."; got != want {
 			t.Fatalf("mindset row: got %q, want %q", got, want)
@@ -79,17 +85,21 @@ func TestModel_MindsetHome(t *testing.T) {
 		if rows[3] != "" {
 			t.Fatalf("row after Mindset: got %q, want blank", rows[3])
 		}
-		if got, want := rows[4], strings.Repeat("─", 80); got != want {
+		if got, want := strings.ReplaceAll(rows[8], "┬", "─"), strings.Repeat("─", 80); got != want {
 			t.Fatalf("panel separator: got %q, want %q", got, want)
 		}
-		if !strings.HasPrefix(rows[5], " Events ") {
-			t.Fatalf("row below separator: got %q, want Events header", rows[5])
+		if !strings.HasPrefix(rows[9], " Events ") {
+			t.Fatalf("row below separator: got %q, want Events header", rows[9])
 		}
 	})
 	t.Run("expansion pushes Events down and returning from detail restores selection", func(t *testing.T) {
 		m := newMindsetHome(t, 6)
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
+		{
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
+			m = runHomeData(t, resized, resizeCmd)
+		}
 		before := ansi.Strip(m.View().Content)
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		expanded := ansi.Strip(m.View().Content)
 		row := func(text, label string) int {
@@ -131,6 +141,7 @@ func TestModel_MindsetHome(t *testing.T) {
 		for _, count := range []int{0, 3} {
 			m := newMindsetHome(t, count)
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
 			day := m.events.Day()
 			before := m.View().Content
@@ -149,6 +160,7 @@ func TestModel_MindsetHome(t *testing.T) {
 	t.Run("Down from the last thought wraps to the first and opens it", func(t *testing.T) {
 		m := newMindsetHome(t, 6)
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
 		selected := m.View().Content
@@ -162,14 +174,15 @@ func TestModel_MindsetHome(t *testing.T) {
 			t.Fatal("detail return changed wrapped selection or scroll")
 		}
 	})
-	t.Run("Tab cycles all three panels and reverse Tab returns", func(t *testing.T) {
+	t.Run("Tab cycles all four panels and reverse Tab returns", func(t *testing.T) {
 		m := newMindsetHome(t, 0)
-		for _, want := range []homePanel{homePanelEntities, homePanelMindset, homePanelEvents} {
+		for _, want := range []homePanel{homePanelEntities, homePanelMindset, homePanelDays, homePanelEvents} {
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 			if got := m.homeFocus(); got != want {
 				t.Fatalf("focus: got %d, want %d", got, want)
 			}
 		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		if m.homeFocus() != homePanelMindset {
 			t.Fatal("reverse Tab did not focus Mindset")
@@ -177,7 +190,11 @@ func TestModel_MindsetHome(t *testing.T) {
 	})
 	t.Run("narrow expansion preserves usable Events height and clips Unicode rows", func(t *testing.T) {
 		m := newMindsetHome(t, 6)
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 40, Height: 24})
+		{
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 40, Height: 24})
+			m = runHomeData(t, resized, resizeCmd)
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		if got, want := m.homeEventsHeight, 14; got != want {
 			t.Fatalf("Events height: got %d, want %d", got, want)
@@ -193,6 +210,7 @@ func TestModel_MindsetHome(t *testing.T) {
 	})
 	t.Run("m from panel detail updates status without leaving the thought", func(t *testing.T) {
 		m := newMindsetHome(t, 1)
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, cmd := rootUpdate(m, enterKey())
 		m = runHomeData(t, m, cmd)
@@ -214,7 +232,11 @@ func TestModel_MindsetReadingLayout(t *testing.T) {
 		for _, size := range [][2]int{{80, 40}, {40, 30}, {24, 24}} {
 			t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 				m := newMindsetHomeTexts(t, text)
-				m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				{
+					resized, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+					m = runHomeData(t, resized, cmd)
+				}
+				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 				view := ansi.Strip(m.View().Content)
 				rows := strings.Split(view, "\n")
@@ -223,15 +245,19 @@ func TestModel_MindsetReadingLayout(t *testing.T) {
 				}
 				separator := -1
 				for i, row := range rows {
-					if row == strings.Repeat("─", size[0]) {
+					if strings.ReplaceAll(row, "┬", "─") == strings.Repeat("─", size[0]) {
 						separator = i
 						break
 					}
 				}
-				if separator < 0 || rows[separator-1] != "" || !strings.HasPrefix(rows[separator+1], " Events ") {
+				graphRows := 4
+				if size[1] == 24 {
+					graphRows = 1
+				}
+				if separator < graphRows+1 || rows[separator-graphRows-1] != "" || !strings.HasPrefix(rows[separator+1], " Events ") {
 					t.Fatalf("Mindset separation: got %q", view)
 				}
-				for i := 2; i < separator-1; i++ {
+				for i := 2; i < separator-graphRows-1; i++ {
 					if got := ansi.StringWidth(rows[i]); got > size[0]-1 {
 						t.Fatalf("Mindset row %d width: got %d, want <=%d", i, got, size[0]-1)
 					}
@@ -252,7 +278,11 @@ func TestModel_MindsetReadingLayout(t *testing.T) {
 		}
 		text := strings.Join(lines, "\n")
 		m := newMindsetHomeTexts(t, text, "Second thought")
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 34})
+		{
+			resized, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 34})
+			m = runHomeData(t, resized, cmd)
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		for range 3 {
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
@@ -270,7 +300,10 @@ func TestModel_MindsetReadingLayout(t *testing.T) {
 		if m.View().Content != selected || m.homeFocus() != homePanelMindset {
 			t.Fatalf("detail return: got %q, want preserved reading position", m.View().Content)
 		}
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 40, Height: 30})
+		{
+			resized, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 40, Height: 30})
+			m = runHomeData(t, resized, cmd)
+		}
 		if !strings.Contains(ansi.Strip(m.View().Content), "Reading line 04") {
 			t.Fatalf("resize lost reading position: %q", m.View().Content)
 		}
