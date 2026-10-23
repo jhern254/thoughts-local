@@ -310,9 +310,28 @@ func TestPreview_DramaticDayActivity(t *testing.T) {
 		}
 		for _, view := range []string{normal, dramatic} {
 			rows := strings.Split(view, "\n")
-			if !strings.HasPrefix(rows[9], " Events ") {
-				t.Fatalf("preview row 9: got %q, want Events below five plot rows", rows[9])
+			if !strings.HasPrefix(rows[6], " Events ") {
+				t.Fatalf("preview row 6: got %q, want Events below two plot rows", rows[6])
 			}
 		}
 	})
+}
+
+func TestPreview_DayActivityNormalBaseline(t *testing.T) {
+	defaultView := preview(t, "-scenario", "day-activity", "-plain", "-width", "32", "-height", "80")
+	explicitNormal := preview(t, "-scenario", "day-activity", "-plain", "-width", "32", "-height", "80", "-size", "1", "-count-exponent", "0.8")
+	if defaultView != explicitNormal {
+		t.Fatal("default must be the normal 100 percent baseline")
+	}
+	// Literal profile captured before rebasing the controls, at two plot rows.
+	want := []string{
+		"        ⣠⣴⣷⡄        ⢀⣠⣄⡀        ",
+		" ⢀⣀⣀⣠⣤⣶⣾⣿⣿⣿⣿⣦⢀⣤⣴⣶⣶⣦⣾⣿⣿⣿⣿⣷⣶⣤⣄⣀⣀⡀ ",
+	}
+	rows := strings.Split(defaultView, "\n")
+	for i, row := range want {
+		if rows[i+3] != row {
+			t.Fatalf("plot row %d: got %q, want %q", i, rows[i+3], row)
+		}
+	}
 }

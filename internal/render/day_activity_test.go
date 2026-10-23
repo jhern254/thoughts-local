@@ -47,7 +47,7 @@ func TestDayActivity(t *testing.T) {
 func TestDayActivity_Geometry(t *testing.T) {
 	t.Run("equal counts give Events greater per-record weight on the shared scale", func(t *testing.T) {
 		cells := RenderDayActivity(4, 3, []DayActivity{{Events: 1}, {Thoughts: 1}}, DayActivityOptions{Total: true, Exponent: 1, Size: 1})
-		for y, want := range [][2]rune{{'⣤', ' '}, {'⣿', '⣀'}, {'⣿', '⣿'}} {
+		for y, want := range [][2]rune{{'⣿', ' '}, {'⣿', '⣤'}, {'⣿', '⣿'}} {
 			if cells[y][0].Glyph != want[0] || cells[y][3].Glyph != want[1] {
 				t.Fatalf("row %d endpoints: got %q/%q, want %q/%q", y, cells[y][0].Glyph, cells[y][3].Glyph, want[0], want[1])
 			}
@@ -55,7 +55,7 @@ func TestDayActivity_Geometry(t *testing.T) {
 	})
 	t.Run("outline leaves the interior blank", func(t *testing.T) {
 		cells := RenderDayActivity(1, 3, []DayActivity{{Events: 1, Thoughts: 1}}, DayActivityOptions{Total: true, Outline: true, Exponent: 1, Size: 1})
-		for row, want := range []rune{'⠤', ' ', ' '} {
+		for row, want := range []rune{'⠉', ' ', ' '} {
 			if got := cells[row][0].Glyph; got != want {
 				t.Fatalf("row %d: got %q, want %q", row, got, want)
 			}
@@ -64,16 +64,16 @@ func TestDayActivity_Geometry(t *testing.T) {
 }
 
 func TestDayActivity_MountainScaling(t *testing.T) {
-	t.Run("default low boost retains quieter mountain slopes", func(t *testing.T) {
+	t.Run("normal boost retains the prior mountain slopes", func(t *testing.T) {
 		levels := DayActivityLevels([]DayActivity{{Events: 10}, {Events: 5}, {}}, 0, 0)
 		if math.Abs(levels[1].Events-.75*math.Pow(.5, .8)) > 1e-12 || levels[2].Total != 0 {
-			t.Fatalf("default valley: got %+v, want the low-boost half-count slope and a zero final day", levels)
+			t.Fatalf("default valley: got %+v, want the normal half-count slope and a zero final day", levels)
 		}
 	})
 	t.Run("size can grow beyond the old ceiling without clipping a ridge", func(t *testing.T) {
 		values := []DayActivity{{Events: 1, Thoughts: 1}}
 		top := func(size float64) int {
-			for y, row := range RenderDayActivity(1, 12, values, DayActivityOptions{Total: true, Size: size}) {
+			for y, row := range RenderDayActivity(1, 12, values, DayActivityOptions{Total: true, Size: size, Reference: 2}) {
 				if row[0].Glyph != ' ' {
 					return y
 				}
@@ -324,4 +324,29 @@ func TestDayActivity_AlignedSamples(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDayActivity_RelativeSize(t *testing.T) {
+	t.Run("normal reaches the old full summit while smaller sizes shrink it", func(t *testing.T) {
+		values := []DayActivity{{Events: 1}}
+		normal := RenderDayActivity(1, 3, values, DayActivityOptions{Total: true, Outline: true, Size: 1})
+		if normal[0][0].Glyph != '⠉' {
+			t.Fatalf("normal summit: got %q, want ⠉ at the top of the compact canvas", normal[0][0].Glyph)
+		}
+		smaller := RenderDayActivity(1, 3, values, DayActivityOptions{Total: true, Outline: true, Size: .5})
+		if smaller[0][0].Glyph != ' ' {
+			t.Fatal("half size must lower the normal summit")
+		}
+	})
+	t.Run("above normal raises lower mountains without flattening the reference peak", func(t *testing.T) {
+		values := []DayActivity{{Thoughts: 10}, {Thoughts: 40}, {Thoughts: 100}}
+		normal := RenderDayActivity(24, 3, values, DayActivityOptions{Total: true, Outline: true, Size: 1, Exponent: 1})
+		larger := RenderDayActivity(24, 3, values, DayActivityOptions{Total: true, Outline: true, Size: 3, Exponent: 1})
+		if normal[0][4].Glyph == larger[0][4].Glyph && normal[1][4].Glyph == larger[1][4].Glyph && normal[2][4].Glyph == larger[2][4].Glyph {
+			t.Fatal("increasing size above the baseline did not change the lower mountain")
+		}
+		if larger[0][20].Glyph != '⠉' {
+			t.Fatalf("reference summit: got %q, want its original top-row contour", larger[0][20].Glyph)
+		}
+	})
 }

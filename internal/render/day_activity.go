@@ -41,12 +41,16 @@ type DayActivityOptions struct {
 	Before, After           *DayActivity
 	Total, Events, Thoughts bool
 	Outline                 bool
-	Exponent, Size          float64
+	Exponent                float64
+	// Size is relative to normal (1 = 100%), bounded to [0.5, 3].
+	Size float64
 }
 
 const (
 	dayEventWeight   = .7
 	dayThoughtWeight = .3
+	// Preserve the former 300% fill at the new relative-size-1 baseline.
+	dayActivityBaselineGain = 9
 )
 
 // DayActivityReference returns the largest weighted count, before visual boost.
@@ -130,7 +134,24 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 		}
 		copy(samples[1:], values)
 	}
+	size := options.Size
+	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
+		size = 1
+	}
+	size = min(3, max(.5, size))
 	levels := DayActivityLevels(samples, options.Exponent, options.Reference)
+	for i := range levels {
+		gain := size
+		if size > 1 {
+			// Above normal, lift smaller ridges toward the full-height summit
+			// asymptotically. Unlike clipping, this preserves distinct peaks;
+			// one common gain also retains the component ratios and Total ridge.
+			gain /= 1 + (size-1)*levels[i].Total
+		}
+		levels[i].Total *= gain
+		levels[i].Events *= gain
+		levels[i].Thoughts *= gain
+	}
 	days := options.Days
 	if days <= 0 {
 		days = len(values)
@@ -144,15 +165,9 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 		points[i] = dayActivityPixel(width, days, options.FirstDay, day)
 	}
 
-	size := options.Size
-	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
-		size = 1
-	}
-	size = min(9, max(.5, size))
-	// Amplitude = 1-exp(-1.6*size). The presentation maps its 100% control
-	// to size 3 (about 99% of the canvas), within a fixed-height plot.
-	// Saturation keeps summits within the canvas instead of clipping a ridge.
-	maximum := float64(height*brailleRows-1) * (1 - math.Exp(-1.6*size))
+	// Normal is the former full mountain profile, now at relative size 1.
+	maximum := float64(height*brailleRows-1) * (1 - math.Exp(-1.6*dayActivityBaselineGain))
+
 	put := func(x, y int, series DayActivitySeries) {
 		cell := &rows[y/brailleRows][x/brailleColumns]
 		if cell.Glyph == ' ' {
