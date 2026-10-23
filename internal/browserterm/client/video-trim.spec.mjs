@@ -286,7 +286,7 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   expect(sockets).toBe(connectedSockets);
 });
 
-test('disconnect retires an editor and its prepared URLs without changing the selected background',async({page})=>{
+test('disconnect retires an editor and its prepared URLs without changing the selected background',async({page,baseURL})=>{
   await page.addInitScript(()=>{
     const NativeWebSocket=WebSocket;
     window.WebSocket=class extends NativeWebSocket{constructor(url,...args){super(url,...args);if(new URL(url).pathname==='/ws')window.trimSocket=this;}};
@@ -295,9 +295,29 @@ test('disconnect retires an editor and its prepared URLs without changing the se
     URL.createObjectURL=blob=>{const url=create(blob);window.trimURLs.add(url);return url;};
     URL.revokeObjectURL=url=>{window.trimURLs.delete(url);revoke(url);};
   });
+  // Persist a selected background independently of preceding tests, then hold
+  // its restoration so Connected cannot stand in for decoded asset readiness.
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 16;
+    canvas.getContext('2d').fillRect(0, 0, 16, 16);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  const saved = await page.request.post('/visual/background', {headers:{Origin:new URL(baseURL).origin}, multipart:{
+    image:{name:'selected.png',mimeType:'image/png',buffer:Buffer.from(image,'base64')},
+    darkness:'70',framing:JSON.stringify({fit:'fill',zoom:100,positionX:5000,positionY:5000})
+  }});
+  expect(saved.ok()).toBe(true);
+  let releaseRestore, restoreRequested;
+  const restoreGate = new Promise(resolve => {releaseRestore = resolve;});
+  const requested = new Promise(resolve => {restoreRequested = resolve;});
+  await page.route('**/visual/background', async route => {restoreRequested();await restoreGate;await route.continue();});
   await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+  await requested;
   const before=await (await page.request.get('/visual')).json();
-  const activeURLs=await page.evaluate(()=>window.trimURLs.size);
+  releaseRestore();
+  await expect(page.locator('#background-image')).toBeVisible();
+  const activeURLs=await page.evaluate(()=>[...window.trimURLs].sort());
   await openVisual(page);
   const staged=page.waitForRequest(request=>new URL(request.url()).pathname==='/visual/video/source'&&request.method()==='POST');
   await stageSource(page);
@@ -312,7 +332,7 @@ test('disconnect retires an editor and its prepared URLs without changing the se
   await page.evaluate(()=>window.trimSocket.close());
   await expect(page.locator('#reconnect')).toBeVisible();
   await expect(page.locator('#background-preview-video')).toHaveCount(0);
-  await expect.poll(()=>page.evaluate(()=>window.trimURLs.size)).toBe(activeURLs);
+  await expect.poll(()=>page.evaluate(()=>[...window.trimURLs].sort())).toEqual(activeURLs);
   const retired=await page.request.delete('/visual/video/source',{headers:{Origin:new URL(page.url()).origin,'X-Visual-Editor':editorID}});
   expect(retired.status()).toBe(403);
   expect(await (await page.request.get('/visual')).json()).toEqual(before);
