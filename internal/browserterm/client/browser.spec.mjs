@@ -27,7 +27,7 @@ test('renders newlines at the same column as native terminal output', async ({pa
   // corresponding xterm option, each new line incorrectly moves to the right.
   await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Mindset/);
   await expect.poll(() => screen(page).locator('div').nth(4).textContent()).toMatch(/^\s*$/);
-  await expect.poll(() => screen(page).locator('div').nth(11).textContent()).toMatch(/^ Events/);
+  await expect.poll(() => screen(page).locator('div').nth(8).textContent()).toMatch(/^ Events/);
 });
 
 test('second tab is busy; quit and reload start independent sessions', async ({page, context}) => {
@@ -261,14 +261,17 @@ test('day activity focus navigates one day and preserves Events through tuning',
   const eventRow = () => screen(page).locator('div').evaluateAll(rows => rows.findIndex(row => /^ Events\s+[A-Z]/.test(row.textContent)));
   const defaultRow = await eventRow();
   await page.keyboard.press('d');
-  await page.keyboard.press('ArrowRight');
   await expect(screen(page)).toContainText('normal boost');
+  await expect(screen(page)).toContainText('100%');
+  await page.keyboard.press('ArrowRight');
+  await expect(screen(page)).toContainText('medium boost');
   for (let step = 0; step < 40; step++) await page.keyboard.press('ArrowUp');
   await expect(screen(page)).toContainText('300%');
   await expect.poll(eventRow).toBe(defaultRow);
   expect(await date()).toBe(previous);
   await page.keyboard.press('0');
-  await expect(screen(page)).toContainText('low boost');
+  await expect(screen(page)).toContainText('normal boost');
+  await expect(screen(page)).toContainText('100%');
   await expect.poll(eventRow).toBe(defaultRow);
   await page.keyboard.press('Escape');
   await page.keyboard.press('ArrowDown');
@@ -410,4 +413,33 @@ test('mountain redraws stay above Event cards during tuning and resize', async (
   await page.keyboard.press('ArrowLeft');
   await expect(screen(page)).not.toContainText('←: collapse');
   await expect.poll(() => page.evaluate(() => window.mountainOverlap)).toBeNull();
+});
+
+test('day graph keeps the same normal profile in medium and fullscreen windows', async ({page}) => {
+  await exposeMountainTerminal(page);
+  await ready(page);
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('1 Total');
+  await page.keyboard.press('d');
+  await expect(screen(page)).toContainText('normal boost');
+  await expect(screen(page)).toContainText('100%');
+  await page.keyboard.press('Escape');
+  await expect(screen(page)).not.toContainText('normal boost');
+  await expect(screen(page)).not.toContainText('Loading activity');
+  const plot = () => page.evaluate(() => {
+    const term = window.mountainTerminal;
+    return [5, 6].map(y => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
+  });
+  const baseline = await plot();
+  for (const height of [700, 1080, 850]) {
+    await page.setViewportSize({width: 1200, height});
+    await expect.poll(() => page.evaluate(() => {
+      const term = window.mountainTerminal;
+      const rows = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString(true) || '');
+      const footer = rows.findLastIndex(row => /^─+$/.test(row));
+      return footer === term.rows - 4 && rows[footer].length === term.cols && /^ Events\s/.test(rows[8]);
+    })).toBe(true);
+    expect(await plot()).toEqual(baseline);
+  }
 });

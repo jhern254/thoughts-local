@@ -26,10 +26,11 @@ When focus is outside the Events timeline, all vertical Event curves are highlig
 card selection and borders keep their own focus rules.
 
 The plot has no title or date-range heading. Normal-height terminals leave a
-blank row above five plot rows on tall windows (four on medium windows). The responsive graph budget is reserved before Mindset content arrives,
+blank row above two plot rows in small, medium and fullscreen windows. Very short
+windows keep their existing one-row plot. The graph budget is reserved before Mindset content arrives,
 so loading replies cannot resize it between frames. Mindset reads within the
 remaining space while the timeline retains its usable viewport. Style values appear there only while their
-controls are open; loading/error feedback remains available. Short windows use a
+controls are open; loading/error feedback remains available. Very short windows use a
 single plot row so the timeline remains usable; the accepted date stays in the
 Events heading and controls remain in the footer. Very small terminals retain
 the existing resize guidance. No custom key acceleration is included.
@@ -74,14 +75,19 @@ between Events and Thoughts still follows the data rather than a forced order.
 
 Zero channels remain zero. The fixed weights give Events greater visual weight;
 there is no user-facing weight setting. Boost presets use exponents
-0.8 (low, default), 1.1, 1.4, 1.8, 2.4. Higher boost deepens valleys and sharpens
-summits. Size ranges from 50–300%; the default and Reset use low boost at the maximum
-300% fill. The fuller scaling is drawn inside the compact canvas. The canvas stays fixed while tuning and zooming, capped at five rows and
-the available window budget. Size changes amplitude inside that canvas. Mindset retains
-its reading space; the layout reserves fourteen Events rows when the window permits.
-Small windows use fewer rows without losing component color.
-Amplitude follows `1 - exp(-1.6 × 3 × size)`, with the UI size expressed as a ratio:
-about 99% of the canvas at 100%, approaching full height at the default 300%. These are relative activity shapes, not
+0.5 (low), 0.8 (normal, default), 1.1 (medium), 1.8 (strong), 2.4 (extra). Higher boost deepens valleys and sharpens
+summits. Size ranges from 50–300%; startup and Reset use normal boost at 100%.
+That baseline preserves the former full mountain profile within the compact
+two-row canvas. Below 100%, size reduces height proportionally. Above 100%,
+smaller ridges rise toward the reference summit without clipping it flat:
+`height = size × height / (1 + (size - 1) × height)`. All components receive the
+same gain, retaining their count ratios and Total headroom. At 100%, the gain is
+one. Higher settings change the picture, not the panel height.
+
+The canvas stays fixed while tuning and zooming, capped at two rows and the
+available window budget. Mindset retains its reading space; the layout reserves
+fourteen Events rows when the window permits. Compact windows keep one plot row.
+These are relative activity shapes, not
 probabilities or raw-count axes. Piecewise linear interpolation connects actual
 samples without invented peaks. A one-day view has one measured sample with
 slopes continued from adjacent days; it does not add intra-day measurements.
@@ -332,12 +338,13 @@ browsers before the correction and all ten affected browser cases passed after.
 Post-correction root race tests and the normal commit/push hooks verify that last
 change separately.
 
-## Compact height and stable loading
+## Historical five-row cap and stable loading
 
-The fullscreen-height follow-up restores a maximum of five plot rows, four on
-medium windows, two on short windows and one on compact windows. Low boost and
-maximum fill are the default inside that area; tuning and time zoom do not grow
-the panel. The standalone preview uses the same compact height and full default.
+At `a7b1a04`, the fullscreen-height follow-up reduced the maximum to five plot
+rows, four on medium windows, two on short windows and one on compact windows.
+Low boost and maximum fill were the default inside that area; tuning and zoom
+did not grow the panel. The current two-row cap and normal baseline supersede
+those visual defaults; the measurements below retain their original context.
 
 The graph budget is allocated before Mindset reading space. A regression
 reproduced the previous graph shrinking from six to four rows (including its
@@ -450,3 +457,20 @@ Pan medians increased about 0.18–0.95 ms; rebuilds increased roughly 0.04 ms,
 and cached navigation remains around a microsecond. This is a correctness tradeoff,
 not a speedup. Five runs do not establish statistical significance. No new
 whole-app CPU, memory or navigation-p95 improvement is claimed from these tests.
+
+## Normal baseline and consistent browser height
+
+Startup and style Reset now use normal boost (0.8), 100% size, and filled mode.
+This rebases the former low/300% silhouette rather than returning to the older,
+smaller gain. Higher and lower settings modulate this baseline inside the fixed
+canvas; no setting moves Events downward. The renderer retains the prior fill
+calibration so ordinary Braille rounding and outline appearance stay intact.
+
+The plot uses two rows from a 26-row terminal upward, matching the accepted small
+browser window. Very short windows retain their one-row fallback. Actual Brave
+review at 480×480, 1200×700, 1200×850, and 1920×1080 verified the same two-row plot
+and Events header position. Small-window cells/colors matched the prior binary
+exactly. At each larger size, tuning to 300% and resetting restored the exact
+normal profile. Screenshots were inspected. Literal preview geometry and root
+resize tests preserve these relationships. The earlier performance tables
+predate this presentation change; no new timing or CPU improvement is claimed.

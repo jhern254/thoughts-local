@@ -17,10 +17,19 @@ import (
 
 const (
 	initialMonthSpan = -1 // Resolve once at the accepted date, then keep the window stable.
-	maxPlotRows      = 5
+	maxPlotRows      = 2
 	edgeBuckets      = 2 // One adjacent bucket on each side of the viewport.
+	defaultPlotSize  = 100
 	minPlotSize      = 50
 	maxPlotSize      = 300
+)
+
+const (
+	boostLow = iota
+	boostNormal
+	boostMedium
+	boostStrong
+	boostExtra
 )
 
 type Reader interface {
@@ -86,8 +95,8 @@ func New(ctx context.Context, user string, reader Reader) Model {
 		rows:   1,
 		span:   initialMonthSpan,
 		series: [3]bool{true, true, true},
-		boost:  0,
-		size:   maxPlotSize,
+		boost:  boostNormal,
+		size:   defaultPlotSize,
 	}
 }
 func (m *Model) Close() {
@@ -155,13 +164,8 @@ func (m Model) plotRows() int {
 	// Style and time zoom operate inside this fixed canvas. Their keys must
 	// never move Events farther down or steal reading space from Mindset.
 	rows := maxPlotRows
-	switch {
-	case m.height < 26:
+	if m.height < 26 {
 		rows = 1
-	case m.height < 28:
-		rows = 2
-	case m.height < 36:
-		rows = 4
 	}
 	return max(1, min(rows, m.height-reserved))
 }
@@ -332,7 +336,7 @@ func (m Model) Update(msg tea.Msg) Model {
 func (m Model) boostPreset() (string, float64) {
 	names := [...]string{"low", "normal", "medium", "strong", "extra"}
 	// Stronger boost adds contrast: quiet days recede and summits stay sharp.
-	exponents := [...]float64{render.DayActivityDefaultExponent, 1.1, 1.4, 1.8, 2.4}
+	exponents := [...]float64{.5, render.DayActivityDefaultExponent, 1.1, 1.8, 2.4}
 	return names[m.boost], exponents[m.boost]
 }
 
@@ -340,9 +344,9 @@ func (m *Model) Key(key string) tea.Cmd {
 	if m.tuning {
 		switch key {
 		case "left", "h":
-			m.boost = max(0, m.boost-1)
+			m.boost = max(boostLow, m.boost-1)
 		case "right", "l":
-			m.boost = min(4, m.boost+1)
+			m.boost = min(boostExtra, m.boost+1)
 		case "up", "k":
 			m.size = min(maxPlotSize, m.size+5)
 		case "down", "j":
@@ -350,7 +354,7 @@ func (m *Model) Key(key string) tea.Cmd {
 		case "f":
 			m.outline = !m.outline
 		case "0":
-			m.boost, m.size, m.outline = 0, maxPlotSize, false
+			m.boost, m.size, m.outline = boostNormal, defaultPlotSize, false
 		case "q", "esc", "enter", "d":
 			m.tuning = false
 		}
@@ -413,8 +417,8 @@ func (m *Model) rebuild() {
 		Thoughts:       visible[2],
 		Outline:        m.outline,
 		Exponent:       exponent,
-		// 100% adopts the former 300% amplitude; controls scale from this look.
-		Size: 3 * float64(m.size) / 100,
+		// Size is relative to the normal mountain profile; the canvas stays fixed.
+		Size: float64(m.size) / 100,
 	})
 	styles := [...]lipgloss.Style{lipgloss.NewStyle().Foreground(lipgloss.Color("240")), lipgloss.NewStyle().Foreground(lipgloss.Color("37")), lipgloss.NewStyle().Foreground(lipgloss.Color("179"))}
 	if !m.highlighted {

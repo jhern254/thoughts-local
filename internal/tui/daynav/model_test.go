@@ -248,7 +248,7 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 		defer m.Close()
 		m.SetFocused(true)
 		m.Key("d")
-		if !strings.Contains(m.View(), "low boost · 300% · filled") {
+		if !strings.Contains(m.View(), "normal boost · 100% · filled") {
 			t.Fatal("missing style values")
 		}
 		m.Key("esc")
@@ -263,36 +263,41 @@ func TestModel_MountainSizing(t *testing.T) {
 	t.Run("keeps the earlier compact height even in a fullscreen terminal", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
-		for _, scenario := range []struct{ terminalRows, plotHeight int }{{24, 1}, {30, 5}, {32, 5}, {40, 6}, {80, 6}} {
+		for _, scenario := range []struct{ terminalRows, plotHeight int }{{24, 1}, {26, 3}, {27, 3}, {30, 3}, {32, 3}, {40, 3}, {80, 3}} {
 			m.Resize(80, scenario.terminalRows)
 			if got := m.Height(); got != scenario.plotHeight {
 				t.Fatalf("terminal %d rows: got plot height %d, want %d including quiet space", scenario.terminalRows, got, scenario.plotHeight)
 			}
 		}
 	})
-	t.Run("defaults to the former enlarged low-boost look and keeps tuning inside a fixed canvas", func(t *testing.T) {
+	t.Run("uses normal boost and 100 percent as the baseline in the same two-row canvas in small and fullscreen windows", func(t *testing.T) {
 		m, s := fixture(t)
 		defer m.Close()
 		m.Resize(80, 40)
 		m.SetFocused(true)
-		if got, want := m.Height(), 6; got != want {
+		if got, want := m.Height(), 3; got != want {
 			t.Fatalf("default height: got %d, want %d", got, want)
 		}
+		_, exponent := m.boostPreset()
+		if m.size != 100 || exponent != .8 {
+			t.Fatalf("default size/exponent: got %d/%g, want 100/0.8", m.size, exponent)
+		}
+		initial := m.plot
 		reads := s.reads
 		m.Key("d")
 		for range 40 {
 			m.Key("down")
 		}
-		if m.size != 100 || m.Height() != 6 {
+		if m.size != 50 || m.Height() != 3 {
 			t.Fatal("reducing fill changed the compact canvas")
 		}
-		for range 40 {
+		for range 60 {
 			if m.Key("up") != nil {
 				t.Fatal("size adjustment requested data")
 			}
 		}
-		if m.size != 300 || m.Height() != 6 {
-			t.Fatalf("dramatic size/height: got %d/%d, want 300/6", m.size, m.Height())
+		if m.size != 300 || m.Height() != 3 {
+			t.Fatalf("dramatic size/height: got %d/%d, want 300/3", m.size, m.Height())
 		}
 		if s.reads != reads {
 			t.Fatal("style adjustment queried history")
@@ -303,7 +308,10 @@ func TestModel_MountainSizing(t *testing.T) {
 		}
 		m.Resize(80, 40)
 		m.Key("0")
-		if m.size != 300 || m.Height() != 6 || m.outline {
+		if m.plot != initial {
+			t.Fatal("reset changed the baseline mountain shape")
+		}
+		if m.size != 100 || m.Height() != 3 || m.outline {
 			t.Fatal("reset did not restore the filled mountain default")
 		}
 	})
@@ -438,7 +446,7 @@ func TestModel_ScrollingLandscape(t *testing.T) {
 				today := displaytime.Day(time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC))
 				reader := &datedActivityReader{first: today.AddDate(0, 0, -80), counts: map[time.Time]data.ActivityCount{}}
 				for i := 0; i <= 80; i++ {
-					reader.counts[today.AddDate(0, 0, -i)] = data.ActivityCount{EventDays: int64(20 + i%7), Thoughts: int64(100 + i%13)}
+					reader.counts[today.AddDate(0, 0, -i)] = data.ActivityCount{EventDays: int64(20 + i%7), Thoughts: int64(140 + i%13)}
 				}
 				// It is just outside the original viewport and its neighboring sample.
 				reader.counts[today.AddDate(0, 0, -32)] = data.ActivityCount{EventDays: 30, Thoughts: 180}

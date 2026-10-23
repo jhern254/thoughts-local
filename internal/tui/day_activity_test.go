@@ -184,3 +184,21 @@ func TestModel_DayMountainHeightDuringMindsetLoad(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_DayGraphWindowHeight(t *testing.T) {
+	t.Run("medium and fullscreen windows keep the same compact graph band", func(t *testing.T) {
+		m := newMindsetHome(t, 0)
+		for _, height := range []int{26, 32, 40, 60, 26} {
+			var cmd tea.Cmd
+			m, cmd = rootUpdate(m, tea.WindowSizeMsg{Width: 120, Height: height})
+			m = runHomeData(t, m, cmd)
+			rows := strings.Split(ansi.Strip(m.View().Content), "\n")
+			if !strings.HasPrefix(rows[8], " Events ") {
+				t.Fatalf("terminal %d rows: got row 8 %q, want Events below the same two-row graph", height, rows[8])
+			}
+			if m.days.Height() != 3 {
+				t.Fatalf("terminal %d rows: got graph band %d, want two plot rows plus quiet space", height, m.days.Height())
+			}
+		}
+	})
+}
