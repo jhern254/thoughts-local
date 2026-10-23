@@ -18,7 +18,7 @@ Tab order is Mindset → Days → Events → entities. While Days has focus:
 - `r` explicitly refreshes activity. These display preferences last for the session.
 
 The plot has no title or date-range heading. Normal-height terminals leave a
-blank row above three plot rows. Style values appear there only while their
+blank row above five plot rows on tall windows (four on medium windows). Style values appear there only while their
 controls are open; loading/error feedback remains available. Short windows use a
 single plot row so the timeline remains usable; the accepted date stays in the
 Events heading and controls remain in the footer. Very small terminals retain
@@ -34,7 +34,8 @@ to its start day. Ongoing Events stop at the read's cutoff. All observed Thought
 count once, including unassigned ones. Calendar boundaries use the application's
 Pacific timezone and civil dates, including 23/25-hour DST days.
 
-There are at most 256 buckets, also bounded by terminal width and calendar days.
+There are at most 256 buckets, also bounded by calendar days and twice the
+terminal width, using both horizontal dots in each Braille cell.
 A wider bucket reports average daily counts, not totals that grow solely because
 of zooming out.
 Each channel is normalized against its own maximum in the visible range:
@@ -45,8 +46,13 @@ Each channel is normalized against its own maximum in the visible range:
 
 Zero channels remain zero. The fixed weights give Events greater visual weight;
 there is no user-facing weight setting. Boost presets use exponents
-1, 0.8 (default), 0.5, 0.25, 0.15. Size ranges from 50–125%, with headroom rather
-than clipping. These are relative activity shapes, not probabilities or raw-count
+0.8, 1.1 (default), 1.4, 1.8, 2.4. Higher boost deepens valleys and sharpens
+summits. Size ranges from 50–300%: it grows the actual plot up to twelve rows,
+subject to the window budget, while retaining at least fourteen Events rows.
+Small windows therefore cannot display the full requested enlargement.
+Amplitude follows `1 - exp(-1.6 × size)`, with size expressed as a ratio: about
+80% of the canvas at 100%, approaching 99% at 300%. This avoids clipping large
+peaks into artificial flat ridges. These are relative activity shapes, not probabilities or raw-count
 axes. Piecewise linear interpolation connects samples without invented peaks.
 
 Total is a dim background; Events and Thoughts use teal and amber traces.
@@ -157,3 +163,54 @@ presentation work, not a performance improvement. RSS is a single observation,
 not retained-allocation evidence. No missed keys occurred in this workload.
 Video, hardware acceleration and the unresolved black-rectangle report are not
 retested or claimed fixed by these static-background measurements.
+
+## Mountain detail and controls
+
+The mountain-style follow-up was compared with `8dbe4cb` on the same i5-8250U,
+Go 1.25.14 and Brave 148 reference machine, before the subsequent focus-navigation
+changes. Binaries were compiled first; measurements ran sequentially without
+competing builds/tests. Five runs describe this machine, not statistical significance.
+
+The original stress fixture remains 721 Events/20,000 Thoughts. The varied
+activity fixture has 3,927 Events/29,479 Thoughts across roughly two years.
+Both revisions used the same migrated fixture files. The baseline received only
+the matched benchmark-test changes. Load includes bounds, counts, and repaint;
+Rebuild measures the focused plot; Navigate reuses accepted data and the cached
+plot. Default plot height at the measured 40-row window grows from three to five
+rows, and long-history sampling grows from one to two samples per terminal cell,
+capped at 256. The added work is intentional detail, not an optimization.
+
+Medians of five one-second runs on the long-history fixture:
+
+| Width / operation | Before ns/op | Mountain ns/op | B/op before → after | allocs/op before → after |
+| --- | ---: | ---: | ---: | ---: |
+| 80 Load | 13,082,807 | 13,645,988 | 157,076 → 181,649 | 12,108 → 12,294 |
+| 80 Rebuild | 149,313 | 324,757 | 13,648 → 28,264 | 226 → 608 |
+| 80 Navigate | 688 | 994 | 896 → 2,048 | 1 → 1 |
+| 160 Load | 13,376,908 | 14,672,404 | 184,360 → 218,160 | 12,276 → 12,506 |
+| 160 Rebuild | 274,065 | 479,943 | 25,792 → 46,456 | 419 → 798 |
+| 160 Navigate | 859 | 1,158 | 1,792 → 3,072 | 1 → 1 |
+
+Load on the original stress fixture changed from 6.15 to 6.17 ms at 80 columns,
+and 5.96 to 6.14 ms at 160. Long-history repaint cost more than doubled, but
+remains below 0.5 ms in these runs and is not performed on each in-range day key.
+The loaded plot's View/marker path remains around one microsecond.
+
+Headful Brave at 1200×850 used the unchanged stress fixture and the focused day
+plot. Each condition ran five groups of twelve alternating historical day keys,
+waiting for the requested date and settled 30-Thought count in xterm. Dramatic
+means 300% size with extra contrast; it uses twelve plot rows on this viewport.
+
+| Metric | Before default | Mountain default | Dramatic |
+| --- | ---: | ---: | ---: |
+| Median key-to-display | 27.05 ms | 27.30 ms | 34.55 ms |
+| p95 key-to-display | 49.30 ms | 43.90 ms | 45.70 ms |
+| Native CPU, 60 transitions | 2.08 s | 2.08 s | 2.18 s |
+| Browser process-tree CPU | 1.70 s | 1.72 s | 2.12 s |
+| Native RSS after workload | 39,680 KiB | 42,708 KiB | 44,204 KiB |
+
+Dramatic rendering uses more CPU and display area. The lower sampled p95 is not
+evidence of an improvement; frame scheduling varies. No keys were lost in these
+runs. RSS samples do not establish retained allocations. No new timer, animation,
+background worker or per-key aggregate query is introduced. These measurements
+cover static browser mode, not video playback or the unresolved compositor issue.

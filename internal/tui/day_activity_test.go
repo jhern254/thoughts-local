@@ -48,3 +48,30 @@ func TestModel_DayActivityNavigation(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_DayMountainControls(t *testing.T) {
+	t.Run("dramatic sizing preserves a usable timeline and reset restores its position", func(t *testing.T) {
+		for _, height := range []int{24, 30, 40} {
+			m := newMindsetHome(t, 0)
+			m, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: height})
+			m = runHomeData(t, m, cmd)
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+			before, day := m.events.View(), m.events.Day()
+			m, _ = rootUpdate(m, runeKey('d'))
+			for range 40 {
+				m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
+				if cmd != nil {
+					t.Fatal("sizing started a data read")
+				}
+				if m.homeEventsHeight < 14 || len(strings.Split(ansi.Strip(m.View().Content), "\n")) > height {
+					t.Fatalf("height %d: sizing starved or overflowed the timeline", height)
+				}
+			}
+			m, _ = rootUpdate(m, runeKey('0'))
+			m, _ = rootUpdate(m, escapeKey())
+			if !m.events.Day().Equal(day) || m.events.View() != before || m.homeFocus() != homePanelDays {
+				t.Fatalf("height %d: reset lost the day, timeline position or graph focus", height)
+			}
+		}
+	})
+}

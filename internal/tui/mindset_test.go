@@ -88,11 +88,11 @@ func TestModel_MindsetHome(t *testing.T) {
 		if rows[4] != "" {
 			t.Fatalf("row above graph: got %q, want blank", rows[4])
 		}
-		if got, want := strings.ReplaceAll(rows[8], "┬", "─"), strings.Repeat("─", 80); got != want {
+		if got, want := strings.ReplaceAll(rows[9], "┬", "─"), strings.Repeat("─", 80); got != want {
 			t.Fatalf("panel separator: got %q, want %q", got, want)
 		}
-		if !strings.HasPrefix(rows[9], " Events ") {
-			t.Fatalf("row below separator: got %q, want Events header", rows[9])
+		if !strings.HasPrefix(rows[10], " Events ") {
+			t.Fatalf("row below separator: got %q, want Events header", rows[10])
 		}
 	})
 	t.Run("expansion pushes Events down and returning from detail restores selection", func(t *testing.T) {
@@ -113,7 +113,7 @@ func TestModel_MindsetHome(t *testing.T) {
 			}
 			return -1
 		}
-		if got, want := row(expanded, "Events")-row(before, "Events"), 5; got != want {
+		if got, want := row(expanded, "Events")-row(before, "Events"), 4; got != want {
 			t.Fatalf("Events displacement: got %d, want %d", got, want)
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
@@ -253,7 +253,10 @@ func TestModel_MindsetReadingLayout(t *testing.T) {
 						break
 					}
 				}
-				graphRows := 4
+				graphRows := 5
+				if size[1] == 40 {
+					graphRows = 6
+				}
 				if size[1] == 24 {
 					graphRows = 1
 				}

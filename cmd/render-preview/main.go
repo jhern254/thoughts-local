@@ -39,8 +39,8 @@ func run(args []string, output io.Writer) error {
 	selectedThought := flags.Int("selected-thought", 1, "selected Thought bar, numbered from 1; 0 means none")
 	mode := flags.String("mode", "filled", "filled or outline")
 	selected := flags.Int("selected", 3, "selected event, numbered from 1; 0 means none")
-	exponent := flags.Float64("count-exponent", 0.8, "positive count exponent; 0.25 strongly boosts smaller counts")
-	size := flags.Float64("size", 1, "distribution size from 0.5 to 1.25")
+	exponent := flags.Float64("count-exponent", 0.8, "positive exponent; day-activity defaults to 1.1 and higher values sharpen its peaks")
+	size := flags.Float64("size", 1, "distribution size from 0.5 to 1.25 (day-activity: up to 3)")
 	plain := flags.Bool("plain", false, "omit ANSI colors")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -53,8 +53,12 @@ func run(args []string, output io.Writer) error {
 	if flags.NArg() != 0 || *width < 32 || *height < 12 || *selected < 0 || *selectedThought < 0 {
 		return fmt.Errorf("use flags only, width >= 32, height >= 12, and selected >= 0")
 	}
-	if *exponent <= 0 || math.IsNaN(*exponent) || math.IsInf(*exponent, 0) || *size < 0.5 || *size > 1.25 || math.IsNaN(*size) {
-		return fmt.Errorf("use a finite positive count-exponent and size between 0.5 and 1.25")
+	maxSize := 1.25
+	if *scenario == "day-activity" {
+		maxSize = 3
+	}
+	if *exponent <= 0 || math.IsNaN(*exponent) || math.IsInf(*exponent, 0) || *size < 0.5 || *size > maxSize || math.IsNaN(*size) {
+		return fmt.Errorf("use a finite positive count-exponent and size between 0.5 and %g", maxSize)
 	}
 	options := render.Options{CountExponent: *exponent, Size: *size}
 	switch *mode {
@@ -65,7 +69,16 @@ func run(args []string, output io.Writer) error {
 		return fmt.Errorf("mode must be filled or outline")
 	}
 	if *scenario == "day-activity" {
-		_, err := io.WriteString(output, drawDayActivity(*width, options, *plain))
+		explicitExponent := false
+		flags.Visit(func(f *flag.Flag) {
+			if f.Name == "count-exponent" {
+				explicitExponent = true
+			}
+		})
+		if !explicitExponent {
+			options.CountExponent = render.DayActivityDefaultExponent
+		}
+		_, err := io.WriteString(output, drawDayActivity(*width, *height, options, *plain))
 		return err
 	}
 	if *scenario == "thought-lengths" {

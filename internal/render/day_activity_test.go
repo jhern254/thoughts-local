@@ -67,3 +67,26 @@ func TestDayActivity_Geometry(t *testing.T) {
 		}
 	})
 }
+
+func TestDayActivity_MountainScaling(t *testing.T) {
+	t.Run("default contrast keeps the quieter days below a linear half-height", func(t *testing.T) {
+		levels := DayActivityLevels([]DayActivity{{Events: 10}, {Events: 5}, {}}, 0)
+		if levels[1].Events >= .35 || levels[1].Events <= 0 || levels[2].Total != 0 {
+			t.Fatalf("default valley: got %+v, want a positive value below .35 and a zero final day", levels)
+		}
+	})
+	t.Run("size can grow beyond the old ceiling without clipping a ridge", func(t *testing.T) {
+		values := []DayActivity{{Events: 1, Thoughts: 1}}
+		top := func(size float64) int {
+			for y, row := range RenderDayActivity(1, 12, values, DayActivityOptions{Total: true, Size: size}) {
+				if row[0].Glyph != ' ' {
+					return y
+				}
+			}
+			return 12
+		}
+		if got, want := top(3), top(1.25); got >= want {
+			t.Fatalf("large mountain starts at row %d, want above old ceiling row %d", got, want)
+		}
+	})
+}
