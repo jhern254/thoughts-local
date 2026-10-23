@@ -104,6 +104,14 @@ try {
     await route.fulfill({response,body:await response.text()+`;window.activationTimes=[];const measuredActivate=ThoughtsVisual.prototype.activate;ThoughtsVisual.prototype.activate=async function(...args){window.backgroundProbe=this;const start=performance.now();const result=await measuredActivate.apply(this,args);window.activationTimes.push(performance.now()-start);return result;};`});
   });
   await page.goto(url); await page.bringToFront(); await expect(page.locator('#status')).toHaveText('Connected');
+  // A demo without the optional native speech runtime opens Models on first
+  // connection. Dismiss that prompt before exercising timeline/Visual controls.
+  if (process.env.THOUGHTS_PERF_DISMISS_SPEECH_SETUP === '1') {
+    await expect(screen(page)).toContainText('Not now');
+    await page.locator('.xterm-helper-textarea').focus();
+    await page.keyboard.press('Escape');
+    await expect(screen(page)).not.toContainText('Not now');
+  }
   const {windowId} = await cdp.send('Browser.getWindowForTarget');
   const fullscreen = async () => { await cdp.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'fullscreen'}}); await page.waitForTimeout(500); };
   await fullscreen();

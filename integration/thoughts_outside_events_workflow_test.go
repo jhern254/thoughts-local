@@ -21,6 +21,42 @@ import (
 )
 
 func TestThoughtsOutsideEventsWorkflow_SQLite(t *testing.T) {
+	t.Run("bounds coverage without losing spanning events or half-open edges", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "u")
+		for _, query := range []string{
+			// Most history cannot cover this window. The first relevant Event
+			// starts before it; the last one extends beyond the frozen cutoff.
+			`WITH RECURSIVE history(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM history WHERE n<720)
+			 INSERT INTO events(user_id,started_at,ended_at) SELECT 'u',n,n+1 FROM history`,
+			`INSERT INTO events(user_id,started_at,ended_at) VALUES
+			 ('u',800,1000),('u',900,1100),('u',1100,1100),
+			 ('u',1200,1250),('u',1220,1300),('u',1400,1600),('u',1500,1700)`,
+			`INSERT INTO thoughts(user_id,thought,observed_at) VALUES
+			 ('u','before',999),('u','spanning',1000),('u','end',1100),
+			 ('u','same end',1100),('u','gap',1199),('u','start',1200),
+			 ('u','overlap',1250),('u','end',1300),('u','spanning cutoff',1400),
+			 ('u','cutoff',1450),('u','window end',1500)`,
+		} {
+			if _, err := db.Exec(query); err != nil {
+				t.Fatal(err)
+			}
+		}
+		groups, err := data.NewSQLiteMetricsStore(db).ListThoughtGroupsOutsideEvents(
+			t.Context(), "u", time.Unix(1000, 0), time.Unix(1500, 0), time.Unix(1450, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got [][2]int64
+		for _, group := range groups {
+			got = append(got, [2]int64{group.ObservedAt.Unix(), group.ThoughtCount})
+		}
+		want := [][2]int64{{1100, 2}, {1199, 1}, {1300, 1}}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("uncovered timestamps and counts: got %v, want %v", got, want)
+		}
+	})
+
 	t.Run("groups uncovered timestamps independently of subject and explicit event links", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u", "other", "deleted")
