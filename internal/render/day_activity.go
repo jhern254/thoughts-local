@@ -27,6 +27,12 @@ type DayActivityCell struct {
 	Series DayActivitySeries
 }
 type DayActivityOptions struct {
+	// FirstDay is a civil-day index from a fixed epoch; Days is the visible
+	// calendar span (zero uses one day per sample). These anchor panning.
+	FirstDay, Days int
+	// Adjacent buckets continue slopes beyond the viewport. Nil keeps the
+	// endpoint flat when a caller has no neighboring data.
+	Before, After           *DayActivity
 	Total, Events, Thoughts bool
 	Outline                 bool
 	Exponent, Size          float64
@@ -94,14 +100,38 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	if len(values) == 0 {
 		return rows
 	}
-	levels := DayActivityLevels(values, options.Exponent)
+
+	samples, padding := values, 0
+	if options.Before != nil || options.After != nil {
+		padding = 1
+		samples = make([]DayActivity, len(values)+2)
+		samples[0], samples[len(samples)-1] = values[0], values[len(values)-1]
+		if options.Before != nil {
+			samples[0] = *options.Before
+		}
+		if options.After != nil {
+			samples[len(samples)-1] = *options.After
+		}
+		copy(samples[1:], values)
+	}
+	levels := DayActivityLevels(samples, options.Exponent)
+	days := options.Days
+	if days <= 0 {
+		days = len(values)
+	}
+	points := make([]int, len(samples))
+	for i := range points {
+		day := float64(options.FirstDay) + (float64(i-padding)+.5)*float64(days)/float64(len(values))
+		points[i] = dayActivityPixel(width, days, options.FirstDay, day)
+	}
+
 	size := options.Size
 	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
 		size = 1
 	}
 	size = min(9, max(.5, size))
 	// Amplitude = 1-exp(-1.6*size). The presentation maps its 100% control
-	// to size 3 (about 99% of the canvas), and adds rows when enlarged.
+	// to size 3 (about 99% of the canvas), within a fixed-height plot.
 	// Saturation keeps summits within the canvas instead of clipping a ridge.
 	maximum := float64(height*brailleRows-1) * (1 - math.Exp(-1.6*size))
 	put := func(x, y int, series DayActivitySeries) {
@@ -114,14 +144,18 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 		masks[(y/brailleRows)*width+x/brailleColumns][series] |= uint8(bit)
 	}
 	draw := func(series DayActivitySeries, filled bool) {
-		previous := -1
+		previous, index := -1, 0
 		for x := 0; x < width*brailleColumns; x++ {
-			position := max(0, min(float64(len(levels)-1), (float64(x)+.5)/float64(width*brailleColumns)*float64(len(levels))-.5))
-			index := int(position)
+			for index+1 < len(points) && x >= points[index+1] {
+				index++
+			}
 			a, b := levels[index], levels[min(index+1, len(levels)-1)]
 			left := [...]float64{a.Total, a.Events, a.Thoughts}[series]
 			right := [...]float64{b.Total, b.Events, b.Thoughts}[series]
-			value := left + (right-left)*(position-float64(index))
+			value := left
+			if x > points[index] && index+1 < len(points) && points[index+1] > points[index] {
+				value += (right - left) * float64(x-points[index]) / float64(points[index+1]-points[index])
+			}
 			if value <= 0 {
 				previous = -1
 				continue
@@ -170,4 +204,21 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	}
 
 	return rows
+}
+
+// Round vertices on an absolute calendar grid, then subtract a whole-cell
+// origin. Panning translates existing Braille cells instead of changing the
+// rounding of peaks or pairing their dots into differently colored cells.
+func dayActivityPixel(width, days, firstDay int, day float64) int {
+	origin := int(math.Floor(float64(firstDay)*float64(width)/float64(days))) * brailleColumns
+	return int(math.Floor(day*float64(width*brailleColumns)/float64(days))) - origin
+}
+
+// DayActivityDayColumn places the accepted date on the same grid as the curves.
+func DayActivityDayColumn(width, days, firstDay, selectedDay int) int {
+	if width <= 0 || days <= 0 {
+		return 0
+	}
+	x := dayActivityPixel(width, days, firstDay, float64(selectedDay)+.5)
+	return max(0, min(width-1, x/brailleColumns))
 }

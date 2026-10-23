@@ -182,3 +182,105 @@ func TestDayActivity_SolidLayers(t *testing.T) {
 		}
 	})
 }
+
+func TestDayActivity_PanShape(t *testing.T) {
+	for _, outline := range []bool{false, true} {
+		t.Run(map[bool]string{false: "filled", true: "outline"}[outline], func(t *testing.T) {
+			a := make([]DayActivity, 31)
+			a[23] = DayActivity{Events: 10, Thoughts: 200}
+			b := append(append([]DayActivity{}, a[1:]...), DayActivity{})
+			options := DayActivityOptions{
+				FirstDay: 20000, Days: 31,
+				Total: true, Events: true, Thoughts: true,
+				Outline: outline, Exponent: 2.4, Size: 9,
+			}
+			before := RenderDayActivity(80, 12, a, options)
+			options.FirstDay++
+			after := RenderDayActivity(80, 12, b, options)
+			left := func(cells [][]DayActivityCell) int {
+				for x := range 80 {
+					for y := range cells {
+						if cells[y][x].Glyph != ' ' {
+							return x
+						}
+					}
+				}
+				return -1
+			}
+			shift := left(before) - left(after)
+			if shift <= 0 {
+				t.Fatalf("pan shift: got %d columns, want leftward movement", shift)
+			}
+			for y := range before {
+				for x := 0; x+shift < 80; x++ {
+					if before[y][x+shift] != after[y][x] {
+						t.Fatalf("row %d column %d: panning changed the mountain profile rather than translating it", y, x)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestDayActivityDayColumn(t *testing.T) {
+	t.Run("aligns the selected date with the calendar-anchored peak", func(t *testing.T) {
+		for _, scenario := range []struct{ width, days, first, selected, column int }{
+			{31, 31, 20000, 20000, 0}, {31, 31, 20000, 20030, 30},
+			{31, 31, -100, -90, 10}, {80, 31, 20000, 20023, 61},
+			{80, 31, 20001, 20023, 58}, {31, 31, 20000, 19999, 0},
+			{31, 31, 20000, 20031, 30},
+		} {
+			got := DayActivityDayColumn(scenario.width, scenario.days, scenario.first, scenario.selected)
+			if got != scenario.column {
+				t.Fatalf("date %d from %d: got column %d, want %d", scenario.selected, scenario.first, got, scenario.column)
+			}
+		}
+		values := make([]DayActivity, 31)
+		values[23] = DayActivity{Events: 10, Thoughts: 200}
+		cells := RenderDayActivity(80, 12, values, DayActivityOptions{
+			FirstDay: 20000, Days: 31,
+			Total: true, Exponent: 2.4, Size: 9,
+		})
+		if cells[0][61].Glyph == ' ' {
+			t.Fatal("the selected date marker missed its full-height summit")
+		}
+	})
+}
+
+func TestDayActivity_PanBoundaryShape(t *testing.T) {
+	for _, outline := range []bool{false, true} {
+		t.Run(map[bool]string{false: "filled", true: "outline"}[outline], func(t *testing.T) {
+			for _, incoming := range []bool{false, true} {
+				t.Run(map[bool]string{false: "visible peak", true: "incoming peak"}[incoming], func(t *testing.T) {
+					a := make([]DayActivity, 31)
+					peak, empty := DayActivity{Events: 10, Thoughts: 200}, DayActivity{}
+					next := empty
+					if incoming {
+						next = peak
+					} else {
+						a[30] = peak
+					}
+					b := append(append([]DayActivity{}, a[1:]...), next)
+					options := DayActivityOptions{
+						FirstDay: 20001, Days: 31,
+						Before: &empty, After: &next,
+						Total: true, Events: true, Thoughts: true,
+						Outline: outline, Exponent: 2.4, Size: 9,
+					}
+					before := RenderDayActivity(80, 12, a, options)
+					options.FirstDay++
+					options.After = &empty
+					after := RenderDayActivity(80, 12, b, options)
+					// This calendar step translates the grid three terminal columns left.
+					for y := range before {
+						for x := 0; x+3 < 80; x++ {
+							if before[y][x+3] != after[y][x] {
+								t.Fatalf("row %d column %d: the right-edge peak changed shape as it entered the view", y, x)
+							}
+						}
+					}
+				})
+			}
+		})
+	}
+}

@@ -18,6 +18,7 @@ import (
 const (
 	initialMonthSpan = -1 // Resolve once at the accepted date, then keep the window stable.
 	maxPlotRows      = 5
+	edgeBuckets      = 2 // One adjacent bucket on each side of the viewport.
 	minPlotSize      = 50
 	maxPlotSize      = 300
 )
@@ -59,8 +60,10 @@ type Model struct {
 	boost, size                      int
 	outline                          bool
 	values                           []render.DayActivity
-	plot                             string
-	err                              error
+	// Neighboring buckets keep clipped mountain flanks stable during a pan.
+	before, after *render.DayActivity
+	plot          string
+	err           error
 }
 
 func New(ctx context.Context, user string, reader Reader) Model {
@@ -226,7 +229,7 @@ func (m *Model) load(refreshBounds bool) tea.Cmd {
 	first, selected, oldFrom, oldUntil, span := m.first, m.selected, m.from, m.until, m.span
 	// Each Braille cell has two horizontal dots. Read enough bounded samples
 	// to use that detail instead of averaging it away before drawing.
-	columns := min(data.MaxActivityBuckets, m.width*2)
+	columns := min(data.MaxActivityBuckets-edgeBuckets, m.width*2)
 	cutoff := m.now().Truncate(time.Second).Add(time.Second)
 	today := displaytime.Day(cutoff.Add(-time.Second))
 	return func() tea.Msg {
@@ -246,10 +249,19 @@ func (m *Model) load(refreshBounds bool) tea.Cmd {
 		result.from, result.until = window(first, selected, today, oldFrom, oldUntil, span)
 		days := data.CalendarDays(result.from, result.until)
 		count := min(columns, max(1, days))
-		result.boundaries = make([]time.Time, count+1)
-		for i := range result.boundaries {
-			result.boundaries[i] = result.from.AddDate(0, 0, days*i/count)
+
+		visibleBounds := make([]time.Time, count+1)
+		for i := range visibleBounds {
+			visibleBounds[i] = result.from.AddDate(0, 0, days*i/count)
 		}
+		// The same bounded read includes one adjacent bucket per edge. These are
+		// context for interpolation, not additional dates in the visible window.
+		result.boundaries = make([]time.Time, count+edgeBuckets+1)
+		copy(result.boundaries[1:], visibleBounds)
+		firstSpan := data.CalendarDays(visibleBounds[0], visibleBounds[1])
+		lastSpan := data.CalendarDays(visibleBounds[count-1], visibleBounds[count])
+		result.boundaries[0] = result.from.AddDate(0, 0, -firstSpan)
+		result.boundaries[len(result.boundaries)-1] = result.until.AddDate(0, 0, lastSpan)
 		result.counts, result.err = reader.ActivityCounts(ctx, user, result.boundaries, cutoff)
 		if ctx.Err() != nil {
 			return nil
@@ -271,7 +283,7 @@ func (m Model) Update(msg tea.Msg) Model {
 	if result.err != nil {
 		return m
 	}
-	if len(result.counts)+1 != len(result.boundaries) {
+	if len(result.counts) < 3 || len(result.counts)+1 != len(result.boundaries) {
 		m.err = fmt.Errorf("invalid activity result")
 		return m
 	}
@@ -279,11 +291,14 @@ func (m Model) Update(msg tea.Msg) Model {
 	if m.span == initialMonthSpan {
 		m.span = data.CalendarDays(m.from, m.until)
 	}
-	m.values = make([]render.DayActivity, len(result.counts))
+
+	projected := make([]render.DayActivity, len(result.counts))
 	for i, count := range result.counts {
 		days := float64(data.CalendarDays(result.boundaries[i], result.boundaries[i+1]))
-		m.values[i] = render.DayActivity{Events: float64(count.EventDays) / days, Thoughts: float64(count.Thoughts) / days}
+		projected[i] = render.DayActivity{Events: float64(count.EventDays) / days, Thoughts: float64(count.Thoughts) / days}
 	}
+	m.before, m.after = &projected[0], &projected[len(projected)-1]
+	m.values = projected[1 : len(projected)-1]
 	m.rebuild()
 	return m
 }
@@ -360,6 +375,10 @@ func (m *Model) rebuild() {
 	visible := m.series
 	_, exponent := m.boostPreset()
 	cells := render.RenderDayActivity(m.width, m.rows, m.values, render.DayActivityOptions{
+		FirstDay: calendarDayIndex(m.from),
+		Days:     data.CalendarDays(m.from, m.until),
+		Before:   m.before,
+		After:    m.after,
 		Total:    visible[0],
 		Events:   visible[1],
 		Thoughts: visible[2],
@@ -448,5 +467,9 @@ func (m Model) Marker() int {
 		return 0
 	}
 	days := max(1, data.CalendarDays(m.from, m.until))
-	return min(m.width-1, max(0, (2*data.CalendarDays(m.from, m.selected)+1)*m.width/(2*days)))
+	return render.DayActivityDayColumn(m.width, days, calendarDayIndex(m.from), calendarDayIndex(m.selected))
+}
+
+func calendarDayIndex(day time.Time) int {
+	return data.CalendarDays(time.Date(1970, time.January, 1, 0, 0, 0, 0, time.UTC), day)
 }
