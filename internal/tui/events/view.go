@@ -191,7 +191,11 @@ func (m *Model) expandedThoughtsRow() int {
 }
 
 func (m *Model) paintCard(content []string, selected bool) []string {
-	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(m.cardWidth() + cardBorderColumns)
+	border := lipgloss.RoundedBorder()
+	if m.thickerCardBorders {
+		border = lipgloss.ThickBorder()
+	}
+	style := lipgloss.NewStyle().Border(border).Width(m.cardWidth() + cardBorderColumns)
 	if selected && !m.blurred {
 		style = style.BorderForeground(lipgloss.Color(selectedEntryColor))
 	}

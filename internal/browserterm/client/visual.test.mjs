@@ -21,7 +21,7 @@ function activationFixture() {
   vm.runInContext(readFileSync(new URL('../static/visual.js', import.meta.url), 'utf8'), context);
   const visual = vm.runInContext('Object.create(ThoughtsVisual.prototype)', context);
   Object.assign(visual, {
-    connectionGeneration: 0, activationGeneration: 0,
+    connectionGeneration: 0, activationGeneration: 0, ready:Promise.resolve(), sendAction() {},
     saved: {background: false}, image: new context.Image(),
     surface: {}, overlay: {style: {}}, terminal: {options: {theme: {}}}
   });
@@ -187,7 +187,7 @@ test('preparation indicator follows the current editor through replacement, comp
     documentVisible: true,
     motionQuery: {matches: false},
     previewContainer: {},
-    terminal: {focus() {}},
+    terminal: {options:{}, focus() {}},
     videoTrim: {
       sync() {},
       prepare() { return new Promise(resolve => preparations.push(resolve)); },
@@ -257,4 +257,75 @@ test('braille activity wave completes two cycles with both endpoints on the cent
   assert.ok(hasDot(58, 22), 'first trough is below the axis');
   assert.ok(hasDot(97, 2), 'second peak is above the axis');
   assert.ok(hasDot(136, 22), 'second trough is below the axis');
+});
+
+test('saved accessibility changes weight without fetching or decoding background media', async () => {
+  const f=activationFixture();
+  const sent=[];
+  f.visual.connected=true;
+  f.visual.sendAction=message=>sent.push(message);
+  await f.visual.activate({background:false,thickerCardBorders:true,heavierText:true});
+  assert.equal(f.visual.terminal.options.fontWeight,600);
+  assert.equal(f.visual.terminal.options.fontWeightBold,700);
+  assert.equal(f.fetches(),0);
+  assert.equal(sent.at(-1).action,'appearance');
+  assert.equal(sent.at(-1).thickerCardBorders,true);
+  await f.visual.activate({background:false,thickerCardBorders:false,heavierText:false});
+  assert.equal(f.visual.terminal.options.fontWeight,400);
+});
+
+test('accessibility preview restores saved text weight on cancel', async()=>{
+ const {visual}=activationFixture();
+ Object.assign(visual,{
+  state:{open:false},previewContainer:{},
+  cancelFramingDrag(){},updatePreparationStatus(){},discardPreview(){},updatePlayback(){},
+ });
+ visual.terminal.focus=()=>{};
+ await visual.receive({open:true,accessibility:true,id:1,request:'',heavierText:true});
+ assert.equal(visual.terminal.options.fontWeight,600);
+ assert.equal(visual.saved.heavierText,undefined);
+ await visual.receive({open:false});
+ assert.equal(visual.terminal.options.fontWeight,400);
+});
+
+test('late accessibility save cannot publish into a replacement connection',async()=>{
+ const f=activationFixture();
+ let complete;
+ f.context.AbortController=AbortController;
+ f.context.fetch=()=>new Promise(resolve=>complete=resolve);
+ f.visual.state={open:true,id:4};
+ const pending=f.visual.saveAccessibility({thickerCardBorders:true,heavierText:true},4,0);
+ f.visual.connectionGeneration++;
+ complete({ok:true,json:async()=>({background:false,thickerCardBorders:true,heavierText:true})});
+ await pending;
+ assert.equal(f.visual.saved.heavierText,undefined);
+ assert.equal(f.visual.terminal.options.fontWeight,undefined);
+});
+
+test('accessibility drafts never override saved video pause or speed',()=>{
+ const {visual}=activationFixture();
+ Object.assign(visual,{video:{},connected:true,documentVisible:true,motionQuery:{matches:false},
+  state:{open:true,accessibility:true,request:'',speedPercent:100,userPaused:false},
+  saved:{background:true,kind:'video',speedPercent:50,userPaused:true}});
+ assert.equal(visual.shouldPlayBackground(),false);
+ assert.equal(visual.playbackSpeed(),.5);
+});
+
+test('accessibility save publishes only preferences without fetching background media',async()=>{
+ const f=activationFixture();
+ const requests=[],sent=[];
+ f.context.AbortController=AbortController;
+ f.context.fetch=async path=>{
+  requests.push(path);
+  return {ok:true,json:async()=>({background:true,backgroundID:'unavailable',thickerCardBorders:true,heavierText:true})};
+ };
+ f.visual.state={open:true,id:4};
+ f.visual.connected=true;
+ f.visual.sendAction=message=>sent.push(message);
+ await f.visual.saveAccessibility({thickerCardBorders:true,heavierText:true},4,0);
+ assert.deepEqual(requests,['/visual/accessibility']);
+ assert.equal(f.visual.saved.background,false);
+ assert.equal(f.visual.saved.thickerCardBorders,true);
+ assert.equal(f.visual.terminal.options.fontWeight,600);
+ assert.equal(sent.at(-1).action,'saved');
 });

@@ -56,7 +56,7 @@ func TestModel_VideoQuality(t *testing.T) {
 	t.Run("quality is available before choosing a video", func(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		if m.OptionsState().VideoQuality != visual.VideoQualityEfficient {
 			t.Fatal("initial preference is not Efficient")
 		}

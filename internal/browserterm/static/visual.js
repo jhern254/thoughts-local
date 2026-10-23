@@ -14,7 +14,7 @@ class ThoughtsVisual {
     this.file = document.getElementById('background-file');
     this.preview = document.getElementById('background-preview');
     this.previewContainer = document.getElementById('background-preview-wrap');
-    this.saved = {background: false, darkness: 70, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, videoQuality:'efficient', kind: 'image'};
+    this.saved = {background: false, darkness: 70, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, videoQuality:'efficient', kind: 'image', thickerCardBorders:false, heavierText:false};
     this.connected = false;
     this.documentVisible = !document.hidden;
     this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
@@ -76,10 +76,22 @@ class ThoughtsVisual {
       this.restoreGeneration = this.connectionGeneration;
       this.ready = this.restore();
     }
+    const generation = this.connectionGeneration;
+    this.ready.then(() => {
+      if (this.connected && generation === this.connectionGeneration && !this.loadFailed) this.publishAppearance();
+    });
+  }
+  publishAppearance() {
+    if (this.connected) this.sendAction({action:'appearance', thickerCardBorders:!!this.saved.thickerCardBorders, heavierText:!!this.saved.heavierText});
+  }
+  updateTextWeight(heavierText) {
+    const weight = heavierText ? 600 : 400;
+    if (this.terminal.options.fontWeight !== weight) this.terminal.options.fontWeight = weight;
+    if (this.terminal.options.fontWeightBold !== 700) this.terminal.options.fontWeightBold = 700;
   }
   reply(action, operationID, connectionGeneration = this.connectionGeneration) {
     if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) {
-      this.sendAction({action, id: operationID, videoQuality: this.saved.videoQuality || 'efficient', darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing, kind: this.candidateKind || this.saved.kind, speedPercent: this.saved.speedPercent, userPaused: this.saved.userPaused, playbackBlocked: this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride)});
+      this.sendAction({action, id: operationID, thickerCardBorders:!!this.saved.thickerCardBorders, heavierText:!!this.saved.heavierText, videoQuality: this.saved.videoQuality || 'efficient', darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing, kind: this.candidateKind || this.saved.kind, speedPercent: this.saved.speedPercent, userPaused: this.saved.userPaused, playbackBlocked: this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride)});
     }
   }
   async receive(state) {
@@ -90,15 +102,18 @@ class ThoughtsVisual {
     this.refreshAfterClose = previousState.open && !state.open;
     if (JSON.stringify(state.preview) !== JSON.stringify(previousState.preview)) this.previewContainer.hidden = true;
     if (!state.open) {
-      if (previousState.request === 'apply') this.saveController?.abort();
+      if (previousState.request === 'apply' || previousState.request === 'applyAccessibility') this.saveController?.abort();
       this.discardPreview();
       this.updateDarkness(this.saved.darkness);
+      this.updateTextWeight(this.saved.heavierText);
       if (previousState.open) this.terminal.focus();
       return;
     }
-    this.updateDarkness(state.request === 'load' ? this.saved.darkness : state.darkness);
-    this.videoTrim?.sync(state,previousState);
-    this.queuePreview();
+    this.updateTextWeight(state.accessibility && state.request !== 'load' ? state.heavierText : this.saved.heavierText);
+    this.updateDarkness(state.accessibility || state.request === 'load' ? this.saved.darkness : state.darkness);
+    if (!state.accessibility) this.videoTrim?.sync(state,previousState);
+    if (state.accessibility) this.previewContainer.hidden = true;
+    else this.queuePreview();
     this.updatePlayback();
     if (this.previewVideo) this.previewVideo.playbackRate = this.playbackSpeed();
     if (state.id === previousState.id && state.request === previousState.request) return;
@@ -126,6 +141,9 @@ class ThoughtsVisual {
         this.reply('played', operationID); break;
       case 'preview':
         await this.togglePreviewPlayback(); this.reply('previewed', operationID, connectionGeneration); break;
+      case 'applyAccessibility':
+        await this.saveAccessibility(state, operationID, connectionGeneration);
+        break;
       case 'apply': case 'remove':
         await this.save(state.request === 'remove', operationID, state.darkness, state.framing, connectionGeneration);
         break;
@@ -170,6 +188,7 @@ class ThoughtsVisual {
     this.refreshAfterClose = false;
     this.discardPreview();
     this.updateDarkness(this.saved.darkness);
+    this.updateTextWeight(this.saved.heavierText);
   }
   renderBackground() {
     if (!this.saved.background || !this.image.naturalWidth) return;
@@ -251,7 +270,7 @@ class ThoughtsVisual {
     this.overlay.style.backgroundColor = `rgb(0 0 0 / ${value}%)`;
   }
   queuePreview() {
-    if (!this.state.open) { this.previewContainer.hidden = true; return; }
+    if (!this.state.open || this.state.accessibility) { this.previewContainer.hidden = true; return; }
     cancelAnimationFrame(this.previewFrame);
     this.previewFrame = requestAnimationFrame(() => this.positionPreview());
   }
@@ -400,6 +419,8 @@ class ThoughtsVisual {
       this.image.removeAttribute('src');
     }
     this.saved = settings;
+    this.updateTextWeight(settings.heavierText);
+    this.publishAppearance();
     this.surface.hidden = !settings.background;
     this.renderBackground();
     this.image.hidden = !settings.background;
@@ -427,6 +448,30 @@ class ThoughtsVisual {
       this.loadFailed = false;
     } catch {
       if (connectionGeneration === this.connectionGeneration && activationGeneration === this.activationGeneration) this.loadFailed = true;
+    }
+  }
+  async saveAccessibility(state, operationID, connectionGeneration) {
+    this.saveController?.abort();
+    const controller = new AbortController();
+    this.saveController = controller;
+    try {
+      const response = await fetch('/visual/accessibility', {
+        method:'PUT', headers:{'Content-Type':'application/json'}, signal:controller.signal,
+        body:JSON.stringify({thickerCardBorders:state.thickerCardBorders, heavierText:state.heavierText})
+      });
+      if (!response.ok) throw new Error();
+      const settings = await response.json();
+      if (connectionGeneration !== this.connectionGeneration || !this.state.open || this.state.id !== operationID) return;
+      // Readability saves must not fetch, decode or replace background media.
+      this.activationGeneration++;
+      this.saved = {...this.saved, thickerCardBorders:settings.thickerCardBorders, heavierText:settings.heavierText};
+      this.updateTextWeight(settings.heavierText);
+      this.publishAppearance();
+      this.reply('saved', operationID, connectionGeneration);
+    } catch {
+      if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) this.reply('failed',operationID,connectionGeneration);
+    } finally {
+      if (this.saveController === controller) this.saveController = undefined;
     }
   }
   async save(removeBackground, operationID, darkness, framing, connectionGeneration) {
@@ -473,12 +518,12 @@ class ThoughtsVisual {
   }
   playbackSpeed() {
     // Until the load reply arrives, the Options defaults are not user preferences.
-    const preferences = this.state.open && this.state.request !== 'load' ? this.state : this.saved;
+    const preferences = this.state.open && !this.state.accessibility && this.state.request !== 'load' ? this.state : this.saved;
     const percent = preferences.speedPercent;
     return Number.isInteger(percent) ? Math.max(25, Math.min(100, percent)) / 100 : 1;
   }
   shouldPlayBackground() {
-    const preferences = this.state.open && this.state.request !== 'load' ? this.state : this.saved;
+    const preferences = this.state.open && !this.state.accessibility && this.state.request !== 'load' ? this.state : this.saved;
     const paused = preferences.userPaused;
     return !!(this.video && this.saved.background && this.saved.kind === 'video' && !paused &&
       this.connected && this.documentVisible && (!this.motionQuery?.matches || this.motionOverride) &&

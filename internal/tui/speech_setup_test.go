@@ -142,6 +142,7 @@ func TestModel_SpeechSetup(t *testing.T) {
 			t.Fatal("missing Options entries")
 		}
 		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
 		model, _ = rootUpdate(model, enterKey())
 		if !model.speechSetup.open {
 			t.Fatal("Models did not reopen popup")
@@ -284,6 +285,7 @@ func TestModel_SpeechRepair(t *testing.T) {
 		}
 		model, _ = rootUpdate(model, BrowserOptionsEnabledMsg{})
 		model, _ = rootUpdate(model, BrowserOptionsMsg{Action: "open"})
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
 		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyDown})
 		model, _ = rootUpdate(model, enterKey())
 		if !model.speechSetup.open {
