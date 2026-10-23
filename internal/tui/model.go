@@ -238,8 +238,12 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.thoughts, _ = m.thoughts.Update(message)
 		return m, nil
 	case voice.TranscriptUpdate, voice.RecordingEnded, thoughts.VoiceSubjectsLoaded:
+		wasCreating := m.thoughts.Creating()
 		var cmd tea.Cmd
 		m.thoughts, cmd = m.thoughts.Update(message)
+		if wasCreating && m.thoughts.Browsing() && m.screen == screenVoiceThought {
+			return m.openHome()
+		}
 		return m, cmd
 	case thoughts.VoiceAction:
 		if message.Action == "open" {
@@ -252,6 +256,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.thoughts.VoiceOpen() {
 			var cmd tea.Cmd
 			m.thoughts, cmd = m.thoughts.Update(message)
+			if m.thoughts.Browsing() && m.screen == screenVoiceThought {
+				return m.openHome()
+			}
 			return m, cmd
 		}
 		return m, nil

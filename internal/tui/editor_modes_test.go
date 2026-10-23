@@ -12,6 +12,24 @@ import (
 )
 
 func TestModel_ModalRecording(t *testing.T) {
+	t.Run("empty cancellation waits for recording cleanup then returns to Events", func(t *testing.T) {
+		m := newRootTestModel()
+		m.subjects.service = subject.NewService(testutils.NewFakeSubjectStore())
+		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
+		m = runModelCommand(t, m, tea.KeyPressMsg{Code: tea.KeyF8})
+		recording := m.VoiceState().TranscriptAuthority.Recording()
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+		m, _ = rootUpdate(m, enterKey())
+		m, _ = rootUpdate(m, thoughts.VoiceAction{Action: "start", DraftID: recording.DraftID, RecordingID: recording.RecordingID})
+		if m.VoiceState().RecordingID != recording.RecordingID || m.VoiceState().RecordingStatus != "stopping" {
+			t.Fatal("cancellation did not retain cleanup ownership")
+		}
+		m, _ = rootUpdate(m, voice.RecordingEnded{Recording: recording})
+		if m.screen != screenEvents || m.VoiceState().DraftID != 0 {
+			t.Fatal("empty cancellation did not finish after cleanup")
+		}
+	})
+
 	for _, cancel := range []bool{false, true} {
 		name := "Escape stops without discarding"
 		if cancel {
