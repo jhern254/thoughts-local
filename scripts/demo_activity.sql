@@ -14,13 +14,15 @@ INSERT INTO subjects (subject_id, user_id, subject_name) VALUES
 CREATE TEMP TABLE activity_days AS
 WITH RECURSIVE days(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM days WHERE n<729)
 SELECT n, at-n*86400-43200 AS started,
-    CASE WHEN n%120 BETWEEN 14 AND 27 THEN 8+n%7
+    CASE WHEN n<=13 THEN (n*7)%11
+         WHEN n%120 BETWEEN 14 AND 27 THEN 8+n%7
          WHEN n%120 BETWEEN 28 AND 42 THEN 1+n%2
          WHEN n%120 BETWEEN 43 AND 55 THEN 1+n%3
          WHEN n%120 BETWEEN 56 AND 80 THEN 3+n%6
          WHEN n%120 BETWEEN 105 AND 119 THEN 18+n%7
          ELSE 0 END AS event_count,
-    CASE WHEN n%120 BETWEEN 14 AND 27 THEN 3+n%9
+    CASE WHEN n<=13 THEN (n*37)%181
+         WHEN n%120 BETWEEN 14 AND 27 THEN 3+n%9
          WHEN n%120 BETWEEN 28 AND 42 THEN 60+(n%10)*16
          WHEN n%120 BETWEEN 43 AND 55 THEN n%4
          WHEN n%120 BETWEEN 56 AND 80 THEN 12+n%35
@@ -65,7 +67,7 @@ WITH RECURSIVE samples(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM samples WHERE 
 INSERT INTO thoughts (user_id, subject_id, thought, observed_at)
 SELECT 'demo', CASE WHEN n%5<>0 THEN 4 END,
     'Current note ' || n || ': ' || CASE n%3
-      WHEN 0 THEN 'Try the day navigator with Shift+Tab.'
+      WHEN 0 THEN 'Press Home then Up to explore day activity.'
       WHEN 1 THEN 'Zoom into a busy period, then move one day at a time.'
       ELSE 'Compare Events and Thoughts, then expand a card and browse its notes.' END,
     at-3500+(n-1)*17

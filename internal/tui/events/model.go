@@ -209,7 +209,7 @@ func (m *Model) SetFocused(focused bool) {
 	m.picker.SetFocused(focused)
 }
 
-// SetDistributionHighlight lets the day overview emphasize every Event curve
+// SetDistributionHighlight lets other home panels emphasize every Event curve
 // without changing card selection, keyboard ownership or interval geometry.
 func (m *Model) SetDistributionHighlight(highlight bool) {
 	if m.highlightDistributions != highlight {

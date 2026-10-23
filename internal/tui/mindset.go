@@ -23,8 +23,10 @@ type ThoughtService interface {
 }
 
 func (m *Model) resizeHome() {
-	m.days.Resize(m.width, m.height)
-	m.mindsets.Resize(m.width, max(1, min(12, m.height-6-14-2-m.days.Height())))
+	// Mindset keeps its reading space; enlarged mountains use the remaining
+	// budget while leaving room for the timeline and a minimum graph row.
+	m.mindsets.Resize(m.width, max(1, min(12, m.height-6-16-2-2)))
+	m.days.Resize(m.width, m.height, m.mindsets.Height())
 	height := max(1, m.height-6)
 	if m.events.TimelineVisible() {
 		height = max(1, height-m.mindsets.Height()-2-m.days.Height())
@@ -61,10 +63,11 @@ func (m *Model) focusHome(panel homePanel) tea.Cmd {
 	// Tab switches Mindset, Events and entities; arrows enter the day plot.
 	m.entityFocused = panel == homePanelEntities
 	m.days.SetFocused(panel == homePanelDays)
+	m.days.SetHighlighted(panel != homePanelEvents)
 	var cmd tea.Cmd
 	m.mindsets, cmd = m.mindsets.SetFocused(panel == homePanelMindset)
 	m.events.SetFocused(panel == homePanelEvents)
-	m.events.SetDistributionHighlight(panel == homePanelDays)
+	m.events.SetDistributionHighlight(panel != homePanelEvents)
 	return cmd
 }
 func (m Model) homeFocus() homePanel {

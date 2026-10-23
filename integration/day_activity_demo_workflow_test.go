@@ -61,6 +61,14 @@ func TestDayActivityDemoWorkflow_SQLite(t *testing.T) {
 		if !quiet || !eventHeavy || !thoughtHeavy || !crowded {
 			t.Fatalf("day profiles quiet/Event-heavy/Thought-heavy/crowded: got %v/%v/%v/%v, want all true", quiet, eventHeavy, thoughtHeavy, crowded)
 		}
+		recentCounts := make(map[data.ActivityCount]bool)
+		for _, count := range counts[len(counts)-14:] {
+			recentCounts[count] = true
+		}
+		if got := len(recentCounts); got < 6 {
+			t.Fatalf("recent day profiles: got %d, want at least six distinct mountain samples", got)
+		}
+
 		rows, err := db.Query(`PRAGMA foreign_key_check`)
 		if err != nil {
 			t.Fatal(err)

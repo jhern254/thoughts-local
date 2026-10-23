@@ -39,7 +39,7 @@ func run(args []string, output io.Writer) error {
 	selectedThought := flags.Int("selected-thought", 1, "selected Thought bar, numbered from 1; 0 means none")
 	mode := flags.String("mode", "filled", "filled or outline")
 	selected := flags.Int("selected", 3, "selected event, numbered from 1; 0 means none")
-	exponent := flags.Float64("count-exponent", 0.8, "positive exponent; day-activity defaults to 1.1 and higher values sharpen its peaks")
+	exponent := flags.Float64("count-exponent", 0.8, "positive exponent; day-activity defaults to low boost (0.8) and higher values sharpen its peaks")
 	size := flags.Float64("size", 1, "distribution size from 0.5 to 1.25 (day-activity: up to 3)")
 	plain := flags.Bool("plain", false, "omit ANSI colors")
 	if err := flags.Parse(args); err != nil {

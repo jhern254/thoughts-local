@@ -299,11 +299,11 @@ func TestPreview_DayActivity(t *testing.T) {
 }
 
 func TestPreview_DramaticDayActivity(t *testing.T) {
-	t.Run("uses a taller bounded canvas for the enlarged mountain setting", func(t *testing.T) {
-		normal := preview(t, "-scenario", "day-activity", "-plain")
-		dramatic := preview(t, "-scenario", "day-activity", "-plain", "-size", "3", "-count-exponent", "2.4")
-		if strings.Count(dramatic, "\n") <= strings.Count(normal, "\n") || strings.Count(dramatic, "\n") > 36 {
-			t.Fatal("dramatic preview did not grow within its height budget")
+	t.Run("keeps the enlarged mountain setting within the same canvas", func(t *testing.T) {
+		normal := preview(t, "-scenario", "day-activity", "-plain", "-height", "80")
+		dramatic := preview(t, "-scenario", "day-activity", "-plain", "-size", "3", "-count-exponent", "2.4", "-height", "80")
+		if strings.Count(dramatic, "\n") != strings.Count(normal, "\n") || strings.Count(dramatic, "\n") > 80 {
+			t.Fatal("tuning moved the preview outside its fixed canvas")
 		}
 		if strings.Contains(dramatic, "Days ") {
 			t.Fatal("mountain preview reintroduced a heading")

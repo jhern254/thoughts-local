@@ -450,9 +450,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.entityFocused {
 			switch key.String() {
 			case "q":
-				m.entityFocused = false
-				m.events.SetFocused(true)
-				return m, nil
+				return m, m.focusHome(homePanelEvents)
 			case "left", "right", "h", "l":
 				order := []entityKind{entityThoughts, entitySubjects, entityOptions}
 				for index, entity := range order {

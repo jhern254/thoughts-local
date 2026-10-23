@@ -8,7 +8,7 @@ import (
 func TestDayActivity(t *testing.T) {
 	t.Run("weights actual counts on one shared scale", func(t *testing.T) {
 		levels := DayActivityLevels([]DayActivity{{Events: 10, Thoughts: 100}, {Events: 5}}, 1)
-		for i, want := range []DayActivityLevel{{Total: 1, Events: 7.0 / 37, Thoughts: 30.0 / 37}, {Total: 3.5 / 37, Events: 3.5 / 37}} {
+		for i, want := range []DayActivityLevel{{Total: 1, Events: .75 * 7.0 / 37, Thoughts: .75 * 30.0 / 37}, {Total: 3.5 / 37, Events: .75 * 3.5 / 37}} {
 			got := levels[i]
 			if math.Abs(got.Total-want.Total) > 1e-12 || math.Abs(got.Events-want.Events) > 1e-12 || math.Abs(got.Thoughts-want.Thoughts) > 1e-12 {
 				t.Fatalf("bucket %d: got %+v, want %+v", i, got, want)
@@ -64,10 +64,10 @@ func TestDayActivity_Geometry(t *testing.T) {
 }
 
 func TestDayActivity_MountainScaling(t *testing.T) {
-	t.Run("default contrast keeps the quieter days below a linear half-height", func(t *testing.T) {
+	t.Run("default low boost retains quieter mountain slopes", func(t *testing.T) {
 		levels := DayActivityLevels([]DayActivity{{Events: 10}, {Events: 5}, {}}, 0)
-		if levels[1].Events >= .5 || levels[1].Events <= 0 || levels[2].Total != 0 {
-			t.Fatalf("default valley: got %+v, want a positive value below .5 and a zero final day", levels)
+		if math.Abs(levels[1].Events-.75*math.Pow(.5, .8)) > 1e-12 || levels[2].Total != 0 {
+			t.Fatalf("default valley: got %+v, want the low-boost half-count slope and a zero final day", levels)
 		}
 	})
 	t.Run("size can grow beyond the old ceiling without clipping a ridge", func(t *testing.T) {
@@ -87,17 +87,26 @@ func TestDayActivity_MountainScaling(t *testing.T) {
 }
 
 func TestDayActivity_SharedScale(t *testing.T) {
+	t.Run("Thought-heavy days leave a quarter-height Total ridge without changing component ratios", func(t *testing.T) {
+		level := DayActivityLevels([]DayActivity{{Events: 1, Thoughts: 200}}, 1)[0]
+		if level.Thoughts > .75*level.Total || level.Events > .75*level.Total {
+			t.Fatalf("component peaks: got %+v, want at least 25%% Total headroom", level)
+		}
+		if math.Abs(level.Thoughts/level.Events-60/.7) > 1e-10 {
+			t.Fatalf("component ratio: got %v, want 60/0.7", level.Thoughts/level.Events)
+		}
+	})
 	t.Run("Thought-rich days use the same count scale as Events", func(t *testing.T) {
 		levels := DayActivityLevels([]DayActivity{{Events: 10, Thoughts: 100}, {Events: 5}}, 1)
 		if got := levels[0]; got.Thoughts <= got.Events || got.Total < got.Thoughts || got.Total < got.Events {
 			t.Fatalf("shared peak: got %+v, want Total >= Thoughts > Events", got)
 		}
-		if got := levels[1].Events; got < .094 || got > .095 {
-			t.Fatalf("Event contribution: got %v, want 3.5/37", got)
+		if got := levels[1].Events; got < .070 || got > .071 {
+			t.Fatalf("Event contribution: got %v, want 0.75 × 3.5/37", got)
 		}
 	})
-	t.Run("visible grey crest remains on top when a component coincides with Total", func(t *testing.T) {
-		cells := RenderDayActivity(24, 8, []DayActivity{{Events: 10}, {Events: 5, Thoughts: 20}, {Thoughts: 100}}, DayActivityOptions{Total: true, Events: true, Thoughts: true})
+	t.Run("grey Total stays above the component mountains when their crests occupy separate rows", func(t *testing.T) {
+		cells := RenderDayActivity(24, 12, []DayActivity{{Events: 10, Thoughts: 100}}, DayActivityOptions{Total: true, Events: true, Thoughts: true, Size: 3})
 		for x := range 24 {
 			found := false
 			for y := range cells {
@@ -113,6 +122,63 @@ func TestDayActivity_SharedScale(t *testing.T) {
 			if !found {
 				t.Fatalf("column %d lost its Total contour", x)
 			}
+		}
+	})
+}
+
+func TestDayActivity_SolidLayers(t *testing.T) {
+	t.Run("a one-row graph retains component colors instead of a grey overpaint", func(t *testing.T) {
+		cells := RenderDayActivity(20, 1, []DayActivity{{Thoughts: 100}, {Events: 100}}, DayActivityOptions{Total: true, Events: true, Thoughts: true, Size: 3})
+		thoughts, events := false, false
+		for _, cell := range cells[0] {
+			thoughts = thoughts || cell.Glyph != ' ' && cell.Series == DayThoughts
+			events = events || cell.Glyph != ' ' && cell.Series == DayEvents
+		}
+		if !thoughts || !events {
+			t.Fatalf("compact component colors: got Thoughts=%v Events=%v, want both", thoughts, events)
+		}
+	})
+	t.Run("outline keeps separate connected contours without filling beneath them", func(t *testing.T) {
+		cells := RenderDayActivity(8, 12, []DayActivity{{Events: 10, Thoughts: 100}}, DayActivityOptions{Total: true, Events: true, Thoughts: true, Outline: true, Size: 3})
+		for x, cell := range cells[11] {
+			if cell.Glyph != ' ' {
+				t.Fatalf("column %d: outline filled the baseline", x)
+			}
+		}
+	})
+	t.Run("foreground mountains fill to the baseline without background stripes", func(t *testing.T) {
+		cells := RenderDayActivity(40, 12, []DayActivity{{}, {Events: 10, Thoughts: 100}, {}}, DayActivityOptions{Total: true, Events: true, Thoughts: true})
+		// Total is behind Thoughts, which is behind Events. Once a foreground
+		// mountain is visible, a background color must not reappear below it.
+		rank := func(series DayActivitySeries) int {
+			switch series {
+			case DayThoughts:
+				return 1
+			case DayEvents:
+				return 2
+			default:
+				return 0
+			}
+		}
+		foundThoughts, foundEvents := false, false
+		for x := range 40 {
+			previous := DayTotal
+			for y := range cells {
+				cell := cells[y][x]
+				if cell.Glyph == ' ' {
+					continue
+				}
+
+				if rank(cell.Series) < rank(previous) {
+					t.Fatalf("column %d row %d: background series %d reappeared below %d", x, y, cell.Series, previous)
+				}
+				previous = cell.Series
+				foundThoughts = foundThoughts || cell.Series == DayThoughts
+				foundEvents = foundEvents || cell.Series == DayEvents
+			}
+		}
+		if !foundThoughts || !foundEvents {
+			t.Fatal("missing visible component mountain")
 		}
 	})
 }

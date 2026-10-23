@@ -7,13 +7,27 @@ async function ready(page) {
   await expect(screen(page)).toContainText('Events');
 }
 
+
+async function exposeMountainTerminal(page) {
+  await page.addInitScript(() => {
+    let TerminalClass;
+    Object.defineProperty(window, 'Terminal', {
+      configurable: true,
+      get: () => TerminalClass,
+      set: Base => { TerminalClass = class extends Base {
+        constructor(options) { super(options); window.mountainTerminal = this; }
+      }; }
+    });
+  });
+}
+
 test('renders newlines at the same column as native terminal output', async ({page}) => {
   await ready(page);
   // A pipe does not apply the PTY's ONLCR output translation. Without the
   // corresponding xterm option, each new line incorrectly moves to the right.
   await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Mindset/);
   await expect.poll(() => screen(page).locator('div').nth(4).textContent()).toMatch(/^\s*$/);
-  await expect.poll(() => screen(page).locator('div').nth(11).textContent()).toMatch(/^ Events/);
+  await expect.poll(() => screen(page).locator('div').nth(18).textContent()).toMatch(/^ Events/);
 });
 
 test('second tab is busy; quit and reload start independent sessions', async ({page, context}) => {
@@ -245,13 +259,13 @@ test('day activity focus navigates one day and preserves Events through tuning',
   const defaultRow = await eventRow();
   await page.keyboard.press('d');
   await page.keyboard.press('ArrowRight');
-  await expect(screen(page)).toContainText('medium boost');
+  await expect(screen(page)).toContainText('normal boost');
   for (let step = 0; step < 40; step++) await page.keyboard.press('ArrowUp');
   await expect(screen(page)).toContainText('300%');
-  await expect.poll(eventRow).toBe(defaultRow + 7);
+  await expect.poll(eventRow).toBe(defaultRow);
   expect(await date()).toBe(previous);
   await page.keyboard.press('0');
-  await expect(screen(page)).toContainText('normal boost');
+  await expect(screen(page)).toContainText('low boost');
   await expect.poll(eventRow).toBe(defaultRow);
   await page.keyboard.press('Escape');
   await page.keyboard.press('ArrowDown');
@@ -280,4 +294,110 @@ test('metrics card cycles days without losing its focused view', async ({page}) 
   await page.keyboard.press('ArrowRight');
   expect(await date()).toBe(today);
   await expect(screen(page)).not.toContainText('Newest first');
+});
+
+test('day mountains retain focus colors in a compact window without moving Events', async ({page}) => {
+  await exposeMountainTerminal(page);
+  await ready(page);
+  const mountainHasColor = () => screen(page).locator('div').evaluateAll(rows => {
+    const eventRow = rows.findIndex(row => /^ Events\s+[A-Z]/.test(row.textContent));
+    if (eventRow < 0) return false;
+    return rows.slice(4, eventRow - 1).some(row => [...row.querySelectorAll('span')].some(span => {
+      if (!/[\u2801-\u28ff]/.test(span.textContent)) return false;
+      const channels = getComputedStyle(span).color.match(/\d+/g)?.map(Number);
+      return channels && (channels[0] !== channels[1] || channels[1] !== channels[2]);
+    }));
+  });
+  await expect.poll(mountainHasColor).toBe(false);
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(mountainHasColor).toBe(true);
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(mountainHasColor).toBe(false);
+  await page.keyboard.press('Tab'); // Entity picker.
+  await expect.poll(mountainHasColor).toBe(true);
+  await page.keyboard.press('q'); // Alternate return to Events.
+  await expect.poll(mountainHasColor).toBe(false);
+  await page.keyboard.press('Tab');
+  await expect.poll(mountainHasColor).toBe(true);
+  await page.keyboard.press('Tab'); // Mindset.
+  await expect.poll(mountainHasColor).toBe(true);
+  await page.keyboard.press('Tab'); // Events.
+  await expect.poll(mountainHasColor).toBe(false);
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
+  const eventRow = () => screen(page).locator('div').evaluateAll(rows => rows.findIndex(row => /^ Events\s+[A-Z]/.test(row.textContent)));
+  await page.setViewportSize({width: 480, height: 480});
+  // Wait for the backend's compact layout, not just the browser viewport:
+  // the old desktop graph can already satisfy the color assertion.
+  let before;
+  await expect.poll(async () => {
+    before = await page.evaluate(() => {
+      const term = window.mountainTerminal;
+      const rows = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString(true) || '');
+      const divider = rows.findLastIndex(row => /^─+$/.test(row));
+      const event = rows.findIndex(row => /^ Events\s+[A-Z]/.test(row));
+      // Font metrics can give Chromium and Firefox different terminal sizes.
+      // Accept only a complete backend frame matching the fitted dimensions.
+      return divider === term.rows - 4 && rows[divider].length === term.cols && event > 0 && event < 10 ? event : null;
+    });
+    return before !== null;
+  }).toBe(true);
+  await expect.poll(mountainHasColor).toBe(true);
+  await page.keyboard.press('d');
+  for (let step = 0; step < 40; step++) await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('300%');
+  await expect.poll(eventRow).toBe(before);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(mountainHasColor).toBe(false);
+});
+
+test('mountain redraws stay above Event cards during tuning and resize', async ({page}) => {
+  await exposeMountainTerminal(page);
+  await ready(page);
+  await page.evaluate(() => {
+    const term = window.mountainTerminal;
+    window.mountainOverlap = null;
+    term.onRender(() => {
+      const lines = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(term.buffer.active.viewportY + y));
+      const heading = lines.findIndex(line => /^ Events\s+[A-Z]/.test(line?.translateToString(true) || ''));
+      if (heading < 0 || window.mountainOverlap) return;
+      for (let y = heading + 1; y < lines.length; y++) {
+        // Synthetic authored text has no Braille. The existing vertical Event
+        // and metrics distributions occupy columns 12–21, outside this check.
+        for (let x = 24; x < term.cols; x++) {
+          if (/[\u2801-\u28ff]/.test(lines[y]?.getCell(x)?.getChars() || '')) {
+            window.mountainOverlap = {x, y, heading};
+            return;
+          }
+        }
+      }
+    });
+  });
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('1 Total');
+  await page.keyboard.press('d');
+  for (let step = 0; step < 40; step++) await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('f');
+  await page.keyboard.press('f');
+  await page.keyboard.press('Escape');
+  const eventRow = () => screen(page).locator('div').evaluateAll(rows => rows.findIndex(row => /^ Events\s+[A-Z]/.test(row.textContent)));
+  for (const viewport of [{width:480, height:480}, {width:800, height:550}, {width:1200, height:850}]) {
+    await page.setViewportSize(viewport);
+    for (let step = 0; step < 3; step++) {
+      await page.keyboard.press('-');
+      await page.keyboard.press('+');
+    }
+    await expect.poll(eventRow).toBeGreaterThan(0);
+  }
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('←: collapse');
+  for (let step = 0; step < 5; step++) await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowLeft');
+  await expect(screen(page)).not.toContainText('←: collapse');
+  await expect.poll(() => page.evaluate(() => window.mountainOverlap)).toBeNull();
 });

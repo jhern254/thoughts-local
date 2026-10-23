@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	defaultPlotRows = 5
-	maxPlotRows     = 12
-	minPlotSize     = 50
-	maxPlotSize     = 300
+	initialMonthSpan = -1 // Resolve once at the accepted date, then keep the window stable.
+	maxPlotRows      = 12
+	minPlotSize      = 50
+	maxPlotSize      = 300
 )
 
 type Reader interface {
@@ -50,6 +50,8 @@ type Model struct {
 	// queues one refresh; request ownership rejects responses after Close/zoom.
 	pending, visible, focused, dirty bool
 	width, height, rows, span        int
+	mindsetRows                      int
+	highlighted                      bool
 	series                           [3]bool
 	tuning                           bool
 	compact                          bool
@@ -73,8 +75,9 @@ func New(ctx context.Context, user string, reader Reader) Model {
 		width:  80,
 		height: 24,
 		rows:   1,
+		span:   initialMonthSpan,
 		series: [3]bool{true, true, true},
-		boost:  1,
+		boost:  0,
 		size:   100,
 	}
 }
@@ -101,11 +104,20 @@ func (m *Model) SetFocused(focused bool) {
 	}
 	m.focused = focused
 	m.tuning = false
+}
+
+// SetHighlighted changes only the palette. Keyboard ownership stays with
+// SetFocused; other home panels can keep the mountains colored too.
+func (m *Model) SetHighlighted(highlighted bool) {
+	if m.highlighted == highlighted {
+		return
+	}
+	m.highlighted = highlighted
 	m.rebuild()
 }
-func (m *Model) Resize(width, height int) {
+func (m *Model) Resize(width, height, mindsetRows int) {
 	oldWidth, oldRows := m.width, m.rows
-	m.width, m.height = max(1, width), height
+	m.width, m.height, m.mindsetRows = max(1, width), height, max(1, mindsetRows)
 	m.compact = height < 26
 	m.rows = m.plotRows()
 	if m.width != oldWidth {
@@ -120,23 +132,15 @@ func (m Model) plotRows() int {
 	if m.height < 16 {
 		return 0
 	}
-	base := defaultPlotRows
-	switch {
-	case m.height < 26:
-		base = 1
-	case m.height < 28:
-		base = 2
-	case m.height < 36:
-		base = 4
-	}
 	// Reserve the existing header/footer, Mindset's minimum row, separators,
-	// and 14 usable Events rows. Twelve plot rows bound even dramatic sizing.
-	reserved := 6 + 1 + 2 + 14
+	// and 16 usable Events rows. The window budget bounds dramatic sizing.
+	reserved := 6 + m.mindsetRows + 2 + 16
 	if !m.compact {
 		reserved++
 	} // The quiet row also hosts controls/read status.
-	available := max(1, min(maxPlotRows, m.height-reserved))
-	return min(available, max(1, (base*m.size+50)/100))
+	// Style and time zoom operate inside this fixed canvas. Their keys must
+	// never move Events farther down or steal reading space from Mindset.
+	return max(1, min(maxPlotRows, m.height-reserved))
 }
 func (m *Model) Sync(day time.Time, visible, refresh bool) tea.Cmd {
 	m.selected = displaytime.Day(day)
@@ -169,12 +173,21 @@ func (m *Model) Sync(day time.Time, visible, refresh bool) tea.Cmd {
 	return nil
 }
 func window(first, selected, today, previousFrom, previousUntil time.Time, span int) (time.Time, time.Time) {
+	if span == initialMonthSpan {
+		// Clamp the day number for shorter months instead of AddDate's overflow
+		// (March 31 minus a month would otherwise normalize into March).
+		anchor := minDate(selected, today)
+		month := time.Date(anchor.Year(), anchor.Month(), 1, 0, 0, 0, 0, anchor.Location())
+		last := month.AddDate(0, 0, -1)
+		from := time.Date(last.Year(), last.Month(), min(anchor.Day(), last.Day()), 0, 0, 0, 0, anchor.Location())
+		return from, anchor.AddDate(0, 0, 1)
+	}
 	earliest := first
 	if earliest.IsZero() || selected.Before(earliest) {
 		earliest = selected
 	}
 	end := today.AddDate(0, 0, 1)
-	if span == 0 || span >= data.CalendarDays(earliest, end) {
+	if span == 0 {
 		return earliest, end
 	}
 	if !previousFrom.IsZero() && data.CalendarDays(previousFrom, previousUntil) == span {
@@ -187,9 +200,6 @@ func window(first, selected, today, previousFrom, previousUntil time.Time, span 
 		return previousFrom, previousUntil
 	}
 	from := selected.AddDate(0, 0, -span/2)
-	if from.Before(earliest) {
-		from = earliest
-	}
 	if from.AddDate(0, 0, span).After(end) {
 		from = end.AddDate(0, 0, -span)
 	}
@@ -258,6 +268,9 @@ func (m Model) Update(msg tea.Msg) Model {
 		return m
 	}
 	m.first, m.from, m.until = result.first, result.from, result.until
+	if m.span == initialMonthSpan {
+		m.span = data.CalendarDays(m.from, m.until)
+	}
 	m.values = make([]render.DayActivity, len(result.counts))
 	for i, count := range result.counts {
 		days := float64(data.CalendarDays(result.boundaries[i], result.boundaries[i+1]))
@@ -270,7 +283,7 @@ func (m Model) Update(msg tea.Msg) Model {
 func (m Model) boostPreset() (string, float64) {
 	names := [...]string{"low", "normal", "medium", "strong", "extra"}
 	// Stronger boost adds contrast: quiet days recede and summits stay sharp.
-	exponents := [...]float64{.8, render.DayActivityDefaultExponent, 1.4, 1.8, 2.4}
+	exponents := [...]float64{render.DayActivityDefaultExponent, 1.1, 1.4, 1.8, 2.4}
 	return names[m.boost], exponents[m.boost]
 }
 
@@ -288,7 +301,7 @@ func (m *Model) Key(key string) tea.Cmd {
 		case "f":
 			m.outline = !m.outline
 		case "0":
-			m.boost, m.size, m.outline = 1, 100, false
+			m.boost, m.size, m.outline = 0, 100, false
 		case "q", "esc", "enter", "d":
 			m.tuning = false
 		}
@@ -337,9 +350,6 @@ func minDate(a, b time.Time) time.Time {
 }
 func (m *Model) rebuild() {
 	visible := m.series
-	if !m.focused {
-		visible = [3]bool{true, false, false}
-	}
 	_, exponent := m.boostPreset()
 	cells := render.RenderDayActivity(m.width, m.rows, m.values, render.DayActivityOptions{
 		Total:    visible[0],
@@ -347,9 +357,13 @@ func (m *Model) rebuild() {
 		Thoughts: visible[2],
 		Outline:  m.outline,
 		Exponent: exponent,
-		Size:     float64(m.size) / 100,
+		// 100% adopts the former 300% amplitude; controls scale from this look.
+		Size: 3 * float64(m.size) / 100,
 	})
 	styles := [...]lipgloss.Style{lipgloss.NewStyle().Foreground(lipgloss.Color("240")), lipgloss.NewStyle().Foreground(lipgloss.Color("37")), lipgloss.NewStyle().Foreground(lipgloss.Color("179"))}
+	if !m.highlighted {
+		styles[1], styles[2] = styles[0], styles[0]
+	}
 	var out strings.Builder
 	for y, row := range cells {
 		if y > 0 {

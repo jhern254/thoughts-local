@@ -1,14 +1,17 @@
 package render
 
-import "math"
+import (
+	"math"
+	"math/bits"
+)
 
 // DayActivity contains average daily counts for one calendar bucket. It is not
 // a probability density: interpolation connects samples without adding peaks.
 type DayActivity struct{ Events, Thoughts float64 }
 
-// DayActivityDefaultExponent deepens quiet valleys while retaining the measured
+// DayActivityDefaultExponent retains quieter slopes while preserving the measured
 // ordering of the samples; it does not add decorative peaks or smoothing.
-const DayActivityDefaultExponent = 1.1
+const DayActivityDefaultExponent = .8
 
 type DayActivityLevel struct{ Total, Events, Thoughts float64 }
 type DayActivitySeries uint8
@@ -31,13 +34,18 @@ type DayActivityOptions struct {
 
 // Event and Thought counts share one weighted-total reference. An Event has
 // greater per-record weight, but numerous Thoughts can naturally dominate.
-// Boost shapes the total; splitting it by the measured shares preserves
-// Total = Events + Thoughts and keeps both components below its contour.
+// Boost shapes the total; measured shares determine the component ratio.
+// Both components use the same 0.75 height factor, reserving a quarter of the
+// canvas below Total's crest without changing their count-driven ratio.
 func DayActivityLevels(values []DayActivity, exponent float64) []DayActivityLevel {
 	if exponent <= 0 || math.IsNaN(exponent) || math.IsInf(exponent, 0) {
 		exponent = DayActivityDefaultExponent
 	}
-	const eventWeight, thoughtWeight = .7, .3
+	const (
+		eventWeight          = .7
+		thoughtWeight        = .3
+		componentHeightScale = .75
+	)
 	var maximum float64
 	for _, value := range values {
 		maximum = max(maximum, eventWeight*finiteCount(value.Events)+thoughtWeight*finiteCount(value.Thoughts))
@@ -53,9 +61,9 @@ func DayActivityLevels(values []DayActivity, exponent float64) []DayActivityLeve
 			continue
 		}
 		level := math.Pow(total/maximum, exponent)
-		levels[i].Events = level * (events / total)
-		levels[i].Thoughts = level * (thoughts / total)
-		levels[i].Total = levels[i].Events + levels[i].Thoughts
+		levels[i].Events = componentHeightScale * level * (events / total)
+		levels[i].Thoughts = componentHeightScale * level * (thoughts / total)
+		levels[i].Total = level
 	}
 	return levels
 }
@@ -66,20 +74,19 @@ func finiteCount(value float64) float64 {
 	return value
 }
 
-// RenderDayActivity uses a shared scale even when series are hidden. Total is
-// the background fill; component traces win interior cell color, with stronger weighted
-// activity taking priority and Events breaking ties. A Braille cell can carry
-// only one foreground color, although its dots may belong to several series.
-// The grey Total crest is painted last so component colors cannot hide it.
+// RenderDayActivity layers solid silhouettes from back to front: Total,
+// Thoughts, then Events. Each foreground mountain fills to the baseline.
+// A Braille cell has one foreground color, so the frontmost silhouette owns a
+// shared cell. Its color follows the largest visible dot area; ties favor the
+// foreground. A tiny lower layer cannot recolor a whole compact cell.
 func RenderDayActivity(width, height int, values []DayActivity, options DayActivityOptions) [][]DayActivityCell {
 	if width <= 0 || height <= 0 {
 		return nil
 	}
 	rows := make([][]DayActivityCell, height)
-	strength := make([][]float64, height)
+	masks := make([][3]uint8, width*height)
 	for y := range rows {
 		rows[y] = make([]DayActivityCell, width)
-		strength[y] = make([]float64, width)
 		for x := range rows[y] {
 			rows[y][x].Glyph = ' '
 		}
@@ -92,25 +99,21 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
 		size = 1
 	}
-	size = min(3, max(.5, size))
-	// Amplitude = 1-exp(-1.6*size): about 80% of the canvas at 100%,
-	// approaching 99% at 300%. Larger sizes keep sharp summits instead of
-	// clipping them into a flat ridge. The presentation also adds plot rows.
+	size = min(9, max(.5, size))
+	// Amplitude = 1-exp(-1.6*size). The presentation maps its 100% control
+	// to size 3 (about 99% of the canvas), and adds rows when enlarged.
+	// Saturation keeps summits within the canvas instead of clipping a ridge.
 	maximum := float64(height*brailleRows-1) * (1 - math.Exp(-1.6*size))
-	put := func(x, y int, series DayActivitySeries, value float64, crest bool) {
+	put := func(x, y int, series DayActivitySeries) {
 		cell := &rows[y/brailleRows][x/brailleColumns]
 		if cell.Glyph == ' ' {
 			cell.Glyph = brailleBlank
 		}
-		cell.Glyph |= brailleBit(x%brailleColumns, y%brailleRows)
-		if crest {
-			cell.Series = DayTotal
-		} else if series != DayTotal && value > strength[y/brailleRows][x/brailleColumns] {
-			cell.Series = series
-			strength[y/brailleRows][x/brailleColumns] = value
-		}
+		bit := brailleBit(x%brailleColumns, y%brailleRows)
+		cell.Glyph |= bit
+		masks[(y/brailleRows)*width+x/brailleColumns][series] |= uint8(bit)
 	}
-	draw := func(series DayActivitySeries, filled, crest bool) {
+	draw := func(series DayActivitySeries, filled bool) {
 		previous := -1
 		for x := 0; x < width*brailleColumns; x++ {
 			position := max(0, min(float64(len(levels)-1), (float64(x)+.5)/float64(width*brailleColumns)*float64(len(levels))-.5))
@@ -127,27 +130,44 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 			bottom := top
 			if filled {
 				bottom = height*brailleRows - 1
-			} else if previous >= 0 {
+			} else if options.Outline && previous >= 0 {
 				bottom = max(top, previous)
 				top = min(top, previous)
 			}
 			for y := top; y <= bottom; y++ {
-				put(x, y, series, value, crest)
+				put(x, y, series)
 			}
 			previous = height*brailleRows - 1 - int(math.Round(value*maximum))
 		}
 	}
-	if options.Total && !options.Outline {
-		draw(DayTotal, true, false)
-	}
-	if options.Events {
-		draw(DayEvents, false, false)
+	if options.Total {
+		draw(DayTotal, !options.Outline)
 	}
 	if options.Thoughts {
-		draw(DayThoughts, false, false)
+		draw(DayThoughts, !options.Outline)
 	}
-	if options.Total {
-		draw(DayTotal, false, true)
+	if options.Events {
+		draw(DayEvents, !options.Outline)
 	}
+	// Count only exposed dots after front layers occlude the layers behind them.
+	// The glyph retains all silhouette dots; the terminal allows one color per cell.
+	for y, row := range rows {
+		for x := range row {
+			mask := masks[y*width+x]
+			visible := [3]uint8{
+				DayTotal:    mask[DayTotal] &^ (mask[DayThoughts] | mask[DayEvents]),
+				DayThoughts: mask[DayThoughts] &^ mask[DayEvents],
+				DayEvents:   mask[DayEvents],
+			}
+			largest := 0
+			for _, series := range [...]DayActivitySeries{DayTotal, DayThoughts, DayEvents} {
+				count := bits.OnesCount8(visible[series])
+				if count > 0 && count >= largest {
+					row[x].Series, largest = series, count
+				}
+			}
+		}
+	}
+
 	return rows
 }
