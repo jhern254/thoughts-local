@@ -160,6 +160,7 @@ test('persists one image without resetting the terminal or its draft', async ({p
   await page.keyboard.press('Tab');
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter');
+  await clickControl(page,'Visual');
   await expect(screen(page)).toContainText('Background darkness:');
   await expect(screen(page)).not.toContainText('Loading visual');
   await clickControl(page, 'Remove background');

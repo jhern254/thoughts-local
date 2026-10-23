@@ -31,6 +31,9 @@ type BrowserOptionsMsg struct {
 	UserPaused      bool                   `json:"userPaused"`
 	PlaybackBlocked bool                   `json:"playbackBlocked"`
 	Framing         data.BackgroundFraming `json:"framing"`
+
+	ThickerCardBorders bool `json:"thickerCardBorders"`
+	HeavierText        bool `json:"heavierText"`
 }
 
 type PreviewRect struct{ X, Y, Width, Height int }
@@ -52,6 +55,10 @@ type BrowserOptionsState struct {
 	SourceFrame      bool                   `json:"sourceFrame"`
 	SourcePositionMS int64                  `json:"sourcePositionMS"`
 	Trim             visual.VideoTrim       `json:"trim"`
+
+	Accessibility      bool `json:"accessibility"`
+	ThickerCardBorders bool `json:"thickerCardBorders"`
+	HeavierText        bool `json:"heavierText"`
 }
 
 const (
@@ -106,6 +113,10 @@ type optionsState struct {
 	acceptedTrim     visual.VideoTrim
 	loopDurationMS   int64
 	loopReady        bool
+
+	accessibility      bool
+	thickerCardBorders bool
+	heavierText        bool
 }
 
 func (m *Model) requestOptions(action string) {
@@ -133,40 +144,37 @@ func (m Model) OptionsState() BrowserOptionsState {
 		SourceFrame:      m.options.sourceFrame,
 		SourcePositionMS: m.options.sourcePositionMS,
 		Trim:             m.options.trim,
+
+		Accessibility:      m.options.accessibility,
+		ThickerCardBorders: m.options.thickerCardBorders,
+		HeavierText:        m.options.heavierText,
 	}
 }
 
 func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) {
-	if !m.browserOptionsEnabled || m.exitPromptOpen {
+	if !m.browserOptionsEnabled {
+		return m, nil
+	}
+	if msg.Action == "appearance" {
+		m.events.SetThickerCardBorders(msg.ThickerCardBorders)
+		return m, nil
+	}
+	if m.exitPromptOpen {
 		return m, nil
 	}
 	if msg.Action == "open" {
 		if m.speechSetup.open {
 			return m, nil
 		}
-		if !m.options.open && m.speechSetup.service != nil {
+		if !m.options.open {
 			m.options.open = true
 			m.options.menu = true
 			m.options.request = ""
-			return m, nil
-		}
-		if !m.options.open {
-			m.options.open = true
-			m.options.trimming = false
-			m.options.newVideo = false
-			m.options.loopReady = false
-			m.options.editing = false
-			m.options.hasBackground = false
-			m.options.framing = data.DefaultBackgroundFraming()
-			m.options.focus = optionsFocusChooseBackground
-			m.options.darkness = 70
-			m.options.speedPercent = 100
-			m.options.videoQuality = visual.VideoQualityEfficient
-			m.options.userPaused = false
-			m.options.status = "Loading visual…"
-			m.requestOptions("load")
 		}
 		return m, nil
+	}
+	if m.options.accessibility {
+		return m.acceptAccessibility(msg)
 	}
 	if msg.Action == "playback" {
 		if m.options.open && msg.ID == m.options.id {
@@ -322,6 +330,9 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.options.menu {
 		return m.updateOptionsMenu(message)
 	}
+	if m.options.accessibility {
+		return m.updateAccessibilityInput(message)
+	}
 	if m.options.trimming {
 		return m.updateVideoTrimInput(message)
 	}
@@ -335,7 +346,7 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			if (m.options.request != "apply" && m.options.request != "remove") || (m.options.request == "apply" && m.options.video) {
 				m.options.open = false
-				if m.speechSetup.service != nil {
+				if m.browserOptionsEnabled {
 					m.options.open = true
 					m.options.menu = true
 				}
@@ -442,7 +453,7 @@ func (m *Model) activateOption() {
 		m.requestOptions("remove")
 	case optionsFocusBack:
 		m.options.open = false
-		if m.speechSetup.service != nil {
+		if m.browserOptionsEnabled {
 			m.options.open = true
 			m.options.menu = true
 		}
@@ -519,6 +530,9 @@ func (m Model) viewOptions() tea.View {
 	if m.options.menu {
 		return m.viewOptionsMenu()
 	}
+	if m.options.accessibility {
+		return m.viewAccessibility()
+	}
 	if m.options.trimming {
 		return m.viewVideoTrim()
 	}
@@ -588,14 +602,14 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			m.options.open = false
 		case "tab", "down":
-			m.options.menuFocus = (m.options.menuFocus + 1) % 3
+			m.options.menuFocus = (m.options.menuFocus + 1) % len(m.optionsMenuLabels())
 		case "shift+tab", "up":
-			m.options.menuFocus = (m.options.menuFocus + 2) % 3
+			m.options.menuFocus = (m.options.menuFocus + len(m.optionsMenuLabels()) - 1) % len(m.optionsMenuLabels())
 		case "enter", "space":
 			activate = true
 		}
 	case tea.MouseClickMsg:
-		if message.Button == tea.MouseLeft && message.Y >= 2 && message.Y <= 4 {
+		if message.Button == tea.MouseLeft && message.Y >= 2 && message.Y < 2+len(m.optionsMenuLabels()) {
 			m.options.menuFocus = message.Y - 2
 			activate = true
 		}
@@ -603,8 +617,9 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 	if !activate {
 		return m, nil
 	}
-	switch m.options.menuFocus {
-	case 0:
+	switch m.optionsMenuLabels()[m.options.menuFocus] {
+	case "Visual":
+		m.options.accessibility = false
 		m.options.menu = false
 		m.options.trimming = false
 		m.options.newVideo = false
@@ -614,22 +629,31 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.options.framing = data.DefaultBackgroundFraming()
 		m.options.focus = optionsFocusChooseBackground
 		m.options.darkness = 70
+		m.options.videoQuality = visual.VideoQualityEfficient
 		m.options.speedPercent = 100
 		m.options.userPaused = false
 		m.options.status = "Loading visual…"
 		m.requestOptions("load")
-	case 1:
+	case "Accessibility":
+		m.options.trimming, m.options.editing = false, false
+		m.options.newVideo, m.options.loopReady = false, false
+		m.options.menu = false
+		m.options.accessibility = true
+		m.options.focus = 0
+		m.options.status = "Loading accessibility…"
+		m.requestOptions("load")
+	case "Models":
 		m.speechSetup.open = true
 		m.speechSetup.offered = true
 		m.speechSetup.focus = 0
-	case 2:
+	case "Back":
 		m.options.open = false
 	}
 	return m, nil
 }
 func (m Model) viewOptionsMenu() tea.View {
 	rows := []string{m.subjects.list.Styles.Title.Render("Options"), ""}
-	for index, label := range []string{"Visual", "Models", "Back"} {
+	for index, label := range m.optionsMenuLabels() {
 		if index == m.options.menuFocus {
 			label = m.subjects.list.Styles.Title.Render(label)
 		}
@@ -700,4 +724,12 @@ func (m Model) draftVideoQualityLabel() string {
 		return "Preview loop to use " + m.options.videoQuality.Label() + ". Apply uses " + m.options.acceptedQuality.Label() + "."
 	}
 	return "Quality applies to new previews."
+}
+
+func (m Model) optionsMenuLabels() []string {
+	labels := []string{"Visual", "Accessibility"}
+	if m.speechSetup.service != nil {
+		labels = append(labels, "Models")
+	}
+	return append(labels, "Back")
 }

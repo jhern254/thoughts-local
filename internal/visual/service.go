@@ -232,6 +232,20 @@ func removeAsset(root *os.Root, name string) bool {
 	return warning
 }
 
+func (s *Service) UpdateAccessibility(ctx context.Context, thickerCardBorders, heavierText bool) (data.Visual, error) {
+	if !s.tryAcquire() {
+		return data.Visual{}, ErrBusy
+	}
+	defer s.release()
+	settings, err := s.load(ctx)
+	if err != nil {
+		return settings, err
+	}
+	settings.ThickerCardBorders = thickerCardBorders
+	settings.HeavierText = heavierText
+	return settings, s.store.Save(ctx, s.userID, settings)
+}
+
 func (s *Service) UpdateSettings(ctx context.Context, darkness int, framing data.BackgroundFraming, speedPercent int, userPaused bool, quality VideoQuality) (data.Visual, error) {
 	if !s.tryAcquire() {
 		return data.Visual{}, ErrBusy

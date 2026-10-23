@@ -121,6 +121,8 @@ type Model struct {
 	eventCounts []data.EventThoughtCountView
 	latest      *data.ThoughtSummaryView
 
+	thickerCardBorders bool
+
 	distributions distributionSettings
 	position      timelinePosition
 	subjectTime   subjectTimeState
@@ -194,6 +196,13 @@ func (m *Model) Close() {
 	m.picker.Reset()
 	m.expanded = timeline.EntryKey{}
 }
+func (m *Model) SetThickerCardBorders(enabled bool) {
+	if m.thickerCardBorders != enabled {
+		m.load.retainedBody = ""
+	}
+	m.thickerCardBorders = enabled
+}
+
 func (m *Model) SetFocused(focused bool) {
 	blurred := !focused
 	if blurred {

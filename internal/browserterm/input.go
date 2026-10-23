@@ -52,7 +52,7 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 			return nil, errInput
 		}
 		switch msg.Action {
-		case "open":
+		case "open", "appearance":
 			if msg.ID != 0 {
 				return nil, errInput
 			}

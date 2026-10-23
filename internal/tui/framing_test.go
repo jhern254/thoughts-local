@@ -13,7 +13,7 @@ func TestModel_BackgroundFraming(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Background: true, Darkness: 70, Framing: data.DefaultBackgroundFraming()})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
