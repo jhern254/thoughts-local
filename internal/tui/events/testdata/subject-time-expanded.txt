@@ -24,4 +24,4 @@
 
 
 ↑: back/scroll • ↓: subjects • PgUp/PgDn: page • Esc: now
-Home: first • End: now • r: refresh • d: distributions
+←/→: day • Home: first • End: now • r: refresh • d: distributions

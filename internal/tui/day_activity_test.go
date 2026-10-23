@@ -75,3 +75,30 @@ func TestModel_DayMountainControls(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_MetricsDayCycle(t *testing.T) {
+	t.Run("root day keys retain the metrics card including empty days", func(t *testing.T) {
+		m := newMindsetHome(t, 0)
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		day := m.events.Day()
+		for _, step := range []struct {
+			key   rune
+			delta int
+		}{{tea.KeyLeft, -1}, {tea.KeyLeft, -2}, {tea.KeyRight, -1}, {tea.KeyRight, 0}} {
+			var cmd tea.Cmd
+			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: step.key}))
+			if m.homeFocus() != homePanelEvents || m.events.AtTopLevel() {
+				t.Fatal("pending navigation left metrics")
+			}
+			m = runHomeData(t, m, cmd)
+			if m.homeFocus() != homePanelEvents || m.events.AtTopLevel() || !m.events.Day().Equal(day.AddDate(0, 0, step.delta)) {
+				t.Fatal("completed navigation left the selected day or metrics")
+			}
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
+		if !m.events.AtTopLevel() {
+			t.Fatal("Up did not return from metrics")
+		}
+	})
+}

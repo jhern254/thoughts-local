@@ -265,3 +265,21 @@ test('day activity focus navigates one day and preserves Events through tuning',
   await expect(screen(page)).not.toContainText('Exit app?');
   await expect(page.locator('#status')).toHaveText('Connected');
 });
+
+test('metrics card cycles days without losing its focused view', async ({page}) => {
+  await ready(page);
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowDown');
+  await expect(screen(page)).toContainText('↑: back/scroll');
+  const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
+  const today = await date();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(date).not.toBe(today);
+  await expect(screen(page)).toContainText('↑: back/scroll');
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(date).toBe(today);
+  await expect(screen(page)).toContainText('↑: back/scroll');
+  await page.keyboard.press('ArrowRight');
+  expect(await date()).toBe(today);
+  await expect(screen(page)).not.toContainText('Newest first');
+});
