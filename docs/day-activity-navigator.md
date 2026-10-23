@@ -82,6 +82,22 @@ zero-duration, observed dates, deleted records, both DST transitions and limits.
 The browser regression exercises the same keys through xterm in Chromium and
 Firefox. Synthetic visual captures are kept outside the repository.
 
+For hands-on review, use the separate varied-history demo:
+
+```sh
+THOUGHTS_BROWSER_PORT=7878 make tui/browser/demo/activity
+# Native terminal:
+make tui/demo/activity
+```
+
+It creates a disposable two-year diary with quiet gaps, Event-heavy and
+Thought-heavy periods, crowded days, spanning/zero-duration Events, and an
+ongoing Event with 200 Thoughts. Relative timestamps keep it useful on launch.
+Zooming out exercises multi-day averages; zooming in reveals individual dates.
+The original `tui/browser/demo/stress` fixture remains unchanged for comparable
+performance measurements. The varied demo is a visual/navigation workload,
+not a replacement benchmark baseline.
+
 A standalone renderer comparison is available with:
 
 ```sh
