@@ -1,6 +1,6 @@
 # Day activity navigator
 
-The Days plot sits below Mindset, separated by a blank row, and immediately
+The day-activity plot sits below Mindset with quiet space above it, and immediately
 above the Events divider. Its marker follows the accepted Events date. It is
 rendered by Go/Bubble Tea in native terminals and the browser alike.
 
@@ -17,7 +17,9 @@ Tab order is Mindset → Days → Events → entities. While Days has focus:
   styling. Escape/Enter closes controls. Escape outside controls returns to Events.
 - `r` explicitly refreshes activity. These display preferences last for the session.
 
-Normal-height terminals use a heading and three plot rows. Short windows use a
+The plot has no title or date-range heading. Normal-height terminals leave a
+blank row above three plot rows. Style values appear there only while their
+controls are open; loading/error feedback remains available. Short windows use a
 single plot row so the timeline remains usable; the accepted date stays in the
 Events heading and controls remain in the footer. Very small terminals retain
 the existing resize guidance. No custom key acceleration is included.
@@ -34,7 +36,7 @@ Pacific timezone and civil dates, including 23/25-hour DST days.
 
 There are at most 256 buckets, also bounded by terminal width and calendar days.
 A wider bucket reports average daily counts, not totals that grow solely because
-of zooming out. The heading distinguishes daily samples from multi-day averages.
+of zooming out.
 Each channel is normalized against its own maximum in the visible range:
 
     Event level   = 0.7 × (Event daily average / maximum Event average)^boost

@@ -85,6 +85,9 @@ func TestModel_MindsetHome(t *testing.T) {
 		if rows[3] != "" {
 			t.Fatalf("row after Mindset: got %q, want blank", rows[3])
 		}
+		if rows[4] != "" {
+			t.Fatalf("row above graph: got %q, want blank", rows[4])
+		}
 		if got, want := strings.ReplaceAll(rows[8], "┬", "─"), strings.Repeat("─", 80); got != want {
 			t.Fatalf("panel separator: got %q, want %q", got, want)
 		}
