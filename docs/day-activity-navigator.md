@@ -48,11 +48,14 @@ to its start day. Ongoing Events stop at the read's cutoff. All observed Thought
 count once, including unassigned ones. Calendar boundaries use the application's
 Pacific timezone and civil dates, including 23/25-hour DST days.
 
-There are at most 256 buckets, also bounded by calendar days and twice the
-terminal width, using both horizontal dots in each Braille cell.
+Visible buckets are bounded by calendar days, twice the terminal width and
+254 samples. One adjacent bucket on each side brings the existing count request
+to at most 256 buckets, using both horizontal dots per Braille cell for the
+visible plot. Context continues clipped flanks without widening the viewport.
 A wider bucket reports average daily counts, not totals that grow solely because
 of zooming out.
-All channels share the maximum weighted total in the visible range:
+All channels share the maximum weighted total in the visible range plus its
+adjacent context buckets:
 
     Event activity   = 0.7 × Event daily average
     Thought activity = 0.3 × Thought daily average
@@ -78,7 +81,8 @@ Small windows use fewer rows without losing component color.
 Amplitude follows `1 - exp(-1.6 × 3 × size)`, with the UI size expressed as a ratio:
 about 99% of the canvas at 100%, approaching full height at the default 300%. These are relative activity shapes, not
 probabilities or raw-count axes. Piecewise linear interpolation connects actual
-samples without invented peaks; a one-day view necessarily has one flat sample.
+samples without invented peaks. A one-day view has one measured sample with
+slopes continued from adjacent days; it does not add intra-day measurements.
 
 Filled mode uses opaque silhouettes: grey Total behind amber Thoughts behind
 teal Events, each filled to the baseline. Each shared Braille cell takes the color with the largest exposed dot area
@@ -341,3 +345,43 @@ boundary violation during rapid resize; five diagnostic repeats and the final
 22-case run passed. The stricter boundary assertion remains, with painted-row
 and buffer-row diagnostics. This does not establish the intermittent overlap's
 root cause or claim that it is eliminated.
+
+## Calendar-anchored panning
+
+A dramatic one-day-pan regression reproduced a peak changing height/profile
+because each new viewport restarted fractional pixel sampling. Vertices now use
+an absolute civil-date grid, with the viewport origin aligned to complete Braille
+cells. Panning therefore translates the same dated profile instead of changing
+its peak rounding or color-cell pairing. The selected-date marker uses this grid.
+
+A separate edge regression reproduced a flattened flank when the last visible
+sample became an interior sample. The same bounded read now includes one adjacent
+bucket at each edge. These samples continue interpolation outside the visible
+range and do not add another database round trip. The existing request limit,
+cancellation and stale-result checks remain. Both filled and outline translation
+and edge-flank regressions pass at dramatic settings.
+
+The final correction was compared with compact baseline `a7b1a04` on the same
+i5-8250U / Linux amd64 / Go 1.25.14 reference machine. Both binaries used the
+unchanged 721-Event/20,000-Thought stress fixture, a 40-row terminal and five
+one-second runs, sequentially without competing builds/tests. Setup and
+compilation were excluded. Medians:
+
+| Width / operation | Before ns/op | After ns/op | B/op before → after | allocs/op before → after |
+| --- | ---: | ---: | ---: | ---: |
+| 80 Load | 6,951,749 | 6,110,406 | 49,349 → 51,994 | 2,436 → 2,457 |
+| 80 Rebuild | 123,038 | 125,684 | 14,512 → 15,712 | 86 → 102 |
+| 160 Load | 6,170,441 | 6,352,235 | 63,174 → 67,601 | 2,441 → 2,470 |
+| 160 Rebuild | 214,921 | 215,114 | 28,416 → 31,232 | 91 → 114 |
+
+These runs show no material time regression, while allocations increase for
+neighboring samples, vertex positions and changed style runs. They do not show
+statistical significance or an overall performance improvement. The bounded
+count request widens by adjacent context rather than adding a database call.
+
+Actual Brave at 1200×850 exercised 45 days left and 31 days right at extra boost
+and maximum fill. Across a one-day viewport pan, every shared terminal cell,
+including the edge flank, matched an exact five-column translation. Screenshots
+were inspected. All 22 browser navigation/resize cases and focused renderer,
+day-graph and root race tests passed. Deterministic regressions also cover a high
+peak entering from outside the viewport, in filled and outline modes.

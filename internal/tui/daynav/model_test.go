@@ -310,7 +310,7 @@ func TestModel_MountainSizing(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
 		m = m.Update(m.Key("0")())
-		for _, scenario := range []struct{ width, buckets int }{{80, 160}, {160, 256}} {
+		for _, scenario := range []struct{ width, buckets int }{{80, 162}, {160, 256}} {
 			m.Resize(scenario.width, 40)
 			cmd := m.Sync(m.selected, true, false)
 			if cmd == nil {
@@ -376,6 +376,29 @@ func TestModel_CalendarMonthWindow(t *testing.T) {
 			if from.Format("2006-01-02") != scenario.from || !until.Equal(today.AddDate(0, 0, 1)) {
 				t.Fatalf("%s range: got %s through %s, want %s through tomorrow", scenario.today, from, until, scenario.from)
 			}
+		}
+	})
+}
+
+func TestModel_ViewportContext(t *testing.T) {
+	t.Run("reads neighboring days in the same bounded request without widening the viewport", func(t *testing.T) {
+		m, reader := fixture(t)
+		defer m.Close()
+		from, until, reads := m.from, m.until, reader.reads
+		reply := m.Key("r")().(loadedMsg)
+		bounds := reply.boundaries
+		if !bounds[0].Equal(from.AddDate(0, 0, -1)) || !bounds[1].Equal(from) || !bounds[len(bounds)-2].Equal(until) || !bounds[len(bounds)-1].Equal(until.AddDate(0, 0, 1)) {
+			t.Fatal("request did not include exactly one neighboring daily bucket per edge")
+		}
+		m = m.Update(reply)
+		if m.from != from || m.until != until || len(m.values) != 31 {
+			t.Fatal("neighboring context stretched the visible month")
+		}
+		if m.before == nil || m.after == nil || m.before.Thoughts != 0 || m.after.Thoughts != 4 {
+			t.Fatalf("neighboring samples: got before=%v after=%v, want supplied edge counts", m.before, m.after)
+		}
+		if reader.reads != reads+1 {
+			t.Fatalf("count reads: got %d, want %d", reader.reads, reads+1)
 		}
 	})
 }
