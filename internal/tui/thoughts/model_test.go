@@ -95,7 +95,7 @@ func TestModel_Thoughts(t *testing.T) {
 			}
 		})
 	}
-	t.Run("editor treats Enter and subject shortcuts as input and Escape cancels", func(t *testing.T) {
+	t.Run("editor treats Enter and subject shortcuts as input and Ctrl D confirms cancellation", func(t *testing.T) {
 		m := New(context.Background(), "u", thought.NewService(testutils.NewFakeThoughtStore()), logging.Nop())
 		cmd := m.Open(1)
 		m, _ = m.Update(cmd())
@@ -107,7 +107,9 @@ func TestModel_Thoughts(t *testing.T) {
 		if m.input.Value() != "edq\n" || m.Browsing() {
 			t.Fatalf("got input %q, browsing %v", m.input.Value(), m.Browsing())
 		}
-		m, _ = m.Update(key(tea.KeyEscape))
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+		m, _ = m.Update(key(tea.KeyTab))
+		m, _ = m.Update(key(tea.KeyEnter))
 		if !m.Browsing() || m.input.Value() != "" {
 			t.Fatal("cancel did not return to clean list")
 		}

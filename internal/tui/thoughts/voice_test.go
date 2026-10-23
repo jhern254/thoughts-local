@@ -131,7 +131,9 @@ func TestModel_Voice(t *testing.T) {
 					t.Fatal("save did not persist and invalidate the chosen subject")
 				}
 			} else {
-				m, _ = m.Update(key(tea.KeyEsc))
+				m, _ = m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+				m, _ = m.Update(key(tea.KeyTab))
+				m, _ = m.Update(key(tea.KeyEnter))
 			}
 			if m.subjectID == nil || *m.subjectID != original || m.VoiceOpen() {
 				t.Fatal("leaving editor lost its original browsing scope")

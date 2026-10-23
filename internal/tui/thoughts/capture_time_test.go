@@ -93,7 +93,7 @@ func TestModel_CaptureTime(t *testing.T) {
 		now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
 		m.now = func() time.Time { return now }
 		m.OpenVoice(1, &voiceSubjects{})
-		m, _ = m.Update(key(tea.KeyEscape))
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 		now = now.Add(time.Minute)
 		openedAt := now
 		m.OpenVoice(2, &voiceSubjects{})

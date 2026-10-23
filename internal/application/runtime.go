@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/editorprefs"
 	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/goal"
 	"github.com/jhern254/go-thoughts/internal/goaldiscovery"
@@ -185,4 +186,8 @@ func (runtime *Runtime) BrowserVisual(ctx context.Context) (*visual.Service, err
 		runtime.localUser.UserID,
 		filepath.Join(DataDirectory(homeDirectory), "backgrounds"),
 	), nil
+}
+
+func (runtime *Runtime) EditorPreferences() *editorprefs.Service {
+	return editorprefs.NewService(data.NewSQLiteEditorPreferencesStore(runtime.db), runtime.localUser.UserID)
 }

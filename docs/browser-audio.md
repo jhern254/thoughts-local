@@ -229,3 +229,29 @@ The exact message format lives in
 lives in [pcm-worklet.js](../internal/browserterm/static/pcm-worklet.js), and
 [recording.go](../internal/voice/recording.go) defines permission to apply
 transcript updates.
+
+## Speech pauses and draft editing
+
+Options → Editor stores **Newline after speech pause** per local user. The default
+is 2 seconds; choose Off or 0.5–10 seconds in 0.5-second steps. The recording
+consumer reads this preference once at recording startup. Changes affect the next
+recording, not existing text or an active transcript.
+
+Moonshine provides phrase start/duration and completion metadata. The native
+adapter copies those values with the text under its existing runtime gate,
+without copying audio or enabling word timestamps. A recording-owned Go formatter
+inserts one newline when the gap between recognized phrases reaches the selected
+threshold. These are recognizer-estimated phrase boundaries, not a precise
+measurement of every acoustic silence. Missing/invalid timing keeps space-joined
+text. Processing or network delays never count as silence. A chosen separator is
+retained by stable phrase identity across interim revisions; silence alone adds
+no trailing blank lines. The existing transcript byte and editor line limits
+still apply.
+
+Drafts begin in Insert with a steady block cursor. Esc stops recording and enters
+Normal without clearing text; editing stays locked until native cleanup finishes.
+F8 also stops capture, preserving the editing mode. Ctrl+D stops capture and asks
+before discarding nonempty text; declining leaves the draft stopped and editable.
+Normal uses h/j/k/l or arrows and i/a/o to resume insertion. Ctrl+S saves from
+either mode. Dictation still appends at the end, and subject-prefix detection and
+F9 restoration continue to operate on the same draft.

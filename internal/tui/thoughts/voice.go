@@ -158,6 +158,7 @@ func (m Model) voiceLocked() bool {
 }
 func (m *Model) resizeVoice(width, height int) {
 	m.voice.width, m.voice.height = max(1, width), max(1, height)
+	m.editorWidth, m.editorHeight = max(1, width), max(1, height)
 	// Bubbles adds a trailing cursor cell beyond the input width, in addition
 	// to its two-cell prompt. Reserve both so narrow editors do not wrap.
 	m.voice.query.SetWidth(max(1, width-3))
@@ -208,6 +209,9 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 	}
 	switch action.Action {
 	case "start":
+		if m.discardPrompt {
+			return m, nil
+		}
 		if !m.speechRecognitionAvailable {
 			m.voice.message = "Speech recognition is not configured. You can still type and save."
 			return m, nil
@@ -254,6 +258,9 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.voice.recordingStatus = "idle"
+		if m.discardPrompt && m.input.Value() == "" {
+			return m.discardDraft()
+		}
 		m.voice.message = map[string]string{"denied": "Microphone permission was denied. Draft unchanged.", "unavailable": "Microphone unavailable. Draft unchanged.", "failed": "Microphone capture failed. Draft unchanged."}[action.Action]
 		m.voice.subjectFocused = false
 		m.resizeVoice(m.voice.width, m.voice.height)
@@ -444,6 +451,9 @@ func (m Model) recordingEnded(ended voice.RecordingEnded) (Model, tea.Cmd) {
 	m.finishSpokenSubject()
 	m.voice.recordingBaseText = ""
 	m.voice.recordingStatus = "idle"
+	if m.discardPrompt && m.input.Value() == "" {
+		return m.discardDraft()
+	}
 	if ended.Failed && m.voice.message == "" {
 		m.voice.message = "Audio capture stopped. Draft preserved."
 	}

@@ -67,6 +67,8 @@ type Model struct {
 	subjectID           *int64
 	list                list.Model
 	input               textarea.Model
+	editorWidth         int
+	editorHeight        int
 	draftObservedAt     time.Time
 	viewport            viewport.Model
 	voice               voiceDraft
@@ -80,7 +82,10 @@ type Model struct {
 	err           error
 	errMessage    string
 
-	inputWarning string
+	inputWarning    string
+	normalMode      bool
+	discardPrompt   bool
+	discardSelected bool
 	// filter owns asynchronous Bubbles matches for the current list revision.
 	filter listfilter.Scope
 	// browsingThoughtsView switches from subject rows to the bounded summary browser.
@@ -170,11 +175,13 @@ func New(ctx context.Context, userID string, service Service, logger logging.Log
 		viewport:   view,
 		itemStyles: delegate.Styles,
 	}
+	m.SetEditorHighlight(false)
 	m.Resize(80, 14)
 	return m
 }
 
 func (m *Model) Resize(width, height int) {
+	m.editorWidth, m.editorHeight = max(1, width), max(1, height)
 	m.browseThoughts.width, m.browseThoughts.height = max(1, width), max(1, height-5)
 	m.browseThoughts.keepVisible()
 	m.list.SetSize(max(1, width), max(1, height-4))
@@ -212,6 +219,9 @@ func (m *Model) Reset() {
 	m.err = nil
 	m.input.Blur()
 	m.input.Reset()
+	m.normalMode = false
+	m.discardPrompt = false
+	m.discardSelected = false
 	m.draftObservedAt = time.Time{}
 	m.inputWarning = ""
 	m.list.ResetFilter()
@@ -395,6 +405,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.viewport.GotoTop()
 		if result.operation == logging.ThoughtCreate {
 			m.input.Reset()
+			m.normalMode = false
+			m.discardPrompt = false
+			m.discardSelected = false
 			m.draftObservedAt = time.Time{}
 			m.selectedSubjectName = m.voice.subjectName
 			id := m.subjectID
@@ -452,9 +465,30 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		switch m.screen {
 		case create:
-			if m.VoiceOpen() && key.String() == "esc" {
-				m.subjectID = m.voice.originalSubjectID
-				m.stopVoice()
+			if m.discardPrompt {
+				return m.updateDiscardPrompt(key)
+			}
+			if key.String() == "esc" || key.String() == "ctrl+d" {
+				m.stopClipboard()
+				m.request++
+				m.normalMode = true
+				m.input.ClearSelection()
+				m.voice.subjectFocused = false
+				m.voice.query.Blur()
+				if m.voiceLocked() {
+					m, _ = m.updateVoiceAction(VoiceAction{Action: "stop", DraftID: m.voice.draftID, RecordingID: m.voice.recordingID})
+				}
+				if key.String() == "ctrl+d" {
+					if m.input.Value() == "" && !m.voiceLocked() {
+						return m.discardDraft()
+					}
+					m.discardPrompt = true
+					m.discardSelected = false
+				}
+				if !m.voiceLocked() {
+					return m, m.input.Focus()
+				}
+				return m, nil
 			}
 			if m.VoiceOpen() && key.String() == "f8" {
 				action := "start"
@@ -482,15 +516,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				return m, m.input.Focus()
 			}
 			switch key.String() {
-			case "esc":
-				m.stopClipboard()
-				m.request++
-				m.input.Blur()
-				m.input.Reset()
-				m.draftObservedAt = time.Time{}
-				m.err = nil
-				m.screen = browse
-				return m, nil
 			case "ctrl+s":
 				if m.VoiceOpen() && m.voice.query.Value() != "" && m.subjectID == nil && !m.unconfirmedVoiceProposal() {
 					m.voice.message = "Select a subject, create one, or clear the optional field."
@@ -527,6 +552,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 						m.request++
 						m.inputWarning = ""
 						m.screen = create
+						m.normalMode = false
 						m.draftObservedAt = m.now()
 						return m, m.input.Focus()
 					case rowRecord:

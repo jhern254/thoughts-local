@@ -43,6 +43,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"time"
 	"unsafe"
 
 	"github.com/jhern254/go-thoughts/internal/modelassets"
@@ -136,12 +137,17 @@ func (nativeBackend *nativeModelTranscriber) Transcribe(audioSamples []float32, 
 	if nativeStatus != 0 {
 		return nil, &NativeStatusError{Code: int32(nativeStatus)}
 	}
-	return copyNativeTranscript(nativeTranscript)
+	segments, err := copyNativeTranscript(nativeTranscript)
+	lines := make([]string, len(segments))
+	for i, segment := range segments {
+		lines[i] = segment.Text
+	}
+	return lines, err
 }
 
 // Moonshine owns this memory until the next call. Copying under the runtime
 // gate keeps borrowed C text inside this boundary for batch and streaming calls.
-func copyNativeTranscript(nativeTranscript *C.struct_transcript_t) ([]string, error) {
+func copyNativeTranscript(nativeTranscript *C.struct_transcript_t) ([]speech.Segment, error) {
 	if nativeTranscript == nil || uint64(nativeTranscript.line_count) > uint64(math.MaxInt) {
 		return nil, &NativeStatusError{Code: C.MOONSHINE_ERROR_UNKNOWN}
 	}
@@ -152,7 +158,7 @@ func copyNativeTranscript(nativeTranscript *C.struct_transcript_t) ([]string, er
 		return nil, &NativeStatusError{Code: C.MOONSHINE_ERROR_UNKNOWN}
 	}
 	nativeLines := unsafe.Slice(nativeTranscript.lines, int(nativeTranscript.line_count))
-	transcriptLines := make([]string, 0, len(nativeLines))
+	transcriptLines := make([]speech.Segment, 0, len(nativeLines))
 	for _, nativeLine := range nativeLines {
 		if nativeLine.text == nil {
 			continue
@@ -162,7 +168,12 @@ func copyNativeTranscript(nativeTranscript *C.struct_transcript_t) ([]string, er
 			return nil, &NativeStatusError{Code: C.MOONSHINE_ERROR_UNKNOWN}
 		}
 		borrowedTextBytes := unsafe.Slice((*byte)(unsafe.Pointer(nativeLine.text)), int(textLength))
-		transcriptLines = append(transcriptLines, string(borrowedTextBytes))
+		transcriptLines = append(transcriptLines, speech.Segment{
+			ID: uint64(nativeLine.id), Text: string(borrowedTextBytes),
+			Start:    nativeSegmentTime(float64(nativeLine.start_time)),
+			Duration: nativeSegmentTime(float64(nativeLine.duration)),
+			Complete: nativeLine.is_complete != 0,
+		})
 	}
 	return transcriptLines, nil
 }
@@ -196,7 +207,7 @@ func (stream *nativeModelStream) AddAudio(audioSamples []float32, sampleRateHz i
 	runtime.KeepAlive(audioSamples)
 	return nativeStatusError(nativeStatus)
 }
-func (stream *nativeModelStream) Transcribe() ([]string, error) {
+func (stream *nativeModelStream) Transcribe() ([]speech.Segment, error) {
 	var nativeTranscript *C.struct_transcript_t
 	nativeStatus := C.moonshine_transcribe_stream(stream.transcriberHandle, stream.streamHandle, 0, &nativeTranscript)
 	if err := nativeStatusError(nativeStatus); err != nil {
@@ -224,4 +235,13 @@ func checkNativeRuntime() error {
 		return speech.ErrRuntime
 	}
 	return nil
+}
+
+// Native seconds are floats. Reject non-finite and overflowing metadata before
+// converting to nanoseconds; malformed timing must never manufacture a pause.
+func nativeSegmentTime(seconds float64) time.Duration {
+	if math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 || seconds >= float64(math.MaxInt64)/float64(time.Second) {
+		return -1
+	}
+	return time.Duration(seconds * float64(time.Second))
 }

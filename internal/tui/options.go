@@ -124,7 +124,7 @@ func (m *Model) requestOptions(action string) {
 }
 
 func (m Model) OptionsState() BrowserOptionsState {
-	if m.options.menu {
+	if m.options.menu || m.editorPreferences.open {
 		return BrowserOptionsState{}
 	}
 	_, rect := m.optionsLayout()
@@ -157,7 +157,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if m.speechSetup.open {
 			return m, nil
 		}
-		if !m.options.open && m.speechSetup.service != nil {
+		if !m.options.open && (m.speechSetup.service != nil || m.editorPreferences.service != nil) {
 			m.options.open = true
 			m.options.menu = true
 			m.options.request = ""
@@ -380,6 +380,9 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 }
 
 func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.editorPreferences.open {
+		return m.updateEditorPreferences(message)
+	}
 	if m.options.menu {
 		return m.updateOptionsMenu(message)
 	}
@@ -577,6 +580,9 @@ func (m *Model) clickOption(x, y int, activate bool) {
 }
 
 func (m Model) viewOptions() tea.View {
+	if m.editorPreferences.open {
+		return m.viewEditorPreferences()
+	}
 	if m.options.menu {
 		return m.viewOptionsMenu()
 	}
@@ -649,14 +655,14 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			m.options.open = false
 		case "tab", "down":
-			m.options.menuFocus = (m.options.menuFocus + 1) % 3
+			m.options.menuFocus = (m.options.menuFocus + 1) % 4
 		case "shift+tab", "up":
-			m.options.menuFocus = (m.options.menuFocus + 2) % 3
+			m.options.menuFocus = (m.options.menuFocus + 3) % 4
 		case "enter", "space":
 			activate = true
 		}
 	case tea.MouseClickMsg:
-		if message.Button == tea.MouseLeft && message.Y >= 2 && message.Y <= 4 {
+		if message.Button == tea.MouseLeft && message.Y >= 2 && message.Y <= 5 {
 			m.options.menuFocus = message.Y - 2
 			activate = true
 		}
@@ -666,6 +672,9 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch m.options.menuFocus {
 	case 0:
+		if !m.browserOptionsEnabled {
+			return m, nil
+		}
 		m.options.menu = false
 		m.options.trimming = false
 		m.options.newVideo = false
@@ -680,21 +689,29 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.options.status = "Loading visual…"
 		m.requestOptions("load")
 	case 1:
+		if !m.browserOptionsEnabled {
+			return m, nil
+		}
 		m.speechSetup.open = true
 		m.speechSetup.offered = true
 		m.speechSetup.focus = 0
 	case 2:
+		return m.openEditorPreferences()
+	case 3:
 		m.options.open = false
 	}
 	return m, nil
 }
 func (m Model) viewOptionsMenu() tea.View {
 	rows := []string{m.subjects.list.Styles.Title.Render("Options"), ""}
-	for index, label := range []string{"Visual", "Models", "Back"} {
+	for index, label := range []string{"Visual", "Models", "Editor", "Back"} {
 		if index == m.options.menuFocus {
 			label = m.subjects.list.Styles.Title.Render(label)
 		}
 		rows = append(rows, label)
+	}
+	if !m.browserOptionsEnabled {
+		rows = append(rows, "", "Visual and Models require browser mode.")
 	}
 	rows = append(rows, "", "↑/↓/Tab: focus · Enter: open · Esc: back")
 	for index, row := range rows {

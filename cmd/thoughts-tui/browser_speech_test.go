@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jhern254/go-thoughts/internal/speech"
 	"github.com/jhern254/go-thoughts/internal/voice"
@@ -108,6 +109,25 @@ func TestBrowserSpeechConsumer_ConsumePCM(t *testing.T) {
 		}}}
 		if err := consumer.ConsumePCM(ctx, make([]int16, 1600)); !errors.Is(err, context.Canceled) {
 			t.Fatalf("got %v", err)
+		}
+	})
+}
+
+func TestBrowserSpeechConsumer_PauseFormatting(t *testing.T) {
+	t.Run("publishes formatted text once across timing revisions", func(t *testing.T) {
+		transcript := speech.Transcript{Text: "first second", Segments: []speech.Segment{{ID: 1, Text: "first", Duration: time.Second, Complete: true}, {ID: 2, Text: "second", Start: 4 * time.Second, Duration: time.Second}}}
+		stream := &testMoonshineStream{add: func(context.Context, []float32, int) (speech.Transcript, error) { return transcript, nil }}
+		var updates []voice.TranscriptUpdate
+		consumer := browserSpeechConsumer{moonshineStream: stream, formatter: voice.TranscriptFormatter{Pause: 2 * time.Second}, publish: func(update voice.TranscriptUpdate) bool { updates = append(updates, update); return true }}
+		if err := consumer.ConsumePCM(t.Context(), make([]int16, 1600)); err != nil {
+			t.Fatal(err)
+		}
+		transcript.Segments[1].Start = 2 * time.Second
+		if err := consumer.ConsumePCM(t.Context(), make([]int16, 1600)); err != nil {
+			t.Fatal(err)
+		}
+		if len(updates) != 1 || updates[0].Text != "first\nsecond" {
+			t.Fatalf("got %d updates, want one formatted revision", len(updates))
 		}
 	})
 }

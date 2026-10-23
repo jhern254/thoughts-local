@@ -127,8 +127,7 @@ func TestModel_VoiceSubjectDiscovery(t *testing.T) {
 		model, _ = rootUpdate(model, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
 		var cmd tea.Cmd
 		model, cmd = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyF8})
-		batch := cmd().(tea.BatchMsg)
-		reply := batch[1]()
+		reply := cmd()
 		r := model.VoiceState().TranscriptAuthority.Recording()
 		model, _ = rootUpdate(model, voice.TranscriptUpdate{Recording: r, Revision: 1, Text: "Fitness thought hello"})
 		model, _ = rootUpdate(model, voice.RecordingEnded{Recording: r})

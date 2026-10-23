@@ -9,7 +9,7 @@ import (
 
 type nativeStream interface {
 	AddAudio(audioSamples []float32, sampleRateHz int) error
-	Transcribe() ([]string, error)
+	Transcribe() ([]speech.Segment, error)
 	Close() error
 }
 
@@ -85,7 +85,7 @@ func (stream *Stream) AddAudio(ctx context.Context, audioSamples []float32, samp
 	if err := ctx.Err(); err != nil {
 		return speech.Transcript{}, err
 	}
-	transcript := speech.Transcript{Text: joinTranscriptLines(transcriptLines)}
+	transcript := speech.Transcript{Text: joinTranscriptSegments(transcriptLines), Segments: transcriptLines}
 	if !utf8.ValidString(transcript.Text) {
 		return speech.Transcript{}, speech.ErrTranscription
 	}

@@ -25,14 +25,18 @@ func (stream *fakeNativeStream) AddAudio([]float32, int) error {
 	}
 	return nil
 }
-func (stream *fakeNativeStream) Transcribe() ([]string, error) {
+func (stream *fakeNativeStream) Transcribe() ([]speech.Segment, error) {
 	stream.transcriptCalls++
 	if stream.transcribe != nil {
 		if err := stream.transcribe(); err != nil {
 			return nil, err
 		}
 	}
-	return stream.lines, nil
+	segments := make([]speech.Segment, len(stream.lines))
+	for i, text := range stream.lines {
+		segments[i] = speech.Segment{Text: text}
+	}
+	return segments, nil
 }
 func (stream *fakeNativeStream) Close() error {
 	stream.closeCalls++

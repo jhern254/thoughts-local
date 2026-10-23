@@ -16,20 +16,21 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/browserterm"
+	"github.com/jhern254/go-thoughts/internal/editorprefs"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
-func runBrowser(ctx context.Context, port int, autoOpen bool, modelDirectory string, newModel func(context.Context, tui.SpeechModelSetup) tea.Model, out io.Writer, logger logging.Logger, visual *visual.Service) error {
+func runBrowser(ctx context.Context, port int, autoOpen bool, modelDirectory string, newModel func(context.Context, tui.SpeechModelSetup) tea.Model, out io.Writer, logger logging.Logger, visual *visual.Service, preferences *editorprefs.Service) error {
 	var opener func(context.Context, string) error
 	if autoOpen {
 		opener = openDefaultBrowser
 	}
-	return serveBrowser(ctx, port, modelDirectory, newModel, out, logger, visual, opener)
+	return serveBrowser(ctx, port, modelDirectory, newModel, out, logger, visual, preferences, opener)
 }
 
-func serveBrowser(ctx context.Context, port int, modelDirectory string, newModel func(context.Context, tui.SpeechModelSetup) tea.Model, out io.Writer, logger logging.Logger, visual *visual.Service, opener func(context.Context, string) error) (serveErr error) {
+func serveBrowser(ctx context.Context, port int, modelDirectory string, newModel func(context.Context, tui.SpeechModelSetup) tea.Model, out io.Writer, logger logging.Logger, visual *visual.Service, preferences *editorprefs.Service, opener func(context.Context, string) error) (serveErr error) {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	speechSetup, err := newBrowserSpeechSetup(modelDirectory)
@@ -47,7 +48,7 @@ func serveBrowser(ctx context.Context, port int, modelDirectory string, newModel
 		}
 		serveErr = errors.Join(serveErr, closeErr)
 	}()
-	consumerFactory := speechSetup.RecordingConsumerFactory()
+	consumerFactory := speechSetup.RecordingConsumerFactory(preferences)
 	browserModel := func(ctx context.Context) tea.Model { return newModel(ctx, speechSetup) }
 
 	listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))

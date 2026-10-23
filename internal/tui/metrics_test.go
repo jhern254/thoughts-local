@@ -46,7 +46,9 @@ func TestSubjectModel_ThoughtCounts(t *testing.T) {
 				t.Fatal("subject action stole editor input")
 			}
 		}
-		updated, _ = m.Update(escapeKey())
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		updated, _ = m.Update(enterKey())
 		m = updated.(Model)
 		updated, _ = m.Update(runeKey('e'))
 		m = updated.(Model)

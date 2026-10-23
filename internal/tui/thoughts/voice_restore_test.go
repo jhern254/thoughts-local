@@ -13,6 +13,8 @@ import (
 func TestModel_RestoreVoicePrefix(t *testing.T) {
 	for _, text := range []string{
 		"fitness thought, exercised today.",
+		"fitness thought, first sentence.\nSecond sentence.",
+		"fitness thoughts, first sentence.\nSecond sentence.",
 		"meditation thought — étudier 日本語.",
 		"Programming in Go thought: practiced interfaces.",
 		"Fitness thoughts: try shorter workouts",
@@ -123,7 +125,9 @@ func TestModel_RestoreVoicePrefix(t *testing.T) {
 				m = transcript(m, r, 1, "Literal addition.")
 				m, _ = m.Update(voice.RecordingEnded{Recording: r})
 			case "cancel":
-				m, _ = m.Update(key(tea.KeyEscape))
+				m, _ = m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+				m, _ = m.Update(key(tea.KeyTab))
+				m, _ = m.Update(key(tea.KeyEnter))
 			case "reset":
 				m.Reset()
 			case "save":

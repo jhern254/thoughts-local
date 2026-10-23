@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/jhern254/go-thoughts/internal/editorprefs"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/browserterm"
@@ -260,8 +262,16 @@ func (setup *browserSpeechSetup) statusAfterFailedSetup(operationErr error) tui.
 	return tui.SpeechModelSetupStatus{}
 }
 
-func (setup *browserSpeechSetup) RecordingConsumerFactory() browserterm.PCMConsumerFactory {
+func (setup *browserSpeechSetup) RecordingConsumerFactory(preferences *editorprefs.Service) browserterm.PCMConsumerFactory {
 	return func(ctx context.Context, recording voice.RecordingKey, publish func(voice.TranscriptUpdate) bool) (browserterm.RecordingPCMConsumer, error) {
+		pause := 2 * time.Second
+		if preferences != nil {
+			settings, err := preferences.Load(ctx)
+			if err != nil {
+				return nil, err
+			}
+			pause = time.Duration(settings.SpeechPauseMS) * time.Millisecond
+		}
 		setup.mu.Lock()
 		defer setup.mu.Unlock()
 		transcriber := setup.transcriber
@@ -276,7 +286,7 @@ func (setup *browserSpeechSetup) RecordingConsumerFactory() browserterm.PCMConsu
 		if err != nil {
 			return nil, err
 		}
-		return &browserSpeechConsumer{moonshineStream: stream, recording: recording, publish: publish}, nil
+		return &browserSpeechConsumer{moonshineStream: stream, recording: recording, publish: publish, formatter: voice.TranscriptFormatter{Pause: pause}}, nil
 	}
 }
 func (setup *browserSpeechSetup) Close() error {

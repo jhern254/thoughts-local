@@ -172,3 +172,64 @@ for (const stallMilliseconds of [750, 1500]) {
     }
   });
 }
+
+test('modal draft Escape stops recording and Ctrl D confirms discard without reconnecting', async ({page}, testInfo) => {
+  await prepareAudioDraft(page);
+  await startCapture(page, 0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await expect(screen(page)).toContainText('NORMAL');
+  await expect(screen(page)).toContainText('typed draft');
+  await expect(screen(page)).toContainText('synthetic speech');
+  await page.keyboard.press('Escape');
+  await page.keyboard.type('zzz');
+  await expect(screen(page)).not.toContainText('zzz');
+  await page.keyboard.press('i');
+  await page.keyboard.type(' edited');
+  await expect(screen(page)).toContainText('edited');
+  if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-editor-insert.png`});
+  await page.keyboard.press('Control+d');
+  await expect(screen(page)).toContainText('Discard draft?');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Create thought');
+  await page.setViewportSize({width: 400, height: 650});
+  await page.keyboard.press('i');
+  await expect(screen(page)).toContainText('Create thought · INSERT');
+  await expect(screen(page)).toContainText(/Ctrl\+D:\s*cancel/);
+  await expect(screen(page)).toContainText('synthetic speech edited');
+  if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-editor-narrow.png`});
+  await page.keyboard.press('Control+d');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).not.toContainText('Create thought');
+  expect(await page.evaluate(() => window.audioProbe.terminalConnections)).toBe(1);
+  expect(await page.evaluate(() => window.audioProbe.audioConnections)).toBe(1);
+});
+
+test('editor preferences persist across browser sessions', async ({page}) => {
+  await page.goto('/');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await page.keyboard.press('Control+,');
+  await clickControl(page,'Editor');
+  await expect(screen(page)).not.toContainText('Working…');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('ArrowRight');
+  await expect(screen(page)).toContainText('2.5 seconds');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Saved.');
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await page.keyboard.press('Control+,');
+  await clickControl(page,'Editor');
+  await expect(screen(page)).toContainText('Highlight current line: On');
+  await expect(screen(page)).toContainText('2.5 seconds');
+  // Restore defaults for subsequent acceptance cases sharing this disposable DB.
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Saved.');
+});

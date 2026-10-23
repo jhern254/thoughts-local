@@ -150,7 +150,7 @@ func TestModel_LeftFromThoughts(t *testing.T) {
 		m := newRootTestModel()
 		m.selectedEntity = entityThoughts
 		m = runModelCommand(t, m, enterKey())
-		m = runModelCommand(t, m, enterKey())
+		m, _ = rootUpdate(m, enterKey())
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: "ab"})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
 		m, _ = rootUpdate(m, runeKey('x'))

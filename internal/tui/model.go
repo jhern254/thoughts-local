@@ -39,7 +39,6 @@ const (
 	screenMiscThoughts
 	screenBrowseThoughts
 	screenVoiceThought
-	screenOptions
 )
 
 type entityKind uint8
@@ -80,6 +79,7 @@ type Model struct {
 	width                             int
 	height                            int
 	options                           optionsState
+	editorPreferences                 editorPreferencesState
 	speechSetup                       speechSetupState
 	exitPromptOpen                    bool
 	exitYes                           bool
@@ -115,9 +115,9 @@ type homeOpened struct{}
 func (m Model) Init() tea.Cmd {
 	home := func() tea.Msg { return homeOpened{} }
 	if m.speechSetup.service != nil {
-		return tea.Batch(home, m.checkInstalledSpeechModel())
+		return tea.Batch(home, m.checkInstalledSpeechModel(), m.readEditorPreferences())
 	}
-	return home
+	return tea.Batch(home, m.readEditorPreferences())
 }
 
 func (m Model) openHome() (tea.Model, tea.Cmd) {
@@ -152,6 +152,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.ctx.Err() != nil {
 		return m, nil
+	}
+	if reply, ok := message.(editorPreferencesResult); ok {
+		return m.receiveEditorPreferences(reply)
 	}
 	switch message.(type) {
 	case speechSetupChecked, speechSetupProgress, speechSetupFinished:
@@ -331,15 +334,6 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.screen {
-	case screenOptions:
-		if key, ok := message.(tea.KeyPressMsg); ok {
-			switch key.String() {
-			case "esc", "q":
-				m.screen = screenEvents
-				return m, nil
-			}
-		}
-		return m, nil
 	case screenMindsetThought:
 		if key, ok := message.(tea.KeyPressMsg); ok && !m.thoughts.SavingMindset() && (key.String() == "esc" || key.String() == "q" || key.String() == "left") {
 			m.thoughts.Reset()
@@ -436,7 +430,9 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 					if m.browserOptionsEnabled {
 						return m.updateBrowserOptions(BrowserOptionsMsg{Action: "open"})
 					}
-					m.screen = screenOptions
+					m.options.open = true
+					m.options.menu = true
+					m.options.menuFocus = 2
 					return m, nil
 				}
 				m.events.Close()
@@ -542,8 +538,6 @@ func (m Model) viewUnderlying() tea.View {
 	}
 	var content string
 	switch m.screen {
-	case screenOptions:
-		content = "Options\n\nVisual backgrounds are available in browser mode.\n\nq/Esc: events"
 	case screenMindsetThought:
 		content = m.thoughts.View()
 	case screenEvents:

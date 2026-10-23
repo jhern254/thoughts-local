@@ -18,6 +18,8 @@ import (
 	"unicode"
 
 	"github.com/jhern254/go-thoughts/internal/modelassets"
+	"github.com/jhern254/go-thoughts/internal/speech"
+	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 func TestMoonshineNative_PCM(t *testing.T) {
@@ -197,6 +199,47 @@ func TestMoonshineNative_PCM(t *testing.T) {
 		audioDurationSeconds := float64(len(audioSamples)) / 16000
 		t.Logf("verified_model_open_seconds=%.6f audio_duration_seconds=%.6f transcription_seconds=%.6f real_time_factor=%.6f", loadElapsed.Seconds(), audioDurationSeconds, transcriptionElapsed.Seconds(), transcriptionElapsed.Seconds()/audioDurationSeconds)
 	})
+	t.Run("preserves phrase timing across speech silence and speech", func(t *testing.T) {
+		transcriber, err := Open(ctx, modelRoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer transcriber.Close()
+		stream, err := transcriber.StartStream(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer stream.Close()
+		samples := append([]float32(nil), audioSamples...)
+		samples = append(samples, make([]float32, 4*16000)...)
+		samples = append(samples, audioSamples...)
+		samples = append(samples, make([]float32, 3*16000)...)
+		frame := make([]float32, 1600)
+		var transcript speech.Transcript
+		for offset := 0; offset < len(samples); offset += len(frame) {
+			clear(frame)
+			copy(frame, samples[offset:min(offset+len(frame), len(samples))])
+			transcript, err = stream.AddAudio(ctx, frame, 16000)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		formatter := voice.TranscriptFormatter{Pause: 2 * time.Second}
+		formatted := formatter.Format(transcript)
+		if !strings.Contains(formatted, "\n") {
+			t.Fatal("known four second silence did not separate recognized phrases")
+		}
+		if strings.HasSuffix(formatted, "\n") {
+			t.Fatal("trailing silence inserted a blank line")
+		}
+		for _, segment := range transcript.Segments {
+			if segment.Start < 0 || segment.Duration <= 0 {
+				t.Fatal("native phrase timing unavailable")
+			}
+			t.Logf("phrase_id=%d start_seconds=%.3f duration_seconds=%.3f complete=%v", segment.ID, segment.Start.Seconds(), segment.Duration.Seconds(), segment.Complete)
+		}
+	})
+
 	t.Run("streams 100 ms chunks and reuses the loaded model without final drain", func(t *testing.T) {
 		workingDirectory := t.TempDir()
 		t.Chdir(workingDirectory)
