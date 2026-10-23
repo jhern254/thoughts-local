@@ -4,7 +4,9 @@ The day-activity plot sits below Mindset with quiet space above it, and immediat
 above the Events divider. Its marker follows the accepted Events date. It is
 rendered by Go/Bubble Tea in native terminals and the browser alike.
 
-Tab order is Mindset → Days → Events → entities. While Days has focus:
+Up from the first Event enters the day graph; Down returns to Events.
+Left/Right day changes retain graph focus. Tab cycles Mindset → Events → entities;
+the graph is an arrow-accessed part of Events. While the graph has focus:
 
 - Left/Right (or h/l) moves exactly one day, including ordinary key repeats.
   A pending destination accumulates subsequent keys; stale reads cannot replace it.
@@ -14,8 +16,11 @@ Tab order is Mindset → Days → Events → entities. While Days has focus:
   returning restores the chosen toggles. First focus shows all three.
 - `d` opens local distribution controls: Left/Right changes boost, Up/Down
   changes size, `f` switches Total between filled and outline, `0` resets
-  styling. Escape/Enter closes controls. Escape outside controls returns to Events.
+  styling. Escape/Enter closes controls. Down or Escape outside controls returns to Events.
 - `r` explicitly refreshes activity. These display preferences last for the session.
+
+When the graph is focused, all vertical Event curves are highlighted too;
+card selection and borders keep their own focus rules.
 
 The plot has no title or date-range heading. Normal-height terminals leave a
 blank row above five plot rows on tall windows (four on medium windows). Style values appear there only while their

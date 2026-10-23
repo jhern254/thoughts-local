@@ -10,10 +10,11 @@ type homePanel uint8
 
 const (
 	homePanelMindset homePanel = iota
-	homePanelDays
 	homePanelEvents
 	homePanelEntities
 	homePanelCount
+	// Day activity is an Events sub-focus, outside the Tab cycle.
+	homePanelDays
 )
 
 type ThoughtService interface {
@@ -57,12 +58,13 @@ func (m *Model) syncMindsets() tea.Cmd {
 }
 
 func (m *Model) focusHome(panel homePanel) tea.Cmd {
-	// Focus follows the vertical order: Mindset, Days, Events, entity strip.
+	// Tab switches Mindset, Events and entities; arrows enter the day plot.
 	m.entityFocused = panel == homePanelEntities
 	m.days.SetFocused(panel == homePanelDays)
 	var cmd tea.Cmd
 	m.mindsets, cmd = m.mindsets.SetFocused(panel == homePanelMindset)
 	m.events.SetFocused(panel == homePanelEvents)
+	m.events.SetDistributionHighlight(panel == homePanelDays)
 	return cmd
 }
 func (m Model) homeFocus() homePanel {

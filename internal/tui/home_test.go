@@ -139,6 +139,19 @@ func TestModel_EventsHome(t *testing.T) {
 		return m, events
 	}
 
+	t.Run("Up enters the graph from the first actual card and Down restores selection", func(t *testing.T) {
+		m, _ := newHome(t)
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
+		before, day := m.events.View(), m.events.Day()
+		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
+		if cmd != nil || m.homeFocus() != homePanelDays || !m.events.Day().Equal(day) || ansi.Strip(m.events.View()) != ansi.Strip(before) {
+			t.Fatal("Up changed the selected card instead of entering the graph")
+		}
+		m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		if cmd != nil || m.homeFocus() != homePanelEvents || m.events.View() != before {
+			t.Fatal("Down did not restore the same selected card")
+		}
+	})
 	t.Run("Now buffers navigation to metrics and Up returns in Events", func(t *testing.T) {
 		m, events := newHome(t)
 		{
@@ -279,7 +292,6 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal("entity panel key opened Events controls")
 		}
 		press(tea.KeyTab) // Mindset
-		press(tea.KeyTab) // Days
 		press(tea.KeyTab) // Events
 		press('d')
 		if !strings.Contains(ansi.Strip(m.events.View()), "medium boost · 95% size · outline") {
@@ -312,7 +324,6 @@ func TestModel_EventsHome(t *testing.T) {
 		m, cmd = rootUpdate(m, escapeKey())
 		m = startHomeData(t, m, cmd)
 		if m.entityFocused {
-			press(tea.KeyTab)
 			press(tea.KeyTab)
 			press(tea.KeyTab)
 		}
@@ -753,9 +764,7 @@ func TestModel_SubjectTimeHomeFocus(t *testing.T) {
 			}{
 				{tea.Key{Code: tea.KeyTab}, homePanelEntities},
 				{tea.Key{Code: tea.KeyTab}, homePanelMindset},
-				{tea.Key{Code: tea.KeyTab}, homePanelDays},
 				{tea.Key{Code: tea.KeyTab}, homePanelEvents},
-				{tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}, homePanelDays},
 				{tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}, homePanelMindset},
 				{tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}, homePanelEntities},
 				{tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}, homePanelEvents},

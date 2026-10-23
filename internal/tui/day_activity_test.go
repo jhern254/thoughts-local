@@ -14,9 +14,10 @@ func TestModel_DayActivityNavigation(t *testing.T) {
 		m, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
 		m = runHomeData(t, m, cmd)
 		day := m.events.Day()
-		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
 		if m.homeFocus() != homePanelDays {
-			t.Fatal("Shift+Tab did not focus Days")
+			t.Fatal("Up did not focus Days")
 		}
 		if !strings.Contains(ansi.Strip(m.View().Content), "1 Total · 2 Events · 3 Thoughts") {
 			t.Fatal("missing series legend")
@@ -33,7 +34,8 @@ func TestModel_DayActivityNavigation(t *testing.T) {
 	})
 	t.Run("style keys and toggles preserve accepted day and timeline", func(t *testing.T) {
 		m := newMindsetHome(t, 0)
-		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
 		before := m.events.View()
 		day := m.events.Day()
 		for _, key := range []rune{'2', 'd', tea.KeyRight, tea.KeyUp, 'f', '0', tea.KeyEsc} {
@@ -55,7 +57,8 @@ func TestModel_DayMountainControls(t *testing.T) {
 			m := newMindsetHome(t, 0)
 			m, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: height})
 			m = runHomeData(t, m, cmd)
-			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
 			before, day := m.events.View(), m.events.Day()
 			m, _ = rootUpdate(m, runeKey('d'))
 			for range 40 {
@@ -99,6 +102,27 @@ func TestModel_MetricsDayCycle(t *testing.T) {
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
 		if !m.events.AtTopLevel() {
 			t.Fatal("Up did not return from metrics")
+		}
+	})
+}
+
+func TestModel_DayActivityArrowEntry(t *testing.T) {
+	t.Run("Up enters the graph and Down returns to Events on the selected day", func(t *testing.T) {
+		m := newMindsetHome(t, 0)
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
+		if m.homeFocus() != homePanelDays {
+			t.Fatal("Up did not enter the graph")
+		}
+		day := m.events.Day()
+		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+		m = runHomeData(t, m, cmd)
+		if m.homeFocus() != homePanelDays || !m.events.Day().Equal(day.AddDate(0, 0, -1)) {
+			t.Fatal("day change lost graph focus")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		if m.homeFocus() != homePanelEvents {
+			t.Fatal("Down did not return to Events")
 		}
 	})
 }

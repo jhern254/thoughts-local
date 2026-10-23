@@ -404,9 +404,9 @@ func (m Model) Help() string {
 		return "←/→ boost · ↑/↓ size · f mode · 0 reset · Esc done"
 	}
 	if m.width < 60 {
-		return "←/→ day · +/- zoom · d style · Esc back"
+		return "←/→ day · ↓ back · +/- zoom · d style"
 	}
-	return "←/→ day · +/- zoom · 0 all · d style · r refresh · Esc events"
+	return "←/→ day · +/- zoom · 0 all · d style · r refresh · ↓/Esc events"
 }
 func (m Model) Legend() string {
 	names := [...]string{"1 Total", "2 Events", "3 Thoughts"}
