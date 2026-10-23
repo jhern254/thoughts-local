@@ -5,24 +5,32 @@ it as a mindset. A white **M** badge indicates that it is currently marked.
 The shortcut does not intercept typing in the editor or search filter.
 
 The **Mindset** panel sits above Events, with a white title block, black text,
-and a separator line. Its collapsed preview appears beside the title; an empty
-day shows `...` in that position, with purple picker styling when focused. Tab
+and a separator line. The complete selected thought appears beside the title;
+an empty day shows `...` in that position, with purple picker styling when focused. Tab
 and Shift+Tab move between Mindset, Events, and the entity strip. Mindset
 always expands its scrolling list to the right of the title while focused;
-moving focus away restores the inline preview. Enter opens the selected
-thought. Up/Down and Page Up/Down wrap around at either end; Home/End select
-the first/last thought. Left and Q leave the picker and its cursor unchanged.
+moving focus away shows only the selected thought, starting at its beginning.
+Enter opens the selected thought. Up/Down reads through a tall thought before
+selecting the next or previous thought; Page Up/Down performs a page of those
+steps. Navigation wraps around at either end. Home/End select the beginning of
+the first thought or the end of the last thought. Left and Q leave the picker
+and its cursor unchanged.
 Esc opens the app exit prompt; canceling it preserves the picker. Returning
 from a thought restores the panel's selection and scroll position.
 
 The divider above Events or the entity strip turns purple when that section
 has focus. Mindset uses its picker highlight to show focus.
 
-When focus leaves Mindset, the selected thought stays in the collapsed preview
+When focus leaves Mindset, the selected thought stays in the panel
 for 15 seconds before cycling to the next thought. Rotation pauses
-while focused, expanded, or offscreen. Expanded, it shows up to five text rows,
-with fewer rows on short terminals to leave room for Events. Open a thought to
-read its complete text. Press **r** to refresh.
+while focused or offscreen.
+
+Thoughts wrap with a small right margin and retain their original paragraph
+breaks. The panel grows to fit up to twelve text lines, with fewer lines on short
+terminals to leave room for Events and the tabs. Longer thoughts remain fully
+readable by scrolling while focused; there is no preview-length limit. A blank
+line separates Mindset from the Events divider. Focus changes and returning
+from a thought preserve the picker's reading position. Press **r** to refresh.
 
 ## What a historical day means
 

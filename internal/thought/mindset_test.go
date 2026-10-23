@@ -22,12 +22,12 @@ func (s *mindsetStoreStub) SetThoughtMindset(ctx context.Context, user string, i
 	}
 	return active, s.err
 }
-func (s *mindsetStoreStub) ListMindsetsInRange(ctx context.Context, user string, from, until time.Time) ([]data.ThoughtSummaryView, error) {
+func (s *mindsetStoreStub) ListMindsetsInRange(ctx context.Context, user string, from, until time.Time) ([]data.MindsetThought, error) {
 	s.called = true
 	if user != "owner" || from.Unix() != 100 || until.Unix() != 200 {
 		panic("lost mindset range")
 	}
-	return []data.ThoughtSummaryView{{ThoughtID: 7}}, s.err
+	return []data.MindsetThought{{ThoughtID: 7}}, s.err
 }
 func TestService_Mindset(t *testing.T) {
 	t.Run("passes captured time and preserves store errors", func(t *testing.T) {

@@ -79,7 +79,7 @@ func (s *SQLiteThoughtStore) SetThoughtMindset(ctx context.Context, userID strin
 // ListMindsetsInRange includes intervals intersecting [from, until), plus
 // same-second mark/unmark actions on that day. Ranking collapses reactivations
 // to their latest overlapping period without losing the earlier history.
-func (s *SQLiteThoughtStore) ListMindsetsInRange(ctx context.Context, userID string, from, until time.Time) ([]ThoughtSummaryView, error) {
+func (s *SQLiteThoughtStore) ListMindsetsInRange(ctx context.Context, userID string, from, until time.Time) ([]MindsetThought, error) {
 	rows, err := s.db.QueryContext(ctx, `
         WITH overlapping AS (
             SELECT p.thought_id, p.started_at, p.mindset_period_id,
@@ -97,7 +97,7 @@ func (s *SQLiteThoughtStore) ListMindsetsInRange(ctx context.Context, userID str
                     OR (p.ended_at = p.started_at AND p.started_at >= ?)
                 )
         )
-        SELECT t.thought_id, substr(t.thought, 1, 81), s.subject_name,
+        SELECT t.thought_id, t.thought, s.subject_name,
             t.observed_at, t.created_at,
             EXISTS (
                 SELECT 1 FROM thought_mindset_periods current
@@ -113,20 +113,16 @@ func (s *SQLiteThoughtStore) ListMindsetsInRange(ctx context.Context, userID str
 		return nil, fmt.Errorf("list mindsets: %w", TranslateSQLiteError(err))
 	}
 	defer rows.Close()
-	items := []ThoughtSummaryView{}
+	items := []MindsetThought{}
 	for rows.Next() {
-		var item ThoughtSummaryView
+		var item MindsetThought
 		var subject sql.NullString
 		var observed, created int64
-		if err := rows.Scan(&item.ThoughtID, &item.Preview, &subject, &observed, &created, &item.IsMindset); err != nil {
+		if err := rows.Scan(&item.ThoughtID, &item.Text, &subject, &observed, &created, &item.IsMindset); err != nil {
 			return nil, TranslateSQLiteError(err)
 		}
 		if subject.Valid {
 			item.SubjectName = &subject.String
-		}
-		preview := []rune(item.Preview)
-		if len(preview) > 80 {
-			item.Preview = string(preview[:80]) + "…"
 		}
 		item.ObservedAt, item.CreatedAt = TimeFromUnixSec(observed), TimeFromUnixSec(created)
 		items = append(items, item)
