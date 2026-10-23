@@ -15,6 +15,13 @@ import (
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
+const (
+	defaultPlotRows = 5
+	maxPlotRows     = 12
+	minPlotSize     = 50
+	maxPlotSize     = 300
+)
+
 type Reader interface {
 	ActivityStart(context.Context, string, time.Time) (time.Time, error)
 	ActivityCounts(context.Context, string, []time.Time, time.Time) ([]data.ActivityCount, error)
@@ -42,7 +49,7 @@ type Model struct {
 	// The accepted range stays visible during reads. Invalidation during a read
 	// queues one refresh; request ownership rejects responses after Close/zoom.
 	pending, visible, focused, dirty bool
-	width, rows, span                int
+	width, height, rows, span        int
 	series                           [3]bool
 	tuning                           bool
 	compact                          bool
@@ -64,6 +71,7 @@ func New(ctx context.Context, user string, reader Reader) Model {
 		owner:  new(int),
 		dirty:  true,
 		width:  80,
+		height: 24,
 		rows:   1,
 		series: [3]bool{true, true, true},
 		boost:  1,
@@ -96,22 +104,39 @@ func (m *Model) SetFocused(focused bool) {
 	m.rebuild()
 }
 func (m *Model) Resize(width, height int) {
+	oldWidth, oldRows := m.width, m.rows
+	m.width, m.height = max(1, width), height
 	m.compact = height < 26
-	rows := 3
-	if height < 28 {
-		rows = 1
-	}
-	if height < 16 {
-		rows = 0
-	}
-	width = max(1, width)
-	if width != m.width {
+	m.rows = m.plotRows()
+	if m.width != oldWidth {
 		m.dirty = true
 	}
-	if width != m.width || rows != m.rows {
-		m.width, m.rows = width, rows
+	if m.width != oldWidth || m.rows != oldRows {
 		m.rebuild()
 	}
+}
+
+func (m Model) plotRows() int {
+	if m.height < 16 {
+		return 0
+	}
+	base := defaultPlotRows
+	switch {
+	case m.height < 26:
+		base = 1
+	case m.height < 28:
+		base = 2
+	case m.height < 36:
+		base = 4
+	}
+	// Reserve the existing header/footer, Mindset's minimum row, separators,
+	// and 14 usable Events rows. Twelve plot rows bound even dramatic sizing.
+	reserved := 6 + 1 + 2 + 14
+	if !m.compact {
+		reserved++
+	} // The quiet row also hosts controls/read status.
+	available := max(1, min(maxPlotRows, m.height-reserved))
+	return min(available, max(1, (base*m.size+50)/100))
 }
 func (m *Model) Sync(day time.Time, visible, refresh bool) tea.Cmd {
 	m.selected = displaytime.Day(day)
@@ -181,7 +206,9 @@ func (m *Model) load(refreshBounds bool) tea.Cmd {
 	m.dirty, m.boundsDirty = false, false
 	owner, request, reader, user := m.owner, m.request, m.reader, m.user
 	first, selected, oldFrom, oldUntil, span := m.first, m.selected, m.from, m.until, m.span
-	columns := min(data.MaxActivityBuckets, m.width)
+	// Each Braille cell has two horizontal dots. Read enough bounded samples
+	// to use that detail instead of averaging it away before drawing.
+	columns := min(data.MaxActivityBuckets, m.width*2)
 	cutoff := m.now().Truncate(time.Second).Add(time.Second)
 	today := displaytime.Day(cutoff.Add(-time.Second))
 	return func() tea.Msg {
@@ -242,7 +269,8 @@ func (m Model) Update(msg tea.Msg) Model {
 
 func (m Model) boostPreset() (string, float64) {
 	names := [...]string{"low", "normal", "medium", "strong", "extra"}
-	exponents := [...]float64{1, .8, .5, .25, .15}
+	// Stronger boost adds contrast: quiet days recede and summits stay sharp.
+	exponents := [...]float64{.8, render.DayActivityDefaultExponent, 1.4, 1.8, 2.4}
 	return names[m.boost], exponents[m.boost]
 }
 
@@ -254,9 +282,9 @@ func (m *Model) Key(key string) tea.Cmd {
 		case "right", "l":
 			m.boost = min(4, m.boost+1)
 		case "up", "k":
-			m.size = min(125, m.size+5)
+			m.size = min(maxPlotSize, m.size+5)
 		case "down", "j":
-			m.size = max(50, m.size-5)
+			m.size = max(minPlotSize, m.size-5)
 		case "f":
 			m.outline = !m.outline
 		case "0":
@@ -264,6 +292,7 @@ func (m *Model) Key(key string) tea.Cmd {
 		case "q", "esc", "enter", "d":
 			m.tuning = false
 		}
+		m.rows = m.plotRows()
 		m.rebuild()
 		return nil
 	}

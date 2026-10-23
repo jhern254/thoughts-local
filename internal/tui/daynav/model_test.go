@@ -246,3 +246,53 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_MountainSizing(t *testing.T) {
+	t.Run("defaults to five plot rows and grows to twelve without another read", func(t *testing.T) {
+		m, s := fixture(t)
+		defer m.Close()
+		m.Resize(80, 40)
+		m.SetFocused(true)
+		if got, want := m.Height(), 6; got != want {
+			t.Fatalf("default height: got %d, want %d", got, want)
+		}
+		reads := s.reads
+		m.Key("d")
+		for range 40 {
+			if m.Key("up") != nil {
+				t.Fatal("size adjustment requested data")
+			}
+		}
+		if m.size != 300 || m.Height() != 13 {
+			t.Fatalf("dramatic size/height: got %d/%d, want 300/13", m.size, m.Height())
+		}
+		if s.reads != reads {
+			t.Fatal("style adjustment queried history")
+		}
+		m.Resize(80, 24)
+		if m.Height() != 1 {
+			t.Fatalf("short-window height: got %d, want 1", m.Height())
+		}
+		m.Resize(80, 40)
+		m.Key("0")
+		if m.size != 100 || m.Height() != 6 || m.outline {
+			t.Fatal("reset did not restore the filled mountain default")
+		}
+	})
+	t.Run("uses both horizontal Braille dots for bounded detail", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		for _, scenario := range []struct{ width, buckets int }{{80, 160}, {160, 256}} {
+			m.Resize(scenario.width, 40)
+			cmd := m.Sync(m.selected, true, false)
+			if cmd == nil {
+				cmd = m.Key("r")
+			}
+			reply := cmd().(loadedMsg)
+			if got := len(reply.counts); got != scenario.buckets {
+				t.Fatalf("width %d: got %d buckets, want %d", scenario.width, got, scenario.buckets)
+			}
+			m = m.Update(reply)
+		}
+	})
+}

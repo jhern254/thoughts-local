@@ -13,7 +13,7 @@ test('renders newlines at the same column as native terminal output', async ({pa
   // corresponding xterm option, each new line incorrectly moves to the right.
   await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Mindset/);
   await expect.poll(() => screen(page).locator('div').nth(4).textContent()).toMatch(/^\s*$/);
-  await expect.poll(() => screen(page).locator('div').nth(9).textContent()).toMatch(/^ Events/);
+  await expect.poll(() => screen(page).locator('div').nth(11).textContent()).toMatch(/^ Events/);
 });
 
 test('second tab is busy; quit and reload start independent sessions', async ({page, context}) => {
@@ -243,9 +243,18 @@ test('day activity focus navigates one day and preserves Events through tuning',
   const previous = await date();
   await page.keyboard.press('2');
   await expect(screen(page)).toContainText('2 Events off');
+  const eventRow = () => screen(page).locator('div').evaluateAll(rows => rows.findIndex(row => /^ Events\s+[A-Z]/.test(row.textContent)));
+  const defaultRow = await eventRow();
   await page.keyboard.press('d');
   await page.keyboard.press('ArrowRight');
   await expect(screen(page)).toContainText('medium boost');
+  for (let step = 0; step < 40; step++) await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('300%');
+  await expect.poll(eventRow).toBe(defaultRow + 7);
+  expect(await date()).toBe(previous);
+  await page.keyboard.press('0');
+  await expect(screen(page)).toContainText('normal boost');
+  await expect.poll(eventRow).toBe(defaultRow);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Shift+Tab');

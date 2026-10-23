@@ -5,6 +5,11 @@ import "math"
 // DayActivity contains average daily counts for one calendar bucket. It is not
 // a probability density: interpolation connects samples without adding peaks.
 type DayActivity struct{ Events, Thoughts float64 }
+
+// DayActivityDefaultExponent deepens quiet valleys while retaining the measured
+// ordering of the samples; it does not add decorative peaks or smoothing.
+const DayActivityDefaultExponent = 1.1
+
 type DayActivityLevel struct{ Total, Events, Thoughts float64 }
 type DayActivitySeries uint8
 
@@ -29,7 +34,7 @@ type DayActivityOptions struct {
 // Boost acts before weighting, so Total remains the sum of its components.
 func DayActivityLevels(values []DayActivity, exponent float64) []DayActivityLevel {
 	if exponent <= 0 || math.IsNaN(exponent) || math.IsInf(exponent, 0) {
-		exponent = .8
+		exponent = DayActivityDefaultExponent
 	}
 	var maxEvents, maxThoughts float64
 	for _, value := range values {
@@ -80,9 +85,11 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
 		size = 1
 	}
-	size = min(1.25, max(.5, size))
-	// Leave headroom for size tuning instead of clipping the largest values.
-	maximum := float64(height*brailleRows-1) / 1.25
+	size = min(3, max(.5, size))
+	// Amplitude = 1-exp(-1.6*size): about 80% of the canvas at 100%,
+	// approaching 99% at 300%. Larger sizes keep sharp summits instead of
+	// clipping them into a flat ridge. The presentation also adds plot rows.
+	maximum := float64(height*brailleRows-1) * (1 - math.Exp(-1.6*size))
 	put := func(x, y int, series DayActivitySeries, value float64) {
 		cell := &rows[y/brailleRows][x/brailleColumns]
 		if cell.Glyph == ' ' {
@@ -110,7 +117,7 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 				previous = -1
 				continue
 			}
-			top := height*brailleRows - 1 - int(math.Round(value*size*maximum))
+			top := height*brailleRows - 1 - int(math.Round(value*maximum))
 			bottom := top
 			if series == 0 && !options.Outline {
 				bottom = height*brailleRows - 1
@@ -121,7 +128,7 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 			for y := top; y <= bottom; y++ {
 				put(x, y, DayActivitySeries(series), value)
 			}
-			previous = height*brailleRows - 1 - int(math.Round(value*size*maximum))
+			previous = height*brailleRows - 1 - int(math.Round(value*maximum))
 		}
 	}
 	return rows
