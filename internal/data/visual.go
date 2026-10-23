@@ -13,6 +13,11 @@ type Visual struct {
 	UserPaused   bool
 	// VideoQuality is a preference for future preparations, not existing asset metadata.
 	VideoQuality string
+
+	BorderWeight BorderWeight
+	HeavierText  bool
+	TextSize     TextSize
+	HighContrast bool
 }
 
 // BackgroundFraming uses normalized overflow positions so framing adapts to

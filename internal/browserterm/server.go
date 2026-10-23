@@ -138,7 +138,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
-	if r.URL.Path == "/visual" || r.URL.Path == "/visual/background" || r.URL.Path == "/visual/settings" || r.URL.Path == "/visual/video" || r.URL.Path == "/visual/poster" || r.URL.Path == "/visual/video/frame" || r.URL.Path == "/visual/video/source" || r.URL.Path == "/visual/video/preview" || r.URL.Path == "/visual/video/preview/stop" {
+	if r.URL.Path == "/visual" || r.URL.Path == "/visual/background" || r.URL.Path == "/visual/accessibility" || r.URL.Path == "/visual/settings" || r.URL.Path == "/visual/video" || r.URL.Path == "/visual/poster" || r.URL.Path == "/visual/video/frame" || r.URL.Path == "/visual/video/source" || r.URL.Path == "/visual/video/preview" || r.URL.Path == "/visual/video/preview/stop" {
 		s.mu.Lock()
 		if s.closing {
 			s.mu.Unlock()

@@ -4,8 +4,9 @@
 const backgroundPreviewMaxPixels = 1200 * 800;
 
 class ThoughtsVisual {
-  constructor(terminal, sendAction) {
+  constructor(terminal, sendAction, resizeTerminal) {
     this.terminal = terminal;
+    this.resizeTerminal = resizeTerminal;
     this.sendAction = sendAction;
     this.image = document.getElementById('background-image');
     this.surface = document.getElementById('background-surface');
@@ -14,7 +15,7 @@ class ThoughtsVisual {
     this.file = document.getElementById('background-file');
     this.preview = document.getElementById('background-preview');
     this.previewContainer = document.getElementById('background-preview-wrap');
-    this.saved = {background: false, darkness: 42, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, videoQuality:'efficient', kind: 'image'};
+    this.saved = {background: false, darkness: 42, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, videoQuality:'efficient', kind: 'image', borderWeight:'normal', heavierText:false, textSize:'standard', highContrast:false};
     this.connected = false;
     this.documentVisible = !document.hidden;
     this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
@@ -76,10 +77,38 @@ class ThoughtsVisual {
       this.restoreGeneration = this.connectionGeneration;
       this.ready = this.restore();
     }
+    const generation = this.connectionGeneration;
+    this.ready.then(() => {
+      if (this.connected && generation === this.connectionGeneration && !this.loadFailed) this.publishAppearance();
+    });
+  }
+  publishAppearance() {
+    if (this.connected) this.sendAction({action:'appearance', ...readabilitySettings(this.saved)});
+  }
+  applyReadability(settings) {
+    this.readability = readabilitySettings(settings);
+    this.updateTextWeight(this.readability.heavierText);
+    const fontSize = {standard:14, larger:16, largest:18}[this.readability.textSize];
+    if (this.terminal.options.fontSize !== fontSize) {
+      this.terminal.options.fontSize = fontSize;
+      if (this.previewContainer) this.previewContainer.hidden = true;
+      this.resizeTerminal?.();
+    }
+    const contrast = this.readability.highContrast ? 7 : 1;
+    if (this.terminal.options.minimumContrastRatio !== contrast) this.terminal.options.minimumContrastRatio = contrast;
+    if (this.previewFrameElement) this.previewFrameElement.style.outlineWidth = {normal:'1px',heavy:'2px','extra-heavy':'3px'}[this.readability.borderWeight];
+    const foreground = this.readability.highContrast ? '#ffffff' : '#eeeeee';
+    if (this.terminal.options.theme.foreground !== foreground) this.terminal.options.theme = {...this.terminal.options.theme, foreground};
+    this.terminal.element?.ownerDocument?.body?.classList.toggle('high-contrast',this.readability.highContrast);
+  }
+  updateTextWeight(heavierText) {
+    const weight = heavierText ? 600 : 400;
+    if (this.terminal.options.fontWeight !== weight) this.terminal.options.fontWeight = weight;
+    if (this.terminal.options.fontWeightBold !== 700) this.terminal.options.fontWeightBold = 700;
   }
   reply(action, operationID, connectionGeneration = this.connectionGeneration) {
     if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) {
-      this.sendAction({action, id: operationID, videoQuality: this.saved.videoQuality || 'efficient', darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing, kind: this.candidateKind || this.saved.kind, speedPercent: this.saved.speedPercent, userPaused: this.saved.userPaused, playbackBlocked: this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride)});
+      this.sendAction({action, id: operationID, ...readabilitySettings(this.saved), videoQuality: this.saved.videoQuality || 'efficient', darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing, kind: this.candidateKind || this.saved.kind, speedPercent: this.saved.speedPercent, userPaused: this.saved.userPaused, playbackBlocked: this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride)});
     }
   }
   async receive(state) {
@@ -90,15 +119,18 @@ class ThoughtsVisual {
     this.refreshAfterClose = previousState.open && !state.open;
     if (JSON.stringify(state.preview) !== JSON.stringify(previousState.preview)) this.previewContainer.hidden = true;
     if (!state.open) {
-      if (previousState.request === 'apply') this.saveController?.abort();
+      if (previousState.request === 'apply' || previousState.request === 'applyAccessibility') this.saveController?.abort();
       this.discardPreview();
+      this.applyReadability(this.saved);
       this.updateDarkness(this.saved.darkness);
       if (previousState.open) this.terminal.focus();
       return;
     }
-    this.updateDarkness(state.request === 'load' ? this.saved.darkness : state.darkness);
-    this.videoTrim?.sync(state,previousState);
-    this.queuePreview();
+    this.applyReadability(state.accessibility && state.request !== 'load' ? state : this.saved);
+    this.updateDarkness(state.accessibility || state.request === 'load' ? this.saved.darkness : state.darkness);
+    if (!state.accessibility) this.videoTrim?.sync(state,previousState);
+    if (state.accessibility) this.previewContainer.hidden = true;
+    else this.queuePreview();
     this.updatePlayback();
     if (this.previewVideo) this.previewVideo.playbackRate = this.playbackSpeed();
     if (state.id === previousState.id && state.request === previousState.request) return;
@@ -128,6 +160,9 @@ class ThoughtsVisual {
         this.reply('played', operationID); break;
       case 'preview':
         await this.togglePreviewPlayback(); this.reply('previewed', operationID, connectionGeneration); break;
+      case 'applyAccessibility':
+        await this.saveAccessibility(state, operationID, connectionGeneration);
+        break;
       case 'apply': case 'remove':
         await this.save(state.request === 'remove', operationID, state.darkness, state.framing, connectionGeneration);
         break;
@@ -177,6 +212,7 @@ class ThoughtsVisual {
     this.updatePreparationStatus();
     this.refreshAfterClose = false;
     this.discardPreview();
+    this.applyReadability(this.saved);
     this.updateDarkness(this.saved.darkness);
   }
   renderBackground() {
@@ -255,11 +291,12 @@ class ThoughtsVisual {
   }
   updateDarkness(value) {
     value = Number.isInteger(value) ? Math.max(0, Math.min(95, value)) : 42;
+    if (this.readability?.highContrast) value = Math.max(85,value);
     this.previewContainer.style.setProperty('--darkness', value / 100);
     this.overlay.style.backgroundColor = `rgb(0 0 0 / ${value}%)`;
   }
   queuePreview() {
-    if (!this.state.open) { this.previewContainer.hidden = true; return; }
+    if (!this.state.open || this.state.accessibility) { this.previewContainer.hidden = true; return; }
     cancelAnimationFrame(this.previewFrame);
     this.previewFrame = requestAnimationFrame(() => this.positionPreview());
   }
@@ -273,11 +310,12 @@ class ThoughtsVisual {
     // Metadata can arrive before Bubble Tea's next paint. Verify the reserved
     // cells in xterm's public buffer before placing pixels over them. Geometry
     // comes from the TUI; buffer reads only guard against a stale/partial paint.
+    const border = previewBorder(readabilitySettings(this.saved).borderWeight);
     const rowText = row => this.terminal.buffer.active.getLine(row)?.translateToString(false) || '';
-    if (rowText(previewRect.Y - 1).slice(previewRect.X - 1, previewRect.X + previewRect.Width + 1) !== '╭' + '─'.repeat(previewRect.Width) + '╮') return;
-    if (rowText(previewRect.Y + previewRect.Height).slice(previewRect.X - 1, previewRect.X + previewRect.Width + 1) !== '╰' + '─'.repeat(previewRect.Width) + '╯') return;
+    if (rowText(previewRect.Y - 1).slice(previewRect.X - 1, previewRect.X + previewRect.Width + 1) !== border[0] + border[1].repeat(previewRect.Width) + border[2]) return;
+    if (rowText(previewRect.Y + previewRect.Height).slice(previewRect.X - 1, previewRect.X + previewRect.Width + 1) !== border[3] + border[1].repeat(previewRect.Width) + border[4]) return;
     for (let row = previewRect.Y; row < previewRect.Y + previewRect.Height; row++) {
-      if (rowText(row).slice(previewRect.X - 1, previewRect.X + previewRect.Width + 1) !== '│' + ' '.repeat(previewRect.Width) + '│') return;
+      if (rowText(row).slice(previewRect.X - 1, previewRect.X + previewRect.Width + 1) !== border[5] + ' '.repeat(previewRect.Width) + border[5]) return;
     }
     const screenBounds = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
     const cellWidth = screenBounds.width / this.terminal.cols;
@@ -415,6 +453,8 @@ class ThoughtsVisual {
       this.image.removeAttribute('src');
     }
     this.saved = settings;
+    this.applyReadability(settings);
+    this.publishAppearance();
     this.surface.hidden = !settings.background;
     this.renderBackground();
     this.image.hidden = !settings.background;
@@ -442,6 +482,31 @@ class ThoughtsVisual {
       this.loadFailed = false;
     } catch {
       if (connectionGeneration === this.connectionGeneration && activationGeneration === this.activationGeneration) this.loadFailed = true;
+    }
+  }
+  async saveAccessibility(state, operationID, connectionGeneration) {
+    this.saveController?.abort();
+    const controller = new AbortController();
+    this.saveController = controller;
+    try {
+      const response = await fetch('/visual/accessibility', {
+        method:'PUT', headers:{'Content-Type':'application/json'}, signal:controller.signal,
+        body:JSON.stringify(readabilitySettings(state))
+      });
+      if (!response.ok) throw new Error();
+      const settings = await response.json();
+      if (connectionGeneration !== this.connectionGeneration || !this.state.open || this.state.id !== operationID) return;
+      // Readability saves must not fetch, decode or replace background media.
+      this.activationGeneration++;
+      this.saved = {...this.saved, ...readabilitySettings(settings)};
+      this.applyReadability(settings);
+      this.updateDarkness(this.saved.darkness);
+      this.publishAppearance();
+      this.reply('saved', operationID, connectionGeneration);
+    } catch {
+      if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) this.reply('failed',operationID,connectionGeneration);
+    } finally {
+      if (this.saveController === controller) this.saveController = undefined;
     }
   }
   async save(removeBackground, operationID, darkness, framing, connectionGeneration) {
@@ -488,12 +553,12 @@ class ThoughtsVisual {
   }
   playbackSpeed() {
     // Until the load reply arrives, the Options defaults are not user preferences.
-    const preferences = this.state.open && this.state.request !== 'load' ? this.state : this.saved;
+    const preferences = this.state.open && !this.state.accessibility && this.state.request !== 'load' ? this.state : this.saved;
     const percent = preferences.speedPercent;
     return Number.isInteger(percent) ? Math.max(25, Math.min(100, percent)) / 100 : 1;
   }
   shouldPlayBackground() {
-    const preferences = this.state.open && this.state.request !== 'load' ? this.state : this.saved;
+    const preferences = this.state.open && !this.state.accessibility && this.state.request !== 'load' ? this.state : this.saved;
     const paused = preferences.userPaused;
     return !!(this.video && this.saved.background && this.saved.kind === 'video' && !paused &&
       this.connected && this.documentVisible && (!this.motionQuery?.matches || this.motionOverride) &&
@@ -605,4 +670,20 @@ class ThoughtsVisual {
     }
   }
 
+}
+
+function readabilitySettings(settings) {
+  return {
+    borderWeight:['normal','heavy','extra-heavy'].includes(settings.borderWeight) ? settings.borderWeight : 'normal',
+    heavierText:!!settings.heavierText,
+    textSize:['standard','larger','largest'].includes(settings.textSize) ? settings.textSize : 'standard',
+    highContrast:!!settings.highContrast
+  };
+}
+// These correspond to Go's one-cell structural border styles. Actual buffer
+// verification below still fences publication against stale terminal paints.
+function previewBorder(weight) {
+  if (weight === 'heavy') return ['┏','━','┓','┗','┛','┃'];
+  if (weight === 'extra-heavy') return ['█','█','█','█','█','█'];
+  return ['╭','─','╮','╰','╯','│'];
 }

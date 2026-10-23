@@ -9,6 +9,18 @@ import (
 )
 
 func TestModel_VideoQuality(t *testing.T) {
+	t.Run("mouse file selection preserves the chosen quality", func(t *testing.T) {
+		for _, quality := range []visual.VideoQuality{visual.VideoQualityHigh, visual.VideoQualityMaximum} {
+			m := newRootTestModel()
+			m.browserOptionsEnabled = true
+			m.width, m.height = 80, 36
+			m.options = optionsState{open: true, videoQuality: quality}
+			m, _ = rootUpdate(m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 12, Y: 5})
+			if m.OptionsState().Request != "choose" || m.OptionsState().VideoQuality != quality {
+				t.Fatalf("got %+v, want chooser retaining %s", m.OptionsState(), quality)
+			}
+		}
+	})
 	t.Run("unpreviewed quality changes preserve accepted geometry and quality", func(t *testing.T) {
 		m := newRootTestModel()
 		m.browserOptionsEnabled = true
@@ -56,7 +68,7 @@ func TestModel_VideoQuality(t *testing.T) {
 	t.Run("quality is available before choosing a video", func(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		if m.OptionsState().VideoQuality != visual.VideoQualityEfficient {
 			t.Fatal("initial preference is not Efficient")
 		}

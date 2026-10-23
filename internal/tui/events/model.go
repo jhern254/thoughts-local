@@ -121,6 +121,8 @@ type Model struct {
 	eventCounts []data.EventThoughtCountView
 	latest      *data.ThoughtSummaryView
 
+	borderWeight data.BorderWeight
+
 	distributions distributionSettings
 	position      timelinePosition
 	subjectTime   subjectTimeState
@@ -194,6 +196,13 @@ func (m *Model) Close() {
 	m.picker.Reset()
 	m.expanded = timeline.EntryKey{}
 }
+func (m *Model) SetBorderWeight(weight data.BorderWeight) {
+	if m.borderWeight != weight {
+		m.load.retainedBody = ""
+	}
+	m.borderWeight = weight
+}
+
 func (m *Model) SetFocused(focused bool) {
 	blurred := !focused
 	if blurred {

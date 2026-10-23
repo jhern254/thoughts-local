@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"strings"
 )
 
@@ -83,6 +84,7 @@ func (m Model) updateFramingInput(message tea.Msg) (tea.Model, tea.Cmd) {
 		width, rect := m.optionsLayout()
 		firstAction := 5
 		if rect.Height > 0 {
+
 			firstAction = rect.Y + rect.Height + 2
 		}
 		if msg.Button == tea.MouseLeft && msg.X >= rect.X-1 && msg.X < rect.X-1+width && msg.Y >= firstAction && msg.Y <= firstAction+2 {
@@ -105,11 +107,12 @@ func (m Model) viewFraming() tea.View {
 	}
 	lines := []string{selected.Render("Adjust framing"), label(framingFocusPreview, fmt.Sprintf("Preview · Zoom: %d%%", m.options.framing.Zoom)), ""}
 	if rect.Height > 0 {
-		lines = append(lines, "╭"+strings.Repeat("─", rect.Width)+"╮")
+		border := appearance.Border(m.borderWeight)
+		lines = append(lines, border.TopLeft+strings.Repeat(border.Top, rect.Width)+border.TopRight)
 		for range rect.Height {
-			lines = append(lines, "│"+strings.Repeat(" ", rect.Width)+"│")
+			lines = append(lines, border.Left+strings.Repeat(" ", rect.Width)+border.Right)
 		}
-		lines = append(lines, "╰"+strings.Repeat("─", rect.Width)+"╯")
+		lines = append(lines, border.BottomLeft+strings.Repeat(border.Bottom, rect.Width)+border.BottomRight)
 	} else {
 		lines = append(lines, "Preview needs a taller window.")
 	}

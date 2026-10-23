@@ -14,6 +14,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/render"
 	"github.com/jhern254/go-thoughts/internal/timeline"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
@@ -191,7 +192,8 @@ func (m *Model) expandedThoughtsRow() int {
 }
 
 func (m *Model) paintCard(content []string, selected bool) []string {
-	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(m.cardWidth() + cardBorderColumns)
+	border := appearance.Border(m.borderWeight)
+	style := lipgloss.NewStyle().Border(border).Width(m.cardWidth() + cardBorderColumns)
 	if selected && !m.blurred {
 		style = style.BorderForeground(lipgloss.Color(selectedEntryColor))
 	}

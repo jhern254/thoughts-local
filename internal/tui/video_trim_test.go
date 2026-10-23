@@ -351,7 +351,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		m := newVideoTrimTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 36})
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Darkness: 70})
 		m.activateOption()
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "sourceSelected", ID: m.OptionsState().ID, Kind: "video", DurationMS: 60000})

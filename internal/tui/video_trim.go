@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
@@ -384,11 +385,12 @@ func (m Model) viewVideoTrim() tea.View {
 	}
 	lines := []string{selected.Render("Options"), "", heading, ""}
 	if rect.Height > 0 {
-		lines = append(lines, muted.Render("╭"+strings.Repeat("─", rect.Width)+"╮"))
+		border := appearance.Border(m.borderWeight)
+		lines = append(lines, muted.Render(border.TopLeft+strings.Repeat(border.Top, rect.Width)+border.TopRight))
 		for range rect.Height {
-			lines = append(lines, muted.Render("│")+strings.Repeat(" ", rect.Width)+muted.Render("│"))
+			lines = append(lines, muted.Render(border.Left)+strings.Repeat(" ", rect.Width)+muted.Render(border.Right))
 		}
-		lines = append(lines, muted.Render("╰"+strings.Repeat("─", rect.Width)+"╯"), "")
+		lines = append(lines, muted.Render(border.BottomLeft+strings.Repeat(border.Bottom, rect.Width)+border.BottomRight), "")
 	}
 	if m.options.sourceChecking {
 		// Keep the verified controls' rows without inventing source bounds.

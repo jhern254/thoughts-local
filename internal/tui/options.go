@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
@@ -32,6 +33,11 @@ type BrowserOptionsMsg struct {
 	UserPaused      bool                   `json:"userPaused"`
 	PlaybackBlocked bool                   `json:"playbackBlocked"` // Playback failed or reduced-motion settings prevent play; separate from user Pause.
 	Framing         data.BackgroundFraming `json:"framing"`
+
+	BorderWeight data.BorderWeight `json:"borderWeight"`
+	HeavierText  bool              `json:"heavierText"`
+	TextSize     data.TextSize     `json:"textSize"`
+	HighContrast bool              `json:"highContrast"`
 }
 
 // PreviewRect reserves space for browser media in terminal cells, not pixels.
@@ -58,6 +64,12 @@ type BrowserOptionsState struct {
 	SourceFrame              bool                   `json:"sourceFrame"`     // Show the original-source frame instead of the prepared loop.
 	SourcePreviewMS          int64                  `json:"sourcePreviewMS"` // Source-relative position of the boundary being adjusted.
 	Trim                     visual.VideoTrim       `json:"trim"`            // Draft start/end times in source milliseconds; may differ from the accepted preview.
+
+	Accessibility bool              `json:"accessibility"`
+	BorderWeight  data.BorderWeight `json:"borderWeight"`
+	HeavierText   bool              `json:"heavierText"`
+	TextSize      data.TextSize     `json:"textSize"`
+	HighContrast  bool              `json:"highContrast"`
 }
 
 const (
@@ -118,6 +130,13 @@ type optionsState struct {
 	acceptedTrim        visual.VideoTrim // Source cuts for the acknowledged loop, retained while draft cuts change.
 	loopDurationMS      int64
 	loopReady           bool
+
+	accessibility       bool
+	borderWeight        data.BorderWeight
+	heavierText         bool
+	textSize            data.TextSize
+	highContrast        bool
+	accessibilityOffset int
 }
 
 func (m *Model) requestOptions(action string) {
@@ -153,40 +172,39 @@ func (m Model) OptionsState() BrowserOptionsState {
 		SourceFrame:              m.options.sourceFrame,
 		SourcePreviewMS:          m.options.sourcePreviewMS,
 		Trim:                     m.options.trim,
+
+		Accessibility: m.options.accessibility,
+		BorderWeight:  m.options.borderWeight,
+		HeavierText:   m.options.heavierText,
+		TextSize:      m.options.textSize,
+		HighContrast:  m.options.highContrast,
 	}
 }
 
 func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) {
-	if !m.browserOptionsEnabled || m.exitPromptOpen {
+	if !m.browserOptionsEnabled {
+		return m, nil
+	}
+	if msg.Action == "appearance" {
+		m.setBorderWeight(msg.BorderWeight)
+		return m, nil
+	}
+	if m.exitPromptOpen {
 		return m, nil
 	}
 	if msg.Action == "open" {
 		if m.speechSetup.open {
 			return m, nil
 		}
-		if !m.options.open && (m.speechSetup.service != nil || m.editorPreferences.service != nil) {
+		if !m.options.open {
 			m.options.open = true
 			m.options.menu = true
 			m.options.request = ""
-			return m, nil
-		}
-		if !m.options.open {
-			m.options.open = true
-			m.options.trimming = false
-			m.options.newVideo = false
-			m.options.loopReady = false
-			m.options.editing = false
-			m.options.hasBackground = false
-			m.options.framing = data.DefaultBackgroundFraming()
-			m.options.focus = optionsFocusChooseBackground
-			m.options.darkness = data.DefaultBackgroundDarkness
-			m.options.speedPercent = 100
-			m.options.videoQuality = visual.VideoQualityEfficient
-			m.options.userPaused = false
-			m.options.status = "Loading visual…"
-			m.requestOptions("load")
 		}
 		return m, nil
+	}
+	if m.options.accessibility {
+		return m.acceptAccessibility(msg)
 	}
 	if msg.Action == "playback" {
 		if m.options.open && msg.ID == m.options.id {
@@ -416,6 +434,9 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.options.menu {
 		return m.updateOptionsMenu(message)
 	}
+	if m.options.accessibility {
+		return m.updateAccessibilityInput(message)
+	}
 	if m.options.trimming || m.options.sourceChecking {
 		return m.updateVideoTrimInput(message)
 	}
@@ -429,7 +450,7 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			if (m.options.request != "apply" && m.options.request != "remove") || (m.options.request == "apply" && m.options.video) {
 				m.options.open = false
-				if m.speechSetup.service != nil {
+				if m.browserOptionsEnabled {
 					m.options.open = true
 					m.options.menu = true
 				}
@@ -536,7 +557,7 @@ func (m *Model) activateOption() {
 		m.requestOptions("remove")
 	case optionsFocusBack:
 		m.options.open = false
-		if m.speechSetup.service != nil {
+		if m.browserOptionsEnabled {
 			m.options.open = true
 			m.options.menu = true
 		}
@@ -579,6 +600,7 @@ func (m *Model) clickOption(x, y int, activate bool) {
 	}
 	shift := 0
 	if rect.Height > 0 {
+
 		shift = rect.Height + 2
 	}
 	switch {
@@ -620,6 +642,9 @@ func (m Model) viewOptions() tea.View {
 	if m.options.menu {
 		return m.viewOptionsMenu()
 	}
+	if m.options.accessibility {
+		return m.viewAccessibility()
+	}
 	if m.options.trimming || m.options.sourceChecking {
 		return m.viewVideoTrim()
 	}
@@ -638,11 +663,12 @@ func (m Model) viewOptions() tea.View {
 	}
 	lines := []string{selected.Render("Options"), "", "Visual", "", "Background", label(optionsFocusChooseBackground, "Choose image or video"), ""}
 	if rect.Height > 0 {
-		lines = append(lines, muted.Render("╭"+strings.Repeat("─", rect.Width)+"╮"))
+		border := appearance.Border(m.borderWeight)
+		lines = append(lines, muted.Render(border.TopLeft+strings.Repeat(border.Top, rect.Width)+border.TopRight))
 		for range rect.Height {
-			lines = append(lines, muted.Render("│")+strings.Repeat(" ", rect.Width)+muted.Render("│"))
+			lines = append(lines, muted.Render(border.Left)+strings.Repeat(" ", rect.Width)+muted.Render(border.Right))
 		}
-		lines = append(lines, muted.Render("╰"+strings.Repeat("─", rect.Width)+"╯"))
+		lines = append(lines, muted.Render(border.BottomLeft+strings.Repeat(border.Bottom, rect.Width)+border.BottomRight))
 	}
 	peak := m.options.darkness * (width - 1) / 95
 	slider := strings.Repeat("━", peak) + "●" + strings.Repeat("─", width-peak-1)
@@ -689,14 +715,14 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			m.options.open = false
 		case "tab", "down":
-			m.options.menuFocus = (m.options.menuFocus + 1) % 4
+			m.options.menuFocus = (m.options.menuFocus + 1) % len(m.optionsMenuLabels())
 		case "shift+tab", "up":
-			m.options.menuFocus = (m.options.menuFocus + 3) % 4
+			m.options.menuFocus = (m.options.menuFocus + len(m.optionsMenuLabels()) - 1) % len(m.optionsMenuLabels())
 		case "enter", "space":
 			activate = true
 		}
 	case tea.MouseClickMsg:
-		if message.Button == tea.MouseLeft && message.Y >= 2 && message.Y <= 5 {
+		if message.Button == tea.MouseLeft && message.Y >= 2 && message.Y < 2+len(m.optionsMenuLabels()) {
 			m.options.menuFocus = message.Y - 2
 			activate = true
 		}
@@ -704,11 +730,12 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 	if !activate {
 		return m, nil
 	}
-	switch m.options.menuFocus {
-	case 0:
+	switch m.optionsMenuLabels()[m.options.menuFocus] {
+	case "Visual":
 		if !m.browserOptionsEnabled {
 			return m, nil
 		}
+		m.options.accessibility = false
 		m.options.menu = false
 		m.options.trimming = false
 		m.options.newVideo = false
@@ -717,28 +744,37 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.options.hasBackground = false
 		m.options.framing = data.DefaultBackgroundFraming()
 		m.options.focus = optionsFocusChooseBackground
+		m.options.videoQuality = visual.VideoQualityEfficient
 		m.options.darkness = data.DefaultBackgroundDarkness
 		m.options.speedPercent = 100
 		m.options.userPaused = false
 		m.options.status = "Loading visual…"
 		m.requestOptions("load")
-	case 1:
+	case "Accessibility":
+		m.options.trimming, m.options.editing = false, false
+		m.options.newVideo, m.options.loopReady = false, false
+		m.options.menu = false
+		m.options.accessibility = true
+		m.options.focus = 0
+		m.options.status = "Loading accessibility…"
+		m.requestOptions("load")
+	case "Models":
 		if !m.browserOptionsEnabled {
 			return m, nil
 		}
 		m.speechSetup.open = true
 		m.speechSetup.offered = true
 		m.speechSetup.focus = 0
-	case 2:
+	case "Editor":
 		return m.openEditorPreferences()
-	case 3:
+	case "Back":
 		m.options.open = false
 	}
 	return m, nil
 }
 func (m Model) viewOptionsMenu() tea.View {
 	rows := []string{m.subjects.list.Styles.Title.Render("Options"), ""}
-	for index, label := range []string{"Visual", "Models", "Editor", "Back"} {
+	for index, label := range m.optionsMenuLabels() {
 		if index == m.options.menuFocus {
 			label = m.subjects.list.Styles.Title.Render(label)
 		}
@@ -815,4 +851,15 @@ func (m Model) draftVideoQualityLabel() string {
 		return "Preview loop to use " + m.options.videoQuality.Label() + ". Apply uses " + m.options.acceptedQuality.Label() + "."
 	}
 	return "Quality applies to new previews."
+}
+
+func (m Model) optionsMenuLabels() []string {
+	if !m.browserOptionsEnabled {
+		return []string{"Visual", "Models", "Editor", "Back"}
+	}
+	labels := []string{"Visual", "Accessibility"}
+	if m.speechSetup.service != nil {
+		labels = append(labels, "Models")
+	}
+	return append(labels, "Editor", "Back")
 }

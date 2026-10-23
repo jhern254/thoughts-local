@@ -102,6 +102,13 @@ the original Subject.
   shortcuts such as Ctrl+L and Ctrl+W remain browser actions. Click the terminal
   to return focus. Microphone, attachments, and mobile packaging are deferred.
 
+### Browser accessibility
+
+Open **Options → Accessibility** to independently enable thicker card borders or
+heavier text. Preview the changes, choose **Apply** to save, or **Back** to cancel.
+Thicker borders use square corners; text size stays unchanged. Preferences survive
+browser reloads and do not change the native terminal.
+
 ### Browser background
 
 Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use

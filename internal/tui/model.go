@@ -12,6 +12,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subjectdiscovery"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/tui/events"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 	"github.com/jhern254/go-thoughts/internal/tui/mindset"
@@ -60,8 +61,9 @@ func (entity entityKind) title() string {
 }
 
 type Model struct {
-	ctx  context.Context
-	user *data.User
+	borderWeight data.BorderWeight
+	ctx          context.Context
+	user         *data.User
 	// screen selects the root child that owns ordinary messages and rendering.
 	screen                  screen
 	subjectReturn           *events.CreateSubjectRequest
@@ -443,7 +445,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.options.open = true
 					m.options.menu = true
-					m.options.menuFocus = 2
+					m.options.menuFocus = len(m.optionsMenuLabels()) - 2
 					return m, nil
 				}
 				m.events.Close()
@@ -499,7 +501,7 @@ func (m Model) entityStrip() string {
 }
 
 func (m Model) homeDivider(focused bool) string {
-	line := strings.Repeat("─", max(1, m.width))
+	line := strings.Repeat(appearance.Border(m.borderWeight).Top, max(1, m.width))
 	if focused {
 		sectionHighlightColor := m.subjects.list.Styles.Title.GetBackground()
 		return lipgloss.NewStyle().Foreground(sectionHighlightColor).Render(line)

@@ -45,6 +45,9 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 		if len(body) > maxOptionsBytes || json.Unmarshal(body, &msg) != nil || msg.ID > 9007199254740991 || msg.Darkness < 0 || msg.Darkness > 95 || (msg.SpeedPercent != 0 && (msg.SpeedPercent < 25 || msg.SpeedPercent > 100)) || (msg.Kind != "" && msg.Kind != "image" && msg.Kind != "video") {
 			return nil, errInput
 		}
+		if (msg.BorderWeight != "" && !msg.BorderWeight.Valid()) || (msg.TextSize != "" && !msg.TextSize.Valid()) {
+			return nil, errInput
+		}
 		if (msg.VideoQuality != "" && !msg.VideoQuality.Valid()) || msg.Width < 0 || msg.Height < 0 || msg.Width > 1920 || msg.Height > 1920 || msg.Width*msg.Height > 1920*1080 || (msg.FrameRate.Numerator != 0 && !msg.FrameRate.Valid()) {
 			return nil, errInput
 		}
@@ -52,7 +55,7 @@ func inputMessages(frame []byte) ([]tea.Msg, error) {
 			return nil, errInput
 		}
 		switch msg.Action {
-		case "open":
+		case "open", "appearance":
 			if msg.ID != 0 {
 				return nil, errInput
 			}
