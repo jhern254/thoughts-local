@@ -48,14 +48,16 @@ to its start day. Ongoing Events stop at the read's cutoff. All observed Thought
 count once, including unassigned ones. Calendar boundaries use the application's
 Pacific timezone and civil dates, including 23/25-hour DST days.
 
-Visible buckets are bounded by calendar days, twice the terminal width and
-254 samples. One adjacent bucket on each side brings the existing count request
-to at most 256 buckets, using both horizontal dots per Braille cell for the
-visible plot. Context continues clipped flanks without widening the viewport.
-A wider bucket reports average daily counts, not totals that grow solely because
-of zooming out.
-All channels share the maximum weighted total in the visible range plus its
-adjacent context buckets:
+Visible buckets are whole civil-day intervals anchored to a fixed calendar epoch.
+They target twice the terminal width; neighboring context and a partly visible
+edge bucket keep each query within 256 buckets. Context continues clipped flanks
+without widening the viewport. A wider bucket reports average daily counts,
+not totals that grow solely because of zooming out. The same dated bucket keeps
+its contents and position as the viewport scrolls.
+
+All channels share the maximum weighted total across the full active history at
+the current bucket resolution. This reference remains fixed during panning,
+even when the largest peak leaves or enters the viewport:
 
     Event activity   = 0.7 × Event daily average
     Thought activity = 0.3 × Thought daily average
@@ -98,7 +100,13 @@ and blank interiors. Hiding a channel does not renormalize the others.
 `internal/data/sqlite_day_activity.go` streams compact Event endpoints once and
 counts Thoughts over disjoint indexed ranges. Difference increments account for
 long Events without expanding every Event into every historical date. Output is
-bounded, but reading all history still scales with the number of stored records.
+bounded. Establishing a new scale reads history in batches of at most 256
+buckets, retaining only the maximum. Its work scales with history length and
+stored records, and remains cancellable between batches and inside SQLite.
+This occurs on initial loading, invalidation/refresh, or a changed bucket
+resolution. A viewport pan reuses the accepted reference and reads only its
+bounded visible range plus neighbors. There is no complete-history read per
+ordinary day key or pan.
 There is no new schema, index, dependency, background worker, or query per key
 inside a loaded range.
 
@@ -107,7 +115,8 @@ range, selection, style, and one cancellable read. It retains accepted geometry
 while loading, checks owner/request identity, queues invalidation during a read,
 and requires explicit retry after failure. Accepted Event mutations, Thought
 changes, return/reload and calendar rollover refresh the overview. Resizing
-resamples to the new bounded width. Focus/style changes reuse the loaded values;
+resamples to the new bounded width; a changed bucket resolution refreshes its
+historical scale. Focus/style changes reuse the loaded values;
 ordinary selection changes reuse the rendered curve as well.
 
 Events still owns daily loading, cards, inline expansion and selection. Mindset
@@ -385,3 +394,59 @@ including the edge flank, matched an exact five-column translation. Screenshots
 were inspected. All 22 browser navigation/resize cases and focused renderer,
 day-graph and root race tests passed. Deterministic regressions also cover a high
 peak entering from outside the viewport, in filled and outline modes.
+
+## Stable scale and buckets during sustained scrolling
+
+The previous pixel-grid correction (`9376f76`) did not fix viewport normalization.
+An actual Brave reproduction changed 230 shared mountain cells after the 33rd
+Left press, when a peak moved out of the window. The window also used to regroup
+wide-range samples on every one-day pan, changing their measured averages.
+
+The current scale uses the maximum across the full active history at the chosen
+bucket resolution. Whole buckets are anchored to civil dates, and sample centers
+use those actual dates. The accepted scale and viewport publish together under
+the existing owner/request checks. Failed or canceled refreshes retain the old
+landscape. Replacing a pending history refresh with zoom retains its refresh
+requirement rather than reusing a stale reference. Changing data or resolution may legitimately establish a new scale;
+ordinary panning does not. This adds bounded history reads when establishing a
+scale, not on each pan. No new store API, schema, dependency, timer, worker or
+persistent history cache was introduced.
+
+Focused regressions reproduce both original failures, exercise a remote peak
+across three history batches, preserve the scale across 40 pans in each direction,
+and cover cancellation, failed refresh, DST and pre-epoch bucket anchoring. Shared
+filled/outline cells are checked at dramatic settings. Actual Brave at 1200×850
+passed 270 day changes across low/extra/outline modes with zero shared glyph/color
+mismatches (90 viewport pans). A separate 45-repeat keydown burst in each direction
+reached the exact dates without reconnecting. Representative screenshots were
+inspected. One initial manual capture compared a prior style frame against the
+next style; the final run explicitly awaited the style change before capture.
+This is unrelated to the unresolved intermittent resize-overlap report above.
+
+The same i5-8250U / Linux amd64 / Go 1.25.14 machine compared `9376f76` with this
+follow-up using identical benchmarks and unchanged migrated fixtures: stress
+721 Events/20,000 Thoughts; two-year activity 3,992 Events/30,493 Thoughts. Each
+revision ran separately, without competing builds/tests: five one-second runs,
+setup/compilation excluded. `Load` explicitly refreshes the history reference;
+`Pan` alternates adjacent viewport positions; `Navigate` stays inside loaded data.
+Medians:
+
+| Fixture / operation / width | Before ns/op | After ns/op | B/op before → after | allocs/op before → after |
+| --- | ---: | ---: | ---: | ---: |
+| Stress Load/80 | 5,296,940.0 | 19,166,019.0 | 52,023 → 84,189 | 2,457 → 4,773 |
+| Stress Rebuild/80 | 116,127.0 | 155,575.0 | 15,712 → 15,712 | 102 → 102 |
+| Stress Navigate/80 | 705.1 | 804.1 | 1,408 → 1,408 | 1 → 1 |
+| Stress Pan/80 | 5,123,987.0 | 6,069,245.0 | 50,805 → 50,001 | 2,414 → 2,414 |
+| Stress Load/160 | 5,623,638.0 | 15,049,426.0 | 67,509 → 99,664 | 2,470 → 4,786 |
+| Stress Rebuild/160 | 199,392.0 | 240,742.0 | 31,232 → 31,232 | 114 → 114 |
+| Stress Navigate/160 | 1,100.0 | 1,174.0 | 2,688 → 2,688 | 1 → 1 |
+| Stress Pan/160 | 5,147,589.0 | 5,461,907.0 | 65,410 → 65,484 | 2,424 → 2,434 |
+| Two-year activity Load/160 | 2,945,817.0 | 22,146,728.0 | 49,788 → 341,283 | 1,093 → 14,684 |
+| Two-year activity Pan/160 | 2,634,446.0 | 2,812,011.0 | 48,587 → 47,360 | 1,056 → 1,059 |
+
+Cold/explicit-refresh loading now costs roughly 15–22 ms in these fixtures,
+versus 3–6 ms before. That is real additional work to establish a stable scale.
+Pan medians increased about 0.18–0.95 ms; rebuilds increased roughly 0.04 ms,
+and cached navigation remains around a microsecond. This is a correctness tradeoff,
+not a speedup. Five runs do not establish statistical significance. No new
+whole-app CPU, memory or navigation-p95 improvement is claimed from these tests.

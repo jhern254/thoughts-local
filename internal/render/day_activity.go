@@ -30,6 +30,12 @@ type DayActivityOptions struct {
 	// FirstDay is a civil-day index from a fixed epoch; Days is the visible
 	// calendar span (zero uses one day per sample). These anchor panning.
 	FirstDay, Days int
+	// Samples may cover whole, calendar-aligned buckets beyond the visible range.
+	// Zero SampleDays keeps the evenly spaced standalone-preview convention.
+	SampleFirstDay, SampleDays int
+	// Reference is the weighted historical peak at this bucket resolution. Zero
+	// derives it from the supplied samples; panning callers supply a stable peak.
+	Reference float64
 	// Adjacent buckets continue slopes beyond the viewport. Nil keeps the
 	// endpoint flat when a caller has no neighboring data.
 	Before, After           *DayActivity
@@ -38,35 +44,45 @@ type DayActivityOptions struct {
 	Exponent, Size          float64
 }
 
+const (
+	dayEventWeight   = .7
+	dayThoughtWeight = .3
+)
+
+// DayActivityReference returns the largest weighted count, before visual boost.
+func DayActivityReference(values []DayActivity) float64 {
+	var maximum float64
+	for _, value := range values {
+		maximum = max(maximum, dayEventWeight*finiteCount(value.Events)+dayThoughtWeight*finiteCount(value.Thoughts))
+	}
+	return maximum
+}
+
 // Event and Thought counts share one weighted-total reference. An Event has
 // greater per-record weight, but numerous Thoughts can naturally dominate.
 // Boost shapes the total; measured shares determine the component ratio.
 // Both components use the same 0.75 height factor, reserving a quarter of the
 // canvas below Total's crest without changing their count-driven ratio.
-func DayActivityLevels(values []DayActivity, exponent float64) []DayActivityLevel {
+func DayActivityLevels(values []DayActivity, exponent, reference float64) []DayActivityLevel {
 	if exponent <= 0 || math.IsNaN(exponent) || math.IsInf(exponent, 0) {
 		exponent = DayActivityDefaultExponent
 	}
-	const (
-		eventWeight          = .7
-		thoughtWeight        = .3
-		componentHeightScale = .75
-	)
-	var maximum float64
-	for _, value := range values {
-		maximum = max(maximum, eventWeight*finiteCount(value.Events)+thoughtWeight*finiteCount(value.Thoughts))
+	const componentHeightScale = .75
+	maximum := finiteCount(reference)
+	if maximum == 0 {
+		maximum = DayActivityReference(values)
 	}
 	levels := make([]DayActivityLevel, len(values))
 	if maximum == 0 {
 		return levels
 	}
 	for i, value := range values {
-		events, thoughts := eventWeight*finiteCount(value.Events), thoughtWeight*finiteCount(value.Thoughts)
+		events, thoughts := dayEventWeight*finiteCount(value.Events), dayThoughtWeight*finiteCount(value.Thoughts)
 		total := events + thoughts
 		if total == 0 {
 			continue
 		}
-		level := math.Pow(total/maximum, exponent)
+		level := math.Pow(min(1, total/maximum), exponent)
 		levels[i].Events = componentHeightScale * level * (events / total)
 		levels[i].Thoughts = componentHeightScale * level * (thoughts / total)
 		levels[i].Total = level
@@ -114,7 +130,7 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 		}
 		copy(samples[1:], values)
 	}
-	levels := DayActivityLevels(samples, options.Exponent)
+	levels := DayActivityLevels(samples, options.Exponent, options.Reference)
 	days := options.Days
 	if days <= 0 {
 		days = len(values)
@@ -122,6 +138,9 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	points := make([]int, len(samples))
 	for i := range points {
 		day := float64(options.FirstDay) + (float64(i-padding)+.5)*float64(days)/float64(len(values))
+		if options.SampleDays > 0 {
+			day = float64(options.SampleFirstDay) + (float64(i-padding)+.5)*float64(options.SampleDays)
+		}
 		points[i] = dayActivityPixel(width, days, options.FirstDay, day)
 	}
 
