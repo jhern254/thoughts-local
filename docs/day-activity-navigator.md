@@ -26,8 +26,9 @@ When focus is outside the Events timeline, all vertical Event curves are highlig
 card selection and borders keep their own focus rules.
 
 The plot has no title or date-range heading. Normal-height terminals leave a
-blank row above twelve plot rows when space permits. Mindset reading and
-usable Events space take priority over the requested graph height. Style values appear there only while their
+blank row above five plot rows on tall windows (four on medium windows). The responsive graph budget is reserved before Mindset content arrives,
+so loading replies cannot resize it between frames. Mindset reads within the
+remaining space while the timeline retains its usable viewport. Style values appear there only while their
 controls are open; loading/error feedback remains available. Short windows use a
 single plot row so the timeline remains usable; the accepted date stays in the
 Events heading and controls remain in the footer. Very small terminals retain
@@ -69,13 +70,13 @@ between Events and Thoughts still follows the data rather than a forced order.
 Zero channels remain zero. The fixed weights give Events greater visual weight;
 there is no user-facing weight setting. Boost presets use exponents
 0.8 (low, default), 1.1, 1.4, 1.8, 2.4. Higher boost deepens valleys and sharpens
-summits. Size ranges from 50–300% relative to the new default: 100% adopts the former
-low-boost/300% appearance. The canvas stays fixed while tuning and zooming, capped at twelve rows and
+summits. Size ranges from 50–300%; the default and Reset use low boost at the maximum
+300% fill. The fuller scaling is drawn inside the compact canvas. The canvas stays fixed while tuning and zooming, capped at five rows and
 the available window budget. Size changes amplitude inside that canvas. Mindset retains
-its reading space; the plot reserves sixteen Events rows when the window permits.
+its reading space; the layout reserves fourteen Events rows when the window permits.
 Small windows use fewer rows without losing component color.
 Amplitude follows `1 - exp(-1.6 × 3 × size)`, with the UI size expressed as a ratio:
-about 99% of the canvas at the new 100%. These are relative activity shapes, not
+about 99% of the canvas at 100%, approaching full height at the default 300%. These are relative activity shapes, not
 probabilities or raw-count axes. Piecewise linear interpolation connects actual
 samples without invented peaks; a one-day view necessarily has one flat sample.
 
@@ -246,9 +247,10 @@ cover static browser mode, not video playback or the unresolved compositor issue
 
 ## Bounded month-view follow-up
 
-Compared `4beacc1` with this follow-up's working tree on the same reference
+Historical comparison: `4beacc1` versus the working tree committed as `1a07bb1`,
+before the compact-height correction below, on the same reference
 machine/toolchain/browser, using the unchanged 721-Event/20,000-Thought stress
-fixture and anchor. The new default is low boost, the former 300% look mapped
+fixture and anchor. That revision's default is low boost, the former 300% look mapped
 to 100%, and one calendar month of activity. The canvas is capped at twelve rows;
 tuning does not move Events. Comparisons ran sequentially with binaries compiled
 first and no competing builds/tests. Five runs are descriptive, not statistical
@@ -316,3 +318,26 @@ entity picker use the shared focus update; its palette regression failed in both
 browsers before the correction and all ten affected browser cases passed after.
 Post-correction root race tests and the normal commit/push hooks verify that last
 change separately.
+
+## Compact height and stable loading
+
+The fullscreen-height follow-up restores a maximum of five plot rows, four on
+medium windows, two on short windows and one on compact windows. Low boost and
+maximum fill are the default inside that area; tuning and time zoom do not grow
+the panel. The standalone preview uses the same compact height and full default.
+
+The graph budget is allocated before Mindset reading space. A regression
+reproduced the previous graph shrinking from six to four rows (including its
+spacer) when long Mindset content arrived. Data replies and in-range Left/Right
+navigation now retain the graph's canvas and cached geometry. The quantitative
+measurements above describe earlier revisions, not this five-row correction;
+no new performance improvement is claimed.
+
+The compact correction passed focused Go/root/preview tests and race tests, plus
+all 22 Chromium/Firefox navigation, clipboard, resize and graph cases. Actual
+Brave review covered 1200×850, 1920×1080 and 480×480, including maximum fill,
+outline and focus changes. One earlier Firefox run detected a transient buffer
+boundary violation during rapid resize; five diagnostic repeats and the final
+22-case run passed. The stricter boundary assertion remains, with painted-row
+and buffer-row diagnostics. This does not establish the intermittent overlap's
+root cause or claim that it is eliminated.

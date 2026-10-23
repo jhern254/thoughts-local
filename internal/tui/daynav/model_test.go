@@ -34,7 +34,7 @@ func fixture(t *testing.T) (Model, *readerStub) {
 	s := &readerStub{start: day.AddDate(-1, 0, 0)}
 	m := New(t.Context(), "u", s)
 	m.now = func() time.Time { return day.Add(12 * time.Hour) }
-	m.Resize(80, 30, 1)
+	m.Resize(80, 30)
 	cmd := m.Sync(day, true, false)
 	m = m.Update(cmd())
 	return m, s
@@ -45,9 +45,18 @@ func TestModel_DayNavigation(t *testing.T) {
 		defer m.Close()
 		m = m.Update(m.Key("0")())
 		reads := s.reads
+		plot := m.plot
 		for i := 1; i < 20; i++ {
 			if cmd := m.Sync(m.selected.AddDate(0, 0, -1), true, false); cmd != nil {
 				t.Fatal("day navigation reread history")
+			}
+		}
+		for i := 1; i < 20; i++ {
+			if cmd := m.Sync(m.selected.AddDate(0, 0, 1), true, false); cmd != nil {
+				t.Fatal("right navigation reread loaded history")
+			}
+			if m.plot != plot {
+				t.Fatal("moving right changed mountain heights inside the loaded range")
 			}
 		}
 		if s.reads != reads {
@@ -94,7 +103,7 @@ func TestModel_DayNavigation(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
 		for _, width := range []int{20, 40, 80} {
-			m.Resize(width, 20, 1)
+			m.Resize(width, 20)
 			m.SetFocused(true)
 			if len(strings.Split(m.View(), "\n")) != 1 {
 				t.Fatal("short plot too tall")
@@ -238,7 +247,7 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 		defer m.Close()
 		m.SetFocused(true)
 		m.Key("d")
-		if !strings.Contains(m.View(), "low boost · 100% · filled") {
+		if !strings.Contains(m.View(), "low boost · 300% · filled") {
 			t.Fatal("missing style values")
 		}
 		m.Key("esc")
@@ -250,34 +259,50 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 }
 
 func TestModel_MountainSizing(t *testing.T) {
+	t.Run("keeps the earlier compact height even in a fullscreen terminal", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		for _, scenario := range []struct{ terminalRows, plotHeight int }{{24, 1}, {30, 5}, {32, 5}, {40, 6}, {80, 6}} {
+			m.Resize(80, scenario.terminalRows)
+			if got := m.Height(); got != scenario.plotHeight {
+				t.Fatalf("terminal %d rows: got plot height %d, want %d including quiet space", scenario.terminalRows, got, scenario.plotHeight)
+			}
+		}
+	})
 	t.Run("defaults to the former enlarged low-boost look and keeps tuning inside a fixed canvas", func(t *testing.T) {
 		m, s := fixture(t)
 		defer m.Close()
-		m.Resize(80, 40, 1)
+		m.Resize(80, 40)
 		m.SetFocused(true)
-		if got, want := m.Height(), 13; got != want {
+		if got, want := m.Height(), 6; got != want {
 			t.Fatalf("default height: got %d, want %d", got, want)
 		}
 		reads := s.reads
 		m.Key("d")
 		for range 40 {
+			m.Key("down")
+		}
+		if m.size != 100 || m.Height() != 6 {
+			t.Fatal("reducing fill changed the compact canvas")
+		}
+		for range 40 {
 			if m.Key("up") != nil {
 				t.Fatal("size adjustment requested data")
 			}
 		}
-		if m.size != 300 || m.Height() != 13 {
-			t.Fatalf("dramatic size/height: got %d/%d, want 300/13", m.size, m.Height())
+		if m.size != 300 || m.Height() != 6 {
+			t.Fatalf("dramatic size/height: got %d/%d, want 300/6", m.size, m.Height())
 		}
 		if s.reads != reads {
 			t.Fatal("style adjustment queried history")
 		}
-		m.Resize(80, 24, 1)
+		m.Resize(80, 24)
 		if m.Height() != 1 {
 			t.Fatalf("short-window height: got %d, want 1", m.Height())
 		}
-		m.Resize(80, 40, 1)
+		m.Resize(80, 40)
 		m.Key("0")
-		if m.size != 100 || m.Height() != 13 || m.outline {
+		if m.size != 300 || m.Height() != 6 || m.outline {
 			t.Fatal("reset did not restore the filled mountain default")
 		}
 	})
@@ -286,7 +311,7 @@ func TestModel_MountainSizing(t *testing.T) {
 		defer m.Close()
 		m = m.Update(m.Key("0")())
 		for _, scenario := range []struct{ width, buckets int }{{80, 160}, {160, 256}} {
-			m.Resize(scenario.width, 40, 1)
+			m.Resize(scenario.width, 40)
 			cmd := m.Sync(m.selected, true, false)
 			if cmd == nil {
 				cmd = m.Key("r")
@@ -326,7 +351,7 @@ func TestModel_MountainFocusPalette(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
 		for _, height := range []int{40, 20} {
-			m.Resize(80, height, 1)
+			m.Resize(80, height)
 			m.SetHighlighted(false)
 			grey := m.plot
 			if strings.Contains(grey, "38;5;37") || strings.Contains(grey, "38;5;179") {

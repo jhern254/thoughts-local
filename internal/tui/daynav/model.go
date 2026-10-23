@@ -17,7 +17,7 @@ import (
 
 const (
 	initialMonthSpan = -1 // Resolve once at the accepted date, then keep the window stable.
-	maxPlotRows      = 12
+	maxPlotRows      = 5
 	minPlotSize      = 50
 	maxPlotSize      = 300
 )
@@ -50,7 +50,6 @@ type Model struct {
 	// queues one refresh; request ownership rejects responses after Close/zoom.
 	pending, visible, focused, dirty bool
 	width, height, rows, span        int
-	mindsetRows                      int
 	highlighted                      bool
 	series                           [3]bool
 	tuning                           bool
@@ -78,7 +77,7 @@ func New(ctx context.Context, user string, reader Reader) Model {
 		span:   initialMonthSpan,
 		series: [3]bool{true, true, true},
 		boost:  0,
-		size:   100,
+		size:   maxPlotSize,
 	}
 }
 func (m *Model) Close() {
@@ -115,9 +114,9 @@ func (m *Model) SetHighlighted(highlighted bool) {
 	m.highlighted = highlighted
 	m.rebuild()
 }
-func (m *Model) Resize(width, height, mindsetRows int) {
+func (m *Model) Resize(width, height int) {
 	oldWidth, oldRows := m.width, m.rows
-	m.width, m.height, m.mindsetRows = max(1, width), height, max(1, mindsetRows)
+	m.width, m.height = max(1, width), height
 	m.compact = height < 26
 	m.rows = m.plotRows()
 	if m.width != oldWidth {
@@ -133,14 +132,23 @@ func (m Model) plotRows() int {
 		return 0
 	}
 	// Reserve the existing header/footer, Mindset's minimum row, separators,
-	// and 16 usable Events rows. The window budget bounds dramatic sizing.
-	reserved := 6 + m.mindsetRows + 2 + 16
+	// and 14 usable Events rows. The window budget bounds dramatic sizing.
+	reserved := 6 + 1 + 2 + 14
 	if !m.compact {
 		reserved++
 	} // The quiet row also hosts controls/read status.
 	// Style and time zoom operate inside this fixed canvas. Their keys must
 	// never move Events farther down or steal reading space from Mindset.
-	return max(1, min(maxPlotRows, m.height-reserved))
+	rows := maxPlotRows
+	switch {
+	case m.height < 26:
+		rows = 1
+	case m.height < 28:
+		rows = 2
+	case m.height < 36:
+		rows = 4
+	}
+	return max(1, min(rows, m.height-reserved))
 }
 func (m *Model) Sync(day time.Time, visible, refresh bool) tea.Cmd {
 	m.selected = displaytime.Day(day)
@@ -301,7 +309,7 @@ func (m *Model) Key(key string) tea.Cmd {
 		case "f":
 			m.outline = !m.outline
 		case "0":
-			m.boost, m.size, m.outline = 0, 100, false
+			m.boost, m.size, m.outline = 0, maxPlotSize, false
 		case "q", "esc", "enter", "d":
 			m.tuning = false
 		}
