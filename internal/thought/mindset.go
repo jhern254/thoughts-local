@@ -19,7 +19,7 @@ func (s *Service) SetMindset(ctx context.Context, userID string, thoughtID int64
 	return s.store.SetThoughtMindset(ctx, userID, thoughtID, active, at.UTC())
 }
 
-func (s *Service) ListMindsetsInRange(ctx context.Context, userID string, from, until time.Time) ([]data.ThoughtSummaryView, error) {
+func (s *Service) ListMindsetsInRange(ctx context.Context, userID string, from, until time.Time) ([]data.MindsetThought, error) {
 	v := validator.NewValidator()
 	v.Check(userID != "", "user_id", "must be provided")
 	v.Check(until.After(from), "range", "must end after it starts")

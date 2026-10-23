@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,30 @@ import (
 )
 
 func TestThoughtMindsetWorkflow_SQLite(t *testing.T) {
+	t.Run("returns complete multiline Unicode text", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		insertUsers(t, db, "owner")
+		service := thought.NewService(data.NewSQLiteThoughtStore(db))
+		text := strings.Repeat("Practice 界 deliberately. ", 10) + "\n\nFinal paragraph."
+		item, err := service.Create(t.Context(), "owner", text, nil, time.Unix(10, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.SetMindset(t.Context(), "owner", item.ThoughtID, true, time.Unix(100, 0)); err != nil {
+			t.Fatal(err)
+		}
+		rows, err := service.ListMindsetsInRange(t.Context(), "owner", time.Unix(100, 0), time.Unix(200, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("mindset count: got %d, want 1", len(rows))
+		}
+		if got := rows[0].Text; got != text {
+			t.Fatalf("mindset text: got %q, want %q", got, text)
+		}
+	})
+
 	t.Run("retains designation history without changing the thought", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		insertUsers(t, db, "owner")

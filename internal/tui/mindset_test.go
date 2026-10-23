@@ -16,9 +16,18 @@ import (
 
 func newMindsetHome(t *testing.T, count int) Model {
 	t.Helper()
-	service := thought.NewService(testutils.NewFakeThoughtStore())
+	texts := make([]string, count)
 	for i := range count {
-		item, err := service.Create(t.Context(), "u", fmt.Sprintf("Practice %d deliberately 界", i+1), nil, time.Unix(int64(i), 0))
+		texts[i] = fmt.Sprintf("Practice %d deliberately 界", i+1)
+	}
+	return newMindsetHomeTexts(t, texts...)
+}
+
+func newMindsetHomeTexts(t *testing.T, texts ...string) Model {
+	t.Helper()
+	service := thought.NewService(testutils.NewFakeThoughtStore())
+	for i, text := range texts {
+		item, err := service.Create(t.Context(), "u", text, nil, time.Unix(int64(i), 0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,7 +100,7 @@ func TestModel_MindsetHome(t *testing.T) {
 			}
 			return -1
 		}
-		if got, want := row(expanded, "Events")-row(before, "Events"), 4; got != want {
+		if got, want := row(expanded, "Events")-row(before, "Events"), 5; got != want {
 			t.Fatalf("Events displacement: got %d, want %d", got, want)
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
@@ -195,6 +204,75 @@ func TestModel_MindsetHome(t *testing.T) {
 		m = runHomeData(t, m, cmd)
 		if m.screen != screenMindsetThought || strings.HasPrefix(ansi.Strip(m.thoughts.View()), " M ") {
 			t.Fatalf("unmarked detail: got %q", m.thoughts.View())
+		}
+	})
+}
+
+func TestModel_MindsetReadingLayout(t *testing.T) {
+	t.Run("wrapped thought grows above the separated timeline and reserves the right margin", func(t *testing.T) {
+		text := "Practice deliberately and give the whole sentence enough room to be read without cutting off its ending.\n\nKeep this paragraph too."
+		for _, size := range [][2]int{{80, 40}, {40, 30}, {24, 24}} {
+			t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+				m := newMindsetHomeTexts(t, text)
+				m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+				view := ansi.Strip(m.View().Content)
+				rows := strings.Split(view, "\n")
+				if len(rows) > size[1] {
+					t.Fatalf("screen height: got %d, want <=%d", len(rows), size[1])
+				}
+				separator := -1
+				for i, row := range rows {
+					if row == strings.Repeat("─", size[0]) {
+						separator = i
+						break
+					}
+				}
+				if separator < 0 || rows[separator-1] != "" || !strings.HasPrefix(rows[separator+1], " Events ") {
+					t.Fatalf("Mindset separation: got %q", view)
+				}
+				for i := 2; i < separator-1; i++ {
+					if got := ansi.StringWidth(rows[i]); got > size[0]-1 {
+						t.Fatalf("Mindset row %d width: got %d, want <=%d", i, got, size[0]-1)
+					}
+				}
+				if size[0] == 80 && !strings.Contains(view, "Keep this paragraph too.") {
+					t.Fatalf("complete paragraphs: got %q", view)
+				}
+				if !strings.Contains(view, "Subjects") || strings.Contains(view, "Resize terminal") {
+					t.Fatalf("home controls unavailable: %q", view)
+				}
+			})
+		}
+	})
+	t.Run("reading keys keep the tall thought selected and detail return restores the scroll", func(t *testing.T) {
+		lines := []string{}
+		for i := range 20 {
+			lines = append(lines, fmt.Sprintf("Reading line %02d", i+1))
+		}
+		text := strings.Join(lines, "\n")
+		m := newMindsetHomeTexts(t, text, "Second thought")
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 34})
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+		for range 3 {
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		}
+		selected := m.View().Content
+		if !strings.Contains(ansi.Strip(selected), "Reading line 04") || strings.Contains(ansi.Strip(selected), "Reading line 01") {
+			t.Fatalf("reading position: got %q", selected)
+		}
+		m, cmd := rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		if m.screen != screenMindsetThought || !strings.Contains(ansi.Strip(m.View().Content), "Reading line 01") {
+			t.Fatalf("opened thought: got screen %d, %q", m.screen, m.View().Content)
+		}
+		m, _ = rootUpdate(m, escapeKey())
+		if m.View().Content != selected || m.homeFocus() != homePanelMindset {
+			t.Fatalf("detail return: got %q, want preserved reading position", m.View().Content)
+		}
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 40, Height: 30})
+		if !strings.Contains(ansi.Strip(m.View().Content), "Reading line 04") {
+			t.Fatalf("resize lost reading position: %q", m.View().Content)
 		}
 	})
 }

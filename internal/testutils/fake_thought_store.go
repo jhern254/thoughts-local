@@ -1,6 +1,7 @@
 package testutils
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"sort"
@@ -181,15 +182,31 @@ func (s *FakeThoughtStore) SetThoughtMindset(ctx context.Context, userID string,
 }
 
 // Historical interval semantics are covered against real SQLite. This fake
-// supplies current marked previews for presentation tests.
-func (s *FakeThoughtStore) ListMindsetsInRange(ctx context.Context, userID string, from, until time.Time) ([]data.ThoughtSummaryView, error) {
-	view, err := s.BrowseThoughtsView(ctx, userID, data.ThoughtSummaryViewRequest{})
-	items := []data.ThoughtSummaryView{}
-	for _, item := range view.Items {
-		if item.IsMindset {
-			items = append(items, item)
+// supplies current marked thoughts for presentation tests.
+func (s *FakeThoughtStore) ListMindsetsInRange(ctx context.Context, userID string, from, until time.Time) ([]data.MindsetThought, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	items := []data.MindsetThought{}
+	for _, item := range s.thoughts {
+		if item.UserID == userID && item.IsMindset {
+			items = append(items, data.MindsetThought{
+				ThoughtID:  item.ThoughtID,
+				Text:       item.Thought,
+				ObservedAt: item.ObservedAt,
+				CreatedAt:  item.CreatedAt,
+				IsMindset:  item.IsMindset,
+			})
 		}
 	}
-	slices.Reverse(items)
-	return items, err
+	slices.SortFunc(items, func(a, b data.MindsetThought) int {
+		if order := a.ObservedAt.Compare(b.ObservedAt); order != 0 {
+			return order
+		}
+		if order := a.CreatedAt.Compare(b.CreatedAt); order != 0 {
+			return order
+		}
+		return cmp.Compare(a.ThoughtID, b.ThoughtID)
+	})
+	return items, nil
 }
