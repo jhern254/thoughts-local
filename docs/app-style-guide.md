@@ -159,7 +159,8 @@ remain available even when there is no room for the optional activity wave.
 ## Day activity overview
 
 The [day activity navigator](day-activity-navigator.md) uses a dim Total curve
-with independently toggled Event and Thought traces above the Events divider.
+with independently toggled Event and Thought layers above the Events divider.
+Keep its canvas bounded: zoom and styling must not push the timeline downward.
 Its samples represent daily activity (or daily averages over wider ranges), not
 probability. Keep its accepted-date marker, focus order and compact-height
 behavior aligned with the daily timeline.

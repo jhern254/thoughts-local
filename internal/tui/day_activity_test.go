@@ -1,8 +1,14 @@
 package tui
 
 import (
+	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/testutils"
+	"github.com/jhern254/go-thoughts/internal/thought"
+	"github.com/jhern254/go-thoughts/internal/timeline"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -123,6 +129,33 @@ func TestModel_DayActivityArrowEntry(t *testing.T) {
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
 		if m.homeFocus() != homePanelEvents {
 			t.Fatal("Down did not return to Events")
+		}
+	})
+}
+
+func TestModel_DistributionColorsOutsideTimeline(t *testing.T) {
+	t.Run("Mindset and entity focus retain the graph's highlighted timeline curves", func(t *testing.T) {
+		now := time.Now()
+		events := &homeEventStub{items: []data.Event{{EventID: 1, StartedAt: now.Add(-time.Hour)}}}
+		m := NewModel(
+			t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{},
+			thought.NewService(testutils.NewFakeThoughtStore()), &metricsStub{}, events,
+			timeline.NewService(events, homeThoughtStore{}, homeThoughtStore{}), logging.Nop(),
+		)
+		m, cmd := rootUpdate(m, m.Init()())
+		m = startHomeData(t, m, cmd)
+		m, cmd = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 50})
+		m = runHomeData(t, m, cmd)
+		m.focusHome(homePanelDays)
+		highlighted := m.events.View()
+		if !strings.Contains(highlighted, "38;5;62") {
+			t.Fatal("fixture has no highlighted distribution")
+		}
+		for _, panel := range []homePanel{homePanelMindset, homePanelEntities} {
+			m.focusHome(panel)
+			if got := m.events.View(); got != highlighted {
+				t.Fatalf("panel %d muted the timeline distributions", panel)
+			}
 		}
 	})
 }

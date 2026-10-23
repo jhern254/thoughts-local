@@ -19,7 +19,7 @@ func BenchmarkDayActivity(b *testing.B) {
 	expectedEvents, expectedThoughts := 721, 20000
 	if activity := os.Getenv("THOUGHTS_ACTIVITY_DSN"); activity != "" {
 		dsn = activity
-		expectedEvents, expectedThoughts = 3927, 29479
+		expectedEvents, expectedThoughts = 3992, 30493
 	}
 	if dsn == "" {
 		b.Skip("set THOUGHTS_STRESS_DSN or THOUGHTS_ACTIVITY_DSN to its migrated synthetic fixture")
@@ -66,7 +66,7 @@ func BenchmarkDayActivity(b *testing.B) {
 			}
 		})
 		m := New(ctx, "demo", store)
-		m.Resize(width, 40)
+		m.Resize(width, 40, 1)
 		m = m.Update(m.Sync(today, true, false)())
 		defer m.Close()
 		b.Run("Load/"+name, func(b *testing.B) {
@@ -77,6 +77,7 @@ func BenchmarkDayActivity(b *testing.B) {
 			}
 		})
 		m.SetFocused(true)
+		m.SetHighlighted(true)
 		b.Run("Rebuild/"+name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {

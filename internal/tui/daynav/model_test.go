@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
@@ -33,7 +34,7 @@ func fixture(t *testing.T) (Model, *readerStub) {
 	s := &readerStub{start: day.AddDate(-1, 0, 0)}
 	m := New(t.Context(), "u", s)
 	m.now = func() time.Time { return day.Add(12 * time.Hour) }
-	m.Resize(80, 30)
+	m.Resize(80, 30, 1)
 	cmd := m.Sync(day, true, false)
 	m = m.Update(cmd())
 	return m, s
@@ -42,6 +43,7 @@ func TestModel_DayNavigation(t *testing.T) {
 	t.Run("moving within loaded history only updates selection", func(t *testing.T) {
 		m, s := fixture(t)
 		defer m.Close()
+		m = m.Update(m.Key("0")())
 		reads := s.reads
 		for i := 1; i < 20; i++ {
 			if cmd := m.Sync(m.selected.AddDate(0, 0, -1), true, false); cmd != nil {
@@ -92,7 +94,7 @@ func TestModel_DayNavigation(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
 		for _, width := range []int{20, 40, 80} {
-			m.Resize(width, 20)
+			m.Resize(width, 20, 1)
 			m.SetFocused(true)
 			if len(strings.Split(m.View(), "\n")) != 1 {
 				t.Fatal("short plot too tall")
@@ -236,7 +238,7 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 		defer m.Close()
 		m.SetFocused(true)
 		m.Key("d")
-		if !strings.Contains(m.View(), "normal boost · 100% · filled") {
+		if !strings.Contains(m.View(), "low boost · 100% · filled") {
 			t.Fatal("missing style values")
 		}
 		m.Key("esc")
@@ -248,12 +250,12 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 }
 
 func TestModel_MountainSizing(t *testing.T) {
-	t.Run("defaults to five plot rows and grows to twelve without another read", func(t *testing.T) {
+	t.Run("defaults to the former enlarged low-boost look and keeps tuning inside a fixed canvas", func(t *testing.T) {
 		m, s := fixture(t)
 		defer m.Close()
-		m.Resize(80, 40)
+		m.Resize(80, 40, 1)
 		m.SetFocused(true)
-		if got, want := m.Height(), 6; got != want {
+		if got, want := m.Height(), 13; got != want {
 			t.Fatalf("default height: got %d, want %d", got, want)
 		}
 		reads := s.reads
@@ -269,21 +271,22 @@ func TestModel_MountainSizing(t *testing.T) {
 		if s.reads != reads {
 			t.Fatal("style adjustment queried history")
 		}
-		m.Resize(80, 24)
+		m.Resize(80, 24, 1)
 		if m.Height() != 1 {
 			t.Fatalf("short-window height: got %d, want 1", m.Height())
 		}
-		m.Resize(80, 40)
+		m.Resize(80, 40, 1)
 		m.Key("0")
-		if m.size != 100 || m.Height() != 6 || m.outline {
+		if m.size != 100 || m.Height() != 13 || m.outline {
 			t.Fatal("reset did not restore the filled mountain default")
 		}
 	})
 	t.Run("uses both horizontal Braille dots for bounded detail", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
+		m = m.Update(m.Key("0")())
 		for _, scenario := range []struct{ width, buckets int }{{80, 160}, {160, 256}} {
-			m.Resize(scenario.width, 40)
+			m.Resize(scenario.width, 40, 1)
 			cmd := m.Sync(m.selected, true, false)
 			if cmd == nil {
 				cmd = m.Key("r")
@@ -293,6 +296,61 @@ func TestModel_MountainSizing(t *testing.T) {
 				t.Fatalf("width %d: got %d buckets, want %d", scenario.width, got, scenario.buckets)
 			}
 			m = m.Update(reply)
+		}
+	})
+}
+
+func TestModel_DefaultMountains(t *testing.T) {
+	t.Run("opens one calendar month before today and keeps series colors after blur", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		if got := data.CalendarDays(m.from, m.until); got != 31 {
+			t.Fatalf("default range: got %d days, want 31", got)
+		}
+		m.SetHighlighted(true)
+		m.SetFocused(true)
+		focused := m.plot
+		m.SetFocused(false)
+		if m.plot != focused {
+			t.Fatal("leaving graph focus removed component colors")
+		}
+		m = m.Update(m.Key("0")())
+		if got := data.CalendarDays(m.from, m.until); got < 365 {
+			t.Fatalf("all-history range: got %d days, want at least 365", got)
+		}
+	})
+}
+
+func TestModel_MountainFocusPalette(t *testing.T) {
+	t.Run("Events uses grey while other home focus keeps colors even on one row", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		for _, height := range []int{40, 20} {
+			m.Resize(80, height, 1)
+			m.SetHighlighted(false)
+			grey := m.plot
+			if strings.Contains(grey, "38;5;37") || strings.Contains(grey, "38;5;179") {
+				t.Fatal("Events focus retained component colors")
+			}
+			m.SetHighlighted(true)
+			if !strings.Contains(m.plot, "38;5;37") || !strings.Contains(m.plot, "38;5;179") {
+				t.Fatalf("height %d lost component colors", height)
+			}
+			if ansi.Strip(m.plot) != ansi.Strip(grey) {
+				t.Fatalf("height %d: palette changed mountain geometry", height)
+			}
+		}
+	})
+}
+
+func TestModel_CalendarMonthWindow(t *testing.T) {
+	t.Run("left edge is a calendar month ago including short months and empty history", func(t *testing.T) {
+		for _, scenario := range []struct{ today, from string }{{"2026-10-23", "2026-09-23"}, {"2026-03-31", "2026-02-28"}, {"2024-03-31", "2024-02-29"}} {
+			today, _ := time.Parse("2006-01-02", scenario.today)
+			from, until := window(today, today, today, time.Time{}, time.Time{}, -1)
+			if from.Format("2006-01-02") != scenario.from || !until.Equal(today.AddDate(0, 0, 1)) {
+				t.Fatalf("%s range: got %s through %s, want %s through tomorrow", scenario.today, from, until, scenario.from)
+			}
 		}
 	})
 }

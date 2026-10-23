@@ -11,19 +11,23 @@ the graph is an arrow-accessed part of Events. While the graph has focus:
 - Left/Right (or h/l) moves exactly one day, including ordinary key repeats.
   A pending destination accumulates subsequent keys; stale reads cannot replace it.
 - `+`/`-` zooms by approximately 20%; `0` restores the full history range.
-  A zoomed range stays still until the selected date leaves it.
-- `1`, `2`, `3` toggle Total, Events, Thoughts. Unfocused Days shows only Total;
-  returning restores the chosen toggles. First focus shows all three.
+  The default runs from one calendar month ago through today (October 23 starts
+  at September 23). Short months clamp to their last valid date. The range stays
+  still until the selected date leaves it.
+- `1`, `2`, `3` toggle Total, Events, Thoughts. All three are visible initially;
+  chosen toggles persist. The plot is grey while Events has focus, and colored
+  in the day graph, Mindset, and entity picker.
 - `d` opens local distribution controls: Left/Right changes boost, Up/Down
-  changes size, `f` switches Total between filled and outline, `0` resets
+  changes size, `f` switches the mountains between filled and outline, `0` resets
   styling. Escape/Enter closes controls. Down or Escape outside controls returns to Events.
 - `r` explicitly refreshes activity. These display preferences last for the session.
 
-When the graph is focused, all vertical Event curves are highlighted too;
+When focus is outside the Events timeline, all vertical Event curves are highlighted too;
 card selection and borders keep their own focus rules.
 
 The plot has no title or date-range heading. Normal-height terminals leave a
-blank row above five plot rows on tall windows (four on medium windows). Style values appear there only while their
+blank row above twelve plot rows when space permits. Mindset reading and
+usable Events space take priority over the requested graph height. Style values appear there only while their
 controls are open; loading/error feedback remains available. Short windows use a
 single plot row so the timeline remains usable; the accepted date stays in the
 Events heading and controls remain in the footer. Very small terminals retain
@@ -53,31 +57,36 @@ All channels share the maximum weighted total in the visible range:
     Thought activity = 0.3 × Thought daily average
     Combined         = Event activity + Thought activity
     Total level      = (Combined / maximum Combined)^boost
-    Event level      = Total level × Event activity / Combined
-    Thought level    = Total level × Thought activity / Combined
+    Event level      = 0.75 × Total level × Event activity / Combined
+    Thought level    = 0.75 × Total level × Thought activity / Combined
 
 Zero combined activity produces zero levels. An Event retains greater per-record
-weight, while many Thoughts naturally outweigh fewer Events. All three traces
-use the same scale and Total is their sum, so it cannot fall below either
-component. Component order reflects the data rather than being forced. If only
-one component contributes, its curve coincides with Total.
+weight, while many Thoughts naturally outweigh fewer Events. All three use the same weighted reference. A shared 0.75 component-height
+factor reserves at least a quarter of Total's height above either component;
+this is display separation, not a change to the underlying counts. The ratio
+between Events and Thoughts still follows the data rather than a forced order.
 
 Zero channels remain zero. The fixed weights give Events greater visual weight;
 there is no user-facing weight setting. Boost presets use exponents
-0.8, 1.1 (default), 1.4, 1.8, 2.4. Higher boost deepens valleys and sharpens
-summits. Size ranges from 50–300%: it grows the actual plot up to twelve rows,
-subject to the window budget, while retaining at least fourteen Events rows.
-Small windows therefore cannot display the full requested enlargement.
-Amplitude follows `1 - exp(-1.6 × size)`, with size expressed as a ratio: about
-80% of the canvas at 100%, approaching 99% at 300%. This avoids clipping large
-peaks into artificial flat ridges. These are relative activity shapes, not probabilities or raw-count
-axes. Piecewise linear interpolation connects samples without invented peaks.
+0.8 (low, default), 1.1, 1.4, 1.8, 2.4. Higher boost deepens valleys and sharpens
+summits. Size ranges from 50–300% relative to the new default: 100% adopts the former
+low-boost/300% appearance. The canvas stays fixed while tuning and zooming, capped at twelve rows and
+the available window budget. Size changes amplitude inside that canvas. Mindset retains
+its reading space; the plot reserves sixteen Events rows when the window permits.
+Small windows use fewer rows without losing component color.
+Amplitude follows `1 - exp(-1.6 × 3 × size)`, with the UI size expressed as a ratio:
+about 99% of the canvas at the new 100%. These are relative activity shapes, not
+probabilities or raw-count axes. Piecewise linear interpolation connects actual
+samples without invented peaks; a one-day view necessarily has one flat sample.
 
-Total is a dim background; Events and Thoughts use teal and amber traces.
-The grey Total crest is painted last so component colors cannot hide its upper
-edge. Hiding a channel does not renormalize the others. A Braille cell has one color,
-so intersecting traces can share that color. Total wins boundary cells; the
-stronger component wins interior cells, with Events breaking ties.
+Filled mode uses opaque silhouettes: grey Total behind amber Thoughts behind
+teal Events, each filled to the baseline. Each shared Braille cell takes the color with the largest exposed dot area
+after foreground occlusion; ties favor the front layer. This keeps tiny foreground
+contributions from recoloring a whole compact cell. One cell supports one
+foreground color, so sub-cell boundaries are quantized. Event-heavy days can
+naturally obscure some Thoughts. Outline mode retains connected contour strokes
+and blank interiors. Hiding a channel does not renormalize the others.
+
 
 ## Ownership and cost
 
@@ -122,7 +131,8 @@ Thought-heavy periods, crowded days, spanning/zero-duration Events, and an
 ongoing Event with 200 Thoughts. Relative timestamps keep it useful on launch.
 Zooming out exercises multi-day averages; zooming in reveals individual dates.
 The original `tui/browser/demo/stress` fixture remains unchanged for comparable
-performance measurements. The varied demo is a visual/navigation workload,
+performance measurements. Its recent month also has varied samples for the closer default view.
+The current seed has 3,992 Events and 30,493 Thoughts. The varied demo is a visual/navigation workload,
 not a replacement benchmark baseline.
 
 A standalone renderer comparison is available with:
@@ -185,13 +195,13 @@ retested or claimed fixed by these static-background measurements.
 
 ## Mountain detail and controls
 
-The mountain-style follow-up was compared with `8dbe4cb` on the same i5-8250U,
+The earlier mountain-style follow-up was compared with `8dbe4cb` on the same i5-8250U,
 Go 1.25.14 and Brave 148 reference machine, before the subsequent focus-navigation
 changes. Binaries were compiled first; measurements ran sequentially without
 competing builds/tests. Five runs describe this machine, not statistical significance.
 
-The original stress fixture remains 721 Events/20,000 Thoughts. The varied
-activity fixture has 3,927 Events/29,479 Thoughts across roughly two years.
+The original stress fixture remains 721 Events/20,000 Thoughts. The then-current
+varied activity fixture had 3,927 Events/29,479 Thoughts across roughly two years.
 Both revisions used the same migrated fixture files. The baseline received only
 the matched benchmark-test changes. Load includes bounds, counts, and repaint;
 Rebuild measures the focused plot; Navigate reuses accepted data and the cached
@@ -233,3 +243,76 @@ evidence of an improvement; frame scheduling varies. No keys were lost in these
 runs. RSS samples do not establish retained allocations. No new timer, animation,
 background worker or per-key aggregate query is introduced. These measurements
 cover static browser mode, not video playback or the unresolved compositor issue.
+
+## Bounded month-view follow-up
+
+Compared `4beacc1` with this follow-up's working tree on the same reference
+machine/toolchain/browser, using the unchanged 721-Event/20,000-Thought stress
+fixture and anchor. The new default is low boost, the former 300% look mapped
+to 100%, and one calendar month of activity. The canvas is capped at twelve rows;
+tuning does not move Events. Comparisons ran sequentially with binaries compiled
+first and no competing builds/tests. Five runs are descriptive, not statistical
+significance or a speedup claim.
+
+Medians of five one-second native runs at a 40-row terminal:
+
+| Width / operation | Before ns/op | After ns/op | B/op before → after | allocs/op before → after |
+| --- | ---: | ---: | ---: | ---: |
+| 80 Load | 6,245,150 | 5,906,500 | 51,077 → 73,679 | 2,409 → 2,594 |
+| 80 Rebuild | 104,486 | 276,462 | 16,560 → 38,824 | 85 → 244 |
+| 80 Navigate | 687 | 1,372 | 1,152 → 3,200 | 1 → 1 |
+| 160 Load | 6,155,958 | 5,683,206 | 64,108 → 110,567 | 2,413 → 2,609 |
+| 160 Rebuild | 188,943 | 444,462 | 29,904 → 75,808 | 110 → 259 |
+| 160 Navigate | 938 | 1,480 | 2,304 → 6,144 | 1 → 1 |
+
+The larger default canvas costs about 2.4–2.6 times as much to rebuild here,
+remaining below 0.45 ms. Copying the cached View also costs more. Rebuilds do not
+run for each in-range day key; palette changes and real layout/style/data changes
+rebuild without adding database reads. History Load remains about six milliseconds
+on this fixture. No performance improvement is claimed.
+
+Actual headful Brave at 1200×850, static dark background, five groups of twelve
+alternating historical day keys, waiting for the requested date and settled
+30-Thought count in xterm:
+
+| Metric | Before default | New default |
+| --- | ---: | ---: |
+| Median key-to-display | 42.10 ms | 41.85 ms |
+| p95 key-to-display | 49.10 ms | 56.90 ms |
+| Native CPU, 60 transitions | 2.35 s | 2.58 s |
+| Browser process-tree CPU | 1.86 s | 2.20 s |
+| Native RSS after workload | 44,808 KiB | 44,084 KiB |
+| Summed browser process RSS | 846,820 KiB | 855,020 KiB |
+| WebSocket received bytes / frames | 37,909 / 77 | 26,712 / 80 |
+
+The p95 increased 7.8 ms and sampled combined CPU increased about 14%; this is
+additional presentation cost. No keys were lost. Three-second idle samples
+consumed 0.05 → 0.06 s native CPU and 0.10 → 0.11 s browser CPU; these short
+samples are variable rather than stable idle baselines. Summed browser RSS
+includes shared pages and does not establish retained allocation growth. Video,
+hardware acceleration and the unresolved compositor issue are not measured here.
+
+Actual Brave captures at 1200×850 and 480×480 were reviewed for grey Events focus,
+colored graph/Mindset/entity focus, outline, reset, fixed-height tuning and compact
+component colors. The affected Chromium/Firefox acceptance cases cover focus, geometry and navigation.
+Compact colors and the overlap-boundary guard passed three consecutive runs in
+both engines (twelve case executions). The
+compact test waits for a complete backend frame matching each browser's fitted
+terminal dimensions before recording the divider position. Initial test failures
+exposed a resize synchronization issue and different browser font metrics. Earlier
+full-suite measurements and acceptance results apply to their recorded revisions.
+
+The reported intermittent mountain-over-card overlap has not been reproduced or
+claimed fixed. An additional actual activity-demo probe reviewed 125 rendered
+frames during repeated tuning, zoom, resize, day navigation and Thought expansion;
+no horizontal mountain glyphs crossed into Event-card columns. The browser guard
+checks this boundary during repaint as well as in settled views. Synthetic captures
+and probe output are under `/tmp/thoughts-daynav-evidence`. These bounded checks
+are evidence, not a guarantee about every terminal or compositor.
+
+Final verification included `make ci` (unit, migrated SQLite integration, browser
+acceptance and race checks). A subsequent one-path correction makes Q from the
+entity picker use the shared focus update; its palette regression failed in both
+browsers before the correction and all ten affected browser cases passed after.
+Post-correction root race tests and the normal commit/push hooks verify that last
+change separately.
