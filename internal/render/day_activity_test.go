@@ -45,6 +45,28 @@ func TestDayActivity(t *testing.T) {
 }
 
 func TestDayActivity_Geometry(t *testing.T) {
+	t.Run("baseline shares the bottom dots with filled and outline mountains", func(t *testing.T) {
+		for _, outline := range []bool{false, true} {
+			cells := RenderDayActivity(1, 3, []DayActivity{{Events: 1}}, DayActivityOptions{Total: true, Outline: outline, Baseline: true})
+			want := []rune{'⣿', '⣿', '⣿'}
+			if outline {
+				want = []rune{'⠉', ' ', '⣀'}
+			}
+			for y, glyph := range want {
+				if got := cells[y][0].Glyph; got != glyph {
+					t.Fatalf("outline=%v row %d: got %q, want %q", outline, y, got, glyph)
+				}
+			}
+		}
+		for _, values := range [][]DayActivity{nil, {{}, {}}} {
+			cells := RenderDayActivity(2, 2, values, DayActivityOptions{Baseline: true})
+			for x := range 2 {
+				if cells[0][x].Glyph != ' ' || cells[1][x].Glyph != '⣀' || cells[1][x].Series != DayTotal {
+					t.Fatalf("empty activity: got %+v, want a grey baseline without invented peaks", cells)
+				}
+			}
+		}
+	})
 	t.Run("equal counts give Events greater per-record weight on the shared scale", func(t *testing.T) {
 		cells := RenderDayActivity(4, 3, []DayActivity{{Events: 1}, {Thoughts: 1}}, DayActivityOptions{Total: true, Exponent: 1, Size: 1})
 		for y, want := range [][2]rune{{'⣿', ' '}, {'⣿', '⣤'}, {'⣿', '⣿'}} {

@@ -479,17 +479,31 @@ func (m *Model) timelineBody() string {
 }
 
 func (m Model) View() string {
+	view, _ := m.ViewWithHeadingStatus("")
+	return view
+}
+
+// ViewWithHeadingStatus places overview feedback beside the date when both fit.
+// The caller owns the overview and can use its footer when placed is false.
+func (m Model) ViewWithHeadingStatus(statusText string) (view string, placed bool) {
 	styles := list.DefaultStyles(true)
 	heading := styles.Title.Render("Events") + " " + displaytime.Format(m.day, "January 2, 2006")
 	// Six body rows keep one compact card visible below the heading and above help.
 	if m.width < 24 || m.height < 10 {
-		return heading + "\nResize terminal to view timeline."
+		return heading + "\nResize terminal to view timeline.", false
 	}
 	if m.form.open {
-		return heading + "\n" + m.formView()
+		return heading + "\n" + m.formView(), false
 	}
 	if m.picker.ShowingDetail() {
-		return styles.Title.Render(m.picker.SelectedSubjectName()) + "\n\n" + m.picker.View()
+		return styles.Title.Render(m.picker.SelectedSubjectName()) + "\n\n" + m.picker.View(), false
+	}
+	if statusText != "" {
+		gap := m.width - ansi.StringWidth(heading) - ansi.StringWidth(statusText)
+		if gap >= 2 {
+			heading += strings.Repeat(" ", gap) + statusText
+			placed = true
+		}
 	}
 	body := m.load.retainedBody
 	if !m.load.entriesPending || body == "" {
@@ -540,5 +554,5 @@ func (m Model) View() string {
 			help = "f mode · [0 Reset to default] · Q/Esc done"
 		}
 	}
-	return heading + "\n\n" + body + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")
+	return heading + "\n\n" + body + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…"), placed
 }

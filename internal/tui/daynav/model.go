@@ -9,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/render"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
@@ -17,7 +16,7 @@ import (
 
 const (
 	initialMonthSpan = -1 // Resolve once at the accepted date, then keep the window stable.
-	maxPlotRows      = 2
+	maxPlotRows      = 4
 	edgeBuckets      = 2 // One adjacent bucket on each side of the viewport.
 	defaultPlotSize  = 100
 	minPlotSize      = 50
@@ -65,7 +64,6 @@ type Model struct {
 	highlighted                      bool
 	series                           [3]bool
 	tuning                           bool
-	compact                          bool
 	boundsDirty                      bool
 	refreshingHistory                bool
 	calendarDay                      time.Time
@@ -114,13 +112,8 @@ func (m *Model) Close() {
 }
 func (m Model) Focused() bool { return m.focused }
 func (m Model) Tuning() bool  { return m.tuning }
-func (m Model) Height() int {
-	if m.compact {
-		return max(1, m.rows)
-	}
-	return m.rows + 1
-}
-func (m *Model) Invalidate() { m.dirty, m.boundsDirty = true, true }
+func (m Model) Height() int   { return m.rows + 1 }
+func (m *Model) Invalidate()  { m.dirty, m.boundsDirty = true, true }
 func (m *Model) SetFocused(focused bool) {
 	if m.focused == focused {
 		return
@@ -141,33 +134,20 @@ func (m *Model) SetHighlighted(highlighted bool) {
 func (m *Model) Resize(width, height int) {
 	oldWidth, oldRows := m.width, m.rows
 	m.width, m.height = max(1, width), height
-	m.compact = height < 26
 	m.rows = m.plotRows()
 	if m.width != oldWidth {
 		m.dirty = true
 	}
-	if m.width != oldWidth || m.rows != oldRows {
+	if m.width != oldWidth || m.rows != oldRows || m.plot == "" {
 		m.rebuild()
 	}
 }
 
 func (m Model) plotRows() int {
-	if m.height < 16 {
-		return 0
-	}
-	// Reserve the existing header/footer, Mindset's minimum row, separators,
-	// and 14 usable Events rows. The window budget bounds dramatic sizing.
-	reserved := 6 + 1 + 2 + 14
-	if !m.compact {
-		reserved++
-	} // The quiet row also hosts controls/read status.
-	// Style and time zoom operate inside this fixed canvas. Their keys must
-	// never move Events farther down or steal reading space from Mindset.
-	rows := maxPlotRows
-	if m.height < 26 {
-		rows = 1
-	}
-	return max(1, min(rows, m.height-reserved))
+	// Keep four mountain rows plus the date-marker gap at normal sizes. Short
+	// terminals give rows back to Events: 6 header/footer rows, one Mindset row,
+	// its separator, one marker row, and 14 readable timeline rows take 23 rows.
+	return max(1, min(maxPlotRows, m.height-23))
 }
 func (m *Model) Sync(day time.Time, visible, refresh bool) tea.Cmd {
 	m.selected = displaytime.Day(day)
@@ -424,6 +404,7 @@ func (m *Model) rebuild() {
 		Events:         visible[1],
 		Thoughts:       visible[2],
 		Outline:        m.outline,
+		Baseline:       true,
 		Exponent:       exponent,
 		// Size is relative to the normal mountain profile; the canvas stays fixed.
 		Size: float64(m.size) / 100,
@@ -453,33 +434,31 @@ func (m *Model) rebuild() {
 	m.plot = out.String()
 }
 func (m Model) View() string {
-	// Keep space above the plot without shifting the timeline. Only explicit
-	// controls and exceptional status use this row.
-	line := ""
-	if m.err != nil {
-		line = "Activity unavailable · r retry"
-	} else if m.pending {
-		line = "Loading activity…"
-	}
+	// The accepted date lives in its own quiet row. Moving the block leaves
+	// cached mountain geometry intact and uses the Events title highlight.
+	marker := min(max(0, m.Marker()), max(0, m.width-1))
+	block := lipgloss.NewStyle().Background(lipgloss.Color("62")).Render(" ")
+	return m.plot + "\n" + strings.Repeat(" ", marker) + block + strings.Repeat(" ", m.width-marker-1)
+}
+
+// Status belongs beside the Events heading, with the existing footer as a
+// narrow-window fallback. It never takes space away from the mountains.
+func (m Model) Status() string {
 	if m.tuning {
 		name, _ := m.boostPreset()
 		mode := "filled"
 		if m.outline {
 			mode = "outline"
 		}
-		line = fmt.Sprintf("%s boost · %d%% · %s", name, m.size, mode)
+		return fmt.Sprintf("%s boost · %d%% · %s", name, m.size, mode)
 	}
-	line = ansi.Truncate(line, m.width, "…")
-	if m.rows > 0 {
-		if m.compact && !m.tuning && m.err == nil {
-			return m.plot
-		}
-		if m.compact {
-			return line
-		}
-		return line + "\n" + m.plot
+	if m.err != nil {
+		return "Activity unavailable · r retry"
 	}
-	return line
+	if m.pending {
+		return "Loading activity…"
+	}
+	return ""
 }
 func (m Model) Help() string {
 	if m.tuning {

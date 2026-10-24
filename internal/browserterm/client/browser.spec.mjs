@@ -26,8 +26,8 @@ test('renders newlines at the same column as native terminal output', async ({pa
   // A pipe does not apply the PTY's ONLCR output translation. Without the
   // corresponding xterm option, each new line incorrectly moves to the right.
   await expect.poll(() => screen(page).locator('div').nth(2).textContent()).toMatch(/^ Mindset/);
-  await expect.poll(() => screen(page).locator('div').nth(4).textContent()).toMatch(/^\s*$/);
-  await expect.poll(() => screen(page).locator('div').nth(8).textContent()).toMatch(/^ Events/);
+  await expect.poll(() => screen(page).locator('div').nth(3).textContent()).toMatch(/^\s*$/);
+  await expect.poll(() => screen(page).locator('div').nth(9).textContent()).toMatch(/^ Events/);
 });
 
 test('second tab is busy; quit and reload start independent sessions', async ({page, context}) => {
@@ -247,7 +247,7 @@ test('backpressured resize converges to the latest backend size without replayin
 test('day activity focus navigates one day and preserves Events through tuning', async ({page}) => {
   await ready(page);
   await expect(screen(page)).not.toContainText('Days');
-  const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
+  const date = async () => (await screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent()).match(/^ Events\s+[A-Z][a-z]+ \d+, \d{4}/)[0];
   const original = await date();
   await page.keyboard.press('Home');
   await page.keyboard.press('ArrowUp');
@@ -284,12 +284,58 @@ test('day activity focus navigates one day and preserves Events through tuning',
   await expect(page.locator('#status')).toHaveText('Connected');
 });
 
+test('mountain status stays beside the Events date or in the narrow footer above a shared baseline', async ({page}) => {
+  await exposeMountainTerminal(page);
+  await ready(page);
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('d');
+  const snapshot = () => page.evaluate(() => {
+    const term = window.mountainTerminal;
+    const rows = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString(true) || '');
+    const eventRow = rows.findIndex(row => /^ Events\s+[A-Z]/.test(row));
+    const markerLine = term.buffer.active.getLine(term.buffer.active.viewportY + eventRow - 1);
+    const markerColumns = Array.from({length: term.cols}, (_, x) => x).filter(x => markerLine?.getCell(x)?.getBgColor() === 62);
+    return {rows, cols: term.cols, eventRow, markerColumns};
+  });
+  await expect.poll(async () => (await snapshot()).rows[9]).toMatch(/normal boost · 100% · filled$/);
+  let frame = await snapshot();
+  expect(frame.rows[9].length).toBe(frame.cols);
+  expect(frame.rows.slice(4, 8).join('')).not.toMatch(/boost|Loading/);
+  expect([...frame.rows[7]].every(glyph => (glyph.codePointAt(0) - 0x2800 & 0xc0) === 0xc0)).toBe(true);
+  expect(frame.rows[8].trim()).toBe('');
+  expect(frame.markerColumns).toHaveLength(1);
+  const firstMarker = frame.markerColumns[0];
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(async () => (await snapshot()).markerColumns[0]).toBeLessThan(firstMarker);
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await snapshot()).markerColumns[0]).toBe(firstMarker);
+  await page.keyboard.press('d');
+  await expect(screen(page)).toContainText('normal boost · 100% · filled');
+  await page.setViewportSize({width: 380, height: 480});
+  await expect.poll(async () => {
+    frame = await snapshot();
+    const footer = frame.rows.findLastIndex(row => /^─+$/.test(row));
+    return frame.cols < 50 && footer === frame.rows.length - 4 && frame.rows.slice(footer + 1).some(row => row.includes('normal boost · 100% · filled'));
+  }).toBe(true);
+  // Four mountain rows plus the indicator gap are capped at five rows.
+  // Short terminals return plot rows to the timeline before hiding cards.
+  const expectedRow = frame.rows.length >= 27 ? 9 : frame.rows.length === 26 ? 8 : frame.rows.length === 25 ? 7 : 6;
+  expect(frame.eventRow).toBe(expectedRow);
+  expect(frame.rows[frame.eventRow]).not.toContain('boost');
+  expect(frame.rows[frame.eventRow - 1].trim()).toBe('');
+  expect(frame.markerColumns).toHaveLength(1);
+  expect([...frame.rows[frame.eventRow - 2]].every(glyph => (glyph.codePointAt(0) - 0x2800 & 0xc0) === 0xc0)).toBe(true);
+  expect(frame.rows.every(row => row.length <= frame.cols)).toBe(true);
+});
+
 test('metrics card cycles days without losing its focused view', async ({page}) => {
   await ready(page);
   await page.keyboard.press('End');
   await page.keyboard.press('ArrowDown');
   await expect(screen(page)).toContainText('↑: back/scroll');
-  const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
+  const date = async () => (await screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent()).match(/^ Events\s+[A-Z][a-z]+ \d+, \d{4}/)[0];
   const today = await date();
   await page.keyboard.press('ArrowLeft');
   await expect.poll(date).not.toBe(today);
@@ -308,10 +354,10 @@ test('day mountains retain focus colors in a compact window without moving Event
   const mountainHasColor = () => screen(page).locator('div').evaluateAll(rows => {
     const eventRow = rows.findIndex(row => /^ Events\s+[A-Z]/.test(row.textContent));
     if (eventRow < 0) return false;
-    return rows.slice(4, eventRow - 1).some(row => [...row.querySelectorAll('span')].some(span => {
+    return rows.slice(4, eventRow).some(row => [...row.querySelectorAll('span')].some(span => {
       if (!/[\u2801-\u28ff]/.test(span.textContent)) return false;
-      const channels = getComputedStyle(span).color.match(/\d+/g)?.map(Number);
-      return channels && (channels[0] !== channels[1] || channels[1] !== channels[2]);
+      // Count the actual teal/amber components, not the purple date marker.
+      return ['rgb(0, 175, 175)', 'rgb(215, 175, 95)'].includes(getComputedStyle(span).color);
     }));
   });
   await expect.poll(mountainHasColor).toBe(false);
@@ -429,7 +475,7 @@ test('day graph keeps the same normal profile in medium and fullscreen windows',
   await expect(screen(page)).not.toContainText('Loading activity');
   const plot = () => page.evaluate(() => {
     const term = window.mountainTerminal;
-    return [5, 6].map(y => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
+    return [4, 5, 6, 7].map(y => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
   });
   const baseline = await plot();
   for (const height of [700, 1080, 850]) {
@@ -441,8 +487,8 @@ test('day graph keeps the same normal profile in medium and fullscreen windows',
         const rows = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
         const footer = rows.findLastIndex(row => /^─+$/.test(row.trimEnd()));
         return {
-          ready: footer === term.rows - 4 && rows[footer].trimEnd().length === term.cols && /^ Events\s/.test(rows[8]),
-          plot: rows.slice(5, 7),
+          ready: footer === term.rows - 4 && rows[footer].trimEnd().length === term.cols && /^ Events\s/.test(rows[9]),
+          plot: rows.slice(4, 8),
         };
       });
       return frame.ready;
@@ -462,9 +508,9 @@ test('Events focus supports zoom and month reset without consuming form or style
   await expect(screen(page)).toContainText('0: reset zoom');
   const plot = () => page.evaluate(() => {
     const term = window.mountainTerminal;
-    return [5, 6].map(y => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
+    return [4, 5, 6, 7].map(y => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
   });
-  const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
+  const date = async () => (await screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent()).match(/^ Events\s+[A-Z][a-z]+ \d+, \d{4}/)[0];
   const originalDate = await date();
   const original = await plot();
   await page.keyboard.press('+');

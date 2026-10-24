@@ -408,14 +408,14 @@ func TestModel_EventsHome(t *testing.T) {
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 		for _, key := range []rune{tea.KeyRight, tea.KeyLeft, 'h', 'l'} {
-			before := m.entityStrip()
+			before := m.entityStrip("")
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
-			if m.entityStrip() == before {
+			if m.entityStrip("") == before {
 				t.Fatalf("key %q did not move entity selection", key)
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
-			if m.entityStrip() != before {
+			if m.entityStrip("") != before {
 				t.Fatal("entity navigation did not wrap")
 			}
 		}
@@ -578,16 +578,14 @@ func TestModel_EventsHome(t *testing.T) {
 				m, cmd = rootUpdate(m, enterKey())
 				m = runHomeData(t, m, cmd)
 			}
-			separator := strings.Repeat("─", 80)
 			focused := m.events.View()
 			expected := m.events
 			expected.SetFocused(true)
 			if m.entityFocused || focused != expected.View() {
 				t.Fatal("timeline must own focus before rendering home")
 			}
-			before := strings.Split(strings.ReplaceAll(m.View().Content, m.dayDivider(), m.homeDivider(m.homeFocus() == homePanelEvents)), separator)
-			if len(before) != 3 {
-				t.Fatal("missing divider between timeline and entities")
+			if !strings.Contains(m.View().Content, focused) {
+				t.Fatal("home did not render the focused timeline")
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 			// Deliver another update without letting root View synchronize a copy.
@@ -598,17 +596,17 @@ func TestModel_EventsHome(t *testing.T) {
 			if !m.entityFocused || m.events.View() == focused {
 				t.Fatal("Tab must blur Events during Update, before root View")
 			}
-			blurred := strings.Split(strings.ReplaceAll(m.View().Content, m.dayDivider(), m.homeDivider(m.homeFocus() == homePanelEvents)), separator)[1]
-			beforeText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(before[1]), "│", " ")), " ")
+			blurred := m.events.View()
+			beforeText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(focused), "│", " ")), " ")
 			blurredText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(blurred), "│", " ")), " ")
-			if before[1] == blurred || beforeText != blurredText {
+			if focused == blurred || beforeText != blurredText || !strings.Contains(m.View().Content, blurred) {
 				t.Fatal("Tab should change calendar highlighting without changing its contents")
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 			if m.entityFocused || m.events.View() != focused {
 				t.Fatal("Shift+Tab back must restore Events focus before root View")
 			}
-			if strings.Split(strings.ReplaceAll(m.View().Content, m.dayDivider(), m.homeDivider(m.homeFocus() == homePanelEvents)), separator)[1] != before[1] {
+			if !strings.Contains(m.View().Content, focused) {
 				t.Fatal("returning focus did not restore selected event and thought")
 			}
 		}
@@ -798,11 +796,11 @@ func TestModel_SubjectTimeHomeFocus(t *testing.T) {
 						dividers = append(dividers, row)
 					}
 				}
-				if len(dividers) != 2 {
-					t.Fatalf("got %d dividers, want 2", len(dividers))
+				if len(dividers) != 1 {
+					t.Fatalf("got %d entity dividers, want 1", len(dividers))
 				}
 				for i, row := range dividers {
-					if got, want := row != ansi.Strip(row), (i == 0 && (step.focus == homePanelEvents || step.focus == homePanelDays)) || (i == 1 && step.focus == homePanelEntities); got != want {
+					if got, want := row != ansi.Strip(row), step.focus == homePanelEntities; got != want {
 						t.Fatalf("divider %d highlight: got %v, want %v", i, got, want)
 					}
 				}

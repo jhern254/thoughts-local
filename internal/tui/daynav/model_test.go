@@ -105,7 +105,7 @@ func TestModel_DayNavigation(t *testing.T) {
 		for _, width := range []int{20, 40, 80} {
 			m.Resize(width, 20)
 			m.SetFocused(true)
-			if len(strings.Split(m.View(), "\n")) != 1 {
+			if len(strings.Split(m.View(), "\n")) != 2 {
 				t.Fatal("short plot too tall")
 			}
 		}
@@ -211,17 +211,43 @@ func TestModel_ZoomAfterInvalidation(t *testing.T) {
 }
 
 func TestModel_UnlabeledPlot(t *testing.T) {
-	t.Run("uses the old heading row as space without moving curves or Events", func(t *testing.T) {
+	t.Run("reserves the baseline before the first reply at the default terminal size", func(t *testing.T) {
+		m := New(t.Context(), "u", &readerStub{})
+		m.Resize(80, 24)
+		rows := strings.Split(ansi.Strip(m.View()), "\n")
+		if len(rows) != 2 || rows[0] != strings.Repeat("⣀", 80) || rows[1] != strings.Repeat(" ", 80) {
+			t.Fatalf("initial graph: got %q, want two reserved rows with a shared baseline", rows)
+		}
+	})
+	t.Run("moves a highlight block in the gap without changing mountain dots", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		before, oldMarker := m.plot, m.Marker()
+		if cmd := m.Sync(m.selected.AddDate(0, 0, -1), true, false); cmd != nil {
+			t.Fatal("cached marker movement queried activity")
+		}
+		rows := strings.Split(m.View(), "\n")
+		if m.Marker() == oldMarker || strings.Join(rows[:len(rows)-1], "\n") != before {
+			t.Fatal("marker did not move independently of the mountain geometry")
+		}
+		gap := rows[len(rows)-1]
+		if ansi.Strip(gap) != strings.Repeat(" ", 80) {
+			t.Fatalf("gap: got %q, want a blank row", ansi.Strip(gap))
+		}
+		prefix, styled, found := strings.Cut(gap, "\x1b[48;5;62m")
+		block, _, reset := strings.Cut(styled, "\x1b[")
+		if !found || !reset || ansi.StringWidth(prefix) != m.Marker() || block != " " || strings.Count(gap, "48;5;62") != 1 {
+			t.Fatalf("indicator: got %q, want one highlight cell at column %d", gap, m.Marker())
+		}
+	})
+	t.Run("keeps the full mountain canvas free of status text", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
 		for _, focused := range []bool{false, true} {
 			m.SetFocused(focused)
 			rows := strings.Split(m.View(), "\n")
-			if got, want := rows[0], ""; got != want {
-				t.Fatalf("row above plot: got %q, want blank", got)
-			}
-			if got, want := strings.Join(rows[1:], "\n"), m.plot; got != want {
-				t.Fatal("removing heading changed curve rows")
+			if ansi.Strip(strings.Join(rows[:len(rows)-1], "\n")) != ansi.Strip(m.plot) {
+				t.Fatal("date marker changed mountain geometry")
 			}
 			if len(rows) != m.Height() {
 				t.Fatalf("view height: got %d, want %d", len(rows), m.Height())
@@ -233,12 +259,11 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 		defer m.Close()
 		before := m.plot
 		cmd := m.Key("r")
-		rows := strings.Split(m.View(), "\n")
-		if rows[0] != "Loading activity…" || strings.Join(rows[1:], "\n") != before {
+		if m.Status() != "Loading activity…" || m.plot != before {
 			t.Fatal("refresh lost feedback or accepted curves")
 		}
 		m = m.Update(cmd())
-		if strings.Split(m.View(), "\n")[0] != "" {
+		if m.Status() != "" {
 			t.Fatal("completed refresh kept status text")
 		}
 	})
@@ -247,12 +272,12 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 		defer m.Close()
 		m.SetFocused(true)
 		m.Key("d")
-		if !strings.Contains(m.View(), "normal boost · 100% · filled") {
+		if !strings.Contains(m.Status(), "normal boost · 100% · filled") {
 			t.Fatal("missing style values")
 		}
 		m.Key("esc")
 		m.err = errors.New("private details")
-		if got := m.View(); !strings.Contains(got, "Activity unavailable · r retry") || strings.Contains(got, "private details") {
+		if got := m.Status(); !strings.Contains(got, "Activity unavailable · r retry") || strings.Contains(got, "private details") {
 			t.Fatalf("unsafe or missing error feedback: %q", got)
 		}
 	})
@@ -262,19 +287,19 @@ func TestModel_MountainSizing(t *testing.T) {
 	t.Run("keeps the earlier compact height even in a fullscreen terminal", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
-		for _, scenario := range []struct{ terminalRows, plotHeight int }{{24, 1}, {26, 3}, {27, 3}, {30, 3}, {32, 3}, {40, 3}, {80, 3}} {
+		for _, scenario := range []struct{ terminalRows, plotHeight int }{{24, 2}, {25, 3}, {26, 4}, {27, 5}, {30, 5}, {32, 5}, {40, 5}, {80, 5}} {
 			m.Resize(80, scenario.terminalRows)
 			if got := m.Height(); got != scenario.plotHeight {
-				t.Fatalf("terminal %d rows: got plot height %d, want %d including quiet space", scenario.terminalRows, got, scenario.plotHeight)
+				t.Fatalf("terminal %d rows: got plot height %d, want %d including the date-marker gap", scenario.terminalRows, got, scenario.plotHeight)
 			}
 		}
 	})
-	t.Run("uses normal boost and 100 percent as the baseline in the same two-row canvas in small and fullscreen windows", func(t *testing.T) {
+	t.Run("uses normal boost and 100 percent as the baseline in the same four-row canvas in small and fullscreen windows", func(t *testing.T) {
 		m, s := fixture(t)
 		defer m.Close()
 		m.Resize(80, 40)
 		m.SetFocused(true)
-		if got, want := m.Height(), 3; got != want {
+		if got, want := m.Height(), 5; got != want {
 			t.Fatalf("default height: got %d, want %d", got, want)
 		}
 		_, exponent := m.boostPreset()
@@ -287,7 +312,7 @@ func TestModel_MountainSizing(t *testing.T) {
 		for range 40 {
 			m.Key("down")
 		}
-		if m.size != 50 || m.Height() != 3 {
+		if m.size != 50 || m.Height() != 5 {
 			t.Fatal("reducing fill changed the compact canvas")
 		}
 		for range 60 {
@@ -295,22 +320,22 @@ func TestModel_MountainSizing(t *testing.T) {
 				t.Fatal("size adjustment requested data")
 			}
 		}
-		if m.size != 300 || m.Height() != 3 {
-			t.Fatalf("dramatic size/height: got %d/%d, want 300/3", m.size, m.Height())
+		if m.size != 300 || m.Height() != 5 {
+			t.Fatalf("dramatic size/height: got %d/%d, want 300/5", m.size, m.Height())
 		}
 		if s.reads != reads {
 			t.Fatal("style adjustment queried history")
 		}
 		m.Resize(80, 24)
-		if m.Height() != 1 {
-			t.Fatalf("short-window height: got %d, want 1", m.Height())
+		if m.Height() != 2 {
+			t.Fatalf("short-window height: got %d, want 2", m.Height())
 		}
 		m.Resize(80, 40)
 		m.Key("0")
 		if m.plot != initial {
 			t.Fatal("reset changed the baseline mountain shape")
 		}
-		if m.size != 100 || m.Height() != 3 || m.outline {
+		if m.size != 100 || m.Height() != 5 || m.outline {
 			t.Fatal("reset did not restore the filled mountain default")
 		}
 	})
