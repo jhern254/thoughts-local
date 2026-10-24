@@ -330,6 +330,32 @@ test('mountain status stays beside the Events date or in the narrow footer above
   expect(frame.rows.every(row => row.length <= frame.cols)).toBe(true);
 });
 
+test('activity loading clears after rapid day panning without reconnecting', async ({page}) => {
+  await exposeMountainTerminal(page);
+  let connections = 0;
+  page.on('websocket', () => connections++);
+  await ready(page);
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('1 Total');
+  const date = async () => (await screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent()).match(/^ Events\s+([A-Z][a-z]+ \d+, \d{4})/)[1];
+  const original = await date();
+  const previous = new Date(original);
+  previous.setDate(previous.getDate() - 40);
+  const expected = previous.toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'});
+  // Cross the month viewport repeatedly, rather than only moving its marker.
+  for (let step = 0; step < 40; step++) await page.keyboard.press('ArrowLeft');
+  await expect.poll(date).toBe(expected);
+  await expect(screen(page)).not.toContainText('Loading activity');
+  for (let step = 0; step < 40; step++) await page.keyboard.press('ArrowRight');
+  await expect.poll(date).toBe(original);
+  await expect(screen(page)).not.toContainText('Loading activity');
+  await page.keyboard.press('ArrowDown');
+  await expect(screen(page)).not.toContainText('1 Total');
+  await expect(screen(page)).not.toContainText('Loading activity');
+  expect(connections).toBe(1);
+});
+
 test('metrics card cycles days without losing its focused view', async ({page}) => {
   await ready(page);
   await page.keyboard.press('End');

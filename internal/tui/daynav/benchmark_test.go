@@ -67,13 +67,13 @@ func BenchmarkDayActivity(b *testing.B) {
 		})
 		m := New(ctx, "demo", store)
 		m.Resize(width, 40)
-		m = m.Update(m.Sync(today, true, false)())
+		m = m.Update(activityReply(m.Sync(today, true, false)))
 		defer m.Close()
 		b.Run("Load/"+name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				cmd := m.Sync(today, true, true)
-				m = m.Update(cmd())
+				m = m.Update(activityReply(cmd))
 			}
 		})
 		m.SetFocused(true)
@@ -111,7 +111,7 @@ func BenchmarkDayActivity(b *testing.B) {
 				if cmd == nil {
 					b.Fatal("expected a viewport pan")
 				}
-				m = m.Update(cmd())
+				m = m.Update(activityReply(cmd))
 				if m.err != nil {
 					b.Fatal(m.err)
 				}
