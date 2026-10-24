@@ -109,6 +109,7 @@ type Model struct {
 	// Clock, expansion, and form lifetimes are independent of a day load.
 	owner                    *int
 	session, expansion, save uint64
+	activityRevision         uint64
 
 	// Day and expansion failures share the screen's safe status message.
 	err     error
@@ -137,8 +138,9 @@ type Model struct {
 	form               eventForm
 
 	// blurred preserves selection while the root entity strip owns keyboard focus.
-	active  bool
-	blurred bool
+	active                 bool
+	blurred                bool
+	highlightDistributions bool
 }
 
 func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, subjects SubjectReader, logger logging.Logger) Model {
@@ -206,6 +208,21 @@ func (m *Model) SetFocused(focused bool) {
 	m.blurred = blurred
 	m.picker.SetFocused(focused)
 }
+
+// SetDistributionHighlight lets other home panels emphasize every Event curve
+// without changing card selection, keyboard ownership or interval geometry.
+func (m *Model) SetDistributionHighlight(highlight bool) {
+	if m.highlightDistributions != highlight {
+		m.load.retainedBody = ""
+	}
+	m.highlightDistributions = highlight
+}
+
+// AtTimelineStart excludes nested editors, pending days and the metrics card.
+func (m Model) AtTimelineStart() bool {
+	return m.DayReady() && m.AtTopLevel() && (len(m.entries) == 0 || (m.position.target == targetEntry && m.position.entryIndex == 0))
+}
+
 func (m Model) CanLeave() bool {
 	return m.TimelineVisible() && !m.picker.SavingMindset()
 }
@@ -213,6 +230,8 @@ func (m Model) TimelineVisible() bool { return !m.form.open && !m.picker.Showing
 func (m Model) Day() time.Time        { return m.day }
 func (m Model) DayReady() bool        { return m.active && !m.load.entriesPending }
 func (m Model) FormOpen() bool        { return m.form.open }
+
+func (m Model) TuningDistributions() bool { return m.distributions.open }
 
 // AtTopLevel excludes the nested views and controls owned by Events.
 func (m Model) AtTopLevel() bool {
@@ -389,10 +408,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if !m.day.Equal(m.load.pendingDay) {
 			m.day = m.load.pendingDay
 			m.position.entryIndex, m.position.topLine, m.expanded = 0, 0, timeline.EntryKey{}
-			m.position.target = targetEntry
 			if m.position.followNow {
 				m.position.target = targetDayBoundary
 			}
+			m.position.followNow = m.position.target == targetDayBoundary && m.day.Equal(displaytime.Day(m.clock))
 			m.entries = nil
 			m.picker.Reset()
 		}
@@ -424,14 +443,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.applySubjectTime()
 		m.position.clampSelection(len(m.entries))
 		var latest, open tea.Cmd
-		if m.position.followNow && len(m.entries) > 0 {
+		if (m.position.followNow || m.position.target == targetDayBoundary) && len(m.entries) > 0 {
 			m.position.entryIndex = len(m.entries) - 1
 		}
 		foundExpanded := false
 		m.latest = nil
 		m.load.latestErr = nil
 		for i, entry := range m.entries {
-			if !m.position.followNow && entry.Key() == selected {
+			if m.position.target == targetEntry && !m.position.followNow && entry.Key() == selected {
 				m.position.entryIndex = i
 			}
 			if entry.Key() == m.expanded {
@@ -458,7 +477,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.picker.Reset()
 		}
 		m.anchor()
-		if selected.IsZero() && !m.position.followNow && len(m.entries) > 0 {
+		if selected.IsZero() && m.position.target == targetEntry && !m.position.followNow && len(m.entries) > 0 {
 			layout := m.measureTimeline()
 			m.position.topLine = layout.positions[m.entries[0].Key()]
 			m.position.clamp(len(layout.lines))
@@ -538,6 +557,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			mutation = logging.EventEnded
 		}
 		m.logger.Mutation(mutation, reply.event.EventID)
+		m.activityRevision++
 		m.form.stopReads()
 		m.form = eventForm{}
 		day := m.day
@@ -589,6 +609,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.distributions.open = true
 		m.load.retainedBody = ""
 		return m, nil
+	}
+	// The boundary and metrics views keep their place while cycling days.
+	if m.position.target == targetDayBoundary || m.position.target == targetSubjectTime {
+		switch key.String() {
+		case "left", "h":
+			return m, m.MoveDay(-1)
+		case "right", "l":
+			return m, m.MoveDay(1)
+		}
 	}
 	if m.position.target == targetSubjectTime {
 		m.load.retainedBody = ""
@@ -692,12 +721,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if key.String() == "left" || key.String() == "h" {
 			delta = -1
 		}
-		day := day.AddDate(0, 0, delta)
-		if day.After(displaytime.Day(m.now())) {
-			return m, nil
-		}
-		m.position.followNow = false
-		cmd := m.loadDay(day)
+		cmd := m.MoveDay(delta)
 		return m, cmd
 	case "r":
 		cmd := m.loadDay(day)
@@ -767,3 +791,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+// MoveDay is shared by the overview and daily timeline. It advances the pending
+// destination during bursts and retains loadDay's cancellation/ownership rules.
+func (m *Model) MoveDay(delta int) tea.Cmd {
+	day := m.day
+	if m.load.entriesPending {
+		day = m.load.pendingDay
+	}
+	day = day.AddDate(0, 0, delta)
+	if day.After(displaytime.Day(m.now())) {
+		return nil
+	}
+	m.position.followNow = false
+	return m.loadDay(day)
+}
+
+// ActivityRevision advances only after an accepted successful Event mutation.
+func (m Model) ActivityRevision() uint64 { return m.activityRevision }

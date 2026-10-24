@@ -139,9 +139,25 @@ func TestModel_EventsHome(t *testing.T) {
 		return m, events
 	}
 
+	t.Run("Up enters the graph from the first actual card and Down restores selection", func(t *testing.T) {
+		m, _ := newHome(t)
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
+		before, day := m.events.View(), m.events.Day()
+		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
+		if cmd != nil || m.homeFocus() != homePanelDays || !m.events.Day().Equal(day) || ansi.Strip(m.events.View()) != ansi.Strip(before) {
+			t.Fatal("Up changed the selected card instead of entering the graph")
+		}
+		m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		if cmd != nil || m.homeFocus() != homePanelEvents || m.events.View() != before {
+			t.Fatal("Down did not restore the same selected card")
+		}
+	})
 	t.Run("Now buffers navigation to metrics and Up returns in Events", func(t *testing.T) {
 		m, events := newHome(t)
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+		{
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+			m = runHomeData(t, resized, resizeCmd)
+		}
 		reads := events.lists
 		press := func(code rune) {
 			t.Helper()
@@ -185,7 +201,10 @@ func TestModel_EventsHome(t *testing.T) {
 			}
 			return &data.Subject{SubjectID: id, SubjectName: "Event subject"}, nil
 		}
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 100, Height: 30})
+		{
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 100, Height: 30})
+			m = runHomeData(t, resized, resizeCmd)
+		}
 		m, cmd := rootUpdate(m, enterKey())
 		m = runHomeData(t, m, cmd)
 		before := m.View().Content
@@ -243,7 +262,10 @@ func TestModel_EventsHome(t *testing.T) {
 	})
 	t.Run("curve controls route keys without changing panel or day", func(t *testing.T) {
 		m, _ := newHome(t)
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+		{
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+			m = runHomeData(t, resized, resizeCmd)
+		}
 		before := m.events.View()
 		press := func(code rune) {
 			t.Helper()
@@ -276,7 +298,10 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal("panel switch lost settings")
 		}
 		for _, width := range []int{60, 59, 80} {
-			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
+			{
+				resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
+				m = runHomeData(t, resized, resizeCmd)
+			}
 		}
 		press('0')
 		press(tea.KeyEnter)
@@ -310,7 +335,10 @@ func TestModel_EventsHome(t *testing.T) {
 
 	t.Run("distribution survives focus resize and Thought detail return", func(t *testing.T) {
 		m, _ := newHome(t)
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+		{
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+			m = runHomeData(t, resized, resizeCmd)
+		}
 		hasCurve := func(view string) bool {
 			return strings.ContainsFunc(view, func(r rune) bool { return unicode.Is(unicode.Braille, r) })
 		}
@@ -327,7 +355,10 @@ func TestModel_EventsHome(t *testing.T) {
 			t.Fatal("returning focus did not restore curve styling")
 		}
 		for _, width := range []int{59, 60, 40, 80} {
-			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
+			{
+				resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
+				m = runHomeData(t, resized, resizeCmd)
+			}
 			if hasCurve(m.events.View()) != (width >= 60) {
 				t.Fatalf("width %d: wrong lane visibility through root dispatch", width)
 			}
@@ -377,18 +408,21 @@ func TestModel_EventsHome(t *testing.T) {
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 		for _, key := range []rune{tea.KeyRight, tea.KeyLeft, 'h', 'l'} {
-			before := m.entityStrip()
+			before := m.entityStrip("")
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
-			if m.entityStrip() == before {
+			if m.entityStrip("") == before {
 				t.Fatalf("key %q did not move entity selection", key)
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
-			if m.entityStrip() != before {
+			if m.entityStrip("") != before {
 				t.Fatal("entity navigation did not wrap")
 			}
 		}
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 24, Height: 16})
+		{
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 24, Height: 16})
+			m = runHomeData(t, resized, resizeCmd)
+		}
 		if !strings.Contains(m.View().Content, "Subjects") {
 			t.Fatal("selected entity clipped away")
 		}
@@ -447,6 +481,10 @@ func TestModel_EventsHome(t *testing.T) {
 	})
 	t.Run("delayed feedback preserves the displayed day and cannot outlive its request or screen", func(t *testing.T) {
 		m, service := newHome(t)
+		{
+			resized, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+			m = runHomeData(t, resized, cmd)
+		}
 		before := m.View().Content
 		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
 		if m.View().Content != before {
@@ -505,6 +543,7 @@ func TestModel_EventsHome(t *testing.T) {
 	t.Run("horizontal keys open thoughts and collapse events without changing days", func(t *testing.T) {
 		for _, keys := range [][2]rune{{tea.KeyRight, tea.KeyLeft}, {'l', 'h'}} {
 			m, _ := newHome(t)
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
 			m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: keys[0]}))
 			m = runHomeData(t, m, cmd)
 			if !strings.Contains(m.View().Content, "←: collapse") {
@@ -530,41 +569,45 @@ func TestModel_EventsHome(t *testing.T) {
 	})
 	t.Run("Tab transfers highlighting without losing event or thought selection", func(t *testing.T) {
 		m, _ := newHome(t)
-		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+		{
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+			m = runHomeData(t, resized, resizeCmd)
+		}
 		for _, expanded := range []bool{false, true} {
 			if expanded {
 				var cmd tea.Cmd
 				m, cmd = rootUpdate(m, enterKey())
 				m = runHomeData(t, m, cmd)
 			}
-			separator := strings.Repeat("─", 80)
 			focused := m.events.View()
 			expected := m.events
 			expected.SetFocused(true)
 			if m.entityFocused || focused != expected.View() {
 				t.Fatal("timeline must own focus before rendering home")
 			}
-			before := strings.Split(m.View().Content, separator)
-			if len(before) != 3 {
-				t.Fatal("missing divider between timeline and entities")
+			if !strings.Contains(m.View().Content, focused) {
+				t.Fatal("home did not render the focused timeline")
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 			// Deliver another update without letting root View synchronize a copy.
-			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+			{
+				resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
+				m = runHomeData(t, resized, resizeCmd)
+			}
 			if !m.entityFocused || m.events.View() == focused {
 				t.Fatal("Tab must blur Events during Update, before root View")
 			}
-			blurred := strings.Split(m.View().Content, separator)[1]
-			beforeText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(before[1]), "│", " ")), " ")
+			blurred := m.events.View()
+			beforeText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(focused), "│", " ")), " ")
 			blurredText := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(blurred), "│", " ")), " ")
-			if before[1] == blurred || beforeText != blurredText {
+			if focused == blurred || beforeText != blurredText || !strings.Contains(m.View().Content, blurred) {
 				t.Fatal("Tab should change calendar highlighting without changing its contents")
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 			if m.entityFocused || m.events.View() != focused {
 				t.Fatal("Shift+Tab back must restore Events focus before root View")
 			}
-			if strings.Split(m.View().Content, separator)[1] != before[1] {
+			if !strings.Contains(m.View().Content, focused) {
 				t.Fatal("returning focus did not restore selected event and thought")
 			}
 		}
@@ -594,6 +637,7 @@ func TestModel_EventsHome(t *testing.T) {
 					t.Fatal("entity strip did not retain horizontal keyboard navigation")
 				}
 				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
 				m, cmd = rootUpdate(m, runeKey('l'))
 				m = runHomeData(t, m, cmd)
 				if m.entityFocused || !strings.Contains(m.events.View(), "←: collapse") {
@@ -698,7 +742,10 @@ func TestModel_SubjectTimeHomeFocus(t *testing.T) {
 			m, cmd := rootUpdate(m, m.Init()())
 			m = startHomeData(t, m, cmd)
 			m.focusHome(homePanelEvents)
-			m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 32})
+			{
+				resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 32})
+				m = runHomeData(t, resized, resizeCmd)
+			}
 			press := func(key tea.Key) { t.Helper(); m, _ = rootUpdate(m, tea.KeyPressMsg(key)) }
 			press(tea.Key{Code: tea.KeyEnd})
 			nowView := m.events.View()
@@ -747,22 +794,18 @@ func TestModel_SubjectTimeHomeFocus(t *testing.T) {
 				}
 				var dividers []string
 				for _, row := range strings.Split(m.View().Content, "\n") {
-					if ansi.Strip(row) == strings.Repeat("─", width) {
+					if strings.ReplaceAll(ansi.Strip(row), "┬", "─") == strings.Repeat("─", width) {
 						dividers = append(dividers, row)
 					}
 				}
-				if len(dividers) != 2 {
-					t.Fatalf("got %d dividers, want 2", len(dividers))
+				if len(dividers) != 1 {
+					t.Fatalf("got %d entity dividers, want 1", len(dividers))
 				}
 				for i, row := range dividers {
-					if got, want := row != ansi.Strip(row), (i == 0 && step.focus == homePanelEvents) || (i == 1 && step.focus == homePanelEntities); got != want {
+					if got, want := row != ansi.Strip(row), step.focus == homePanelEntities; got != want {
 						t.Fatalf("divider %d highlight: got %v, want %v", i, got, want)
 					}
 				}
-			}
-			press(tea.Key{Code: tea.KeyLeft})
-			if m.events.AtTopLevel() {
-				t.Fatal("Left exited subject time")
 			}
 			for range 3 {
 				press(tea.Key{Code: tea.KeyUp})

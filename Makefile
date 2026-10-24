@@ -1,5 +1,5 @@
 .PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed tui tui/demo tui/demo/seeded tui/build migrate/build migrate/new migrate/up migrate/down migrate/version
-.PHONY: tui/demo/stress
+.PHONY: tui/demo/stress tui/demo/activity tui/browser/demo/activity
 .PHONY: tui/browser tui/browser/demo tui/browser/demo/seeded tui/browser/demo/stress
 .PHONY: speech/setup speech/ensure tui/package
 
@@ -24,6 +24,8 @@ help:
 	@echo "  make tui          Migrate, build, and start the persistent TUI"
 	@echo "  make tui/demo     Start the TUI with a disposable migrated database"
 	@echo "  make tui/demo/seeded Start a disposable TUI with sample events and thoughts"
+	@echo "  make tui/demo/activity Start a disposable two-year day-activity diary"
+	@echo "  make tui/browser/demo/activity Preview varied day activity in the browser"
 	@echo "  make tui/demo/stress Start a disposable agent diary (721 events, 20,000 thoughts)"
 	@echo "  make tui/build    Build the TUI binary"
 	@echo "  make tui/browser Migrate, build, and serve the TUI in a local browser"
@@ -149,6 +151,12 @@ tui/browser/demo tui/browser/demo/seeded: tui/demo/seeded
 
 tui/browser/demo/stress: TUI_ARGS = --browser
 tui/browser/demo/stress: tui/demo/stress
+
+tui/browser/demo/activity: TUI_ARGS = --browser
+tui/browser/demo/activity: tui/demo/activity
+
+tui/demo/activity: DEMO_SEED = ./scripts/demo_activity.sql
+tui/demo/activity: tui/demo
 
 tui/demo/seeded: DEMO_SEED = ./scripts/demo.sql
 tui/demo/seeded: tui/demo

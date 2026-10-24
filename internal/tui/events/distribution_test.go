@@ -427,3 +427,34 @@ func TestModel_Distributions(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_OverviewDistributionHighlight(t *testing.T) {
+	t.Run("colors every curve while keeping card borders and geometry unfocused", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		end := m.entries[0].Event.StartedAt
+		m.entries = append(eventEntries([]data.Event{{EventID: 2, StartedAt: end.Add(-time.Hour), EndedAt: &end}}), m.entries...)
+		m.eventCounts = []data.EventThoughtCountView{{EventID: 1, Count: 230}, {EventID: 2, Count: 10}}
+		m.SetFocused(false)
+		before, _, _ := m.layout()
+		m.SetDistributionHighlight(true)
+		highlighted, positions, _ := m.layout()
+		if distributionLane(before) != distributionLane(highlighted) {
+			t.Fatal("highlight changed curve geometry")
+		}
+		for _, id := range []int64{1, 2} {
+			row := positions[id] + 2
+			if !strings.Contains(ansi.Cut(highlighted[row], 12, 22), "38;5;62") {
+				t.Fatalf("Event %d curve was not highlighted", id)
+			}
+
+		}
+		if !m.blurred || strings.Contains(m.paintCard([]string{"content"}, true)[0], "38;5;62") {
+			t.Fatal("overview moved focus to a card border")
+		}
+		m.SetDistributionHighlight(false)
+		after, _, _ := m.layout()
+		if strings.Join(after, "\n") != strings.Join(before, "\n") {
+			t.Fatal("clearing overview focus did not restore muted curves")
+		}
+	})
+}

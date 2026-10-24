@@ -82,15 +82,12 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 		}
 	})
 
-	t.Run("Up returns from the top of metrics while Left stays in the chart", func(t *testing.T) {
+	t.Run("Up returns from metrics without another read", func(t *testing.T) {
 		m, _, store := fixture(t)
 		m, _ = m.Update(eventKey("end"))
 		m, _ = m.Update(eventKey("down"))
 		reads := store.subjectReads
-		m, cmd := m.Update(eventKey("left"))
-		if cmd != nil || m.position.target != targetSubjectTime {
-			t.Fatal("Left exited metrics")
-		}
+		var cmd tea.Cmd
 		m, cmd = m.Update(eventKey("up"))
 		if cmd != nil || m.position.target != targetDayBoundary || store.subjectReads != reads {
 			t.Fatal("Up did not return to the latest event and Now without a read")
@@ -507,6 +504,56 @@ func TestModel_SubjectTimeDistributions(t *testing.T) {
 			if m.distributions.open {
 				t.Fatal("tuning did not close")
 			}
+		}
+	})
+}
+
+func TestModel_SubjectTimeDayNavigation(t *testing.T) {
+	t.Run("cycles days while keeping metrics focused and stops at today", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m, _ = m.Update(eventKey("end"))
+		m, _ = m.Update(eventKey("down"))
+		today := m.day
+		m, cmd := m.Update(eventKey("left"))
+		if cmd == nil {
+			t.Fatal("Left did not request the previous day")
+		}
+		if !m.day.Equal(today) || m.position.target != targetSubjectTime {
+			t.Fatal("pending navigation lost the accepted day or metrics focus")
+		}
+		m = execute(t, m, cmd)
+		if !m.day.Equal(today.AddDate(0, 0, -1)) || m.position.target != targetSubjectTime || !m.subjectTime.itemsDay.Equal(m.day) {
+			t.Fatal("previous day did not retain metrics focus with matching data")
+		}
+		m, cmd = m.Update(eventKey("right"))
+		m = execute(t, m, cmd)
+		if !m.day.Equal(today) || m.position.target != targetSubjectTime {
+			t.Fatal("Right did not return to today's metrics")
+		}
+		m, cmd = m.Update(eventKey("right"))
+		if cmd != nil || m.position.target != targetSubjectTime || !m.expanded.IsZero() {
+			t.Fatal("Right at today navigated to the future or opened an Event")
+		}
+	})
+	t.Run("pending repeats accumulate and stale lists cannot steal metrics focus", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m.day = m.day.AddDate(0, 0, -5)
+		m.position.target = targetSubjectTime
+		start := m.day
+		m, first := m.Update(eventKey("left"))
+		if first == nil {
+			t.Fatal("missing first read")
+		}
+		old := first().(tea.BatchMsg)[0]()
+		m, _ = m.Update(eventKey("left"))
+		m, last := m.Update(eventKey("right"))
+		if last == nil {
+			t.Fatal("missing final read")
+		}
+		m = execute(t, m, last)
+		m = execute(t, m, func() tea.Msg { return old })
+		if !m.day.Equal(start.AddDate(0, 0, -1)) || m.position.target != targetSubjectTime {
+			t.Fatal("burst or stale reply changed the accepted destination/focus")
 		}
 	})
 }

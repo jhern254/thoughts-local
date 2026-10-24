@@ -226,9 +226,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.String() {
 		case "r":
 			return m, m.Load(m.day)
-		case "left", "q":
+		case "left", "right", "q":
 			return m, nil
-		case "enter", "right":
+		case "enter":
 			if m.loading || m.err != nil || len(m.items) == 0 {
 				return m, nil
 			}
