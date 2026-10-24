@@ -1,7 +1,8 @@
 # Day activity navigator
 
 The day-activity plot sits below Mindset with quiet space above it, and immediately
-above the Events divider. Its marker follows the accepted Events date. It is
+above the Events heading. The mountains share a Braille baseline. A solid purple block in the gap beneath
+them marks the accepted Events date, using the Events highlight color. It is
 rendered by Go/Bubble Tea in native terminals and the browser alike.
 
 Up from the first Event enters the day graph; Down returns to Events.
@@ -29,15 +30,20 @@ the graph is an arrow-accessed part of Events. While the graph has focus:
 When focus is outside the Events timeline, all vertical Event curves are highlighted too;
 card selection and borders keep their own focus rules.
 
-The plot has no title or date-range heading. Normal-height terminals leave a
-blank row above two plot rows in small, medium and fullscreen windows. Very short
-windows keep their existing one-row plot. The graph budget is reserved before Mindset content arrives,
-so loading replies cannot resize it between frames. Mindset reads within the
-remaining space while the timeline retains its usable viewport. Style values appear there only while their
-controls are open; loading/error feedback remains available. Very short windows use a
-single plot row so the timeline remains usable; the accepted date stays in the
-Events heading and controls remain in the footer. Very small terminals retain
-the existing resize guidance. No custom key acceleration is included.
+The plot has no title or date-range heading. Its complete band is capped at five
+rows: four mountain rows and a one-row gap for the accepted-day block. That gap
+separates the baseline from the Events heading. Short terminals reduce mountain
+rows before taking the timeline below fourteen rows: a 26-row terminal uses
+three plot rows, 25 uses two, and 24 or fewer uses one. Tuning and zoom never grow
+the band. One blank row still separates Mindset from the graph. The graph budget
+is reserved before Mindset content arrives,
+so loading replies cannot resize it between frames.
+
+Style values, loading feedback, and read errors appear right-aligned beside the
+Events date, with at least two separating columns. If both cannot fit, the status
+uses the existing first footer row; keyboard help remains on the second. Status
+never replaces a mountain row. Very small terminals retain the existing resize
+guidance. No custom key acceleration is included.
 
 The end-of-day metrics card also accepts Left/Right (h/l) to cycle calendar
 days while keeping the card focused. A new day's subject list starts at the top;
@@ -82,15 +88,16 @@ there is no user-facing weight setting. Boost presets use exponents
 0.5 (low), 0.8 (normal, default), 1.1 (medium), 1.8 (strong), 2.4 (extra). Higher boost deepens valleys and sharpens
 summits. Size ranges from 50–300%; startup and Reset use normal boost at 100%.
 That baseline preserves the former full mountain profile within the compact
-two-row canvas. Below 100%, size reduces height proportionally. Above 100%,
+bounded canvas. Below 100%, size reduces height proportionally. Above 100%,
 smaller ridges rise toward the reference summit without clipping it flat:
 `height = size × height / (1 + (size - 1) × height)`. All components receive the
 same gain, retaining their count ratios and Total headroom. At 100%, the gain is
 one. Higher settings change the picture, not the panel height.
 
-The canvas stays fixed while tuning and zooming, capped at two rows and the
-available window budget. Mindset retains its reading space; the layout reserves
-fourteen Events rows when the window permits. Compact windows keep one plot row.
+The canvas stays fixed while tuning and zooming, including its bottom-dot
+baseline. Mindset retains its reading space; the layout reserves fourteen Events
+rows when the window permits. Four mountain rows and the marker gap use five
+rows in normal windows; compact windows reduce the plot inside this cap.
 These are relative activity shapes, not
 probabilities or raw-count axes. Piecewise linear interpolation connects actual
 samples without invented peaks. A one-day view has one measured sample with
@@ -347,7 +354,7 @@ change separately.
 At `a7b1a04`, the fullscreen-height follow-up reduced the maximum to five plot
 rows, four on medium windows, two on short windows and one on compact windows.
 Low boost and maximum fill were the default inside that area; tuning and zoom
-did not grow the panel. The current two-row cap and normal baseline supersede
+did not grow the panel. The fixed graph band and normal baseline supersede
 those visual defaults; the measurements below retain their original context.
 
 The graph budget is allocated before Mindset reading space. A regression
@@ -462,19 +469,73 @@ and cached navigation remains around a microsecond. This is a correctness tradeo
 not a speedup. Five runs do not establish statistical significance. No new
 whole-app CPU, memory or navigation-p95 improvement is claimed from these tests.
 
-## Normal baseline and consistent browser height
+## Normal baseline and consistent browser height at `323c1dd`
 
-Startup and style Reset now use normal boost (0.8), 100% size, and filled mode.
+Startup and style Reset use normal boost (0.8), 100% size, and filled mode.
 This rebases the former low/300% silhouette rather than returning to the older,
 smaller gain. Higher and lower settings modulate this baseline inside the fixed
 canvas; no setting moves Events downward. The renderer retains the prior fill
 calibration so ordinary Braille rounding and outline appearance stay intact.
 
-The plot uses two rows from a 26-row terminal upward, matching the accepted small
-browser window. Very short windows retain their one-row fallback. Actual Brave
+At that revision, the plot used two rows from a 26-row terminal upward, matching
+the accepted small browser window. Very short windows retain their one-row fallback. Actual Brave
 review at 480×480, 1200×700, 1200×850, and 1920×1080 verified the same two-row plot
 and Events header position. Small-window cells/colors matched the prior binary
 exactly. At each larger size, tuning to 300% and resetting restored the exact
 normal profile. Screenshots were inspected. Literal preview geometry and root
 resize tests preserve these relationships. The earlier performance tables
 predate this presentation change; no new timing or CPU improvement is claimed.
+
+## Shared baseline, gap, and status placement
+
+The approved Braille + gap preview uses four mountain rows and one marker row.
+The bottom two Braille dots form a continuous baseline in the same cells as the
+filled slopes. Outline mode shares that axis without filling its interior. The
+accepted date is a single background-colored space in the row below it, matching
+the purple Events highlight. Moving that block does not rerasterize mountains
+or overwrite any of their dots.
+
+The Events header sits at row 9 with a collapsed Mindset in normal windows
+(counting from zero). The five-row graph band cannot grow with zoom, tuning, or
+fullscreen height. Short terminals progressively reduce plot rows, retaining the
+marker gap and usable Event-card viewport. Status belongs beside the Events date
+when both fit, or in the existing footer when they do not. Normal/100%/filled
+remains the style default.
+
+The earlier literal two-row profiles and timing tables describe their original
+revisions, not this increased plot resolution.
+
+### Focused layout cost
+
+Compared the pre-layout PR head `135f9cd7047a937c6fb88f23d483a0c877812da6`
+with the Braille + gap layout using the existing `BenchmarkDayActivity` Rebuild
+and Navigate cases. The same migrated synthetic fixture contained 721 Events and
+20,000 Thoughts, all before the accepted cutoff. Binaries were compiled first
+and run separately without competing builds/tests. Linux/amd64, Intel i5-8250U
+(8 logical CPUs), Go 1.25.14; five 1-second runs per case, medians below.
+
+| Operation / columns | ns/op before → after | Δ time | B/op before → after | allocs/op before → after |
+| --- | ---: | ---: | ---: | ---: |
+| Rebuild/80 | 76,330.0 → 142,264.0 | +86.4% | 8,248 → 13,584 | 108 → 85 |
+| Navigate/80 | 591.9 → 4,794.0 | +709.9% | 704 → 1,376 | 1 → 8 |
+| Rebuild/160 | 128,898.0 → 242,853.0 | +88.4% | 14,704 → 26,816 | 155 → 97 |
+| Navigate/160 | 700.1 → 4,582.0 | +554.5% | 1,280 → 2,491 | 1 → 8 |
+
+The final plot rasterizes four rather than two mountain rows. Cached navigation
+also composes the solid marker row; it does not rerasterize or query history.
+The old Navigate case omitted the root's separate divider composition; the new
+component includes its marker row. This is a component-cost comparison, not an
+end-to-end navigation regression measurement. These are additional bounded
+presentation costs, not speedups. Five runs do not establish statistical significance. This comparison does not measure whole-app
+CPU, memory, browser composition, or navigation p95; the earlier query/pan
+measurements retain their original revision-specific meaning.
+
+Focused Go/root tests cover the 24–27-row allocation boundaries and loading before
+the first reply. All 28 affected Chromium/Firefox cases passed. Brave captures
+were reviewed at 1200×850, 380×480, 380×440 and 1920×1080, including normal/300%,
+outline, Events focus and expanded Thoughts. Both narrow viewports fitted 43×26
+terminal cells; normal/fullscreen used four mountain rows plus the marker gap.
+Reset restored the exact normal plot; left/right marker movement, 40 day changes
+in each direction and card expansion kept one WebSocket. The manual harness's
+initial incomplete resize snapshots were rejected; this is not evidence that the
+previous intermittent overlap report has been fixed.

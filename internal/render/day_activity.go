@@ -41,7 +41,9 @@ type DayActivityOptions struct {
 	Before, After           *DayActivity
 	Total, Events, Thoughts bool
 	Outline                 bool
-	Exponent                float64
+	// Baseline joins the bottom Braille dots across the canvas, including gaps.
+	Baseline bool
+	Exponent float64
 	// Size is relative to normal (1 = 100%), bounded to [0.5, 3].
 	Size float64
 }
@@ -115,6 +117,10 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 		rows[y] = make([]DayActivityCell, width)
 		for x := range rows[y] {
 			rows[y][x].Glyph = ' '
+			if options.Baseline && y == height-1 {
+				// Bits 6 and 7 are the two bottom dots of a Braille cell.
+				rows[y][x].Glyph = brailleBlank | 0xc0
+			}
 		}
 	}
 	if len(values) == 0 {

@@ -46,7 +46,7 @@ func newMindsetHomeTexts(t *testing.T, texts ...string) Model {
 }
 
 func TestModel_MindsetHome(t *testing.T) {
-	t.Run("highlights only the divider above the focused Events or entity section", func(t *testing.T) {
+	t.Run("keeps the date accent while highlighting the focused entity divider", func(t *testing.T) {
 		for _, width := range []int{80, 40} {
 			m := newMindsetHome(t, 0)
 			{
@@ -54,19 +54,23 @@ func TestModel_MindsetHome(t *testing.T) {
 				m = runHomeData(t, resized, resizeCmd)
 			}
 			for _, focus := range []homePanel{homePanelEvents, homePanelEntities, homePanelMindset, homePanelEvents} {
-				dividers := []string{}
-				for _, row := range strings.Split(m.View().Content, "\n") {
-					if strings.ReplaceAll(ansi.Strip(row), "┬", "─") == strings.Repeat("─", width) {
-						dividers = append(dividers, row)
+				rows := strings.Split(m.View().Content, "\n")
+				// The accepted-date gap cell is accented in every focus;
+				// only the lower entity divider follows entity keyboard focus.
+				if !strings.Contains(rows[8], "48;5;62") {
+					t.Fatal("missing accepted-date block in the gap")
+				}
+				entityDividers := 0
+				for _, row := range rows {
+					if ansi.Strip(row) == strings.Repeat("─", width) {
+						entityDividers++
+						if got, want := strings.Contains(row, "38;5;62"), focus == homePanelEntities; got != want {
+							t.Fatalf("focus %d: entity divider highlighted=%v, want %v", focus, got, want)
+						}
 					}
 				}
-				if len(dividers) != 2 {
-					t.Fatalf("width %d: got %d dividers, want 2", width, len(dividers))
-				}
-				for i, want := range []bool{focus == homePanelEvents || focus == homePanelDays, focus == homePanelEntities} {
-					if got := strings.Contains(dividers[i], "\x1b[38;5;62m"); got != want {
-						t.Fatalf("focus %d, divider %d at width %d: highlighted=%v, want %v: %q", focus, i, width, got, want, dividers[i])
-					}
+				if entityDividers != 1 {
+					t.Fatalf("entity dividers: got %d, want 1", entityDividers)
 				}
 				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 			}
@@ -85,14 +89,11 @@ func TestModel_MindsetHome(t *testing.T) {
 		if rows[3] != "" {
 			t.Fatalf("row after Mindset: got %q, want blank", rows[3])
 		}
-		if rows[4] != "" {
-			t.Fatalf("row above graph: got %q, want blank", rows[4])
-		}
-		if got, want := strings.ReplaceAll(rows[7], "┬", "─"), strings.Repeat("─", 80); got != want {
+		if got, want := rows[7], strings.Repeat("⣀", 80); got != want {
 			t.Fatalf("panel separator: got %q, want %q", got, want)
 		}
-		if !strings.HasPrefix(rows[8], " Events ") {
-			t.Fatalf("row below separator: got %q, want Events header", rows[8])
+		if !strings.HasPrefix(rows[9], " Events ") {
+			t.Fatalf("row below separator: got %q, want Events header", rows[9])
 		}
 	})
 	t.Run("expansion makes room in the graph and returning from detail restores selection", func(t *testing.T) {
@@ -240,21 +241,21 @@ func TestModel_MindsetReadingLayout(t *testing.T) {
 				if len(rows) > size[1] {
 					t.Fatalf("screen height: got %d, want <=%d", len(rows), size[1])
 				}
-				separator := -1
+				eventRow := -1
 				for i, row := range rows {
-					if strings.ReplaceAll(row, "┬", "─") == strings.Repeat("─", size[0]) {
-						separator = i
+					if strings.HasPrefix(row, " Events ") {
+						eventRow = i
 						break
 					}
 				}
-				graphRows := 3
+				graphRows := 5
 				if size[1] == 24 {
-					graphRows = 1
+					graphRows = 2
 				}
-				if separator < graphRows+1 || rows[separator-graphRows-1] != "" || !strings.HasPrefix(rows[separator+1], " Events ") {
+				if eventRow < graphRows+1 || rows[eventRow-graphRows-1] != "" {
 					t.Fatalf("Mindset separation: got %q", view)
 				}
-				for i := 2; i < separator-graphRows-1; i++ {
+				for i := 2; i < eventRow-graphRows-1; i++ {
 					if got := ansi.StringWidth(rows[i]); got > size[0]-1 {
 						t.Fatalf("Mindset row %d width: got %d, want <=%d", i, got, size[0]-1)
 					}

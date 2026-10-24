@@ -284,7 +284,7 @@ func TestPreview_DayActivity(t *testing.T) {
 		if ansi.Strip(colored) != plain {
 			t.Fatal("color changed graph geometry")
 		}
-		if strings.Count(plain, "┬") != 2 || strings.Count(plain, "October 16, 2026") != 2 {
+		if strings.Count(plain, "October 16, 2026") != 2 || !strings.Contains(colored, "48;5;62") {
 			t.Fatal("missing accepted-date markers")
 		}
 		if !strings.Contains(plain, "1 Total · 2 Events · 3 Thoughts") {
@@ -310,8 +310,8 @@ func TestPreview_DramaticDayActivity(t *testing.T) {
 		}
 		for _, view := range []string{normal, dramatic} {
 			rows := strings.Split(view, "\n")
-			if !strings.HasPrefix(rows[6], " Events ") {
-				t.Fatalf("preview row 6: got %q, want Events below two plot rows", rows[6])
+			if !strings.HasPrefix(rows[7], " Events ") {
+				t.Fatalf("preview row 7: got %q, want Events below the unchanged graph band", rows[7])
 			}
 		}
 	})
@@ -323,15 +323,17 @@ func TestPreview_DayActivityNormalBaseline(t *testing.T) {
 	if defaultView != explicitNormal {
 		t.Fatal("default must be the normal 100 percent baseline")
 	}
-	// Literal profile captured before rebasing the controls, at two plot rows.
+	// Literal four-row profile: the old status/divider space now holds detail.
 	want := []string{
-		"        ⣠⣴⣷⡄        ⢀⣠⣄⡀        ",
-		" ⢀⣀⣀⣠⣤⣶⣾⣿⣿⣿⣿⣦⢀⣤⣴⣶⣶⣦⣾⣿⣿⣿⣿⣷⣶⣤⣄⣀⣀⡀ ",
+		"         ⣠⣇                     ",
+		"        ⣰⣿⣿⡆        ⢀⣾⣦⡀        ",
+		"      ⢀⣴⣿⣿⣿⣿⡄  ⢀⣄⣀ ⣰⣿⣿⣿⣿⣦⣀      ",
+		"⣀⣀⣀⣤⣤⣾⣿⣿⣿⣿⣿⣿⣷⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⣤⣀⣀⣀",
 	}
 	rows := strings.Split(defaultView, "\n")
 	for i, row := range want {
-		if rows[i+3] != row {
-			t.Fatalf("plot row %d: got %q, want %q", i, rows[i+3], row)
+		if rows[i+2] != row {
+			t.Fatalf("plot row %d: got %q, want %q", i, rows[i+2], row)
 		}
 	}
 }

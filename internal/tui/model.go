@@ -495,7 +495,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) entityStrip() string {
+func (m Model) entityStrip(status string) string {
 	parts := []string{}
 	for _, entity := range []entityKind{entityThoughts, entitySubjects, entityOptions} {
 		label := entity.title()
@@ -537,6 +537,9 @@ func (m Model) entityStrip() string {
 	if m.days.Focused() {
 		help = m.days.Help()
 		line = m.days.Legend()
+	}
+	if status != "" {
+		line = status
 	}
 	return ansi.Truncate(line, max(1, m.width), "…") + "\n" + ansi.Truncate(help, max(1, m.width), "…")
 }
@@ -597,11 +600,18 @@ func (m Model) viewUnderlying() tea.View {
 	case screenMindsetThought:
 		content = m.thoughts.View()
 	case screenEvents:
-		content = m.events.View()
 		if m.events.TimelineVisible() {
-			content = m.mindsets.View() + "\n\n" + m.days.View() + "\n" + m.dayDivider() + "\n" + content
+			status := m.days.Status()
+			var placed bool
+			content, placed = m.events.ViewWithHeadingStatus(status)
+			if placed {
+				status = ""
+			}
+			content = m.mindsets.View() + "\n\n" + m.days.View() + "\n" + content
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content
-			content += "\n" + m.homeDivider(m.entityFocused) + "\n" + m.entityStrip()
+			content += "\n" + m.homeDivider(m.entityFocused) + "\n" + m.entityStrip(status)
+		} else {
+			content = m.events.View()
 		}
 	case screenSubjectList:
 		content = m.viewSubjectList()

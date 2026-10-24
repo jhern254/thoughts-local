@@ -70,7 +70,9 @@ rendering and braille glyphs alone do not establish low cost.
 ## Day activity overview
 
 The [day activity navigator](day-activity-navigator.md) uses a dim Total curve
-with independently toggled Event and Thought layers above the Events divider.
+with independently toggled Event and Thought layers above the Events heading.
+Its Braille baseline meets the filled slopes; a quiet row below holds the
+accepted-day block in the same purple as the Events highlights.
 Keep its canvas bounded: zoom and styling must not push the timeline downward.
 Its samples represent daily activity (or daily averages over wider ranges), not
 probability. Keep its accepted-date marker, focus order and compact-height
