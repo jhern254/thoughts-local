@@ -268,6 +268,7 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 		}
 		m.voice.message = map[string]string{"denied": "Microphone permission was denied. Draft unchanged.", "unavailable": "Microphone unavailable. Draft unchanged.", "failed": "Microphone capture failed. Draft unchanged."}[action.Action]
 		m.voice.subjectFocused = false
+		m.normalMode = true
 		m.resizeVoice(m.voice.width, m.voice.height)
 		return m, m.input.Focus()
 	}
@@ -463,6 +464,7 @@ func (m Model) recordingEnded(ended voice.RecordingEnded) (Model, tea.Cmd) {
 		m.voice.message = "Audio capture stopped. Draft preserved."
 	}
 	m.voice.subjectFocused = false
+	m.normalMode = true
 	m.resizeVoice(m.voice.width, m.voice.height)
 	return m, m.input.Focus()
 }

@@ -37,6 +37,7 @@ func TestModel_ThoughtCaptureTime(t *testing.T) {
 			state := m.VoiceState()
 			if state.RecordingID != 0 {
 				m, _ = rootUpdate(m, thoughts.VoiceAction{Action: "stopped", DraftID: state.DraftID, RecordingID: state.RecordingID})
+				m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'i', Text: "i"})
 			}
 			m, _ = rootUpdate(m, tea.PasteMsg{Content: "capture time regression"})
 			m = runModelCommand(t, m, tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})

@@ -61,6 +61,7 @@ func TestModel_RestoreVoicePrefix(t *testing.T) {
 		m, recording := startDiscoveryRecording(m)
 		m = transcript(m, recording, 1, "fitness thoughts, exercised today.")
 		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 		m, _ = m.Update(tea.PasteMsg{Content: " More exercise."})
 		m, _ = m.Update(key(tea.KeyTab))
 		m, _ = m.Update(key(tea.KeyDown))

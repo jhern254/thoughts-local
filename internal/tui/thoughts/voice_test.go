@@ -56,6 +56,7 @@ func TestModel_Voice(t *testing.T) {
 			t.Fatal("Stop did not lock pending finalization")
 		}
 		m, _ = m.Update(VoiceAction{Action: "stopped", DraftID: 1, RecordingID: 1})
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 		m, _ = m.Update(tea.PasteMsg{Content: " edited"})
 		if got := m.input.Value(); got != "preserved 界 edited" || !m.input.Focused() {
 			t.Fatalf("got %q, want preserved focused editor", got)

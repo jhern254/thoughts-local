@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 func TestModel_EditorModes(t *testing.T) {
@@ -96,6 +97,30 @@ func TestModel_ModalVoiceKeys(t *testing.T) {
 		}
 		if m.voice.query.Value() != "vu" || m.VoiceState().RecordingID != 0 || m.VoiceState().CanUseVoiceKey {
 			t.Fatalf("Subject text=%q state=%+v", m.voice.query.Value(), m.VoiceState())
+		}
+	})
+	t.Run("ending voice returns to Normal and permits another v without typing", func(t *testing.T) {
+		m := voiceModel(t)
+		m, _ = m.Update(BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
+		stamp := m.draftObservedAt
+		m, recording := startDiscoveryRecording(m)
+		m = transcript(m, recording, 1, "Keep this recording.")
+		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		if !m.normalMode || !m.VoiceState().CanUseVoiceKey || m.input.Value() != "Keep this recording." || m.draftObservedAt != stamp {
+			t.Fatalf("ended voice: normal=%v state=%+v text=%q", m.normalMode, m.VoiceState(), m.input.Value())
+		}
+		m, _ = m.Update(tea.PasteMsg{Content: "ignored"})
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+		if m.VoiceState().RecordingStatus != "requesting" || m.input.Value() != "Keep this recording." {
+			t.Fatalf("repeat voice: state=%+v text=%q", m.VoiceState(), m.input.Value())
+		}
+		next := m.VoiceState().TranscriptAuthority.Recording()
+		m, _ = m.Update(voice.RecordingEnded{Recording: next})
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		m, _ = m.Update(tea.PasteMsg{Content: " Edited."})
+		if m.normalMode || m.input.Value() != "Keep this recording. Edited." {
+			t.Fatalf("explicit Insert after stale end: normal=%v text=%q", m.normalMode, m.input.Value())
 		}
 	})
 	t.Run("Normal v starts and stops without inserting text", func(t *testing.T) {
