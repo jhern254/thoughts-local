@@ -44,7 +44,6 @@ func TestModel_DayNavigation(t *testing.T) {
 	t.Run("moving within loaded history only updates selection", func(t *testing.T) {
 		m, s := fixture(t)
 		defer m.Close()
-		m = m.Update(m.Key("0")())
 		reads := s.reads
 		plot := m.plot
 		for i := 1; i < 20; i++ {
@@ -318,7 +317,8 @@ func TestModel_MountainSizing(t *testing.T) {
 	t.Run("uses both horizontal Braille dots for bounded detail", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
-		m = m.Update(m.Key("0")())
+		m.span = 0 // Set up the coarse all-history sampling case.
+		m = m.Update(m.load(false)())
 		for _, scenario := range []struct{ width, buckets int }{{80, 162}, {160, 256}} {
 			m.Resize(scenario.width, 40)
 			cmd := m.Sync(m.selected, true, false)
@@ -349,8 +349,8 @@ func TestModel_DefaultMountains(t *testing.T) {
 			t.Fatal("leaving graph focus removed component colors")
 		}
 		m = m.Update(m.Key("0")())
-		if got := data.CalendarDays(m.from, m.until); got < 365 {
-			t.Fatalf("all-history range: got %d days, want at least 365", got)
+		if got := data.CalendarDays(m.from, m.until); got != 31 {
+			t.Fatalf("reset range: got %d days, want the default month", got)
 		}
 	})
 }
@@ -604,4 +604,112 @@ func TestModel_HistoryRefreshReplacement(t *testing.T) {
 			t.Fatal("retired history read replaced the accepted scale")
 		}
 	})
+}
+
+func TestModel_ResetZoom(t *testing.T) {
+	t.Run("zero restores the default month without resetting style or the selected date", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		from, until, selected := m.from, m.until, m.selected
+		m.SetFocused(true)
+		m.Key("d")
+		m.Key("right")
+		m.Key("up")
+		m.Key("f")
+		m.Key("esc")
+		boost, size, outline := m.boost, m.size, m.outline
+		m = m.Update(m.Key("+")())
+		if m.until.Sub(m.from) >= until.Sub(from) {
+			t.Fatal("zoom in did not narrow the range")
+		}
+		m = m.Update(m.Key("0")())
+		if m.from != from || m.until != until {
+			t.Fatalf("reset range: got %v to %v, want %v to %v", m.from, m.until, from, until)
+		}
+		if m.selected != selected || m.boost != boost || m.size != size || m.outline != outline {
+			t.Fatal("zoom reset changed the date or distribution style")
+		}
+		if strings.Contains(m.Help(), "0 all") || !strings.Contains(m.Help(), "0 reset") {
+			t.Fatalf("zoom reset help: got %q", m.Help())
+		}
+	})
+	t.Run("reset uses the selected historical date and clamps a short month", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		selected := displaytime.Day(time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC))
+		m = m.Update(m.Sync(selected, true, false)())
+		m = m.Update(m.Key("0")())
+		if m.from.Format("2006-01-02") != "2026-02-28" || m.until.Format("2006-01-02") != "2026-04-01" || !m.selected.Equal(selected) {
+			t.Fatalf("historical reset: got %v to %v on %v, want February 28 through March 31 inclusive", m.from, m.until, m.selected)
+		}
+	})
+	t.Run("a late zoom result cannot overwrite a reset", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		old := m.Key("+")()
+		m = m.Update(m.Key("0")())
+		from, until := m.from, m.until
+		m = m.Update(old)
+		if m.from != from || m.until != until {
+			t.Fatal("retired zoom replaced the reset month")
+		}
+	})
+}
+
+func TestModel_ZoomOutHistory(t *testing.T) {
+	t.Run("zooming out can fit history while zero returns to the default month", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		from, until := m.from, m.until
+		for range 20 {
+			m = m.Update(m.Key("-")())
+			if m.span == 0 {
+				break
+			}
+		}
+		if m.span != 0 || data.CalendarDays(m.from, m.until) < 365 {
+			t.Fatal("zooming out did not fit the available history")
+		}
+		m = m.Update(m.Key("0")())
+		if m.from != from || m.until != until {
+			t.Fatal("zero did not reset the fitted history view to the original month")
+		}
+	})
+}
+
+func TestModel_ZoomImmediatelyAfterReset(t *testing.T) {
+	m, _ := fixture(t)
+	defer m.Close()
+	m.span = 0
+	m = m.Update(m.load(false)())
+	reset := m.Key("0")
+	m = m.Update(m.Key("+")())
+	if got := data.CalendarDays(m.from, m.until); got != 24 {
+		t.Fatalf("zoom after pending month reset: got %d days, want 24", got)
+	}
+	from, until := m.from, m.until
+	m = m.Update(reset())
+	if m.from != from || m.until != until {
+		t.Fatal("late reset replaced the newer zoom")
+	}
+}
+
+func TestModel_ZoomOutShortHistory(t *testing.T) {
+	m, reader := fixture(t)
+	defer m.Close()
+	reader.start = m.selected
+	m = m.Update(m.Sync(m.selected, true, true)())
+	m = m.Update(m.Key("+")())
+	previous := data.CalendarDays(m.from, m.until)
+	for range 3 {
+		m = m.Update(m.Key("-")())
+		days := data.CalendarDays(m.from, m.until)
+		if days < previous || days > 31 {
+			t.Fatalf("short-history zoom out: got %d days after %d, want a growing view capped at the default month", days, previous)
+		}
+		previous = days
+	}
+	if previous != 31 {
+		t.Fatalf("zoom-out limit: got %d days, want 31", previous)
+	}
 }

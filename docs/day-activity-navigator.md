@@ -10,7 +10,11 @@ the graph is an arrow-accessed part of Events. While the graph has focus:
 
 - Left/Right (or h/l) moves exactly one day, including ordinary key repeats.
   A pending destination accumulates subsequent keys; stale reads cannot replace it.
-- `+`/`-` zooms by approximately 20%; `0` restores the full history range.
+- `+`/`-` zooms by approximately 20%; `0` restores the default calendar-month
+  zoom ending on the selected date. These keys also work while Events, expanded
+  Thoughts, or its metrics card retains focus. Forms and distribution controls
+  keep their own input/reset behavior. Zoom-out fits the available history,
+  with at least the default month so a short history cannot shrink the view.
   The default runs from one calendar month ago through today (October 23 starts
   at September 23). Short months clamp to their last valid date. The range stays
   still until the selected date leaves it.

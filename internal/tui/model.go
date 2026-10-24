@@ -432,6 +432,12 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.homeFocus() == homePanelEvents && (key.String() == "up" || key.String() == "k") && m.events.AtTimelineStart() {
 			return m, m.focusHome(homePanelDays)
 		}
+		if m.homeFocus() == homePanelEvents && !m.events.TuningDistributions() {
+			switch key.String() {
+			case "+", "=", "-", "0":
+				return m, m.days.Key(key.String())
+			}
+		}
 		if m.days.Focused() {
 			if m.days.Tuning() {
 				return m, m.days.Key(key.String())
@@ -518,6 +524,9 @@ func (m Model) entityStrip() string {
 	help := "Tab/Shift+Tab: panels"
 	if m.homeFocus() == homePanelEvents && m.events.AtTimelineStart() {
 		help = "↑: day activity • " + help
+	}
+	if m.homeFocus() == homePanelEvents && m.events.CanLeave() && !m.events.TuningDistributions() {
+		help = "+/-: zoom • 0: reset zoom • " + help
 	}
 	if m.mindsets.Focused() {
 		help = "Enter: open • ↑/↓: read/select • PgUp/PgDn: page • r: refresh"
