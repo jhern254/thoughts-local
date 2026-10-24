@@ -453,6 +453,12 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.days.Key(key.String())
 		}
 		if m.mindsets.Focused() {
+			switch key.String() {
+			case "left", "h":
+				return m, m.events.MoveDay(-1)
+			case "right", "l":
+				return m, m.events.MoveDay(1)
+			}
 			var cmd tea.Cmd
 			m.mindsets, cmd = m.mindsets.Update(message)
 			return m, cmd
@@ -529,7 +535,10 @@ func (m Model) entityStrip(status string) string {
 		help = "+/-: zoom • 0: reset zoom • " + help
 	}
 	if m.mindsets.Focused() {
-		help = "Enter: open • ↑/↓: read/select • PgUp/PgDn: page • r: refresh"
+		help = "←/→: day • Enter: open • ↑/↓: read/select • PgUp/PgDn: page • r: refresh"
+		if m.width < 60 {
+			help = "←/→ day · Enter open · ↑/↓ read"
+		}
 	}
 	if m.entityFocused {
 		help = "Tab: mindset • Q: events • ←/→: entity • Enter: open"

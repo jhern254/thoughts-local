@@ -392,6 +392,46 @@ test('day block stays on the border while the viewport pans', async ({page}) => 
   await page.evaluate(() => window.edgeCapture.dispose());
 });
 
+test('Now view cycles days while retaining its latest-card and metrics layout', async ({page}) => {
+  await ready(page);
+  await page.keyboard.press('End');
+  await expect(screen(page)).toContainText('↑: latest card');
+  const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
+  const cards = () => screen(page).locator('div').evaluateAll(rows => rows.filter(row => row.textContent.includes('╭')).length);
+  const original = await date();
+  await expect.poll(cards).toBe(2);
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(date).not.toBe(original);
+  await expect(screen(page)).toContainText('↑: latest card');
+  await expect(screen(page)).toContainText('Subject time');
+  await expect.poll(cards).toBe(1); // No invented Event on the empty previous day.
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(date).toBe(original);
+  await expect(screen(page)).toContainText('↑: latest card');
+  await expect.poll(cards).toBe(2);
+  await page.keyboard.press('ArrowRight');
+  await expect(screen(page)).not.toContainText('←: collapse');
+  await expect.poll(date).toBe(original);
+});
+
+test('Mindset arrows switch days while Enter remains its Thought-opening key', async ({page}) => {
+  await ready(page);
+  await page.keyboard.press('Shift+Tab');
+  await expect(screen(page)).toContainText('←/→: day');
+  await expect(screen(page)).toContainText('Enter: open');
+  const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
+  const original = await date();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(date).not.toBe(original);
+  await expect(screen(page)).toContainText('↑/↓: read/select');
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(date).toBe(original);
+  await expect(screen(page)).toContainText('↑/↓: read/select');
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(date).toBe(original);
+  await expect(screen(page)).toContainText('Enter: open');
+});
+
 test('metrics card cycles days without losing its focused view', async ({page}) => {
   await ready(page);
   await page.keyboard.press('End');

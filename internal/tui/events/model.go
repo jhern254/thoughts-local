@@ -417,12 +417,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if !m.day.Equal(m.load.pendingDay) {
 			m.day = m.load.pendingDay
 			m.position.entryIndex, m.position.topLine, m.expanded = 0, 0, timeline.EntryKey{}
-			if m.position.target != targetSubjectTime {
-				m.position.target = targetEntry
-			}
 			if m.position.followNow {
 				m.position.target = targetDayBoundary
 			}
+			m.position.followNow = m.position.target == targetDayBoundary && m.day.Equal(displaytime.Day(m.clock))
 			m.entries = nil
 			m.picker.Reset()
 		}
@@ -454,14 +452,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.applySubjectTime()
 		m.position.clampSelection(len(m.entries))
 		var latest, open tea.Cmd
-		if m.position.followNow && len(m.entries) > 0 {
+		if (m.position.followNow || m.position.target == targetDayBoundary) && len(m.entries) > 0 {
 			m.position.entryIndex = len(m.entries) - 1
 		}
 		foundExpanded := false
 		m.latest = nil
 		m.load.latestErr = nil
 		for i, entry := range m.entries {
-			if !m.position.followNow && entry.Key() == selected {
+			if m.position.target == targetEntry && !m.position.followNow && entry.Key() == selected {
 				m.position.entryIndex = i
 			}
 			if entry.Key() == m.expanded {
@@ -488,7 +486,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.picker.Reset()
 		}
 		m.anchor()
-		if selected.IsZero() && !m.position.followNow && len(m.entries) > 0 {
+		if selected.IsZero() && m.position.target == targetEntry && !m.position.followNow && len(m.entries) > 0 {
 			layout := m.measureTimeline()
 			m.position.topLine = layout.positions[m.entries[0].Key()]
 			m.position.clamp(len(layout.lines))
@@ -621,13 +619,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.load.retainedBody = ""
 		return m, nil
 	}
-	if m.position.target == targetSubjectTime {
+	// The boundary and metrics views keep their place while cycling days.
+	if m.position.target == targetDayBoundary || m.position.target == targetSubjectTime {
 		switch key.String() {
 		case "left", "h":
 			return m, m.MoveDay(-1)
 		case "right", "l":
 			return m, m.MoveDay(1)
 		}
+	}
+	if m.position.target == targetSubjectTime {
 		m.load.retainedBody = ""
 		switch key.String() {
 		case "down", "j":

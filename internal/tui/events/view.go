@@ -531,8 +531,11 @@ func (m Model) ViewWithHeadingStatus(statusText string) (view string, placed boo
 	if !m.expanded.IsZero() {
 		help = "Q/Esc back • r reload • d distributions • m mindset"
 	}
-	if m.position.target == targetDayBoundary && m.message == "" && m.subjectTime.err == nil && !m.load.showStatus {
-		status = "↑: latest card • ↓: subject time • d: distributions"
+	if m.position.target == targetDayBoundary {
+		help = "←/→: day • Home: first • End: now • r: refresh • d: distributions"
+		if m.message == "" && m.subjectTime.err == nil && !m.load.showStatus {
+			status = "↑: latest card • ↓: subject time • d: distributions"
+		}
 	}
 	if m.position.target == targetSubjectTime {
 		status = "↑: back/scroll • ↓: subjects • PgUp/PgDn: page • Esc: now"

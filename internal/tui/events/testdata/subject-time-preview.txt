@@ -24,4 +24,4 @@
 
 
 ↑: latest card • ↓: subject time • d: distributions
-← day / → open • Home/End: first/now • r: refresh • n: start • e: end
+←/→: day • Home: first • End: now • r: refresh • d: distributions

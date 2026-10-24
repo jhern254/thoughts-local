@@ -46,6 +46,37 @@ func newMindsetHomeTexts(t *testing.T, texts ...string) Model {
 }
 
 func TestModel_MindsetHome(t *testing.T) {
+	t.Run("horizontal keys cycle days with Mindset focus and Enter opens the Thought", func(t *testing.T) {
+		m := newMindsetHome(t, 2)
+		m, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 100, Height: 40})
+		m = runHomeData(t, m, cmd)
+		m.focusHome(homePanelMindset)
+		day := m.events.Day()
+		before := m.mindsets.View()
+		for _, step := range []struct {
+			key   rune
+			delta int
+		}{{tea.KeyLeft, -1}, {tea.KeyRight, 0}} {
+			m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: step.key}))
+			m = runHomeData(t, m, cmd)
+			want := day.AddDate(0, 0, step.delta)
+			if m.screen != screenEvents || m.homeFocus() != homePanelMindset || !m.events.Day().Equal(want) || !m.mindsets.Day().Equal(want) {
+				t.Fatalf("key %q: got screen=%v focus=%v Event day=%v Mindset day=%v, want home/Mindset/%v", step.key, m.screen, m.homeFocus(), m.events.Day(), m.mindsets.Day(), want)
+			}
+			if m.mindsets.View() != before {
+				t.Fatal("day navigation lost the available Mindset selection")
+			}
+		}
+		m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+		if cmd != nil || m.screen != screenEvents || m.homeFocus() != homePanelMindset {
+			t.Fatal("Right at today opened a Thought or lost Mindset focus")
+		}
+		m, cmd = rootUpdate(m, enterKey())
+		m = runHomeData(t, m, cmd)
+		if m.screen != screenMindsetThought || !strings.Contains(m.View().Content, "Practice 1") {
+			t.Fatal("Enter did not open the selected Mindset Thought")
+		}
+	})
 	t.Run("keeps the date accent while highlighting the focused entity divider", func(t *testing.T) {
 		for _, width := range []int{80, 40} {
 			m := newMindsetHome(t, 0)
@@ -141,21 +172,19 @@ func TestModel_MindsetHome(t *testing.T) {
 			t.Fatal("canceling exit must preserve picker focus, cursor, and scroll")
 		}
 	})
-	t.Run("Left preserves the focused picker and its cursor", func(t *testing.T) {
+	t.Run("Left cycles days while the empty or populated picker stays focused", func(t *testing.T) {
 		for _, count := range []int{0, 3} {
 			m := newMindsetHome(t, count)
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
 			day := m.events.Day()
-			before := m.View().Content
-			for range 2 {
+			for step := range 2 {
 				var cmd tea.Cmd
 				m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
-				if cmd != nil {
-					t.Fatal("Left returned a command, want no action")
-				}
-				if m.homeFocus() != homePanelMindset || !m.mindsets.Expanded() || m.View().Content != before || !m.events.Day().Equal(day) {
-					t.Fatalf("Left with %d thoughts: got focus %d expanded=%v day=%v, want unchanged expanded Mindset on %v", count, m.homeFocus(), m.mindsets.Expanded(), m.events.Day(), day)
+				m = runHomeData(t, m, cmd)
+				want := day.AddDate(0, 0, -step-1)
+				if m.homeFocus() != homePanelMindset || !m.mindsets.Expanded() || !m.events.Day().Equal(want) || !m.mindsets.Day().Equal(want) {
+					t.Fatalf("Left with %d thoughts: got focus %d expanded=%v day=%v, want expanded Mindset on %v", count, m.homeFocus(), m.mindsets.Expanded(), m.events.Day(), want)
 				}
 			}
 		}

@@ -543,6 +543,7 @@ func TestModel_EventsHome(t *testing.T) {
 	t.Run("horizontal keys open thoughts and collapse events without changing days", func(t *testing.T) {
 		for _, keys := range [][2]rune{{tea.KeyRight, tea.KeyLeft}, {'l', 'h'}} {
 			m, _ := newHome(t)
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
 			m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: keys[0]}))
 			m = runHomeData(t, m, cmd)
 			if !strings.Contains(m.View().Content, "←: collapse") {
@@ -636,6 +637,7 @@ func TestModel_EventsHome(t *testing.T) {
 					t.Fatal("entity strip did not retain horizontal keyboard navigation")
 				}
 				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+				m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyHome}))
 				m, cmd = rootUpdate(m, runeKey('l'))
 				m = runHomeData(t, m, cmd)
 				if m.entityFocused || !strings.Contains(m.events.View(), "←: collapse") {

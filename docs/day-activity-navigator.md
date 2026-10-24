@@ -48,9 +48,16 @@ graph, and replacement reset feedback. Request ownership rejects retired timers,
 so a queued pan starts a fresh delay rather than inheriting a loading label. Very small terminals retain the existing resize
 guidance. No custom key acceleration is included.
 
-The end-of-day metrics card also accepts Left/Right (h/l) to cycle calendar
-days while keeping the card focused. A new day's subject list starts at the top;
-Right at today stays put. Up returns to the timeline boundary.
+The Now/day-boundary view retains its latest card, boundary bar and metrics
+preview while Left/Right (h/l) cycles days, including empty days. Returning to
+today resumes its live Now view; Right at today stays there. Entry browsing still
+opens a changed day at its first card. The metrics card similarly keeps its own
+focus while cycling dates.
+
+Mindset also accepts Left/Right (h/l) for day changes without leaving the panel.
+It reloads that day's available Thoughts; Up/Down and paging keep their reading
+behavior. Only Enter opens the selected Mindset Thought. The entity strip keeps
+its existing horizontal entity navigation.
 
 ## Counts and rendering
 
@@ -584,3 +591,24 @@ Deterministic tests check repeated left/right pans at 1, 40, 80 and 160 columns,
 including month and one-day zoom. Browser capture checks painted block positions
 through forty-five day changes each way, rather than only inspecting a settled
 endpoint.
+
+### Now and Mindset day navigation
+
+Now/day-boundary focus survives day arrivals instead of becoming entry focus.
+That preserves the latest-card/boundary/metrics composition, including empty
+days. Returning to today restores live follow-Now behavior; Right at today does
+not open a card. Only entry browsing initializes the first card on a changed day.
+Mindset arrows use the same day command while retaining panel focus. Enter is
+its sole Thought-opening key; reading and paging stay in the component.
+
+Focused Go tests cover populated/empty day cycling, the first-card distinction,
+today's limit, Enter-only Mindset opening and root dispatch. All 36 affected
+Chromium/Firefox cases and navigator/Events/Mindset/root race tests passed. The
+single changed preview golden line is the Now-view help binding; its geometry
+is unchanged.
+
+An actual Brave walkthrough used the varied synthetic diary at 1200×850. Its
+Now view kept one latest card plus metrics across dates, Mindset arrows preserved
+focus and Enter opened a real synthetic pinned Thought. The temporary pin was
+removed through the UI. Reviewed captures and results are under
+`/tmp/thoughts-daynav-evidence`; one WebSocket served the whole walkthrough.
