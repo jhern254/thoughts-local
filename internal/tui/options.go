@@ -229,8 +229,22 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			return m, nil
 		}
 		m.options.status = "Verified source bounds differ. Adjust Start/End and preview again."
+	case "previewStopped":
+		if m.options.request != "stopPreview" {
+			return m, nil
+		}
+		m.options.sourceFrame = !m.options.loopReady
+		m.options.trimFocus = trimFocusPreview
+		m.options.status = "Rendering stopped. Adjust the cut or preview again."
+		if msg.DurationMS == 0 || (m.options.loopReady && msg.Trim == m.options.acceptedTrim && msg.VideoQuality == m.options.acceptedQuality) {
+			break
+		}
+		fallthrough // A loop acknowledged before Stop remains the usable preview.
 	case "loopReady":
-		if m.options.request != "prepareLoop" || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
+		if msg.Action == "loopReady" && m.options.request != "prepareLoop" {
+			return m, nil
+		}
+		if (m.options.request != "prepareLoop" && m.options.request != "stopPreview") || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
 			return m, nil
 		}
 		if !msg.VideoQuality.Valid() || !msg.FrameRate.Valid() || msg.Width < 2 || msg.Width > 1920 || msg.Height < 2 || msg.Height > 1920 || msg.Width*msg.Height > 1920*1080 {
@@ -524,7 +538,7 @@ func (m *Model) activateOption() {
 func (m Model) optionsLayout() (int, PreviewRect) {
 	if m.options.trimming {
 		width := max(10, min(80, m.width-4))
-		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-33))}
+		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-34))}
 	}
 	if m.options.editing {
 		width := max(10, min(80, m.width-4))

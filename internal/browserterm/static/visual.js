@@ -119,6 +119,8 @@ class ThoughtsVisual {
         break;
       case 'prepareLoop':
         await this.videoTrim.prepare(state); break;
+      case 'stopPreview':
+        await this.videoTrim.stopRendering(operationID); break;
       case 'discardVideo':
         await this.videoTrim.discard(operationID); break;
       case 'play':

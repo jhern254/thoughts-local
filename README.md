@@ -172,8 +172,10 @@ the source; shorten **End** for a smaller cut. Arrow keys adjust by 0.1 seconds,
 Shift by one second, PageUp/PageDown by one minute, and Home/End reach the source
 boundaries. Enter on Source / Start accepts `HH:MM:SS` with optional milliseconds.
 **Preview loop** prepares only the selected 1–30 seconds from temporary local
-staging. Later previews reuse that source until the editor closes. A fading braille wave above Options shows activity during preparation; press
-Esc or Tab then Enter to cancel the upload. **Done** and **Apply** use the last successful preview,
+staging. Later previews reuse that source until the editor closes. A fading braille
+wave shows activity during preparation. **Stop rendering** (or Esc) keeps the
+source and cut editor for another attempt. **Cancel upload**, separated below the
+preview actions, leaves the import. **Done** and **Apply** use the last successful preview,
 even if you subsequently change the cut points or quality. The editor shows the
 previewed quality and actual dimensions/FPS; preview again to accept a new quality.
 Apply saves those exact previewed bytes and their quality preference. With no

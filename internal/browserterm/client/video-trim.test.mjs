@@ -297,3 +297,30 @@ test('first native frame never presents an unrelated saved poster as the source'
  editor.sourceFrameURL='blob:last-source-frame';editor.showSource(1000);
  assert.equal(visual.preview.hidden,false);assert.equal(visual.preview.src,'blob:last-source-frame');
 });
+
+test('Stop rendering retains the source and accepted loop and joins before replying',async()=>{
+ const {editor,visual}=fixture();visual.state.id=6;const actions=[];
+ visual.sendAction=action=>actions.push(action);
+ const source={sourceID:'source'},accepted={previewID:'old',trim:{startMS:0,endMS:1000},durationMS:1000};
+ editor.source=source;editor.localFile={};editor.accepted=accepted;editor.acceptedVideo={};editor.renderOperationID=5;
+ editor.renderController=new AbortController();const renderController=editor.renderController;
+ editor.preparing=new Promise(resolve=>renderController.signal.addEventListener('abort',resolve,{once:true}));
+ let joined=false;editor.request=async(path,options)=>{
+  assert.equal(path,'/visual/video/preview/stop');assert.deepEqual(JSON.parse(options.body),{sourceID:'source',operationID:5});
+  assert.equal(renderController.signal.aborted,true);joined=true;return {status:204};
+ };
+ editor.showAccepted=play=>{assert.equal(play,false);};
+ await editor.stopRendering(6);
+ assert.equal(joined,true);assert.equal(editor.source,source);assert.equal(editor.accepted,accepted);assert.ok(editor.localFile);
+ assert.equal(actions.at(-1).action,'previewStopped');assert.equal(actions.at(-1).durationMS,1000);
+});
+
+test('Stop does not abort acknowledgement of a loop that finished rendering',async()=>{
+ const {editor,visual}=fixture();visual.state.id=6;const actions=[];visual.sendAction=action=>actions.push(action);
+ editor.source={sourceID:'source'};editor.renderOperationID=5;editor.controller=new AbortController();const acknowledgement=editor.controller;
+ let complete;editor.preparing=new Promise(resolve=>{complete=resolve;}).then(()=>{editor.accepted={previewID:'new',trim:{startMS:1000,endMS:3000},durationMS:2000};editor.acceptedVideo={};});
+ let joined=false;editor.request=async()=>{joined=true;return {status:204};};editor.showAccepted=()=>{};
+ const stopped=editor.stopRendering(6);assert.equal(acknowledgement.signal.aborted,false);assert.equal(joined,false);
+ complete();await stopped;
+ assert.equal(acknowledgement.signal.aborted,false);assert.equal(editor.accepted.previewID,'new');assert.equal(actions.at(-1).durationMS,2000);
+});

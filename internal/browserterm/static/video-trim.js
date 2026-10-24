@@ -277,10 +277,19 @@ class ThoughtsVideoTrim {
     if (!state.trimming && previous.trimming && this.acceptedVideo && this.visual.previewVideo !== this.acceptedVideo) this.showAccepted(false);
   }
   async prepare(state) {
+    this.renderOperationID = state.id;
+    const preparing = this.prepareLoop(state);
+    this.preparing = preparing;
+    try { await preparing; } finally {
+      if (this.preparing === preparing) this.preparing = undefined;
+    }
+  }
+  async prepareLoop(state) {
     const generation = this.generation;
     const operationID = state.id;
     const visual = this.visual;
     this.controller?.abort();
+    this.renderController?.abort();
     const controller = new AbortController();
     this.controller = controller;
     let candidate, videoURL, posterURL;
@@ -293,8 +302,15 @@ class ThoughtsVideoTrim {
         return;
       }
       this.setStage(`Preparing ${(endMS-startMS)/1000}-second loop…`, operationID);
-      const response = await this.request('/visual/video/preview', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceID:this.source.sourceID, trim:state.trim,videoQuality:state.videoQuality})},controller.signal);
-      const prepared = await response.json();
+      const renderController = new AbortController();
+      this.renderController = renderController;
+      let prepared;
+      try {
+        const response = await this.request('/visual/video/preview', {method:'POST',headers:{'Content-Type':'application/json','X-Visual-Operation':String(operationID)},body:JSON.stringify({sourceID:this.source.sourceID, trim:state.trim,videoQuality:state.videoQuality})},renderController.signal);
+        prepared = await response.json();
+      } finally {
+        if (this.renderController === renderController) this.renderController = undefined;
+      }
       if (!this.owns(generation)) return;
       if (this.accepted?.previewID !== prepared.previewID) {
         const videoResponse = await this.request(`/visual/video/preview?id=${encodeURIComponent(prepared.previewID)}&part=video`,{},controller.signal);
@@ -317,8 +333,8 @@ class ThoughtsVideoTrim {
         candidate = undefined; videoURL = undefined; posterURL = undefined;
         this.accepted = prepared;
       }
-      this.showAccepted(true);
-      visual.sendAction({action:'loopReady',id:operationID,trim:this.accepted.trim,durationMS:this.accepted.durationMS,videoQuality:this.accepted.videoQuality,width:this.accepted.width,height:this.accepted.height,frameRate:this.accepted.frameRate});
+      this.showAccepted(visual.state.id === operationID);
+      if (visual.state.id === operationID) visual.sendAction({action:'loopReady',id:operationID,...this.acceptedControls()});
     } catch (error) {
       if (this.owns(generation) && !controller.signal.aborted && visual.state.id === operationID) {
         if (this.acceptedVideo) this.showAccepted(false);
@@ -330,6 +346,36 @@ class ThoughtsVideoTrim {
       if (posterURL) URL.revokeObjectURL(posterURL);
       if (this.controller === controller) this.controller = undefined;
     }
+  }
+  async stopRendering(operationID) {
+    const generation = this.generation;
+    const renderingID = this.renderOperationID;
+    this.renderController?.abort();
+    this.frameController?.abort();
+    // Stop cancels encoding, not an already-finished preview acknowledgement.
+    // Joining that promise keeps browser/native accepted-loop ownership aligned
+    // when completion wins the race with Stop.
+    await this.preparing;
+    if (!this.owns(generation) || this.visual.state.id !== operationID) return;
+    const controller = new AbortController();
+    this.controller = controller;
+    try {
+      const stopped = await this.request('/visual/video/preview/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceID:this.source.sourceID,operationID:renderingID})},controller.signal);
+      if (stopped.status !== 204) throw new Error('Rendering cleanup unavailable.');
+      if (!this.owns(generation) || this.visual.state.id !== operationID) return;
+      if (this.acceptedVideo) this.showAccepted(false);
+      else this.showSource(this.sourcePositionMS ?? this.visual.state.trim.startMS);
+      this.visual.sendAction({action:'previewStopped',id:operationID,...this.acceptedControls()});
+    } catch {
+      if (this.owns(generation)) this.visual.reply('failed',operationID);
+    } finally {
+      if (this.controller === controller) this.controller = undefined;
+    }
+  }
+  acceptedControls() {
+    if (!this.accepted) return {};
+    const {trim,durationMS,videoQuality,width,height,frameRate} = this.accepted;
+    return {trim,durationMS,videoQuality,width,height,frameRate};
   }
   showAccepted(play) {
     if (!this.acceptedVideo) return;
@@ -366,6 +412,8 @@ class ThoughtsVideoTrim {
     this.frameController?.abort(); this.frameController = undefined;
     this.frameRequest = undefined;
     this.controller?.abort(); this.controller = undefined;
+    this.renderController?.abort(); this.renderController = undefined;
+    this.renderOperationID = undefined;
     const visual = this.visual;
     if (visual.previewVideo === this.sourceVideo || visual.previewVideo === this.acceptedVideo) visual.previewVideo = undefined;
     visual.stopPreviewPlayback();

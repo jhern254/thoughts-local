@@ -115,6 +115,11 @@ func (s *server) serveVisual(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			handler = s.previewVisualVideoFrame
 		}
+	case "/visual/video/preview/stop":
+		allowed = "POST"
+		if r.Method == http.MethodPost {
+			handler = s.stopVisualVideoPreview
+		}
 	case "/visual/video/source":
 		allowed = "POST, DELETE"
 		switch r.Method {

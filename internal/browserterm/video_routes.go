@@ -9,12 +9,15 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
+
+const videoStopTimeout = 10 * time.Second
 
 // beginVideoEdit binds HTTP work to both request cancellation and the exact
 // Visual opening that issued it. Cancellation also interrupts blocked socket I/O;
@@ -29,6 +32,15 @@ func (s *server) beginVideoEdit(w http.ResponseWriter, r *http.Request, heavy bo
 		return nil, nil, nil, false
 	}
 	owner, valid := editor.context(headers[0])
+	if valid && r.Method == http.MethodPost && r.URL.Path == "/visual/video/preview" {
+		request, err := strconv.ParseUint(r.Header.Get("X-Visual-Operation"), 10, 64)
+		if err != nil || len(r.Header.Values("X-Visual-Operation")) != 1 {
+			valid = false
+		} else {
+			owner, valid = editor.previewContext(headers[0], request)
+			valid = valid && owner.Err() == nil
+		}
+	}
 	if !valid {
 		http.Error(w, "Visual editor unavailable.", http.StatusForbidden)
 		return nil, nil, nil, false
@@ -36,6 +48,8 @@ func (s *server) beginVideoEdit(w http.ResponseWriter, r *http.Request, heavy bo
 	operationLimit := visual.MaxVideoProcessingTime
 	if r.URL.Path == "/visual/video/frame" {
 		operationLimit = visual.MaxVideoFrameTime
+	} else if r.URL.Path == "/visual/video/preview/stop" {
+		operationLimit = videoStopTimeout
 	}
 	if r.Method == http.MethodPost && r.URL.Path == "/visual/video/source" {
 		operationLimit += visual.MaxVideoTransferTime
@@ -116,6 +130,36 @@ func (s *server) beginVideoEdit(w http.ResponseWriter, r *http.Request, heavy bo
 	}
 	editor.filesOwner = headers[0]
 	return editor, ctx, finish, true
+}
+
+// The gate joins canceled processing before this operation removes only the
+// unacknowledged candidate. The source and accepted loop remain owned by Visual.
+func (s *server) stopVisualVideoPreview(w http.ResponseWriter, r *http.Request) {
+	editor, _, finish, ok := s.beginVideoEdit(w, r, false)
+	if !ok {
+		return
+	}
+	defer finish()
+	var input struct {
+		SourceID    string `json:"sourceID"`
+		OperationID uint64 `json:"operationID"`
+	}
+	if !readVideoEditJSON(w, r, &input) {
+		return
+	}
+	operation, current := editor.previewContext(r.Header.Get("X-Visual-Editor"), input.OperationID)
+	if !current || operation.Err() == nil || editor.source == nil || editor.sourceID != input.SourceID {
+		http.Error(w, "Video rendering operation unavailable.", http.StatusConflict)
+		return
+	}
+	if editor.pending != nil {
+		if err := editor.pending.Close(); err != nil {
+			videoError(w, err)
+			return
+		}
+		editor.pending, editor.pendingID = nil, ""
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func readVideoEditJSON(w http.ResponseWriter, r *http.Request, value any) bool {

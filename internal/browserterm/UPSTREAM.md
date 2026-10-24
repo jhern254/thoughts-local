@@ -377,3 +377,10 @@ FFprobe may inspect headers of ignored streams during its bounded analysis;
 preparation maps only the verified video and strips all other streams/metadata.
 FFmpeg is maintained external code, not an OS sandbox. No browser-decoder or
 hardware-acceleration guarantee follows from accepting a native source.
+
+Stopping a loop render retains the staged source and acknowledged loop. Go Options
+request identity admits the render through `X-Visual-Operation` and cancels its
+context when Stop is requested. The stop route joins the editor gate and removes
+only an unacknowledged candidate before the controls unlock. Browser preparation
+and acknowledgement are joined too: a loop acknowledged before Stop stays
+consistent on both sides. Cancel upload still retires the whole source editor.

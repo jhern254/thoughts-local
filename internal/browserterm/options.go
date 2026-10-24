@@ -30,6 +30,7 @@ func (m optionsBridgeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.videoEditor != nil {
 				var cleanup func() error
 				editorID, cleanup = m.videoEditor.setOpen(state.Open)
+				m.videoEditor.setPreviewOperation(state.ID, state.Request == "prepareLoop")
 				if cleanup != nil {
 					cmd = tea.Batch(cmd, func() tea.Msg { _ = cleanup(); return nil })
 				}

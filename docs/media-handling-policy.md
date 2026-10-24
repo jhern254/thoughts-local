@@ -225,7 +225,9 @@ source-relative controls as final preparation. Apply still copies only the
 acknowledged video/poster bytes, without another encode.
 New-upload trimming temporarily retains that source while Visual is open; Apply, Cancel, closing
 Visual, disconnect and orderly shutdown remove it after joining processing.
-It is not an archive; saved clips have no retained source or re-trim metadata.
+Stop rendering keeps the staged source and accepted loop for retry; it does not
+exit the import. It is not an archive; saved clips have no retained source or
+re-trim metadata.
 A crash can leave staging files, as with other incomplete filesystem operations.
 An 8 GiB source can occupy roughly that much additional temporary disk space,
 plus bounded candidates and accepted output. Sources and derivatives are

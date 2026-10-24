@@ -157,7 +157,7 @@ test('End previews backward and held arrows accelerate without uploading or prep
   await page.screenshot({path: `/tmp/trim-scrub-${testInfo.project.name}-narrow.png`});
 });
 
-test('preparing a loop reserves a braille wave between speed and Preview loop and keeps keyboard cancellation available',async({page},testInfo)=>{
+test('preparing a loop reserves a braille wave above Stop rendering and keeps keyboard cancellation available',async({page},testInfo)=>{
   let sockets=0, releasePreparation;
   page.on('websocket',()=>sockets++);
   await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
@@ -182,9 +182,9 @@ test('preparing a loop reserves a braille wave between speed and Preview loop an
     await clickControl(page,'Preview loop');
     const bar=page.locator('#video-preparation-wave');
     await expect(page.getByRole('progressbar')).toBeVisible();
-    await expect.poll(async () => (await previewControl.boundingBox())?.y).toBe(previewBefore.y);
+    await expect.poll(async () => (await screen(page).getByText('Stop rendering', {exact:true}).boundingBox())?.y).toBe(previewBefore.y);
     expect(await page.locator('.xterm-screen').boundingBox()).toEqual(terminalBefore);
-    await expect(done).toHaveCSS('color', 'rgb(153, 153, 153)');
+    await expect(done).toHaveCount(0);
     await expect(bar).not.toHaveAttribute('aria-valuenow');
     const lightPosition=()=>bar.locator('.preparation-sweep').first().evaluate(element=>getComputedStyle(element).transform);
     const position=await lightPosition();
@@ -198,7 +198,7 @@ test('preparing a loop reserves a braille wave between speed and Preview loop an
         const preview=document.getElementById('background-preview-wrap').getBoundingClientRect();
         const rows=[...document.querySelectorAll('.xterm-rows > div')];
         const speedRow=rows.find(row=>row.textContent.includes('Playback speed:'));
-        const previewRow=rows.find(row=>row.textContent.trim()==='Preview loop');
+        const previewRow=rows.find(row=>row.textContent.trim()==='Stop rendering');
         if(!speedRow || !previewRow)return false;
         const speed=speedRow.getBoundingClientRect();
         const action=previewRow.getBoundingClientRect();
@@ -239,7 +239,7 @@ test('preparing a loop reserves a braille wave between speed and Preview loop an
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await expect.poll(lightPosition).not.toBe(hiddenFrame);
-    const previewPending = await previewControl.boundingBox();
+    const previewPending = await screen(page).getByText('Stop rendering', {exact:true}).boundingBox();
     releasePreparation();
     await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
     await expect.poll(async () => (await previewControl.boundingBox())?.y).toBe(previewPending.y);
@@ -332,7 +332,7 @@ test('repeated cancellation keeps one discard owner until Visual is restored',as
     await clickControl(page,'Preview loop');
     await expect.poll(()=>latestOptions?.request).toBe('prepareLoop');
     const preparationID=latestOptions.id;
-    await page.keyboard.press('Escape');
+    await clickControl(page,'Cancel upload');
     await expect.poll(()=>latestOptions?.request).toBe('discardVideo');
     const discardID=latestOptions.id;
     expect(discardID).toBe(preparationID+1);
@@ -627,11 +627,11 @@ test('source rejection is visible before cutting and a valid upload can retry',a
  await expect(screen(page)).toContainText('Background darkness:');
 });
 
-for(const phase of ['source transfer','preview acknowledgement'])test(`cancellation during ${phase} retires the candidate without changing the background`,async({page})=>{
+for(const phase of ['source transfer','preview acknowledgement','stopping acknowledgement'])test(`cancellation during ${phase} retires the candidate without changing the background`,async({page})=>{
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
  const before=await(await page.request.get('/visual')).json();
  await openVisual(page);
- if(phase==='preview acknowledgement') {
+ if(phase!=='source transfer') {
   await stageSource(page);
   await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
  }
@@ -648,8 +648,10 @@ for(const phase of ['source transfer','preview acknowledgement'])test(`cancellat
    const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(source);
   } else await clickControl(page,'Preview loop');
   await arrival;
-  await page.keyboard.press('Escape');
-  if(phase==='preview acknowledgement') {
+  if(phase==='stopping acknowledgement') {await clickControl(page,'Stop rendering');await expect(screen(page)).toContainText('Stopping rendering');}
+  if(phase!=='source transfer') await clickControl(page,'Cancel upload');
+  else await page.keyboard.press('Escape');
+  if(phase!=='source transfer') {
    await expect(screen(page)).toContainText('Background darkness:');
   } else await expect(screen(page)).not.toContainText('Checking video compatibility');
   expect(await(await page.request.get('/visual')).json()).toEqual(before);
@@ -795,4 +797,31 @@ test('browser decode failure falls back for a verified single-track Matroska sou
  await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
  await clickControl(page,'Done — use previewed loop');await clickControl(page,'Apply');
  await expect(screen(page)).not.toContainText('Background darkness:');
+});
+
+for(const stop of ['Escape','click'])test(`Stop rendering via ${stop} retains upload and accepted loop for retry`,async({page},testInfo)=>{
+ let uploads=0,preparations=0,sockets=0;
+ page.on('websocket',()=>sockets++);
+ page.on('request',request=>{if(request.method()==='POST'){const path=new URL(request.url()).pathname;if(path==='/visual/video/source')uploads++;if(path==='/visual/video/preview')preparations++;}});
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');await openVisual(page);await stageSource(page);
+ await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
+ await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ await clickControl(page,'End: 00:00:01.000 (max 00:00:30.000)');await page.keyboard.press('ArrowRight');
+ let release,entered;
+ const gate=new Promise(resolve=>{release=resolve;}),arrival=new Promise(resolve=>{entered=resolve;});
+ await page.route('**/visual/video/preview',async route=>{if(route.request().method()==='POST'){entered();await gate;}await route.continue();});
+ try {
+  await clickControl(page,'Preview loop');await arrival;
+  await expect(screen(page)).toContainText('Stop rendering');await expect(screen(page)).not.toContainText('Done — use previewed loop');
+  const rows=await screen(page).locator(':scope > div').allTextContents(),cancel=rows.findIndex(row=>row.trim()==='Cancel upload');
+  expect(cancel).toBeGreaterThan(0);expect(rows[cancel-1].trim()).toBe('');
+  if(process.env.THOUGHTS_BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-render-stop.png`});
+  if(stop==='Escape')await page.keyboard.press('Escape');else await clickControl(page,'Stop rendering');
+  await expect(screen(page)).toContainText('Rendering stopped.');
+  await expect(screen(page)).toContainText('Done — use previewed loop');await expect(screen(page)).toContainText('Selected: 1.1 seconds');
+  expect(uploads).toBe(1);expect(sockets).toBe(1);
+ } finally {release();await page.unrouteAll({behavior:'wait'});}
+ await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ await clickControl(page,'Done — use previewed loop');await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
+ expect(uploads).toBe(1);expect(preparations).toBe(3);expect(sockets).toBe(1);
 });

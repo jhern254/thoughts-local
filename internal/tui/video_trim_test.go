@@ -195,14 +195,24 @@ func TestModel_VideoTrim(t *testing.T) {
 				m.options.request = request
 				m.options.loopReady = request == ""
 				rows := strings.Split(ansi.Strip(m.View().Content), "\n")
-				for _, label := range []string{"Source / Start:", "Playback speed:", "Preview loop", "Done —", "Cancel upload"} {
+				for _, label := range []string{"Source / Start:", "Playback speed:", "Cancel upload"} {
 					if got, want := findRow(rows, label), findRow(before, label); got != want {
 						t.Fatalf("%s row = %d, want %d", label, got, want)
 					}
 				}
+				if request == "prepareLoop" {
+					if got := findRow(rows, "Stop rendering"); got != previewRow {
+						t.Fatalf("Stop row=%d, want Preview row %d", got, previewRow)
+					}
+					if strings.Contains(strings.Join(rows, "\n"), "Done —") {
+						t.Fatal("Done remained available during rendering")
+					}
+				} else if got := findRow(rows, "Preview loop"); got != previewRow {
+					t.Fatal("Preview action moved after rendering")
+				}
 				cancelRow := findRow(rows, "Cancel upload")
-				if strings.TrimSpace(rows[cancelRow+1]) != "" {
-					t.Fatal("missing blank row after Cancel upload")
+				if strings.TrimSpace(rows[cancelRow+1]) != "" || strings.TrimSpace(rows[cancelRow-1]) != "" {
+					t.Fatal("Cancel upload lacks surrounding blank rows")
 				}
 				if len(rows) > size[1] {
 					t.Fatalf("%v: %d rows exceed height", size, len(rows))
@@ -410,7 +420,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 
-	t.Run("preparation keeps Cancel keyboard accessible while cut controls stay locked", func(t *testing.T) {
+	t.Run("preparation keeps Stop and Cancel keyboard accessible while cut controls stay locked", func(t *testing.T) {
 		m := newRootTestModel()
 		m.browserOptionsEnabled = true
 		m.width, m.height = 80, 36
@@ -427,11 +437,10 @@ func TestModel_VideoTrim(t *testing.T) {
 		if m.OptionsState().Request != "prepareLoop" {
 			t.Fatal("preview did not request preparation")
 		}
-		if !strings.Contains(m.View().Content, "Tab: Cancel") {
+		if !strings.Contains(m.View().Content, "Enter: activate") || !strings.Contains(m.View().Content, "Esc: stop rendering") {
 			t.Fatal("pending preparation does not explain keyboard cancellation")
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
-		m, _ = rootUpdate(m, enterKey())
 		if m.OptionsState().Trim != trim || m.OptionsState().ID != id {
 			t.Fatal("pending preparation allowed edits or a duplicate request")
 		}
@@ -529,6 +538,9 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 			{"Cancel click", []tea.Msg{cancelClick}},
 			{"Tab then Enter", []tea.Msg{tea.KeyPressMsg{Code: tea.KeyTab}, enterKey()}},
 		} {
+			if request == "prepareLoop" && (action.name == "Escape" || action.name == "Q") {
+				continue // Rendering Escape stops only the render; explicit Cancel still discards.
+			}
 			name := "editing"
 			if request != "" {
 				name = request
@@ -600,15 +612,14 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 	}
 
 	t.Run("cut and quality controls remain locked during preparation and cancellation", func(t *testing.T) {
-		for _, request := range []string{"prepareLoop", "discardVideo"} {
+		for _, request := range []string{"prepareLoop", "stopPreview", "discardVideo"} {
 			for _, control := range []struct {
 				name  string
 				focus int
-				row   int
 			}{
-				{"Source / Start", trimFocusSource, 19},
-				{"End", trimFocusEnd, 21},
-				{"Quality", trimFocusQuality, 23},
+				{"Source / Start", trimFocusSource},
+				{"End", trimFocusEnd},
+				{"Video quality", trimFocusQuality},
 			} {
 				t.Run(request+" locks "+control.name, func(t *testing.T) {
 					m := newRootTestModel()
@@ -626,9 +637,18 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 
 						trim: trim,
 					}
+					row := -1
+					for index, line := range strings.Split(ansi.Strip(m.View().Content), "\n") {
+						if strings.HasPrefix(strings.TrimSpace(line), control.name+":") {
+							row = index
+						}
+					}
+					if row < 0 {
+						t.Fatal("missing locked control")
+					}
 					for _, message := range []tea.Msg{
 						tea.KeyPressMsg{Code: tea.KeyRight}, tea.KeyPressMsg{Code: tea.KeyHome}, enterKey(),
-						tea.MouseClickMsg{X: 8, Y: control.row, Button: tea.MouseLeft},
+						tea.MouseClickMsg{X: 8, Y: row, Button: tea.MouseLeft},
 					} {
 						m, _ = rootUpdate(m, message)
 						if got := m.OptionsState(); got.ID != 5 || got.Request != request || got.Trim != trim || got.VideoQuality != visual.VideoQualityEfficient {
@@ -637,6 +657,55 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 					}
 				})
 			}
+		}
+	})
+}
+
+func TestModel_StopVideoRendering(t *testing.T) {
+	t.Run("explicit Cancel remains available while rendering joins", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.options = optionsState{open: true, id: 6, request: "stopPreview", trimming: true, trimFocus: trimFocusPreview}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		m, _ = rootUpdate(m, enterKey())
+		if got := m.OptionsState(); got.ID != 7 || got.Request != "discardVideo" {
+			t.Fatalf("explicit Cancel unavailable: %+v", got)
+		}
+	})
+	t.Run("Escape stops rendering and retains source cut and accepted loop", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.width, m.height = 80, 36
+		trim := visual.VideoTrim{StartMS: 1000, EndMS: 5000}
+		m.options = optionsState{open: true, id: 5, request: "prepareLoop", trimming: true, newVideo: true, loopReady: true, trim: trim, acceptedTrim: trim, sourceDurationMS: 60000, trimFocus: trimFocusPreview}
+		view := strings.Split(ansi.Strip(m.View().Content), "\n")
+		stopRow, cancelRow := -1, -1
+		for row, line := range view {
+			switch strings.TrimSpace(line) {
+			case "Stop rendering":
+				stopRow = row
+			case "Cancel upload":
+				cancelRow = row
+			}
+		}
+		if stopRow < 0 || cancelRow <= stopRow || strings.TrimSpace(view[cancelRow-1]) != "" {
+			t.Fatalf("render actions lack separation:\n%s", strings.Join(view, "\n"))
+		}
+		m, _ = rootUpdate(m, escapeKey())
+		if got := m.OptionsState(); got.Request != "stopPreview" || got.ID != 6 || !got.Trimming || got.Trim != trim || !m.options.loopReady {
+			t.Fatalf("stop discarded editor: %+v", got)
+		}
+		m, _ = rootUpdate(m, escapeKey())
+		if m.OptionsState().ID != 6 {
+			t.Fatal("repeated Stop changed operation ownership")
+		}
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "previewStopped", ID: 6})
+		if got := m.OptionsState(); got.Request != "" || !got.Trimming || got.Trim != trim || !m.options.loopReady {
+			t.Fatalf("stop completion lost editor: %+v", got)
+		}
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", ID: 5})
+		if m.OptionsState().ID != 6 || m.options.acceptedTrim != trim {
+			t.Fatal("retired rendering result changed the retained cut")
 		}
 	})
 }
