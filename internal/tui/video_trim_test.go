@@ -11,6 +11,80 @@ import (
 )
 
 func TestModel_VideoTrim(t *testing.T) {
+	t.Run("preparation space and action rows remain fixed", func(t *testing.T) {
+		for _, size := range [][2]int{{80, 36}, {60, 24}} {
+			m := newRootTestModel()
+			m.width, m.height = size[0], size[1]
+			m.options = optionsState{open: true, trimming: true, sourceDurationMS: 60000, trim: visual.VideoTrim{EndMS: 30000}}
+			before := strings.Split(ansi.Strip(m.View().Content), "\n")
+			findRow := func(rows []string, label string) int {
+				t.Helper()
+				for row, content := range rows {
+					if strings.Contains(content, label) {
+						return row
+					}
+				}
+				t.Fatalf("missing %q", label)
+				return -1
+			}
+			speedRow := findRow(before, "Playback speed:")
+			previewRow := findRow(before, "Preview loop")
+			if previewRow-speedRow != 4 {
+				t.Fatalf("%v: preview row = %d, want three reserved rows after speed row %d", size, previewRow, speedRow)
+			}
+			for _, request := range []string{"prepareLoop", ""} {
+				m.options.request = request
+				m.options.loopReady = request == ""
+				rows := strings.Split(ansi.Strip(m.View().Content), "\n")
+				for _, label := range []string{"Source / Start:", "Playback speed:", "Preview loop", "Done —", "Cancel upload"} {
+					if got, want := findRow(rows, label), findRow(before, label); got != want {
+						t.Fatalf("%s row = %d, want %d", label, got, want)
+					}
+				}
+				cancelRow := findRow(rows, "Cancel upload")
+				if strings.TrimSpace(rows[cancelRow+1]) != "" {
+					t.Fatal("missing blank row after Cancel upload")
+				}
+				if len(rows) > size[1] {
+					t.Fatalf("%v: %d rows exceed height", size, len(rows))
+				}
+				if m.options.loopReady && strings.TrimSpace(rows[findRow(rows, "Previewed:")+3]) != "" {
+					t.Fatal("missing blank row after preview statistics")
+				}
+			}
+		}
+	})
+	t.Run("Done cannot receive focus or clicks until a preview is ready", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.width, m.height = 80, 36
+		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusPreview, sourceDurationMS: 60000, trim: visual.VideoTrim{EndMS: 30000}}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		if m.options.trimFocus != trimFocusCancel {
+			t.Fatal("Tab focused unavailable Done")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		if m.options.trimFocus != trimFocusPreview {
+			t.Fatal("reverse Tab focused unavailable Done")
+		}
+		for row, text := range strings.Split(ansi.Strip(m.View().Content), "\n") {
+			if strings.Contains(text, "Done —") {
+				m, _ = rootUpdate(m, tea.MouseClickMsg{X: 8, Y: row, Button: tea.MouseLeft})
+				if m.options.trimFocus != trimFocusPreview || !m.options.trimming || m.options.status != "" {
+					t.Fatal("click activated unavailable Done")
+				}
+			}
+		}
+		m.options.loopReady = true
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		if m.options.trimFocus != trimFocusDone {
+			t.Fatal("ready Done was skipped")
+		}
+		m, _ = rootUpdate(m, enterKey())
+		if m.options.trimming {
+			t.Fatal("ready Done did not return to Visual")
+		}
+	})
 	t.Run("failed preparation restores the accepted loop label and preserves drafts", func(t *testing.T) {
 		for _, action := range []string{"failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceTimeline"} {
 			t.Run(action, func(t *testing.T) {
@@ -235,7 +309,7 @@ func TestModel_VideoTrim(t *testing.T) {
 			trimming:         true,
 			sourceDurationMS: 60000,
 		}
-		m, _ = rootUpdate(m, tea.MouseClickMsg{X: 8, Y: 27, Button: tea.MouseLeft})
+		m, _ = rootUpdate(m, tea.MouseClickMsg{X: 8, Y: 25, Button: tea.MouseLeft})
 		if m.OptionsState().Request != "discardVideo" {
 			t.Fatalf("cancel request = %q", m.OptionsState().Request)
 		}
@@ -293,7 +367,7 @@ func TestModel_VideoTrim(t *testing.T) {
 }
 
 func TestModel_VideoTrimCancellation(t *testing.T) {
-	cancelClick := tea.MouseClickMsg{X: 8, Y: 27, Button: tea.MouseLeft}
+	cancelClick := tea.MouseClickMsg{X: 8, Y: 25, Button: tea.MouseLeft}
 	for _, request := range []string{"", "prepareLoop"} {
 		for _, action := range []struct {
 			name     string

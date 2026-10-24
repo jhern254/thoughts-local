@@ -21,7 +21,6 @@ class ThoughtsVisual {
     this.playbackStatus = document.getElementById('video-status');
     this.preparationStatus = document.getElementById('video-preparation');
     this.preparationWave = new ThoughtsPreparationWave(document.getElementById('video-preparation-wave'));
-    this.terminalContainer = document.getElementById('terminal');
     this.motionQuery.addEventListener('change', () => {
       this.motionOverride = false;
       if (this.motionQuery.matches) this.stopPreviewPlayback();
@@ -136,17 +135,19 @@ class ThoughtsVisual {
     // preview acknowledgement. Retired async completions cannot hide a new one.
     const active = !!(this.connected && this.state.open && this.state.trimming && this.state.request === 'prepareLoop');
     this.preparationStatus.hidden = !active;
-    this.terminalContainer.dataset.preparing = String(active);
     this.preparationWave.setPlayback(active, this.documentVisible, this.motionQuery.matches);
     if (active) this.positionPreparation();
   }
   positionPreparation() {
-    if (this.preparationStatus.hidden || !this.state.preview) return;
+    if (this.preparationStatus.hidden || !this.state.preparation) return;
     const screen = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
     const cellWidth = screen.width / this.terminal.cols;
-    const width = this.state.preview.Width * cellWidth;
+    const cellHeight = screen.height / this.terminal.rows;
+    const reserved = this.state.preparation;
+    const width = reserved.Width * cellWidth;
     Object.assign(this.preparationStatus.style, {
-      left: `${screen.left + this.state.preview.X * cellWidth}px`, width: `${width}px`
+      left: `${screen.left + reserved.X * cellWidth}px`, width: `${width}px`,
+      top: `${screen.top + reserved.Y * cellHeight}px`, height: `${reserved.Height * cellHeight}px`
     });
     const wave = document.getElementById('video-preparation-wave');
     const layer = this.preparationWave.trace;

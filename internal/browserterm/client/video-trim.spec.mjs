@@ -35,7 +35,7 @@ async function stageSource(page) {
   await expect(page.locator('#background-preview-wrap')).toBeVisible();
 }
 
-test('preparing a loop shows a braille wave above Options and keeps keyboard cancellation available',async({page},testInfo)=>{
+test('preparing a loop reserves a braille wave between speed and Preview loop and keeps keyboard cancellation available',async({page},testInfo)=>{
   let sockets=0, releasePreparation;
   page.on('websocket',()=>sockets++);
   await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
@@ -43,6 +43,14 @@ test('preparing a loop shows a braille wave above Options and keeps keyboard can
   await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');
   await page.keyboard.press('Home');
   await expect(screen(page)).toContainText('End: 00:00:01.000');
+  const done = screen(page).getByText('Done — use previewed loop', {exact:true});
+  await expect(done).toHaveCSS('color', 'rgb(153, 153, 153)');
+  await clickControl(page, 'Done — use previewed loop');
+  await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
+  const previewControl = screen(page).getByText('Preview loop', {exact:true});
+  const previewBefore = await previewControl.boundingBox();
+  const terminalBefore = await page.locator('.xterm-screen').boundingBox();
+  await page.screenshot({path:`/tmp/video-trim-idle-${testInfo.project.name}.png`});
   const gate=new Promise(resolve=>{releasePreparation=resolve;});
   await page.route('**/visual/video/preview',async route=>{
     if(route.request().method()==='POST')await gate;
@@ -52,6 +60,9 @@ test('preparing a loop shows a braille wave above Options and keeps keyboard can
     await clickControl(page,'Preview loop');
     const bar=page.locator('#video-preparation-wave');
     await expect(page.getByRole('progressbar')).toBeVisible();
+    await expect.poll(async () => (await previewControl.boundingBox())?.y).toBe(previewBefore.y);
+    expect(await page.locator('.xterm-screen').boundingBox()).toEqual(terminalBefore);
+    await expect(done).toHaveCSS('color', 'rgb(153, 153, 153)');
     await expect(bar).not.toHaveAttribute('aria-valuenow');
     const lightPosition=()=>bar.locator('.preparation-sweep').first().evaluate(element=>getComputedStyle(element).transform);
     const position=await lightPosition();
@@ -61,11 +72,20 @@ test('preparing a loop shows a braille wave above Options and keeps keyboard can
       await expect.poll(()=>page.evaluate(()=>{
         const wave=document.getElementById('video-preparation-wave').getBoundingClientRect();
         const preview=document.getElementById('background-preview-wrap').getBoundingClientRect();
-        const terminal=document.querySelector('.xterm-screen').getBoundingClientRect();
-        return wave.bottom<=terminal.top && Math.abs(wave.left-preview.left)<1 && Math.abs(wave.width-preview.width)<1;
+        const rows=[...document.querySelectorAll('.xterm-rows > div')];
+        const speed=rows.find(row=>row.textContent.includes('Playback speed:')).getBoundingClientRect();
+        const action=rows.find(row=>row.textContent.trim()==='Preview loop').getBoundingClientRect();
+        return wave.top>=speed.bottom && wave.bottom<=action.top+1 && Math.abs(wave.left-preview.left)<1 && Math.abs(wave.width-preview.width)<1;
       })).toBe(true);
     }
     await expectWavePlacement();
+    expect(await page.locator('#video-preparation').evaluate(indicator => {
+      const label = indicator.querySelector('[role="status"]').getBoundingClientRect();
+      indicator.style.pointerEvents = 'auto';
+      const visibleAboveTerminal = indicator.contains(document.elementFromPoint(label.x + 2, label.y + 2));
+      indicator.style.pointerEvents = '';
+      return visibleAboveTerminal;
+    })).toBe(true);
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
     await page.screenshot({path:`/tmp/video-loading-${testInfo.project.name}-desktop.png`});
     await page.setViewportSize({width:650,height:600});
@@ -91,8 +111,12 @@ test('preparing a loop shows a braille wave above Options and keeps keyboard can
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await expect.poll(lightPosition).not.toBe(hiddenFrame);
+    const previewPending = await previewControl.boundingBox();
     releasePreparation();
     await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+    await expect.poll(async () => (await previewControl.boundingBox())?.y).toBe(previewPending.y);
+    await expect(done).not.toHaveCSS('color', 'rgb(153, 153, 153)');
+    await page.screenshot({path:`/tmp/video-trim-ready-${testInfo.project.name}.png`});
     await expect(bar).toBeHidden();
     expect(await bar.evaluate(element=>element.getAnimations({subtree:true}).length)).toBe(0);
     const retiredFrame=await lightPosition();

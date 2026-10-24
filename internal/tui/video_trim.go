@@ -12,6 +12,8 @@ import (
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
+const videoPreparationRows = 3
+
 const (
 	trimFocusSource = iota
 	trimFocusEnd
@@ -51,8 +53,7 @@ func (m *Model) activateVideoTrim() {
 		m.options.status = "Preparing video…"
 		m.requestOptions("prepareLoop")
 	case trimFocusDone:
-		if !m.options.loopReady {
-			m.options.status = "Preview a loop before Done."
+		if !m.videoTrimDoneEnabled() {
 			return
 		}
 		m.options.trimming = false
@@ -111,9 +112,9 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch key {
 		case "tab", "down":
-			m.options.trimFocus = (m.options.trimFocus + 1) % trimFocusCount
+			m.moveVideoTrimFocus(1)
 		case "shift+tab", "up":
-			m.options.trimFocus = (m.options.trimFocus + trimFocusCount - 1) % trimFocusCount
+			m.moveVideoTrimFocus(-1)
 		case "enter", "space":
 			m.activateVideoTrim()
 		case "left", "right", "shift+left", "shift+right", "home", "end", "pgup", "pgdown":
@@ -180,36 +181,75 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) videoTrimDoneEnabled() bool {
+	return m.options.loopReady && m.options.request == ""
+}
+
+func (m *Model) moveVideoTrimFocus(direction int) {
+	m.options.trimFocus = (m.options.trimFocus + direction + trimFocusCount) % trimFocusCount
+	if m.options.trimFocus == trimFocusDone && !m.videoTrimDoneEnabled() {
+		m.options.trimFocus = (m.options.trimFocus + direction + trimFocusCount) % trimFocusCount
+	}
+}
+
+func videoTrimControlsTop(preview PreviewRect) int {
+	if preview.Height > 0 {
+		return preview.Y + preview.Height + 2
+	}
+	return 4
+}
+
+func (m Model) videoPreparationRect() PreviewRect {
+	if !m.options.trimming {
+		return PreviewRect{}
+	}
+	_, preview := m.optionsLayout()
+	return PreviewRect{X: preview.X, Y: videoTrimControlsTop(preview) + 6, Width: preview.Width, Height: videoPreparationRows}
+}
+
 func (m *Model) clickVideoTrim(x, y int, activate bool) {
 	width, rect := m.optionsLayout()
 	left := rect.X - 1
 	if x < left || x >= left+width {
 		return
 	}
-	top := 5
-	if rect.Height > 0 {
-		top = rect.Y + rect.Height + 2
-	}
-	if m.options.request != "" && (!activate || y != top+8) {
+	row := y - videoTrimControlsTop(rect)
+	if row == 1 && m.options.request == "" {
+		m.options.trimFocus = trimFocusSource
+		m.setTrimStart(int64(max(0, min(width-1, x-left))) * m.options.sourceDurationMS / int64(max(1, width-1)))
 		return
 	}
-	if y == top && activate {
-		m.options.trimFocus = trimFocusSource
-	} else if y == top+1 {
-		m.options.trimFocus = trimFocusSource
-		m.options.sourceFrame = true
-		m.setTrimStart(int64(max(0, min(width-1, x-left))) * m.options.sourceDurationMS / int64(max(1, width-1)))
-	} else if activate && y >= top+2 && y <= top+8 {
-		if y == top+3 {
-			return
-		}
-		m.options.trimFocus = trimFocusEnd + y - (top + 2)
-		if y >= top+4 {
-			m.options.trimFocus--
-		}
-		if m.options.trimFocus >= trimFocusPreview {
-			m.activateVideoTrim()
-		}
+	if !activate {
+		return
+	}
+	var focus int
+	switch row {
+	case 0:
+		focus = trimFocusSource
+	case 2:
+		focus = trimFocusEnd
+	case 4:
+		focus = trimFocusQuality
+	case 5:
+		focus = trimFocusSpeed
+	case 6 + videoPreparationRows:
+		focus = trimFocusPreview
+	case 7 + videoPreparationRows:
+		focus = trimFocusDone
+	case 8 + videoPreparationRows:
+		focus = trimFocusCancel
+	default:
+		return
+	}
+	if m.options.request != "" && focus != trimFocusCancel {
+		return
+	}
+	if focus == trimFocusDone && !m.videoTrimDoneEnabled() {
+		return
+	}
+	m.options.trimFocus = focus
+	if focus >= trimFocusPreview {
+		m.activateVideoTrim()
 	}
 }
 
@@ -219,6 +259,9 @@ func (m Model) viewVideoTrim() tea.View {
 	plain := lipgloss.NewStyle().Padding(0, 1)
 	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("#999999"))
 	label := func(focus int, text string) string {
+		if focus == trimFocusDone && !m.videoTrimDoneEnabled() {
+			return muted.Padding(0, 1).Render(text)
+		}
 		if focus == m.options.trimFocus {
 			return selected.Render(text)
 		}
@@ -235,8 +278,6 @@ func (m Model) viewVideoTrim() tea.View {
 			lines = append(lines, muted.Render("│")+strings.Repeat(" ", rect.Width)+muted.Render("│"))
 		}
 		lines = append(lines, muted.Render("╰"+strings.Repeat("─", rect.Width)+"╯"), "")
-	} else {
-		lines = append(lines, "")
 	}
 	peak := int(min(m.options.trim.StartMS, m.options.sourceDurationMS) * int64(width-1) / max(1, m.options.sourceDurationMS))
 	rail := strings.Repeat("─", peak) + "●" + strings.Repeat("─", width-peak-1)
@@ -245,8 +286,11 @@ func (m Model) viewVideoTrim() tea.View {
 		label(trimFocusEnd, "End: "+trimTimecode(m.options.trim.EndMS)+" (max "+trimTimecode(m.videoTrimEndLimit())+")"),
 		plain.Render(fmt.Sprintf("Selected: %.1f seconds", float64(m.options.trim.EndMS-m.options.trim.StartMS)/1000)),
 		label(trimFocusQuality, "Video quality: "+m.options.videoQuality.Description()),
-		label(trimFocusSpeed, fmt.Sprintf("Playback speed: %d%%", m.options.speedPercent)),
-		label(trimFocusPreview, "Preview loop"), label(trimFocusDone, "Done — use previewed loop"), label(trimFocusCancel, "Cancel upload"))
+		label(trimFocusSpeed, fmt.Sprintf("Playback speed: %d%%", m.options.speedPercent)))
+	for range videoPreparationRows {
+		lines = append(lines, "")
+	}
+	lines = append(lines, label(trimFocusPreview, "Preview loop"), label(trimFocusDone, "Done — use previewed loop"), label(trimFocusCancel, "Cancel upload"), "")
 	if m.options.loopReady {
 		lines = append(lines, m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
 	} else {
@@ -260,7 +304,7 @@ func (m Model) viewVideoTrim() tea.View {
 			}
 		}
 	}
-	lines = append(lines, muted.Render(m.options.status))
+	lines = append(lines, "", muted.Render(m.options.status))
 	if m.options.request == "prepareLoop" {
 		lines = append(lines, muted.Render("Tab: Cancel · Esc: cancel upload"), muted.Render("Cut and quality controls resume when ready."))
 	} else if m.options.trimTimecodeEditing {

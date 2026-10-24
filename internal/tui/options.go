@@ -52,6 +52,7 @@ type BrowserOptionsState struct {
 	SpeedPercent             int                    `json:"speedPercent"`
 	UserPaused               bool                   `json:"userPaused"`
 	Preview                  PreviewRect            `json:"preview"`
+	Preparation              PreviewRect            `json:"preparation"` // Reserved cells keep controls fixed while the browser shows loading activity.
 	Trimming                 bool                   `json:"trimming"`    // Cut-selection controls are open; this does not mean encoding is running.
 	SourceFrame              bool                   `json:"sourceFrame"` // Show a paused original-source frame at Trim.StartMS instead of the prepared loop.
 	Trim                     visual.VideoTrim       `json:"trim"`        // Draft start/end times in source milliseconds; may differ from the accepted preview.
@@ -135,6 +136,7 @@ func (m Model) OptionsState() BrowserOptionsState {
 		SpeedPercent:             m.options.speedPercent,
 		UserPaused:               m.options.userPaused,
 		Preview:                  rect,
+		Preparation:              m.videoPreparationRect(),
 		Trimming:                 m.options.trimming,
 		SourceFrame:              m.options.sourceFrame,
 		Trim:                     m.options.trim,
@@ -492,7 +494,7 @@ func (m *Model) activateOption() {
 func (m Model) optionsLayout() (int, PreviewRect) {
 	if m.options.trimming {
 		width := max(10, min(80, m.width-4))
-		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-24))}
+		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-29))}
 	}
 	if m.options.editing {
 		width := max(10, min(80, m.width-4))
