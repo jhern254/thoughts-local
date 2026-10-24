@@ -46,7 +46,7 @@ type application struct {
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
-	runBrowser  func(context.Context, int, bool, string, func(context.Context, tui.SpeechModelSetup) tea.Model, io.Writer, logging.Logger, *visual.Service, *editorprefs.Service) error
+	runBrowser  func(context.Context, browserConfig) error
 }
 
 func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) *application {
@@ -125,7 +125,16 @@ func newTUI(app *application) *cli.Command {
 					}
 					return model
 				}
-				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), cmd.String("models-dir"), newBrowserModel, app.out, app.logger, backgrounds, app.runtime.EditorPreferences())
+				err = app.runBrowser(ctx, browserConfig{
+					NewModel:          newBrowserModel,
+					Output:            app.out,
+					Logger:            app.logger,
+					Visual:            backgrounds,
+					EditorPreferences: app.runtime.EditorPreferences(),
+					Port:              cmd.Int("browser-port"),
+					ModelDirectory:    cmd.String("models-dir"),
+					AutoOpen:          cmd.Bool("browser-open"),
+				})
 			} else {
 				sessionCtx, cancel := context.WithCancel(ctx)
 				session := tui.NewSession(sessionCtx, cancel, func(ctx context.Context) tea.Model { return newModel(ctx) })
