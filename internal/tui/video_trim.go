@@ -31,8 +31,6 @@ const (
 	trimFocusCount
 )
 
-func trimSeconds(milliseconds int64) string { return fmt.Sprintf("%.2f", float64(milliseconds)/1000) }
-
 func (m Model) videoTrimEndLimit() int64 {
 	return min(m.options.sourceDurationMS, m.options.trim.StartMS+visual.MaxVideoDuration*1000)
 }

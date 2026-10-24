@@ -754,10 +754,10 @@ func (m Model) acceptedVideoLabel() string {
 	return fmt.Sprintf("Previewed: %s · %d×%d · %s FPS", m.options.acceptedQuality.Label(), m.options.acceptedWidth, m.options.acceptedHeight, m.options.acceptedRate.Display())
 }
 func (m Model) acceptedVideoRangeLabel() string {
-	if m.options.acceptedTrim.EndMS >= 3600000 {
-		return fmt.Sprintf("Range: %s–%s · plays %.2fs", trimTimecode(m.options.acceptedTrim.StartMS), trimTimecode(m.options.acceptedTrim.EndMS), float64(m.options.loopDurationMS)/float64(max(25, m.options.speedPercent)*10))
-	}
-	return fmt.Sprintf("Range: %s–%ss · plays %.2fs", trimSeconds(m.options.acceptedTrim.StartMS), trimSeconds(m.options.acceptedTrim.EndMS), float64(m.options.loopDurationMS)/float64(max(25, m.options.speedPercent)*10))
+	startTimecode := strings.TrimSuffix(trimTimecode(m.options.acceptedTrim.StartMS), ".000")
+	endTimecode := strings.TrimSuffix(trimTimecode(m.options.acceptedTrim.EndMS), ".000")
+	playbackSeconds := float64(m.options.loopDurationMS) / float64(max(25, m.options.speedPercent)*10)
+	return fmt.Sprintf("Range: %s–%s · plays %.2fs", startTimecode, endTimecode, playbackSeconds)
 }
 func (m Model) draftVideoQualityLabel() string {
 	if m.options.videoQuality != m.options.acceptedQuality {

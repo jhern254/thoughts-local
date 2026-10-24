@@ -337,7 +337,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		if m.OptionsState().Trim.StartMS != 100 || m.options.acceptedTrim != accepted || !m.options.loopReady {
 			t.Fatal("draft edit lost accepted loop")
 		}
-		if !strings.Contains(m.View().Content, "Range: 0.00–30.00s") {
+		if !strings.Contains(m.View().Content, "Range: 00:00:00–00:00:30") {
 			t.Fatal("accepted range not visible")
 		}
 		m.options.trimFocus = trimFocusDone
@@ -620,4 +620,30 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestModel_AcceptedVideoRangeLabel(t *testing.T) {
+	for _, scenario := range []struct {
+		description  string
+		startMS      int64
+		endMS        int64
+		speedPercent int
+		want         string
+	}{
+		{"short loop", 0, 30000, 100, "Range: 00:00:00–00:00:30 · plays 30.00s"},
+		{"crosses minute", 57000, 60000, 100, "Range: 00:00:57–00:01:00 · plays 3.00s"},
+		{"long source", 5683000, 5699000, 100, "Range: 01:34:43–01:34:59 · plays 16.00s"},
+		{"fractional cut", 10250, 11250, 100, "Range: 00:00:10.250–00:00:11.250 · plays 1.00s"},
+		{"slower playback", 10000, 26000, 50, "Range: 00:00:10–00:00:26 · plays 32.00s"},
+	} {
+		t.Run(scenario.description, func(t *testing.T) {
+			model := newRootTestModel()
+			model.options.acceptedTrim = visual.VideoTrim{StartMS: scenario.startMS, EndMS: scenario.endMS}
+			model.options.loopDurationMS = scenario.endMS - scenario.startMS
+			model.options.speedPercent = scenario.speedPercent
+			if got := model.acceptedVideoRangeLabel(); got != scenario.want {
+				t.Fatalf("range label = %q, want %q", got, scenario.want)
+			}
+		})
+	}
 }
