@@ -21,7 +21,7 @@ header { position: relative; }
 #background-preview, #background-preview-video { display: block; position: absolute; max-width: none; }
 #background-preview-frame::after { content: ""; position: absolute; inset: 0; background: rgb(0 0 0 / var(--darkness, .42)); pointer-events: none; }
 
-#source-preview-status:not([hidden]) { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #171717; color: #c2bcec; text-align: center; font-size: 12px; }
+#source-preview-status:not([hidden]) { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 4px 8px; box-sizing: border-box; background: rgb(0 0 0 / .82); color: #c2bcec; font-size: 12px; }
 
 #video-status { font-size: 12px; }
 

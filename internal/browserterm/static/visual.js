@@ -119,6 +119,8 @@ class ThoughtsVisual {
         break;
       case 'prepareLoop':
         await this.videoTrim.prepare(state); break;
+      case 'stopPreview':
+        await this.videoTrim.stopRendering(operationID); break;
       case 'discardVideo':
         await this.videoTrim.discard(operationID); break;
       case 'play':
@@ -261,7 +263,8 @@ class ThoughtsVisual {
     this.positionPreparation();
     this.previewContainer.hidden = true;
     const previewRect = this.state.preview;
-    if (!this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth)) return;
+    const awaitingSourceFrame = this.videoTrim?.showingSource && this.videoTrim.sourcePreviewMode === 'native';
+    if (!this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth && !awaitingSourceFrame)) return;
     if (this.state.request === 'load' || this.terminal.cols < previewRect.X + previewRect.Width + 1 || this.terminal.rows < previewRect.Y + previewRect.Height + 1) return;
     // Metadata can arrive before Bubble Tea's next paint. Verify the reserved
     // cells in xterm's public buffer before placing pixels over them. Geometry
@@ -315,7 +318,8 @@ class ThoughtsVisual {
     if (!file) {this.reply('cancelled', operationID); return;}
     try {
       const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-      if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp') {
+      if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp' ||
+          (signature[0] === 0x1a && signature[1] === 0x45 && signature[2] === 0xdf && signature[3] === 0xa3)) {
         await this.videoTrim.selectSource(file, operationID); return;
       }
       if (file.size > 16 * 1024 * 1024) throw new Error();

@@ -86,7 +86,7 @@ func TestVideoLimits(t *testing.T) {
 			change func(*videoStream)
 			want   error
 		}{
-			{"codec", func(stream *videoStream) { stream.CodecName = "hevc" }, ErrVideoCodec},
+			{"codec", func(stream *videoStream) { stream.CodecName = "prores" }, ErrVideoCodec},
 			{"pixel format", func(stream *videoStream) { stream.PixFmt = "yuv420p10le" }, ErrVideoColor},
 			{"HDR", func(stream *videoStream) { stream.ColorTransfer = "smpte2084" }, ErrVideoColor},
 			{"resolution", func(stream *videoStream) { stream.Width = 7680 }, ErrVideoDimensions},
@@ -112,7 +112,7 @@ func TestVideoLimits(t *testing.T) {
 		if err := info.validate(true); err != nil {
 			t.Fatal(err)
 		}
-		for _, change := range []func(*videoStream){func(s *videoStream) { s.PixFmt = "yuv420p10le" }, func(s *videoStream) { s.ColorTransfer = "smpte2084" }, func(s *videoStream) { s.Duration = "14400.001" }, func(s *videoStream) { s.AvgFrameRate = "61/1" }, func(s *videoStream) { s.CodecName = "hevc" }} {
+		for _, change := range []func(*videoStream){func(s *videoStream) { s.PixFmt = "yuv420p10le" }, func(s *videoStream) { s.ColorTransfer = "smpte2084" }, func(s *videoStream) { s.Duration = "14400.001" }, func(s *videoStream) { s.AvgFrameRate = "61/1" }, func(s *videoStream) { s.CodecName = "prores" }} {
 			bad := stream
 			change(&bad)
 			if err := (videoProbe{Streams: []videoStream{bad}}).validate(false); !errors.Is(err, ErrVideo) {

@@ -229,8 +229,22 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			return m, nil
 		}
 		m.options.status = "Verified source bounds differ. Adjust Start/End and preview again."
+	case "previewStopped":
+		if m.options.request != "stopPreview" {
+			return m, nil
+		}
+		m.options.sourceFrame = !m.options.loopReady
+		m.options.trimFocus = trimFocusPreview
+		m.options.status = "Rendering stopped. Adjust the cut or preview again."
+		if msg.DurationMS == 0 || (m.options.loopReady && msg.Trim == m.options.acceptedTrim && msg.VideoQuality == m.options.acceptedQuality) {
+			break
+		}
+		fallthrough // A loop acknowledged before Stop remains the usable preview.
 	case "loopReady":
-		if m.options.request != "prepareLoop" || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
+		if msg.Action == "loopReady" && m.options.request != "prepareLoop" {
+			return m, nil
+		}
+		if (m.options.request != "prepareLoop" && m.options.request != "stopPreview") || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
 			return m, nil
 		}
 		if !msg.VideoQuality.Valid() || !msg.FrameRate.Valid() || msg.Width < 2 || msg.Width > 1920 || msg.Height < 2 || msg.Height > 1920 || msg.Width*msg.Height > 1920*1080 {
@@ -276,7 +290,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if msg.Framing.Valid() {
 			m.options.framing = msg.Framing
 		}
-		m.options.status = "JPEG/PNG · MP4/MOV SDR H.264 · source ≤4h / 8 GiB · loop 1–30s"
+		m.options.status = "JPEG/PNG · SDR MP4/MOV/MKV · source ≤4h / 8 GiB · loop 1–30s"
 	case "selected":
 		if m.options.request != "choose" {
 			return m, nil
@@ -324,7 +338,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		} else {
 			m.options.status = "Saved. Some background files could not be removed."
 		}
-	case "failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
+	case "failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceProtected", "sourceTracks", "sourceContainer", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
 		if m.options.request == "prepareLoop" && m.options.loopReady {
 			m.options.sourceFrame = false
 		}
@@ -348,10 +362,16 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			m.options.status = "Could not prepare this loop. Retry or choose another cut."
 		}
 		switch msg.Action {
+		case "sourceProtected":
+			m.options.status = "Protected movies cannot be imported."
+		case "sourceTracks":
+			m.options.status = "Multiple video tracks: no unambiguous main track."
+		case "sourceContainer":
+			m.options.status = "Could not validate a self-contained MP4, MOV or MKV."
 		case "sourceCodec":
-			m.options.status = "Unsupported video codec. H.264 is required."
+			m.options.status = "Unsupported video encoding or unavailable decoder."
 		case "sourceColor":
-			m.options.status = "Unsupported video color. Use 8-bit SDR Rec.709."
+			m.options.status = "Unsupported HDR/color format. Use supported SDR Rec.709."
 		case "sourceDimensions":
 			m.options.status = "Video exceeds 4096 pixels per side or 9 million pixels."
 		case "sourceRate":
@@ -369,7 +389,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		case "sourceTimeout":
 			m.options.status = "Video operation timed out. Try again or use a shorter cut."
 		case "sourceUnsupported":
-			m.options.status = "Could not validate this video. Use an intact H.264 MP4/MOV."
+			m.options.status = "Could not validate this MP4, MOV or MKV."
 		}
 
 	default:
@@ -464,7 +484,7 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) activateOption() {
 	switch m.options.focus {
 	case optionsFocusChooseBackground:
-		m.options.status = "Choose a JPEG/PNG image or SDR H.264 MP4/MOV…"
+		m.options.status = "Choose JPEG/PNG or a supported SDR MP4/MOV/MKV…"
 		m.requestOptions("choose")
 	case optionsFocusQuality:
 		m.cycleVideoQuality()
@@ -518,7 +538,7 @@ func (m *Model) activateOption() {
 func (m Model) optionsLayout() (int, PreviewRect) {
 	if m.options.trimming {
 		width := max(10, min(80, m.width-4))
-		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-33))}
+		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-34))}
 	}
 	if m.options.editing {
 		width := max(10, min(80, m.width-4))

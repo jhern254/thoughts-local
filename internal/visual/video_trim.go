@@ -35,6 +35,8 @@ type VideoSourceInfo struct {
 	DurationMS int64 `json:"durationMS"`
 	Width      int   `json:"width"`
 	Height     int   `json:"height"`
+	// Native frames are required when browser track/timeline cannot be matched.
+	BrowserPreview bool `json:"browserPreview"`
 }
 
 // VideoSource owns one private staged upload, not an archived original. Its
@@ -84,7 +86,7 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 			_ = os.RemoveAll(directory)
 		}
 	}()
-	path := filepath.Join(directory, "source.mp4")
+	path := filepath.Join(directory, "source")
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
@@ -99,21 +101,19 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 	// reader must be interrupted by its owner (HTTP read deadlines below).
 	ctx, cancel := context.WithTimeout(ctx, MaxVideoProcessingTime)
 	defer cancel()
+	var container videoSourceContainer
 	if copyErr == nil {
-		copyErr = validateVideoContainer(file, size)
+		container, copyErr = identifyVideoContainer(ctx, file, size)
 	}
 	if err := errors.Join(copyErr, file.Close()); err != nil {
 		return nil, err
 	}
-	probe, err := probeVideo(ctx, ffprobe, path)
+	probe, err := validateVideoSource(ctx, ffprobe, path, container)
 	if err != nil {
 		return nil, err
 	}
-	if err := probe.validate(false); err != nil {
-		return nil, err
-	}
 	stream, _ := probe.video()
-	duration, _ := strconv.ParseFloat(stream.Duration, 64)
+	duration, _ := probe.sourceDuration()
 	width, height, err := displayVideoDimensions(stream)
 	if err != nil {
 		return nil, err
@@ -128,9 +128,10 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 		ffmpeg:    ffmpeg,
 		ffprobe:   ffprobe,
 		info: VideoSourceInfo{
-			DurationMS: int64(math.Floor(duration * 1000)),
-			Width:      width,
-			Height:     height,
+			DurationMS:     int64(math.Floor(duration * 1000)),
+			BrowserPreview: probe.canPreviewBrowserTimeline(),
+			Width:          width,
+			Height:         height,
 		},
 	}, nil
 }
@@ -206,7 +207,7 @@ func (source *VideoSource) Prepare(ctx context.Context, trim VideoTrim, quality 
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := encodeVideoLoop(ctx, source.ffmpeg, source.ffprobe, filepath.Join(source.directory, "source.mp4"), directory, source.probe, trim, quality)
+	prepared, err := encodeVideoLoop(ctx, source.ffmpeg, source.ffprobe, filepath.Join(source.directory, "source"), directory, source.probe, trim, quality)
 	if err != nil {
 		_ = os.RemoveAll(directory)
 	}

@@ -1203,3 +1203,196 @@ index size and keyframe spacing can affect validation and seeking. The measured
 Small synthetic four-hour sources verify late native cuts and browser-local
 seeking/upload reuse. MKV remains outside this PR: container validation and
 cross-browser local preview require a separate compatibility design.
+
+## Matroska movie sources and native still previews
+
+This study uses merge-base/master `4a329a300277d95ab5b9b1cd93cada22ea0f0f48`
+and native processor revision `6e1e09292931fa6490fbb5a3539d9e217ad764df`.
+The follow-up `f2f3b9bd291f9ac57be910957c23cfb378d181ec` restores metadata-only
+browser source preload, corrects format help, and accepts harmless chapter
+translation declarations. Native timings below belong to `6e1e092`, not a
+relabeled later revision. Those two revisions share the measured native processing of these fixtures.
+The later selected-video-origin check is measured separately below; earlier
+results are not evidence for its added validation cost. Browser measurements
+distinguish revisions below.
+
+Reference: ThinkPad T480s, Intel i5-8250U / eight logical CPUs, Linux amd64,
+Go 1.25.14, distribution FFmpeg 6.1.1-3ubuntu5. Binaries were compiled separately;
+benchmark revisions ran sequentially without competing builds/tests. Fixture
+creation was outside timing. Five short-source samples and three large/Main10
+samples use `-benchtime=1x`; no statistical significance is claimed. OS page cache
+was not dropped, so these are not cold-disk guarantees.
+
+### Native measurements
+
+The short source is 60 seconds of 1920×1080 H.264 at 30 FPS, 23,627,561 bytes,
+SHA-256 `e3bb86156e6f9f930e8e3bf60dcec9c373b93b6dff3f61675b26137c9a6b850e`.
+Matroska uses a stream-copy remux of the same packets. Each table cell is
+**median ns/op; B/op; allocs/op**. Go allocation counts exclude FFmpeg memory.
+
+| Operation | MP4 master | MP4 feature | Same-packet MKV |
+| --- | ---: | ---: | ---: |
+| Stage | 88,454,243; 143,688; 309 | 94,242,910; 145,080; 315 | 102,545,479; 144,952; 410 |
+| Validate | 75,444,027; 55,400; 142 | 72,393,754; 56,040; 149 | 86,690,989; 56,824; 244 |
+| Preview/First | 4,569,514,650; 21,006,304; 1,460 | 4,529,091,394; 21,011,296; 1,477 | 4,553,365,510; 21,008,912; 1,471 |
+| Preview/Middle | 4,564,295,230; 21,006,704; 1,459 | 4,559,144,682; 21,009,136; 1,466 | 4,770,859,770; 21,009,048; 1,467 |
+| Preview/End | 4,570,761,543; 21,006,672; 1,458 | 4,494,980,970; 21,009,536; 1,468 | 4,591,367,629; 21,009,360; 1,465 |
+| SourceFrame/First | — | 110,478,819; 4,331,840; 171 | 118,516,545; 4,331,904; 171 |
+| SourceFrame/Middle | — | 107,494,549; 4,331,816; 171 | 117,758,887; 4,332,344; 171 |
+| SourceFrame/End | — | 200,152,202; 4,337,984; 286 | 215,934,457; 4,337,824; 286 |
+| Apply | 22,943,554; 10,803,256; 78 | 16,857,926; 10,803,256; 78 | 15,243,998; 10,803,256; 78 |
+
+The measured MP4 staging median increases by about 5.8 ms (+6.5%); it adds
+content identification and disposition metadata. Preview medians vary around
+4.5–4.8 seconds, with no demonstrated material preparation regression. Apply
+copies acknowledged bytes; differing filesystem timings do not establish a
+copy speedup. Source-frame work is new and runs only when needed, never during
+normal background playback. It includes decode preroll and JPEG encoding.
+
+The two-hour movie-like MKV is 2,835,940,293 bytes (2.64 GiB), 1080p30,
+SHA-256 `5cd9262a9e064058923df0ca456e693ffa3bb454d94f3a16b51c4ad3b78ae54c`.
+The Main10 source is 30 seconds of 1080p24 explicitly tagged Rec.709 HEVC,
+11,877,951 bytes, SHA-256
+`cd74bcfde0a5beec6742c7f29709c5808754f06ef8758c9873f0cf253d925c3f`.
+Both prepare ten-second Efficient loops. Each cell uses the same units as above.
+
+| Operation | Two-hour H.264 MKV | HEVC Main10 SDR MKV |
+| --- | ---: | ---: |
+| Stage | 10,605,806,184; 202,744; 7,553 | 86,254,876; 144,864; 383 |
+| Validate | 106,692,724; 113,416; 7,383 | 72,368,234; 56,848; 216 |
+| Preview/First | 4,537,366,576; 21,010,608; 1,476 | 5,941,873,300; 20,986,720; 1,299 |
+| Preview/Middle | 4,571,800,854; 21,009,712; 1,473 | 6,079,049,729; 20,984,256; 1,342 |
+| Preview/End | 4,560,755,825; 21,008,496; 1,463 | 6,278,752,208; 20,986,128; 1,380 |
+| SourceFrame/First | 122,257,709; 4,331,432; 169 | 176,777,581; 4,331,776; 174 |
+| SourceFrame/Middle | 120,755,271; 4,331,640; 170 | 404,579,463; 4,334,136; 222 |
+| SourceFrame/End | 221,303,309; 4,337,152; 286 | 595,495,358; 4,336,040; 263 |
+| Apply | 29,076,167; 10,803,256; 78 | 23,118,114; 10,803,256; 78 |
+
+Initial large-file staging overlapped the last fixture encoder and was discarded.
+A clean staging rerun ranged from 4.22 to 10.74 seconds; the median is shown.
+Later validation/prepare/frame operations ran after fixture creation completed.
+Large-source copying is real byte-dependent work, while validation and late
+preparation remain independent of full-movie decoding. Main10 decoding costs
+more: its late still is about 595 ms and late preparation 6.28 seconds. No extra
+threads, cache or resource ceilings were added to hide that cost.
+
+`/usr/bin/time -v` records subprocess CPU and peak RSS separately from Go
+allocations. These are batch-level measurements, including benchmark setup,
+not per-operation memory caps. Live browser studies separately sample the Go
+process and FFmpeg children across all Go runtime threads. Summed browser RSS
+includes shared mappings; PSS is reported separately where available.
+
+### Selected-video-origin validation follow-up
+
+Revision `9eca7b78adc0aa6147d6a79c4ea683788a7f7124` adds one bounded
+selected-packet/frame probe per MKV upload. FFprobe can fill missing video timing
+from earlier audio; trusting that guess showed the wrong source-relative scene
+in a deterministic regression. Decoding that first selected packet establishes
+its display timestamp. Browser preview is allowed only when its track and
+origin can be matched; otherwise native stills use the verified video timeline.
+This work is not repeated per nudge. The added process is joined and bounded by
+the existing ten-second source-frame deadline, probe-output/stream/pixel limits.
+
+Only affected Stage/Validate operations were remeasured, with the same sample
+counts and fixtures; preparation/Apply settings did not change. Units remain
+**median ns/op; B/op; allocs/op**. Large-copy variance remains substantial.
+
+| Fixture | Stage | Validate |
+| --- | ---: | ---: |
+| short | 191,308,413; 196,648; 505 | 174,868,086; 108,088; 339 |
+| two-hours | 10,678,787,078; 254,504; 7,647 | 218,964,619; 165,464; 7,479 |
+| main10 | 158,493,847; 197,936; 482 | 152,552,427; 108,800; 311 |
+
+These replace the earlier MKV Stage/Validate costs for current code; they do not
+replace the historical measurements above. The final browser short/large native
+series below uses this same compiled processor plus the source-frame readiness
+change. Browser-only preload/readiness changes do not establish a native
+encoding optimization.
+
+### Browser qualification
+
+Desktop Brave 148.0.7778.217 used a 1920×1080 viewport. Three repetitions per
+successful series include selection/upload, three direct-timecode seeks, twenty
+rapid arrows, a ten-second late preparation, acknowledgement and Apply. Values
+below are medians in milliseconds. Browser seeks and native extraction are
+separate paths; the latter includes UI dispatch, 150 ms coalescing, HTTP and JPEG
+decode, not just FFmpeg time.
+
+| Revision/source/path | Selection | Three seeks | Rapid arrows | Prepare | Acknowledge | Apply |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| Master `4a329a3`, short MP4/browser | 269 | 124 / 130 / 125 | 401 | 5,265 | 95 | 345 |
+| `f2f3b9b`, short MP4/browser | 267 | 129 / 127 / 377 | 331 | 5,226 | 90 | 402 |
+| `6e1e092`, short MKV/browser | 355 | 128 / 124 / 176 | 387 | 5,272 | 88 | 362 |
+| `9eca7b7`, short MKV/native | 363 | 904 / 896 / 907 | 612 | 5,940 | 190 | 385 |
+| `6e1e092`, Main10 MKV/native | 192 | 888 / 1,889 / 882 | 1,112 | 7,240 | 87 | 359 |
+| Master `4a329a3`, two-hour MP4/browser | 13,651 | 131 / 120 / 120 | 338 | 5,201 | 119 | 423 |
+| `9eca7b7`, two-hour MKV/native | 15,397 | 881 / 897 / 377 | 600 | 5,097 | 204 | 399 |
+
+For short MP4, browser/Go/processor CPU across that complete workflow was
+3.56/1.43/4.76 CPU-seconds on master and 3.50/1.43/4.63 on `f2f3b9b`.
+Median sampled browser peak RSS/PSS was 930/451 MiB versus 780/329 MiB; Go peak
+RSS was approximately 47 MiB and the processor 112 MiB. Browser process sharing,
+page caches and run variance prevent attributing that memory difference to a
+proven optimization. An earlier `6e1e092` MP4 run using `preload=auto` measured
+965/481 MiB browser RSS/PSS; metadata-only preload was restored instead of
+retaining eager source loading.
+
+The short native-MKV workflow measured 3.04/1.58/6.55 CPU-seconds,
+861/392 MiB browser peak RSS/PSS, 50 MiB Go RSS and 112 MiB processor RSS.
+Main10 measured 2.58/1.34/9.16 CPU-seconds, 891/411 MiB browser RSS/PSS,
+44 MiB Go RSS and 155 MiB processor RSS. These are one-time browsing/import
+costs, not steady background playback. No recurring playback implementation
+changed. A faster browser seek does not prove hardware decoding.
+
+Each completed workflow uploaded once. Native fallback issued five frame
+requests; focused browser tests independently assert maximum concurrency one
+and stale-frame rejection. Sampled staging reached roughly source plus prepared
+loop bytes, and was empty after each successful Apply. No source archive or
+permanent proxy was created.
+
+Earlier large-MKV desktop runs completed one or two imports before a subsequent
+Visual opening showed stale terminal text (including “Loading visual…”).
+The browser received and acknowledged the completed load; the saved settings
+and subsequent native processing were correct. Those failed/variable runs and
+captures remain under `/tmp/thoughts-mkv-evidence` and are excluded from
+successful-series medians. The matched large-MP4 master series passed three
+repetitions. This is an unresolved intermittent display observation, not evidence
+that a new repaint mechanism or a compositor fix is needed. A final `9eca7b7` series passed all three short and all three
+two-hour MKV repetitions, including subsequent Visual reopening and removal.
+This does not establish that the intermittent observation is fixed. The
+two-hour series used 13.49/8.37/5.34 CPU-seconds (browser/Go/processor), sampled
+869/382 MiB browser RSS/PSS, 49 MiB Go RSS and 113 MiB processor RSS. Median
+transfer time was 14.88 seconds; validation response after transfer was 460 ms.
+Peak staging was 2,838,083,552 bytes and staging was empty after each Apply.
+The corresponding master MP4 remux was 2,836,355,027 bytes, SHA-256
+`e486886f35accd4527f928c47f45dbb0eb7a972fa834a9af20522c973a8ebe37`.
+Container and preview-path differences mean this is not a matched encoding
+speedup claim.
+
+### Reproduction
+
+Use only synthetic media and a disposable migrated/seeded application. Remux the
+existing short H.264 fixture with `ffmpeg -i short.mp4 -c copy short.mkv`. The
+long fixture repeats the existing ten-second CBR seed with stream copy:
+
+```sh
+ffmpeg -stream_loop -1 -i seed.mp4 -t 7200 -c copy two-hours.mkv
+THOUGHTS_VIDEO_BENCH_FIXTURE=/tmp/two-hours.mkv \
+  go test ./internal/visual -run '^$' -bench '^BenchmarkVideoTrim$' \
+  -benchmem -count=3 -benchtime=1x
+```
+
+`BenchmarkVideoTrim/SourceFrame` measures first/middle/last source stills. The
+browser probe supports `THOUGHTS_PERF_NATIVE_FRAMES=1` to exercise fallback,
+`THOUGHTS_PERF_STAGING_DIR` for sampled temporary disk bytes, and
+`THOUGHTS_PERF_DEBUG=1` for bounded Visual request/reply traces on failure. The
+large-source mode now records upload/validation at file selection and reads the
+native source/accepted-loop snapshots, avoiding Brave inspector-body eviction.
+It measures actual browser/native preview mode, rapid seeking, acknowledgement,
+Apply, browser/Go/processor CPU, and memory separately. This is test-only
+instrumentation, not application logging or a new playback framework.
+
+Source metadata, audio, subtitles, attachments and originals remain transient;
+only the prepared MP4/poster survive Apply. The exact 8 GiB boundary still uses
+virtual streaming readers. No actual 8 GiB/four-hour movie, hardware-decoding
+speedup, universal MKV compatibility or compositor fix is established here.

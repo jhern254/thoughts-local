@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -26,6 +28,16 @@ func videoEditRequest(t *testing.T, s *server, editorID, method, path string, bo
 	r := httptest.NewRequest(method, "http://127.0.0.1:7777"+path, bytes.NewReader(body))
 	r.Header.Set("Origin", "http://127.0.0.1:7777")
 	r.Header.Set("X-Visual-Editor", editorID)
+	if method == http.MethodPost && path == "/visual/video/preview" {
+		if _, valid := s.videoEditor.context(editorID); valid {
+			// Direct HTTP tests stand in for the Go Options bridge admitting a render.
+			s.videoEditor.mu.Lock()
+			operation := s.videoEditor.previewRequest + 1
+			s.videoEditor.mu.Unlock()
+			s.videoEditor.setPreviewOperation(operation, true)
+			r.Header.Set("X-Visual-Operation", strconv.FormatUint(operation, 10))
+		}
+	}
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)
 	return w
@@ -40,7 +52,7 @@ func TestVideoEditor_Routes(t *testing.T) {
 		}
 		id, _ := s.videoEditor.setOpen(true)
 		defer s.videoEditor.Close()
-		for _, path := range []string{"/visual/video/source", "/visual/video/preview", "/visual/video"} {
+		for _, path := range []string{"/visual/video/source", "/visual/video/preview", "/visual/video", "/visual/video/frame"} {
 			w := videoEditRequest(t, s, "PRIVATE", "POST", path, []byte("PRIVATE"))
 			if w.Code != 403 || strings.Contains(w.Body.String(), "PRIVATE") {
 				t.Fatalf("%s: got %d %q", path, w.Code, w.Body.String())
@@ -96,6 +108,20 @@ func TestVideoEditor_Routes(t *testing.T) {
 		}
 		if err := json.Unmarshal(staged.Body.Bytes(), &source); err != nil {
 			t.Fatal(err)
+		}
+		frameInput, _ := json.Marshal(map[string]any{"sourceID": source.SourceID, "positionMS": 250})
+		frame := videoEditRequest(t, s, id, "POST", "/visual/video/frame", frameInput)
+		if frame.Code != 200 || frame.Header().Get("Content-Type") != "image/jpeg" {
+			t.Fatalf("frame: %d %s", frame.Code, frame.Body.String())
+		}
+		if _, err := jpeg.Decode(bytes.NewReader(frame.Body.Bytes())); err != nil {
+			t.Fatal(err)
+		}
+		for _, invalid := range []string{`{"sourceID":"../../PRIVATE","positionMS":0}`, `{"sourceID":"` + source.SourceID + `","positionMS":-1}`, `{"sourceID":"` + source.SourceID + `","positionMS":9223372036854775807}`} {
+			response := videoEditRequest(t, s, id, "POST", "/visual/video/frame", []byte(invalid))
+			if response.Code == 200 || strings.Contains(response.Body.String(), "PRIVATE") {
+				t.Fatalf("unsafe frame: %d %s", response.Code, response.Body.String())
+			}
 		}
 		input, _ := json.Marshal(map[string]any{"sourceID": source.SourceID, "trim": visual.VideoTrim{StartMS: 250, EndMS: 1500}})
 		prepared := videoEditRequest(t, s, id, "POST", "/visual/video/preview", input)
@@ -213,6 +239,9 @@ func TestVideoSource_Admission(t *testing.T) {
 			err    error
 			reason string
 		}{
+			{visual.ErrVideoProtected, "sourceProtected"},
+			{visual.ErrVideoTracks, "sourceTracks"},
+			{visual.ErrVideoContainer, "sourceContainer"},
 			{visual.ErrVideoCodec, "sourceCodec"},
 			{visual.ErrVideoColor, "sourceColor"},
 			{visual.ErrVideoDimensions, "sourceDimensions"},
@@ -238,6 +267,10 @@ func TestVideoSource_Admission(t *testing.T) {
 		for _, path := range []string{"/visual/video/source", "/visual/video/preview"} {
 			r := httptest.NewRequest("POST", path, nil)
 			r.Header.Set("X-Visual-Editor", id)
+			if path == "/visual/video/preview" {
+				s.videoEditor.setPreviewOperation(1, true)
+				r.Header.Set("X-Visual-Operation", "1")
+			}
 			_, ctx, finish, ok := s.beginVideoEdit(httptest.NewRecorder(), r, false)
 			if !ok {
 				t.Fatal("admission failed")
@@ -437,5 +470,149 @@ func TestVideoSource_BrowserTimeline(t *testing.T) {
 	}
 	if len(files) != 0 {
 		t.Fatal("closing editor retained staged source")
+	}
+}
+
+func TestVideoEditor_PreviewCancellation(t *testing.T) {
+	t.Run("render cancellation keeps the editor open and rejects stale operations", func(t *testing.T) {
+		editor := newVideoEditor(t.Context())
+		defer editor.Close()
+		id, _ := editor.setOpen(true)
+		editor.setPreviewOperation(5, true)
+		rendering, valid := editor.previewContext(id, 5)
+		if !valid || rendering.Err() != nil {
+			t.Fatal("rendering permission unavailable")
+		}
+		editor.setPreviewOperation(6, false)
+		if !errors.Is(rendering.Err(), context.Canceled) {
+			t.Fatal("Stop did not cancel native rendering")
+		}
+		owner, valid := editor.context(id)
+		if !valid || owner.Err() != nil {
+			t.Fatal("Stop closed the source editor")
+		}
+		editor.setPreviewOperation(7, true)
+		if _, valid := editor.previewContext(id, 5); valid {
+			t.Fatal("retired rendering operation was admitted")
+		}
+		current, valid := editor.previewContext(id, 7)
+		if !valid || current.Err() != nil {
+			t.Fatal("new rendering operation inherited cancellation")
+		}
+	})
+}
+
+func TestVideoEditor_StopRendering(t *testing.T) {
+	t.Run("joins canceled work while retaining source and acknowledged loop", func(t *testing.T) {
+		if _, err := exec.LookPath("ffmpeg"); err != nil {
+			t.Skip("requires video tools")
+		}
+		s := &server{videoEditor: newVideoEditor(t.Context()), authority: "127.0.0.1:7777", visual: visual.NewService(&visualStore{}, "user", t.TempDir())}
+		id, _ := s.videoEditor.setOpen(true)
+		defer s.videoEditor.Close()
+		fixture, err := os.ReadFile("client/fixtures/visual-video.mp4")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := videoEditRequest(t, s, id, "POST", "/visual/video/source", fixture); got.Code != 200 {
+			t.Fatalf("stage=%d", got.Code)
+		}
+		sourceID := s.videoEditor.sourceID
+		controls := func(start, end int64) []byte {
+			body, err := json.Marshal(map[string]any{"sourceID": sourceID, "trim": visual.VideoTrim{StartMS: start, EndMS: end}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return body
+		}
+		if got := videoEditRequest(t, s, id, "POST", "/visual/video/preview", controls(0, 1000)); got.Code != 200 {
+			t.Fatalf("prepare=%d", got.Code)
+		}
+		acceptedID := s.videoEditor.pendingID
+		if got := videoEditRequest(t, s, id, "PUT", "/visual/video/preview", []byte(`{"previewID":"`+acceptedID+`"}`)); got.Code != 200 {
+			t.Fatalf("accept=%d", got.Code)
+		}
+		selected := videoEditRequest(t, s, id, "GET", "/visual/video/preview?id="+acceptedID+"&part=video", nil)
+		if got := videoEditRequest(t, s, id, "POST", "/visual/video/preview", controls(250, 1750)); got.Code != 200 {
+			t.Fatalf("candidate=%d", got.Code)
+		}
+		operationID := s.videoEditor.previewRequest
+		request := httptest.NewRequest("POST", "http://127.0.0.1:7777/visual/video/preview", nil)
+		request.Header.Set("X-Visual-Editor", id)
+		request.Header.Set("X-Visual-Operation", strconv.FormatUint(operationID, 10))
+		_, processing, finish, ok := s.beginVideoEdit(httptest.NewRecorder(), request, true)
+		if !ok {
+			t.Fatal("render was not admitted")
+		}
+		joined := make(chan struct{})
+		go func() { <-processing.Done(); close(joined); finish() }()
+		s.videoEditor.setPreviewOperation(operationID+1, false)
+		body, _ := json.Marshal(map[string]any{"sourceID": sourceID, "operationID": operationID})
+		stopped := videoEditRequest(t, s, id, "POST", "/visual/video/preview/stop", body)
+		if stopped.Code != 204 {
+			t.Fatalf("stop=%d, want 204", stopped.Code)
+		}
+		select {
+		case <-joined:
+		default:
+			t.Fatal("Stop replied before processing joined")
+		}
+		if s.videoEditor.sourceID != sourceID || s.videoEditor.pending != nil || s.videoEditor.acceptedID != acceptedID {
+			t.Fatal("Stop discarded source/accepted loop or retained candidate")
+		}
+		late := httptest.NewRequest("POST", "http://127.0.0.1:7777/visual/video/preview", bytes.NewReader(controls(250, 1750)))
+		late.Header.Set("Origin", "http://127.0.0.1:7777")
+		late.Header.Set("X-Visual-Editor", id)
+		late.Header.Set("X-Visual-Operation", strconv.FormatUint(operationID, 10))
+		refused := httptest.NewRecorder()
+		s.ServeHTTP(refused, late)
+		if refused.Code != http.StatusForbidden {
+			t.Fatalf("late render=%d, want 403", refused.Code)
+		}
+		retained := videoEditRequest(t, s, id, "GET", "/visual/video/preview?id="+acceptedID+"&part=video", nil)
+		if retained.Code != 200 || !bytes.Equal(retained.Body.Bytes(), selected.Body.Bytes()) {
+			t.Fatal("Stop changed acknowledged bytes")
+		}
+		if got := videoEditRequest(t, s, id, "POST", "/visual/video/preview", controls(0, 1000)); got.Code != 200 {
+			t.Fatalf("retry=%d", got.Code)
+		}
+		if got := videoEditRequest(t, s, id, "POST", "/visual/video/preview/stop", body); got.Code != 409 {
+			t.Fatalf("stale stop=%d, want 409", got.Code)
+		}
+	})
+}
+
+func TestVideoEditor_StopBoundary(t *testing.T) {
+	for _, scenario := range []struct {
+		name, origin, host, method string
+		want                       int
+	}{
+		{"missing Origin", "", "127.0.0.1:7777", "POST", 403},
+		{"foreign Origin", "http://PRIVATE", "127.0.0.1:7777", "POST", 403},
+		{"wrong Host", "http://127.0.0.1:7777", "PRIVATE", "POST", 403},
+		{"unexpected method", "http://127.0.0.1:7777", "127.0.0.1:7777", "PUT", 405},
+		{"invalid controls", "http://127.0.0.1:7777", "127.0.0.1:7777", "POST", 400},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			s := &server{
+				authority:   "127.0.0.1:7777",
+				visual:      visual.NewService(&visualStore{}, "user", t.TempDir()),
+				videoEditor: newVideoEditor(t.Context()),
+			}
+			id, _ := s.videoEditor.setOpen(true)
+			defer s.videoEditor.Close()
+			request := httptest.NewRequest(scenario.method, "http://127.0.0.1:7777/visual/video/preview/stop", strings.NewReader("PRIVATE"))
+			request.Host = scenario.host
+			request.Header.Set("Origin", scenario.origin)
+			request.Header.Set("X-Visual-Editor", id)
+			response := httptest.NewRecorder()
+			s.ServeHTTP(response, request)
+			if response.Code != scenario.want {
+				t.Fatalf("status=%d, want %d", response.Code, scenario.want)
+			}
+			if strings.Contains(response.Body.String(), "PRIVATE") {
+				t.Fatal("private input exposed")
+			}
+		})
 	}
 }

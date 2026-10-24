@@ -75,8 +75,8 @@ Video import requires user-installed FFmpeg/ffprobe with `libx264`, tested on
 Linux amd64 with FFmpeg 6.1.1. New-upload trimming, including late cuts and
 fractional frame rates, is verified on that processor with Chromium/Firefox
 Linux previews. Native source-relative trimming also tests nonzero source
-timestamps; browser imports reject nonzero video/container origins because
-Chromium and Firefox can interpret their preview positions differently. They are not bundled, auto-installed, or required
+timestamps; source previews now fall back to bounded native stills where browser
+seeking differs. The tools are not bundled, auto-installed, or required
 by ordinary app builds/image backgrounds. Keep the tools patched using the
 platform's maintained distribution. Processing uses Go subprocesses without cgo;
 this does not establish an OS sandbox. Chromium and Firefox Linux playback were
@@ -99,6 +99,15 @@ controlled streaming readers rather than a huge routine test fixture. Windows
 video-write feedback recognizes Win32 disk-full codes 112 and 39; macOS/Windows
 large-file hosting, cleanup permissions and browser runtime behavior remain
 unverified. Build-only checks do not establish large-source runtime support.
+
+Matroska import/source-frame fallback has Linux amd64 runtime coverage on the
+T480s with FFmpeg 6.1.1: H.264 8-bit, HEVC Main 8-bit/Main10 SDR, VP9 8-bit
+and AV1 8-bit (libdav1d decoder). Chromium and Firefox exercise scene browsing,
+forced native fallback, rapid scrubbing and exact prepared-asset Apply. Main10
+requires explicit Rec.709 signaling; HDR and VP9/AV1 10-bit remain unsupported.
+These results do not verify macOS/Windows processors or promise that a browser
+can decode the original container. Output quality/platform statuses above remain
+unchanged; updated measurements are in the background performance guide.
 
 ### Phrase timing for editor newlines
 

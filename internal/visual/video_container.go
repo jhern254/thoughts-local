@@ -111,7 +111,7 @@ func inspectVideoContainer(input io.ReaderAt, size int64, prepared bool) error {
 				if err := inspect(payload+8, limit, depth+1); err != nil {
 					return err
 				}
-			case "avc1":
+			case "avc1", "avc3", "hvc1", "hev1", "vp09", "av01":
 				if limit-payload < 78 {
 					return ErrVideo
 				}
