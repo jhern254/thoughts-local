@@ -157,6 +157,9 @@ func TestModel_VideoTrim(t *testing.T) {
 				m.width, m.height = 80, 36
 				m.options = optionsState{open: true, request: "choose", id: 5}
 				m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "sourceChecking", ID: 5})
+				if got := m.OptionsState().Preparation; got.Height != videoPreparationRows || got.Width == 0 {
+					t.Fatalf("validation activity area: got %+v, want reserved rendering-wave space", got)
+				}
 				if m.options.trimming || m.options.request != "choose" || m.options.status != "Checking video compatibility… Esc: cancel" {
 					t.Fatal("checking source did not preserve a visible cancellable selection")
 				}

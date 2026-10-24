@@ -6,7 +6,7 @@ import vm from 'node:vm';
 function fixture() {
   const revoked=[];
   const timers=new Map();
-  const context=vm.createContext({AbortController,setTimeout(callback){timers.set(callback,callback);return callback;},clearTimeout(id){timers.delete(id);},URL:{revokeObjectURL:url=>revoked.push(url)}});
+  const context=vm.createContext({document:{getElementById(){return null;}},AbortController,setTimeout(callback){timers.set(callback,callback);return callback;},clearTimeout(id){timers.delete(id);},URL:{revokeObjectURL:url=>revoked.push(url)}});
   vm.runInContext(readFileSync(new URL('../static/video-trim.js',import.meta.url),'utf8'),context);
   const visual={preview:{hidden:false,removeAttribute(name){delete this[name];}},sourcePreviewStatus:{hidden:true},connected:true,state:{open:true,editorID:'editor',id:1},queuePreview(){},stopPreviewPlayback(){},retireVideo(){},discardPreview(){throw new Error('stale discard published');}};
   const editor=vm.runInContext('new ThoughtsVideoTrim(null)',context);editor.visual=visual;editor.editorID='editor';

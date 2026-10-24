@@ -850,3 +850,36 @@ test('complete source and prepared movie frames fit the preview after narrow res
  await page.setViewportSize({width:1200,height:850});
  await expect.poll(completeFrame).toBe(true);
 });
+
+for(const cancel of [false,true])test(`upload validation shares rendering activity placement and remains cancellable ${cancel}`,async({page},testInfo)=>{
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');await openVisual(page);
+ if(cancel)await page.setViewportSize({width:650,height:600});
+ const saved=await(await page.request.get('/visual')).json();
+ let releaseUpload,releaseRender;
+ const uploadGate=new Promise(resolve=>{releaseUpload=resolve;}),renderGate=new Promise(resolve=>{releaseRender=resolve;});
+ await page.route('**/visual/video/source',async route=>{if(route.request().method()==='POST')await uploadGate;await route.continue();});
+ await page.route('**/visual/video/preview',async route=>{if(route.request().method()==='POST')await renderGate;await route.continue();});
+ try {
+  const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(source);
+  await expect(screen(page)).toContainText('Checking video compatibility');
+  const wave=page.locator('#video-preparation-wave');
+  await expect(wave).toBeVisible();await expect(wave).toBeInViewport();
+  await expect(page.locator('#video-preparation-label')).toHaveText('Uploading and validating video…');
+  await expect(screen(page)).toContainText('Cancel upload');await expect(screen(page)).not.toContainText('Source / Start:');
+  await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+  const duringUpload=await wave.boundingBox();
+  if(process.env.THOUGHTS_BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-upload-wave-${cancel?"narrow":"desktop"}.png`});
+  if(cancel){
+   await clickControl(page,'Cancel upload');await expect(wave).toBeHidden();
+   await expect(screen(page)).toContainText('Background darkness:');
+   expect(await(await page.request.get('/visual')).json()).toEqual(saved);
+  }else{
+   releaseUpload();await expect(screen(page)).toContainText('Set cut points, then Preview loop.');await expect(wave).toBeHidden();
+   await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');await clickControl(page,'Preview loop');
+   await expect(wave).toBeVisible();
+   await expect.poll(async()=>{const bounds=await wave.boundingBox();return bounds&&Math.abs(bounds.y-duringUpload.y)<1&&Math.abs(bounds.x-duringUpload.x)<1&&Math.abs(bounds.width-duringUpload.width)<1;}).toBe(true);
+   await page.emulateMedia({reducedMotion:'reduce'});await expect(wave).toHaveAttribute('data-animating','false');
+   await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Rendering stopped.');
+  }
+ } finally {releaseUpload();releaseRender();await page.unrouteAll({behavior:'wait'});}
+});

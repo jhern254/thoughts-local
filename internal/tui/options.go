@@ -52,7 +52,8 @@ type BrowserOptionsState struct {
 	SpeedPercent             int                    `json:"speedPercent"`
 	UserPaused               bool                   `json:"userPaused"`
 	Preview                  PreviewRect            `json:"preview"`
-	Preparation              PreviewRect            `json:"preparation"`     // Reserved cells keep controls fixed while the browser shows loading activity.
+	Preparation              PreviewRect            `json:"preparation"` // Reserved cells keep controls fixed while the browser shows loading activity.
+	SourceChecking           bool                   `json:"sourceChecking"`
 	Trimming                 bool                   `json:"trimming"`        // Cut-selection controls are open; this does not mean encoding is running.
 	SourceFrame              bool                   `json:"sourceFrame"`     // Show the original-source frame instead of the prepared loop.
 	SourcePreviewMS          int64                  `json:"sourcePreviewMS"` // Source-relative position of the boundary being adjusted.
@@ -81,6 +82,7 @@ type optionsState struct {
 	menuFocus         int
 	id                uint64
 	request           string
+	sourceChecking    bool // Upload/validation owns the progress view before cut controls are available.
 	darkness          int
 	focus             int
 	status            string
@@ -119,6 +121,10 @@ type optionsState struct {
 }
 
 func (m *Model) requestOptions(action string) {
+	// Keep the upload view while cancellation joins and removes staged files.
+	if action != "discardVideo" {
+		m.options.sourceChecking = false
+	}
 	m.options.id++
 	m.options.request = action
 }
@@ -142,6 +148,7 @@ func (m Model) OptionsState() BrowserOptionsState {
 		UserPaused:               m.options.userPaused,
 		Preview:                  rect,
 		Preparation:              m.videoPreparationRect(),
+		SourceChecking:           m.options.sourceChecking,
 		Trimming:                 m.options.trimming,
 		SourceFrame:              m.options.sourceFrame,
 		SourcePreviewMS:          m.options.sourcePreviewMS,
@@ -222,6 +229,8 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if m.options.request != "choose" {
 			return m, nil
 		}
+		m.options.sourceChecking = true
+		m.options.trimFocus = trimFocusCancel
 		m.options.status = "Checking video compatibility… Esc: cancel"
 		return m, nil
 	case "sourceBounds":
@@ -395,6 +404,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 	default:
 		return m, nil
 	}
+	m.options.sourceChecking = false
 	m.options.request = ""
 	return m, nil
 }
@@ -406,7 +416,7 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.options.menu {
 		return m.updateOptionsMenu(message)
 	}
-	if m.options.trimming {
+	if m.options.trimming || m.options.sourceChecking {
 		return m.updateVideoTrimInput(message)
 	}
 	if m.options.editing {
@@ -536,7 +546,7 @@ func (m *Model) activateOption() {
 
 // The preview shrinks before the controls. Very short terminals omit it entirely.
 func (m Model) optionsLayout() (int, PreviewRect) {
-	if m.options.trimming {
+	if m.options.trimming || m.options.sourceChecking {
 		width := max(10, min(80, m.width-4))
 		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-34))}
 	}
@@ -606,7 +616,7 @@ func (m Model) viewOptions() tea.View {
 	if m.options.menu {
 		return m.viewOptionsMenu()
 	}
-	if m.options.trimming {
+	if m.options.trimming || m.options.sourceChecking {
 		return m.viewVideoTrim()
 	}
 	if m.options.editing {

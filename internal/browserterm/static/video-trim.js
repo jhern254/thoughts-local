@@ -41,6 +41,7 @@ class ThoughtsVideoTrim {
     const controller = new AbortController();
     this.controller = controller;
     try {
+      this.setStage('Uploading and validating video…',operationID);
       this.visual.sendAction({action:'sourceChecking',id:operationID});
       if (file.size > this.visual.state.maxVideoSourceBytes) throw Object.assign(new Error('Video source exceeds the limit.'),{videoAction:'sourceSize'});
       this.localFile = file;

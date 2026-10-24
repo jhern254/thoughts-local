@@ -136,7 +136,10 @@ class ThoughtsVisual {
   updatePreparationStatus() {
     // The current request owns the indicator through encoding, validation and
     // preview acknowledgement. Retired async completions cannot hide a new one.
-    const active = !!(this.connected && this.state.open && this.state.trimming && this.state.request === 'prepareLoop');
+    const active = !!(this.connected && this.state.open && (
+      (this.state.trimming && this.state.request === 'prepareLoop') ||
+      (this.state.sourceChecking && this.state.request === 'choose')
+    ));
     this.preparationStatus.hidden = !active;
     this.preparationWave.setPlayback(active, this.documentVisible, this.motionQuery.matches);
     if (active) this.positionPreparation();
@@ -264,7 +267,7 @@ class ThoughtsVisual {
     this.previewContainer.hidden = true;
     const previewRect = this.state.preview;
     const awaitingSourceFrame = this.videoTrim?.showingSource && this.videoTrim.sourcePreviewMode === 'native';
-    if (!this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth && !awaitingSourceFrame)) return;
+    if (this.state.sourceChecking || !this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth && !awaitingSourceFrame)) return;
     if (this.state.request === 'load' || this.terminal.cols < previewRect.X + previewRect.Width + 1 || this.terminal.rows < previewRect.Y + previewRect.Height + 1) return;
     // Metadata can arrive before Bubble Tea's next paint. Verify the reserved
     // cells in xterm's public buffer before placing pixels over them. Geometry
