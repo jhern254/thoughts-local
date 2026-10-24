@@ -135,8 +135,8 @@ func (m Model) updateSpeechSetup(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.err == nil && !wasCancelled {
 			m.speechSetup.ready = true
 			m.speechSetup.canDownload = false
-			m.speechSetup.status = "Speech is ready. Use F8 in a Thought to start and stop dictation."
-			m.speechSetup.notice = "Speech is ready · F8 to dictate"
+			m.speechSetup.status = "Speech is ready. Use v from Events or in Thought Normal mode to dictate."
+			m.speechSetup.notice = "Speech is ready · v to dictate"
 		} else if wasCancelled {
 			m.speechSetup.status = "Download cancelled. You can retry when you're ready."
 		} else {
@@ -331,7 +331,7 @@ func (m Model) speechSetupPopupLayout() (string, int, int, []int) {
 	rows := []string{titleStyle.Render("Models"), heading, "", m.speechSetup.description.DisplayName, fmt.Sprintf("Model size: %.1f MB", float64(m.speechSetup.description.ExpectedSizeBytes)/1e6), "Audio stays local; never saved.", ""}
 	status := m.speechSetup.status
 	if m.speechSetup.ready && status == "" {
-		status = "Speech is ready. F8 starts/stops dictation."
+		status = "Speech is ready. Use v in Thought Normal mode to dictate."
 	}
 	if status != "" {
 		rows = append(rows, strings.Split(ansi.Wrap(status, innerWidth, ""), "\n")...)

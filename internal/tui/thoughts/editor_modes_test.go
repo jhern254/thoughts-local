@@ -11,6 +11,18 @@ import (
 )
 
 func TestModel_EditorModes(t *testing.T) {
+	t.Run("mode labels use distinct padded color blocks", func(t *testing.T) {
+		m := thoughtEditor(t)
+		insert := strings.Split(m.View(), "\n")[0]
+		m, _ = m.Update(key(tea.KeyEscape))
+		normal := strings.Split(m.View(), "\n")[0]
+		if !strings.Contains(insert, "48;5;36") || !strings.Contains(normal, "48;5;62") {
+			t.Fatalf("mode badges lack distinct styles: insert=%q normal=%q", insert, normal)
+		}
+		if !strings.HasSuffix(ansi.Strip(insert), " INSERT ") || !strings.HasSuffix(ansi.Strip(normal), " NORMAL ") {
+			t.Fatalf("mode badges lack block padding: insert=%q normal=%q", insert, normal)
+		}
+	})
 	t.Run("Escape preserves draft and normal mode ignores typing and paste", func(t *testing.T) {
 		m := thoughtEditor(t)
 		m, _ = m.Update(tea.PasteMsg{Content: "hello界"})
@@ -55,6 +67,42 @@ func TestModel_EditorModes(t *testing.T) {
 		m, _ = m.Update(key(tea.KeyEnter))
 		if !m.Browsing() || m.input.Value() != "" {
 			t.Fatal("confirmed cancellation did not clear draft")
+		}
+	})
+}
+
+func TestModel_ModalVoiceKeys(t *testing.T) {
+	t.Run("Insert and Subject input keep v and u literal", func(t *testing.T) {
+		m := voiceModel(t)
+		for _, letter := range "vu" {
+			m, _ = m.Update(tea.KeyPressMsg{Code: letter, Text: string(letter)})
+		}
+		if m.input.Value() != "vu" || m.VoiceState().RecordingID != 0 || m.VoiceState().CanUseVoiceKey {
+			t.Fatalf("Insert text=%q state=%+v", m.input.Value(), m.VoiceState())
+		}
+		m, _ = m.Update(key(tea.KeyEscape))
+		m, _ = m.Update(key(tea.KeyTab))
+		for _, letter := range "vu" {
+			m, _ = m.Update(tea.KeyPressMsg{Code: letter, Text: string(letter)})
+		}
+		if m.voice.query.Value() != "vu" || m.VoiceState().RecordingID != 0 || m.VoiceState().CanUseVoiceKey {
+			t.Fatalf("Subject text=%q state=%+v", m.voice.query.Value(), m.VoiceState())
+		}
+	})
+	t.Run("Normal v starts and stops without inserting text", func(t *testing.T) {
+		m := voiceModel(t)
+		m, _ = m.Update(key(tea.KeyEscape))
+		if !m.VoiceState().CanUseVoiceKey {
+			t.Fatal("Normal mode did not enable browser voice key preparation")
+		}
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+		if m.VoiceState().RecordingStatus != "requesting" {
+			t.Fatalf("got %q, want requesting", m.VoiceState().RecordingStatus)
+		}
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'u', Text: "u"})
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+		if m.VoiceState().RecordingStatus != "stopping" || m.input.Value() != "" {
+			t.Fatalf("text=%q state=%+v, want empty text and stopping", m.input.Value(), m.VoiceState())
 		}
 	})
 }

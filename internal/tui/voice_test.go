@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/testutils"
@@ -21,6 +22,7 @@ func TestModel_ThoughtCaptureTime(t *testing.T) {
 	}{
 		{"browser t shortcut", tea.KeyPressMsg{Code: 't', Text: "t"}},
 		{"browser F8 shortcut", tea.KeyPressMsg{Code: tea.KeyF8}},
+		{"browser v shortcut", tea.KeyPressMsg{Code: 'v', Text: "v"}},
 		{"browser open action", thoughts.VoiceAction{Action: "open"}},
 	} {
 		t.Run(entry.name+" saves the time of entry", func(t *testing.T) {
@@ -89,7 +91,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 't', Text: "t"}))
 		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
-		if !m.thoughts.Creating() || !strings.HasPrefix(m.View().Content, heading+"\nCreate thought · INSERT\n") || strings.Contains(m.View().Content, "Voice thought") {
+		if !m.thoughts.Creating() || !strings.HasPrefix(ansi.Strip(m.View().Content), ansi.Strip(heading)+"\nCreate thought · INSERT \n") || strings.Contains(m.View().Content, "Voice thought") {
 			t.Fatalf("quick entry got %q, want normal Thoughts heading and editor", m.View().Content)
 		}
 		quick := m.View().Content

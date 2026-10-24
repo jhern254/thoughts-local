@@ -334,7 +334,7 @@ try {
           await page.keyboard.press('F8');await expect.poll(()=>page.evaluate(()=>window.voiceProbe.requests)).toBe(1);
           await page.evaluate(()=>window.voiceProbe.grant(0));await expect(page.locator('#status')).toHaveText('Transcribing…');
           await idle('video-synthetic-recording');
-          await page.keyboard.press('F8');await expect(screen(page)).toContainText('F8: Record');
+          await page.keyboard.press('F8');await expect(screen(page)).toContainText('v: Record');
           await page.keyboard.press('Escape');await page.keyboard.press('Tab');await page.keyboard.press('q');await page.keyboard.press('Tab');
           await expect(screen(page)).toContainText('Tab: mindset • Q: events');
         }

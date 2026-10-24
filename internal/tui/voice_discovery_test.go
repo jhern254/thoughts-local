@@ -32,12 +32,12 @@ func TestModel_VoiceSubjectDiscovery(t *testing.T) {
 		}
 		model, _ = rootUpdate(model, voice.RecordingEnded{Recording: recording})
 		model, _ = rootUpdate(model, voice.RecordingEnded{Recording: recording})
-		if view := ansi.Strip(model.View().Content); !strings.Contains(view, "Étudier.") || strings.Contains(view, "Fitness thoughts") || !strings.Contains(view, "F9: Restore prefix") {
+		if view := ansi.Strip(model.View().Content); !strings.Contains(view, "Étudier.") || strings.Contains(view, "Fitness thoughts") || !strings.Contains(view, "u: Restore prefix") {
 			t.Fatalf("ended view = %q, want cleaned body and restore action", view)
 		}
 		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyF9})
 		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyF9})
-		if view := ansi.Strip(model.View().Content); strings.Count(view, finalTranscript) != 1 || strings.Contains(view, "F9: Restore prefix") {
+		if view := ansi.Strip(model.View().Content); strings.Count(view, finalTranscript) != 1 || strings.Contains(view, "u: Restore prefix") {
 			t.Fatalf("restored view = %q, want original plural transcript exactly once", view)
 		}
 	})

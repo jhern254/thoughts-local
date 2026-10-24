@@ -490,7 +490,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			if m.VoiceOpen() && key.String() == "f8" {
+			if m.VoiceOpen() && (key.String() == "f8" || (key.String() == "v" && m.VoiceState().CanUseVoiceKey)) {
 				action := "start"
 				if m.voiceLocked() {
 					action = "stop"
@@ -500,7 +500,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if m.voiceLocked() {
 				return m, nil
 			}
-			if m.VoiceOpen() && key.String() == "f9" {
+			if m.VoiceOpen() && (key.String() == "f9" || (key.String() == "u" && m.normalMode && !m.voice.subjectFocused)) {
 				m.restoreVoicePrefix()
 				return m, nil
 			}

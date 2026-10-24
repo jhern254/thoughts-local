@@ -23,15 +23,15 @@ test('voice capture locks editing and save; Stop and restart preserve edited dra
   await fakeMicrophone(page); await ready(page);
   await page.keyboard.type('v');
   await expect(screen(page)).toContainText('v');
-  await expect(screen(page)).toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Record');
   await paste(page, `${draft}\n界 café 👩‍💻`);
   await expect(screen(page)).toContainText(draft);
   await page.keyboard.press('F8');
-  await expect(screen(page)).toContainText('F8: Stop');
+  await expect(screen(page)).toContainText('v: Stop');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   await page.evaluate(() => window.voiceProbe.grant(0));
   await expect(page.locator('#status')).toHaveText('Transcribing…');
-  await expect(screen(page)).toContainText('F8: Stop');
+  await expect(screen(page)).toContainText('v: Stop');
   await paste(page, 'PRIVATE-MUTATION');
   await page.locator('.xterm-helper-textarea').focus();
   await page.keyboard.press('Control+s'); await page.keyboard.press('Tab');
@@ -39,14 +39,14 @@ test('voice capture locks editing and save; Stop and restart preserve edited dra
   await expect(screen(page)).not.toContainText('Create subject…');
   await expect(screen(page)).toContainText(draft);
   await page.keyboard.press('F8');
-  await expect(screen(page)).toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Record');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await paste(page, ' edited'); await expect(screen(page)).toContainText('edited');
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(2);
   await page.evaluate(() => window.voiceProbe.grant(1));
   await expect(page.locator('#status')).toHaveText('Transcribing…');
-  await expect(screen(page)).toContainText('F8: Stop');
+  await expect(screen(page)).toContainText('v: Stop');
   await page.reload(); await expect(page.locator('#status')).toHaveText('Connected');
   await expect(screen(page)).toContainText('Events'); await expect(screen(page)).not.toContainText(draft);
 });
@@ -65,11 +65,11 @@ test('twenty-minute deadline stops capture without counting chunks', async ({pag
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   await page.evaluate(() => window.voiceProbe.grant(0));
-  await expect(page.locator('#status')).toHaveText('Transcribing…'); await expect(screen(page)).toContainText('F8: Stop');
+  await expect(page.locator('#status')).toHaveText('Transcribing…'); await expect(screen(page)).toContainText('v: Stop');
   await page.clock.fastForward(3 * 60 * 1000);
-  await expect(screen(page)).toContainText('F8: Stop');
+  await expect(screen(page)).toContainText('v: Stop');
   await page.clock.fastForward(17 * 60 * 1000);
-  await expect(screen(page)).toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Record');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(1);
   await paste(page, 'after deadline');
   await expect(screen(page)).toContainText('after deadline');
@@ -99,7 +99,7 @@ test('regular thought creation uses the same form and recording action', async (
   await expect(screen(page)).not.toContainText('Loading…');
   await page.keyboard.press('Enter');
   await expect(screen(page).locator('div').first()).toContainText('Thoughts');
-  await expect(screen(page)).toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Record');
   await expect(screen(page)).toContainText('Misc');
   await expect(screen(page)).not.toContainText('Voice thought');
   await expect(page.locator('#voice-controls')).toHaveCount(0);
@@ -107,13 +107,13 @@ test('regular thought creation uses the same form and recording action', async (
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   await page.evaluate(() => window.voiceProbe.grant(0));
   await expect(page.locator('#status')).toHaveText('Transcribing…');
-  await expect(screen(page)).toContainText('F8: Stop');
-  await expect(screen(page)).not.toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Stop');
+  await expect(screen(page)).not.toContainText('v: Record');
   await page.keyboard.press('F8');
-  await expect(screen(page)).toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Record');
   await page.keyboard.press('Control+d');
   await expect(screen(page)).toContainText('Create thought…');
-  await expect(screen(page)).not.toContainText('F8: Record');
+  await expect(screen(page)).not.toContainText('v: Record');
 });
 
 test('visual preserves recording and terminal focus ownership', async ({page}) => {
@@ -159,5 +159,5 @@ test('visual preserves recording and terminal focus ownership', async ({page}) =
   await expect(screen(page)).toContainText('visual voice draft');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await page.keyboard.press('F8');
-  await expect(screen(page)).toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Record');
 });

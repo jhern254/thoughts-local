@@ -329,11 +329,12 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.handleSubjectFound(message)
 	case tea.KeyPressMsg:
-		if (message.String() == "t" || message.Code == tea.KeyF8) && m.VoiceState().CanOpenThoughtDraft {
+		if (message.String() == "t" || message.String() == "v" || message.Code == tea.KeyF8) && m.VoiceState().CanOpenThoughtDraft {
 			openDraft := m.openThoughtDraft()
-			if message.Code == tea.KeyF8 {
+			if message.String() == "v" || message.Code == tea.KeyF8 {
 				var startRecording tea.Cmd
-				m.thoughts, startRecording = m.thoughts.Update(message)
+				state := m.thoughts.VoiceState()
+				m.thoughts, startRecording = m.thoughts.Update(thoughts.VoiceAction{Action: "start", DraftID: state.DraftID, RecordingID: state.RecordingID})
 				return m, tea.Batch(openDraft, startRecording)
 			}
 			return m, openDraft
@@ -624,6 +625,7 @@ func (m Model) VoiceState() thoughts.VoiceState {
 	}
 	if m.speechSetup.open || m.options.open || m.thoughts.SavingMindset() {
 		state.CanOpenThoughtDraft = false
+		state.CanUseVoiceKey = false
 	}
 	return state
 }

@@ -50,6 +50,46 @@ async function startCapture(page, permissionIndex) {
   await expect(screen(page)).toContainText('synthetic speech');
 }
 
+test('colored modes keep v and u literal until Normal enables voice commands', async ({page}, testInfo) => {
+  await page.addInitScript(()=>{
+    const NativeAudioContext=window.AudioContext;
+    window.modeAudioContexts=0;
+    window.AudioContext=class extends NativeAudioContext {
+      constructor(...argumentsList){super(...argumentsList);window.modeAudioContexts++;}
+    };
+  });
+  await prepareAudioDraft(page);
+  await expect(page.locator('.xterm-bg-36').filter({hasText:'INSERT'})).toBeVisible();
+  await page.keyboard.type('vu');
+  await expect(screen(page)).toContainText('typed draftvu');
+  expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(0);
+  expect(await page.evaluate(() => window.modeAudioContexts)).toBe(0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.xterm-bg-62').filter({hasText:'NORMAL'})).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.xterm-bg-36').filter({hasText:'INSERT'})).toBeVisible();
+  await page.keyboard.type('vu');
+  expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(0);
+  expect(await page.evaluate(() => window.modeAudioContexts)).toBe(0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.xterm-bg-62').filter({hasText:'NORMAL'})).toBeVisible();
+  if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-mode-normal.png`});
+  await page.keyboard.press('v');
+  await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
+  await page.evaluate(() => window.voiceProbe.grant(0));
+  await expect(page.locator('#status')).toHaveText('Transcribing…');
+  await expect(screen(page)).toContainText('synthetic speech');
+  await page.keyboard.press('v');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await expect(screen(page)).toContainText('typed draftvu');
+  expect(await page.evaluate(() => window.audioProbe.terminalConnections)).toBe(1);
+  await page.keyboard.press('i');
+  await expect(page.locator('.xterm-bg-36').filter({hasText:'INSERT'})).toBeVisible();
+  await page.setViewportSize({width:400,height:850});
+  await expect(screen(page)).toContainText('Ctrl+D: cancel');
+  if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-mode-insert-narrow.png`});
+});
+
 test('real worklet PCM uses dedicated ingestion and fake text preserves the draft', async ({page}, testInfo) => {
   const diagnostics = [];
   page.on('pageerror', error => diagnostics.push(error.message));
@@ -63,11 +103,11 @@ test('real worklet PCM uses dedicated ingestion and fake text preserves the draf
   expect((await screen(page).innerText()).match(/synthetic speech/g)).toHaveLength(1);
   if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-recording.png`});
   await page.setViewportSize({width: 400, height: 850});
-  await expect(screen(page)).toContainText('F8: Stop');
+  await expect(screen(page)).toContainText('v: Stop');
   await expect(screen(page)).toContainText('typed draft');
   if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-narrow-recording.png`});
   await page.keyboard.press('F8');
-  await expect(screen(page)).toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Record');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(1);
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await page.keyboard.type(' edited');
@@ -78,7 +118,7 @@ test('real worklet PCM uses dedicated ingestion and fake text preserves the draf
 
 test('restart owns a fresh audio connection and reload releases both recording identities', async ({page}) => {
   await prepareAudioDraft(page); await startCapture(page, 0);
-  await page.keyboard.press('F8'); await expect(screen(page)).toContainText('F8: Record');
+  await page.keyboard.press('F8'); await expect(screen(page)).toContainText('v: Record');
   await page.keyboard.type(' between recordings');
   await startCapture(page, 1);
   expect(await page.evaluate(() => window.audioProbe.audioConnections)).toBe(2);
@@ -99,19 +139,19 @@ test('permission denial preserves the draft and does not open an audio socket', 
 });
 
 
-test('one F8 from Events opens a thought and immediately records', async ({page}) => {
+test('one v from Events opens a thought and immediately records', async ({page}) => {
   await fakeMicrophone(page, 0.25, test.info().project.name === 'firefox');
   await page.goto('/');
   await expect(page.locator('#status')).toHaveText('Connected');
   await expect(screen(page)).toContainText('Events');
-  await page.keyboard.press('F8');
+  await page.keyboard.press('v');
   await expect(screen(page)).toContainText('Create thought');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
   await page.evaluate(() => window.voiceProbe.grant(0));
   await expect(page.locator('#status')).toHaveText('Transcribing…');
   await expect(screen(page)).toContainText('synthetic speech');
-  await page.keyboard.press('F8');
-  await expect(screen(page)).toContainText('F8: Record');
+  await page.keyboard.press('v');
+  await expect(screen(page)).toContainText('v: Record');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(1);
 });
 
@@ -127,7 +167,7 @@ test('video import during recording preserves microphone, audio socket and draft
  expect(await page.evaluate(()=>window.audioProbe.audioConnections)).toBe(1);
  expect(await page.evaluate(()=>window.voiceProbe.requests)).toBe(1);
  expect(await page.evaluate(()=>window.voiceProbe.tracksStopped)).toBe(0);
- await page.keyboard.press('F8');await expect(screen(page)).toContainText('F8: Record');
+ await page.keyboard.press('F8');await expect(screen(page)).toContainText('v: Record');
  await openVisual(page);await clickControl(page,'Remove background');
 });
 
@@ -146,12 +186,12 @@ for (const stallMilliseconds of [750, 1500]) {
     if (stallMilliseconds === 750) {
       await expect.poll(() => page.evaluate(() => window.audioProbe.audioFrames)).toBeGreaterThan(before.audioFrames + 8);
       await expect(page.locator('#status')).toHaveText('Transcribing…');
-      await expect(screen(page)).toContainText('F8: Stop');
+      await expect(screen(page)).toContainText('v: Stop');
       expect(await page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(0);
       expect(await page.evaluate(() => window.audioProbe.audioConnections)).toBe(before.audioConnections);
       await page.keyboard.press('F8');
     } else {
-      await expect(screen(page)).toContainText('F8: Record');
+      await expect(screen(page)).toContainText('v: Record');
       // Socket close and the browser failure control can arrive in either order.
       // Both fixed messages preserve the last accepted transcript.
       await expect(screen(page)).toContainText(/Microphone capture failed\. Draft preserved\.|Audio capture stopped\. Draft preserved\./);
@@ -161,7 +201,7 @@ for (const stallMilliseconds of [750, 1500]) {
       await expect.poll(() => page.evaluate(() => window.audioProbe.audioFrames)).toBeGreaterThan(before.audioFrames + 12);
       await page.keyboard.press('F8');
     }
-    await expect(screen(page)).toContainText('F8: Record');
+    await expect(screen(page)).toContainText('v: Record');
     await expect(screen(page)).toContainText('typed draft');
     await expect(screen(page)).toContainText('synthetic speech');
     expect(await page.evaluate(() => window.audioProbe.terminalConnections)).toBe(before.terminalConnections);

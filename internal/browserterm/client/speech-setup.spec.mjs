@@ -63,7 +63,7 @@ test('model onboarding preserves writing and enables dictation after cancel and 
   await expect(page.locator('#status')).toHaveText('Transcribing…');
   await expect(screen(page)).toContainText('synthetic speech');
   await page.keyboard.press('F8');
-  await expect(screen(page)).toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Record');
 });
 
 test('model onboarding keeps Visual video controls available through the Options menu', async ({page, request, baseURL}) => {
