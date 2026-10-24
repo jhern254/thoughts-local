@@ -8,7 +8,7 @@ button { font: inherit; }
 #background-surface, #background-overlay { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 #background-surface { overflow: hidden; background: #171717; }
 #background-image, #background-video { position: absolute; max-width: none; }
-#background-overlay { background: rgb(0 0 0 / 70%); }
+#background-overlay { background: rgb(0 0 0 / 42%); }
 header, #terminal { isolation: isolate; }
 header { position: relative; }
 /* xterm themes the inner scrollable surface; its outer viewport has a black
@@ -19,13 +19,14 @@ header { position: relative; }
 #background-preview-frame { position: absolute; overflow: hidden; background: #171717; outline: 1px solid #999; }
 #background-preview-frame[data-editing="true"] { pointer-events: auto; cursor: grab; touch-action: none; }
 #background-preview, #background-preview-video { display: block; position: absolute; max-width: none; }
-#background-preview-frame::after { content: ""; position: absolute; inset: 0; background: rgb(0 0 0 / var(--darkness, .7)); pointer-events: none; }
+#background-preview-frame::after { content: ""; position: absolute; inset: 0; background: rgb(0 0 0 / var(--darkness, .42)); pointer-events: none; }
+
+#source-preview-status:not([hidden]) { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #171717; color: #c2bcec; text-align: center; font-size: 12px; }
 
 #video-status { font-size: 12px; }
 
 :root { --video-preparation-height: clamp(72px, 14vh, 112px); }
-#terminal[data-preparing="true"] { top: calc(42px + var(--video-preparation-height)); }
-#video-preparation { position: fixed; top: 50px; height: calc(var(--video-preparation-height) - 8px); pointer-events: none; }
+#video-preparation { position: fixed; height: calc(var(--video-preparation-height) - 8px); pointer-events: none; }
 #video-preparation:not([hidden]) { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 #video-preparation-label { color: #c2bcec; line-height: 16px; }
 #video-preparation-wave { position: relative; flex: 1; min-height: 0; overflow: hidden; }
@@ -48,4 +49,4 @@ header { position: relative; }
 }
 
 
-#background-preview-video[hidden] { display: none; }
+#background-preview[hidden], #background-preview-video[hidden] { display: none; }

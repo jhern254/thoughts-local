@@ -30,6 +30,17 @@ function activationFixture() {
   return {visual, context, pending, revoked, published, settings, fetches: () => fetches};
 }
 
+test('missing darkness uses 42 percent while explicit preferences are preserved', () => {
+  const {visual} = activationFixture();
+  let opacity;
+  visual.previewContainer = {style:{setProperty(name,value){opacity=value;}}};
+  for (const [input,expected] of [[undefined,42],[0,0],[70,70]]) {
+    Object.getPrototypeOf(visual).updateDarkness.call(visual,input);
+    assert.equal(opacity,expected/100);
+    assert.equal(visual.overlay.style.backgroundColor,`rgb(0 0 0 / ${expected}%)`);
+  }
+});
+
 test('same background settings reuse the decoded image', async () => {
   const f = activationFixture();
   const first = f.visual.activate(f.settings('first'));

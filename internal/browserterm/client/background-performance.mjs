@@ -3,7 +3,7 @@
 import {chromium, expect} from '@playwright/test';
 import {fakeMicrophone} from './capture-fixture.mjs';
 import {openVisual, setDarkness, screen, setVideoQuality} from './visual-helpers.mjs';
-import {readFileSync, writeFileSync} from 'node:fs';
+import {readFileSync, writeFileSync, createReadStream, statSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {availableParallelism} from 'node:os';
 import {createHash} from 'node:crypto';
@@ -21,6 +21,7 @@ const fixtureRunID = Date.now(); // Avoid native file-picker deduplication betwe
 // Privacy follow-ups measure only one-time import/activation; avoid repeating idle/navigation matrices.
 const importOnly = process.env.THOUGHTS_PERF_IMPORT_ONLY === '1';
 const videoFixturePath = process.env.THOUGHTS_PERF_VIDEO_FIXTURE;
+const longSourceStudy = process.env.THOUGHTS_PERF_LONG_SOURCE === '1';
 const qualityStudy = process.env.THOUGHTS_PERF_QUALITY_STUDY === '1';
 const qualityTier=process.env.THOUGHTS_PERF_VIDEO_QUALITY || 'efficient';
 if(!['efficient','high','maximum'].includes(qualityTier))throw new Error('Unknown performance quality tier');
@@ -76,7 +77,7 @@ function syntheticPNG(width, height) {
     pngChunk('IHDR', header), pngChunk('IDAT', deflateSync(pixels)), pngChunk('IEND', Buffer.alloc(0))
   ]);
 }
-const fixtures = (videoFixturePath ? [[1200,850]] : importOnly ? [[1200,850],[6000,4000]] : [[1267,719],[91,4093],[4093,91],[6000,4000]]).map(([width,height]) => ({width,height,buffer:syntheticPNG(width,height)}));
+const fixtures = (longSourceStudy ? [] : videoFixturePath ? [[1200,850]] : importOnly ? [[1200,850],[6000,4000]] : [[1267,719],[91,4093],[4093,91],[6000,4000]]).map(([width,height]) => ({width,height,buffer:syntheticPNG(width,height)}));
 const browser = await chromium.launch({headless:false, executablePath:process.env.THOUGHTS_PERF_BROWSER || '/usr/bin/brave-browser'});
 try {
   const page = await browser.newPage({viewport:null});
@@ -241,9 +242,52 @@ try {
     if(!importOnly && !videoFixturePath && (fixture===fixtures[0] || fixture===fixtures.at(-1)))await idle(image);
     if(!importOnly && !videoFixturePath && fixture===fixtures.at(-1))await navigation(image,true);
   }
-  if(videoFixturePath) {
-    const fixture=readFileSync(videoFixturePath);
-    add({phase:'video-fixture',bytes:fixture.length,sha256:createHash('sha256').update(fixture).digest('hex')});
+  if(videoFixturePath && longSourceStudy) {
+    const hash=createHash('sha256');for await(const chunk of createReadStream(videoFixturePath))hash.update(chunk);
+    add({phase:'long-source-fixture',bytes:statSync(videoFixturePath).size,sha256:hash.digest('hex')});
+    for(let run=0;run<count;run++) {
+      await openVisual(page);await setVideoQuality(page,qualityTier);
+      const initial=await usage();let peakBrowserRSS=initial.browserRSS,peakBrowserPSS=initial.browserPSS,peakAppRSS=initial.appRSS;
+      const timer=setInterval(async()=>{const current=await usage();peakBrowserRSS=Math.max(peakBrowserRSS,current.browserRSS);peakBrowserPSS=Math.max(peakBrowserPSS,current.browserPSS);peakAppRSS=Math.max(peakAppRSS,current.appRSS);},200);
+      try {
+        const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');
+        const selectionStart=performance.now();await(await chooser).setFiles(videoFixturePath);
+        await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
+        await expect(page.locator('#background-preview-video')).toBeVisible();
+        const selectionMs=performance.now()-selectionStart;
+        const sourceInfo=await page.locator('#background-preview-video').evaluate(v=>({duration:v.duration,width:v.videoWidth,height:v.videoHeight}));
+        const seekMs=[];
+        for(const position of [sourceInfo.duration/2,sourceInfo.duration-10,sourceInfo.duration/4]) {
+          const start=performance.now();await page.keyboard.press('Enter');await page.keyboard.press('Control+u');
+          const ms=Math.floor(position*1000),time=`${String(Math.floor(ms/3600000)).padStart(2,'0')}:${String(Math.floor(ms/60000)%60).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(ms%1000).padStart(3,'0')}`;
+          await page.keyboard.insertText(time);await page.keyboard.press('Enter');
+          await expect.poll(()=>page.locator('#background-preview-video').evaluate((v,target)=>!v.seeking&&Math.abs(v.currentTime-target/1000)<.001,ms)).toBe(true);
+          seekMs.push(performance.now()-start);
+        }
+        // A final late cut is measured separately from exploratory seeking.
+        await page.keyboard.press('End');for(let i=0;i<9;i++)await page.keyboard.press('Shift+ArrowLeft');
+        const stageReply=page.waitForResponse(r=>new URL(r.url()).pathname==='/visual/video/source'&&r.request().method()==='POST',{timeout:1325000});
+        const prepareReply=page.waitForResponse(r=>new URL(r.url()).pathname==='/visual/video/preview'&&r.request().method()==='POST',{timeout:1450000});
+        let transferredAt;
+        await page.evaluate(()=>{
+          window.longSourceTransferDone=undefined;
+          const send=XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.send=function(body){this.upload.addEventListener('load',()=>{window.longSourceTransferDone=performance.now();},{once:true});return send.call(this,body);};
+        });
+        const browserStart=await page.evaluate(()=>performance.now());const prepareStart=performance.now();await clickControl(page,'Preview loop');
+        await stageReply;const stagingMs=performance.now()-prepareStart;
+        transferredAt=await page.evaluate(()=>window.longSourceTransferDone);
+        const response=await prepareReply;const prepared=await response.json(),preparationMs=performance.now()-prepareStart-stagingMs;
+        const readyStart=performance.now();await expect(screen(page)).toContainText('Preview ready. Done uses this loop.',{timeout:125000});const previewLoadMs=performance.now()-readyStart;
+        await clickControl(page,'Done — use previewed loop');const applyStart=performance.now();await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
+        const end=await usage();
+        add({phase:'long-source-import',run,sourceInfo,selectionMs,seekMs,transferMs:transferredAt-browserStart,stagingMs,validationResponseMs:stagingMs-(transferredAt-browserStart),preparationMs,previewLoadMs,applyMs:performance.now()-applyStart,prepared,peakBrowserRSS,peakBrowserPSS,peakAppRSS,browserCPUMs:1000*(end.browserCPU-initial.browserCPU),appCPUMs:1000*(end.appCPU-initial.appCPU),...end});
+      } finally {clearInterval(timer);}
+    }
+  }
+  if(videoFixturePath && !longSourceStudy) {
+    const hash=createHash('sha256');for await(const chunk of createReadStream(videoFixturePath))hash.update(chunk);
+    add({phase:'video-fixture',bytes:statSync(videoFixturePath).size,sha256:hash.digest('hex')});
     const events=async mode=>{
       // Tab leaves the entity picker; day keys then exercise actual Events.
       await page.keyboard.press('Tab');
@@ -258,7 +302,7 @@ try {
     for(let run=0;run<count;run++) {
       await openVisual(page);
       const start=performance.now();
-      await chooseImage(page,{name:`synthetic-video-${fixtureRunID}-${run}.mp4`,mimeType:'video/mp4',buffer:fixture});
+      await chooseImage(page,{name:`synthetic-video-${fixtureRunID}-${run}.mp4`,mimeType:'video/mp4',path:videoFixturePath});
       const previewMs=performance.now()-start;
       // The same cut reuses acknowledged native files, while the browser may
       // re-show its already decoded player. This must not launch FFmpeg.

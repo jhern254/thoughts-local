@@ -1,7 +1,7 @@
 package visual
 
 import (
-	"bytes"
+	"context"
 	"os"
 	"testing"
 
@@ -14,16 +14,19 @@ import (
 func BenchmarkVideoTrim(b *testing.B) {
 	path := os.Getenv("THOUGHTS_VIDEO_BENCH_FIXTURE")
 	if path == "" {
-		b.Skip("set THOUGHTS_VIDEO_BENCH_FIXTURE to a synthetic 60–120s SDR clip")
-	}
-	body, err := os.ReadFile(path)
-	if err != nil {
-		b.Fatal(err)
+		b.Skip("set THOUGHTS_VIDEO_BENCH_FIXTURE to a synthetic 30s–2h SDR clip")
 	}
 	b.Run("Stage", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			source, err := StageVideo(b.Context(), bytes.NewReader(body))
+			input, err := os.Open(path)
+			if err != nil {
+				b.Fatal(err)
+			}
+			source, err := StageVideo(b.Context(), input)
+			if closeErr := input.Close(); closeErr != nil {
+				b.Fatal(closeErr)
+			}
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -32,10 +35,46 @@ func BenchmarkVideoTrim(b *testing.B) {
 			}
 		}
 	})
-	source, err := StageVideo(b.Context(), bytes.NewReader(body))
+	input, err := os.Open(path)
 	if err != nil {
 		b.Fatal(err)
 	}
+	source, err := StageVideo(b.Context(), input)
+	if closeErr := input.Close(); closeErr != nil {
+		b.Fatal(closeErr)
+	}
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Run("Validate", func(b *testing.B) {
+		for range b.N {
+			ctx, cancel := context.WithTimeout(b.Context(), MaxVideoProcessingTime)
+			input, err := os.Open(path)
+			if err != nil {
+				cancel()
+				b.Fatal(err)
+			}
+			stat, err := input.Stat()
+			if err != nil {
+				input.Close()
+				cancel()
+				b.Fatal(err)
+			}
+			err = validateVideoContainer(input, stat.Size())
+			input.Close()
+			if err == nil {
+				var probe videoProbe
+				probe, err = probeVideo(ctx, source.ffprobe, path)
+				if err == nil {
+					err = probe.validate(false)
+				}
+			}
+			cancel()
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 	defer source.Close()
 	duration := source.Info().DurationMS
 	if duration < 30000 {

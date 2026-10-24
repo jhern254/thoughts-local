@@ -14,14 +14,14 @@ class ThoughtsVisual {
     this.file = document.getElementById('background-file');
     this.preview = document.getElementById('background-preview');
     this.previewContainer = document.getElementById('background-preview-wrap');
-    this.saved = {background: false, darkness: 70, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, videoQuality:'efficient', kind: 'image'};
+    this.saved = {background: false, darkness: 42, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, videoQuality:'efficient', kind: 'image'};
     this.connected = false;
     this.documentVisible = !document.hidden;
     this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
     this.playbackStatus = document.getElementById('video-status');
+    this.sourcePreviewStatus = document.getElementById('source-preview-status');
     this.preparationStatus = document.getElementById('video-preparation');
     this.preparationWave = new ThoughtsPreparationWave(document.getElementById('video-preparation-wave'));
-    this.terminalContainer = document.getElementById('terminal');
     this.motionQuery.addEventListener('change', () => {
       this.motionOverride = false;
       if (this.motionQuery.matches) this.stopPreviewPlayback();
@@ -136,17 +136,19 @@ class ThoughtsVisual {
     // preview acknowledgement. Retired async completions cannot hide a new one.
     const active = !!(this.connected && this.state.open && this.state.trimming && this.state.request === 'prepareLoop');
     this.preparationStatus.hidden = !active;
-    this.terminalContainer.dataset.preparing = String(active);
     this.preparationWave.setPlayback(active, this.documentVisible, this.motionQuery.matches);
     if (active) this.positionPreparation();
   }
   positionPreparation() {
-    if (this.preparationStatus.hidden || !this.state.preview) return;
+    if (this.preparationStatus.hidden || !this.state.preparation) return;
     const screen = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
     const cellWidth = screen.width / this.terminal.cols;
-    const width = this.state.preview.Width * cellWidth;
+    const cellHeight = screen.height / this.terminal.rows;
+    const reserved = this.state.preparation;
+    const width = reserved.Width * cellWidth;
     Object.assign(this.preparationStatus.style, {
-      left: `${screen.left + this.state.preview.X * cellWidth}px`, width: `${width}px`
+      left: `${screen.left + reserved.X * cellWidth}px`, width: `${width}px`,
+      top: `${screen.top + reserved.Y * cellHeight}px`
     });
     const wave = document.getElementById('video-preparation-wave');
     const layer = this.preparationWave.trace;
@@ -246,7 +248,7 @@ class ThoughtsVisual {
     if (pointerID !== undefined && this.previewFrameElement.hasPointerCapture(pointerID)) this.previewFrameElement.releasePointerCapture(pointerID);
   }
   updateDarkness(value) {
-    value = Number.isInteger(value) ? Math.max(0, Math.min(95, value)) : 70;
+    value = Number.isInteger(value) ? Math.max(0, Math.min(95, value)) : 42;
     this.previewContainer.style.setProperty('--darkness', value / 100);
     this.overlay.style.backgroundColor = `rgb(0 0 0 / ${value}%)`;
   }
@@ -314,10 +316,10 @@ class ThoughtsVisual {
     try {
       const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
       if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp') {
-        await this.videoTrim.stage(file, operationID); return;
+        await this.videoTrim.selectSource(file, operationID); return;
       }
       if (file.size > 16 * 1024 * 1024) throw new Error();
-      if (this.videoTrim?.source) {
+      if (this.videoTrim?.localFile) {
         const editorID = this.videoTrim.editorID;
         this.videoTrim.close();
         await fetch('/visual/video/source',{method:'DELETE',headers:{'X-Visual-Editor':editorID}});
@@ -351,11 +353,11 @@ class ThoughtsVisual {
         this.queuePreview();
         this.reply('selected', operationID);
       } finally { bitmap.close(); }
-    } catch {
+    } catch (error) {
       if (previewGeneration !== this.previewGeneration || this.state.id !== operationID) return;
       this.discardPreview();
       if (this.activeURL) this.preview.src = this.activeURL;
-      this.reply('failed', operationID);
+      this.reply(error.videoAction || 'failed', operationID);
     } finally { this.terminal.focus(); }
   }
   async activate(settings, connectionGeneration = this.connectionGeneration) {
@@ -363,7 +365,7 @@ class ThoughtsVisual {
     // Advance even for removal/settings-only saves, retiring any older decode.
     const activationGeneration = ++this.activationGeneration;
     settings = {...settings};
-    if (!Number.isInteger(settings.darkness) || settings.darkness < 0 || settings.darkness > 95) settings.darkness = 70;
+    if (!Number.isInteger(settings.darkness) || settings.darkness < 0 || settings.darkness > 95) settings.darkness = 42;
     settings.framing = safeBackgroundFraming(settings.framing);
     // Settings-only saves reuse the already decoded asset; identity changes
     // still fetch the authoritative selected image through the existing route.
@@ -482,7 +484,7 @@ class ThoughtsVisual {
     const paused = preferences.userPaused;
     return !!(this.video && this.saved.background && this.saved.kind === 'video' && !paused &&
       this.connected && this.documentVisible && (!this.motionQuery?.matches || this.motionOverride) &&
-      !this.previewPlaying && !this.videoTrim?.source && !this.playbackFailed);
+      !this.previewPlaying && !this.videoTrim?.localFile && !this.playbackFailed);
   }
   updatePlayback() {
     const video = this.video;
@@ -550,7 +552,7 @@ class ThoughtsVisual {
     this.updatePlayback();
   }
   async togglePreviewPlayback() {
-    if (this.videoTrim?.source && this.previewVideo === this.videoTrim.sourceVideo) {
+    if (this.videoTrim?.localFile && this.previewVideo === this.videoTrim.sourceVideo) {
       if (!this.videoTrim.acceptedVideo) return;
       this.videoTrim.showAccepted(false);
     }

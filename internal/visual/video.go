@@ -19,23 +19,33 @@ import (
 )
 
 const (
-	MaxVideoBytes     = 128 << 20
-	MaxVideoDimension = 4096
-	MaxVideoPixels    = 9_000_000
-	MaxVideoFPS       = 60
+	MaxVideoSourceBytes int64 = 8 << 30
+	MaxVideoDimension         = 4096
+	MaxVideoPixels            = 9_000_000
+	MaxVideoFPS               = 60
 	// Duration bounds are source footage seconds, independent of playbackRate.
 	MaxVideoDuration       = 30
-	MaxVideoSourceDuration = 120
+	MaxVideoSourceDuration = 14400
 	maxVideoStreams        = 4
 	maxVideoDecodedPixels  = 4_000_000_000
-	MaxVideoProcessingTime = 2 * time.Minute
-	maxVideoProbeBytes     = 64 << 10
+	// Per-preparation work includes seek preroll, independent of source length.
+	maxVideoDecodedFrames    int64 = 7200
+	MaxVideoTransferTime           = 20 * time.Minute
+	MaxVideoTransferIdleTime       = 30 * time.Second
+	MaxVideoProcessingTime         = 2 * time.Minute
+	maxVideoProbeBytes             = 64 << 10
 	// This limits each FFmpeg allocation, not total process memory. Frame size,
 	// stream count, decoder threads and duration bound the remaining work.
 	maxVideoAllocation = 64 << 20
 )
 
 var ErrVideo = errors.New("choose a self-contained SDR H.264 MP4 or MOV within the video limits")
+var ErrVideoCodec = fmt.Errorf("%w: unsupported codec", ErrVideo)
+var ErrVideoColor = fmt.Errorf("%w: unsupported color format", ErrVideo)
+var ErrVideoDimensions = fmt.Errorf("%w: unsupported resolution", ErrVideo)
+var ErrVideoFrameRate = fmt.Errorf("%w: unsupported frame rate", ErrVideo)
+var ErrVideoDuration = fmt.Errorf("%w: unsupported duration", ErrVideo)
+var ErrVideoSourceSize = errors.New("video source exceeds 8 GiB")
 var ErrVideoTools = errors.New("video backgrounds require FFmpeg and ffprobe")
 var ErrPlayback = errors.New("video speed must be between 25 and 100 percent")
 
@@ -53,6 +63,7 @@ type videoStream struct {
 	AvgFrameRate      string `json:"avg_frame_rate"`
 	SampleAspectRatio string `json:"sample_aspect_ratio"`
 	Duration          string `json:"duration"`
+	StartTime         string `json:"start_time"`
 	ColorSpace        string `json:"color_space"`
 	ColorTransfer     string `json:"color_transfer"`
 	ColorPrimaries    string `json:"color_primaries"`
@@ -67,7 +78,8 @@ type videoStream struct {
 type videoProbe struct {
 	Streams []videoStream `json:"streams"`
 	Format  struct {
-		Duration string `json:"duration"`
+		Duration  string `json:"duration"`
+		StartTime string `json:"start_time"`
 	} `json:"format"`
 }
 
@@ -112,7 +124,7 @@ func (info videoProbe) validate(prepared bool) error {
 	if info.Format.Duration != "" {
 		containerDuration, parseErr := strconv.ParseFloat(info.Format.Duration, 64)
 		if parseErr != nil || !finitePositive(containerDuration) || containerDuration < 1 || containerDuration > float64(maxDuration) {
-			return ErrVideo
+			return ErrVideoDuration
 		}
 	}
 	rate, rateErr := parseVideoFrameRate(stream.AvgFrameRate)
@@ -121,18 +133,30 @@ func (info videoProbe) validate(prepared bool) error {
 	if stream.SampleAspectRatio == "N/A" || stream.SampleAspectRatio == "" {
 		sar = 1
 	}
-	if err != nil || rateErr != nil || !finitePositive(duration) || duration < 1 || duration > float64(maxDuration) || !finitePositive(fps) || fps > MaxVideoFPS || !finitePositive(sar) || sar < .25 || sar > 4 {
+	if err != nil || !finitePositive(duration) || duration < 1 || duration > float64(maxDuration) {
+		return ErrVideoDuration
+	}
+	if rateErr != nil || !finitePositive(fps) || fps > MaxVideoFPS {
+		return ErrVideoFrameRate
+	}
+	if !finitePositive(sar) || sar < .25 || sar > 4 {
 		return ErrVideo
 	}
-	if stream.CodecName != "h264" || (stream.PixFmt != "yuv420p" && stream.PixFmt != "yuvj420p") || stream.Width < 2 || stream.Height < 2 || stream.Width > MaxVideoDimension || stream.Height > MaxVideoDimension || int64(stream.Width)*int64(stream.Height) > MaxVideoPixels {
-		return ErrVideo
+	if stream.CodecName != "h264" {
+		return ErrVideoCodec
+	}
+	if stream.PixFmt != "yuv420p" && stream.PixFmt != "yuvj420p" {
+		return ErrVideoColor
+	}
+	if stream.Width < 2 || stream.Height < 2 || stream.Width > MaxVideoDimension || stream.Height > MaxVideoDimension || int64(stream.Width)*int64(stream.Height) > MaxVideoPixels {
+		return ErrVideoDimensions
 	}
 	// The first supported path is SDR Rec.709. Unknown signaling is treated as
 	// ordinary SDR Rec.709; explicitly different primaries/transfer are rejected,
 	// never relabeled as Rec.709 without a reviewed conversion.
 	for _, value := range []string{stream.ColorSpace, stream.ColorTransfer, stream.ColorPrimaries} {
 		if value != "" && value != "unknown" && value != "bt709" {
-			return ErrVideo
+			return ErrVideoColor
 		}
 	}
 	if _, err := stream.displayRotation(); err != nil {
@@ -246,7 +270,7 @@ func runVideoTool(ctx context.Context, tool string, output io.Writer, args ...st
 
 func probeVideo(ctx context.Context, tool, path string) (videoProbe, error) {
 	var output videoProbeBuffer
-	args := []string{"-v", "error", "-max_alloc", strconv.Itoa(maxVideoAllocation), "-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-export_all", "0", "-threads", "1", "-max_pixels", strconv.Itoa(MaxVideoPixels), "-show_entries", "stream=index,codec_name,codec_type,profile,level,refs,nb_frames,width,height,pix_fmt,avg_frame_rate,sample_aspect_ratio,duration,color_space,color_transfer,color_primaries,color_range:stream_side_data=side_data_type,rotation,displaymatrix:format=duration", "-of", "json", path}
+	args := []string{"-v", "error", "-max_alloc", strconv.Itoa(maxVideoAllocation), "-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-export_all", "0", "-threads", "1", "-max_pixels", strconv.Itoa(MaxVideoPixels), "-show_entries", "stream=index,codec_name,codec_type,profile,level,refs,nb_frames,width,height,pix_fmt,avg_frame_rate,sample_aspect_ratio,duration,start_time,color_space,color_transfer,color_primaries,color_range:stream_side_data=side_data_type,rotation,displaymatrix:format=duration,start_time", "-of", "json", path}
 	if err := runVideoTool(ctx, tool, &output, args...); err != nil {
 		return videoProbe{}, err
 	}
@@ -282,7 +306,7 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 	width, height := plan.Width, plan.Height
 	// Both pixel work and frame count remain finite even for tiny frames or
 	// malformed timestamps. The first filter counts preroll before trimming.
-	sourceFrameLimit := min(int64(maxVideoDecodedPixels)/(int64(stream.Width)*int64(stream.Height)), int64(MaxVideoSourceDuration*MaxVideoFPS))
+	sourceFrameLimit := min(int64(maxVideoDecodedPixels)/(int64(stream.Width)*int64(stream.Height)), maxVideoDecodedFrames)
 	output := filepath.Join(directory, "display.mp4")
 	if err := os.WriteFile(output, nil, 0600); err != nil {
 		return nil, err

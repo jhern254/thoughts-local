@@ -29,9 +29,10 @@ two cycles. Both endpoints meet the horizontal zero axis at the left and right
 edges; the axis runs through the vertical center. Positive and negative portions
 remain visible, so the wave crosses the line without flattening against it.
 
-Place the indicator above the **Options** line and align its horizontal bounds
-with the video preview box. Keep its height compact while leaving enough room
-for distinct peaks and troughs. Show a plain status label such as
+Place the indicator between **Playback speed** and **Preview loop**, aligned
+horizontally with the video preview box. Reserve its space while hidden so
+loading never moves the controls. Keep its height compact while leaving enough
+room for distinct peaks and troughs. Show a plain status label such as
 “Preparing video…” alongside the visual activity cue.
 
 The curve repeats independently of encoding progress. Resizing changes its
@@ -42,9 +43,9 @@ dot measures work completed.
 The browser renders the braille curve once for the fading trail and bright head.
 CSS moves clipped light windows over that fixed text in about 12 steps per
 second. These are implementation choices, not a required rendering API or a
-performance guarantee. The browser reserves space above the terminal while
-preparation is pending; resizing uses the existing terminal layout and transport.
-Animation frames remain local and do not rewrite text or send terminal or HTTP
+performance guarantee. The TUI reserves seven terminal rows for the browser
+indicator throughout cut selection, preserving its original responsive height.
+Resizing uses the existing terminal layout and transport. Animation frames remain local and do not rewrite text or send terminal or HTTP
 updates. See the [measurement notes](browser-background-performance.md#video-preparation-activity-wave)
 for the cost of the integrated indicator.
 

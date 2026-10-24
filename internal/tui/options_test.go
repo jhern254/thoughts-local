@@ -19,7 +19,7 @@ func TestModel_Options(t *testing.T) {
 		}
 		m, _ = rootUpdate(m, enterKey())
 		state := m.OptionsState()
-		if !state.Open || state.Request != "load" || state.SpeedPercent != 100 {
+		if !state.Open || state.Request != "load" || state.SpeedPercent != 100 || state.Darkness != 42 {
 			t.Fatalf("Visual state = %+v; want a new load request", state)
 		}
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: state.ID, Kind: "video", Background: true, Darkness: 42, SpeedPercent: 50, UserPaused: true})
@@ -43,6 +43,9 @@ func TestModel_Options(t *testing.T) {
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		if got := m.OptionsState().Darkness; got != 42 {
+			t.Fatalf("initial darkness = %d, want 42", got)
+		}
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Darkness: 70})
 		for _, label := range []string{"Choose image or video", "Background fit: Fill", "Adjust framing", "Background darkness: 70%", "Video quality: Efficient (720p30)", "Apply", "Remove background", "Back"} {
 			if !strings.Contains(m.View().Content, m.subjects.list.Styles.Title.Render(label)) {

@@ -83,6 +83,8 @@ When a use case combines multiple entities, put that coordination in a small, de
 
 ## Feature Development Scope
 
+**Preserve media compatibility.** New video-upload features should keep previously accepted videos working and broaden compatibility where practical. Handle timestamp and metadata differences internally when possible. Add restrictions only for demonstrated correctness, security, or resource constraints; explain them explicitly and add regression coverage. Do not silently require users to re-export files that previously worked.
+
 For small feature pull requests:
 
 * Follow the order of red green refactor loop to iteratively work towards working feature

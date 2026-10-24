@@ -9,6 +9,13 @@ import (
 )
 
 func TestInputMessages(t *testing.T) {
+	t.Run("preserves arrow repeat identity without a separate input protocol", func(t *testing.T) {
+		messages, err := inputMessages([]byte("0\x1b[1;1:2D\x1b[1;2:2C"))
+		want := []tea.Msg{tea.KeyPressMsg{Code: tea.KeyLeft, IsRepeat: true}, tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift, IsRepeat: true}}
+		if err != nil || !reflect.DeepEqual(messages, want) {
+			t.Fatalf("got %#v, %v, want %#v", messages, err, want)
+		}
+	})
 	t.Run("bounds visual metadata and rejects unknown actions", func(t *testing.T) {
 		for _, frame := range []string{`o{"action":"open"}`, `o{"action":"loaded","id":1,"darkness":70}`} {
 			if _, err := inputMessages([]byte(frame)); err != nil {

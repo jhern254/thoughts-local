@@ -4,6 +4,7 @@ class ThoughtsVideoTrim {
   constructor(visual) {
     this.visual = visual;
     this.generation = 0;
+    this.sourceStartSeconds = 0;
   }
   headers() { return {'X-Visual-Editor': this.editorID}; }
   owns(generation) {
@@ -11,10 +12,28 @@ class ThoughtsVideoTrim {
   }
   async request(path, options, signal) {
     const response = await fetch(path, {...options, headers: {...this.headers(), ...options.headers}, signal});
-    if (!response.ok) throw new Error('Video operation unavailable.');
+    if (!response.ok) {
+      const error=new Error('Video operation unavailable.');
+      error.videoAction=response.status===400 ? 'failed' : this.failureAction(response.status,null);
+      throw error;
+    }
     return response;
   }
-  async stage(file, operationID) {
+  failureAction(status, rejection) {
+    // Only fixed control actions may cross back into the terminal connection.
+    const reasons = ['sourceCodec','sourceColor','sourceDimensions','sourceRate','sourceDuration'];
+    if (status === 400 && reasons.includes(rejection)) return rejection;
+    switch (status) {
+      case 400: return 'sourceUnsupported';
+      case 413: return 'sourceSize';
+      case 408: return 'sourceTimeout';
+      case 409: return 'sourceBusy';
+      case 503: return 'sourceTools';
+      case 507: return 'sourceSpace';
+      default: return 'failed';
+    }
+  }
+  async selectSource(file, operationID) {
     this.close();
     this.visual.releasePreviewVideo();
     const generation = this.generation;
@@ -22,32 +41,71 @@ class ThoughtsVideoTrim {
     const controller = new AbortController();
     this.controller = controller;
     try {
-      if (file.size > 128 * 1024 * 1024) throw new Error();
-      const response = await this.request('/visual/video/source', {method:'POST', body:file}, controller.signal);
-      const source = await response.json();
-      if (!this.owns(generation) || this.visual.state.id !== operationID) return;
-      this.source = source;
+      this.visual.sendAction({action:'sourceChecking',id:operationID});
+      if (file.size > this.visual.state.maxVideoSourceBytes) throw Object.assign(new Error('Video source exceeds the limit.'),{videoAction:'sourceSize'});
+      this.localFile = file;
       this.sourceURL = URL.createObjectURL(file);
-      const video = this.makeVideo(this.sourceURL);
+      const video = this.makeVideo(this.sourceURL, 'metadata');
       this.sourceVideo = video;
       await this.ready(video, controller.signal);
-      if (!this.owns(generation)) return;
-      // Native dimensions include display rotation and sample-aspect ratio.
-      // Source playback is paused; only explicitly prepared loops can play.
+      if (!this.owns(generation) || this.visual.state.id !== operationID) return;
+      // Some browsers retain a file's timestamp offset; others start at zero.
+      // Cut controls always count from the first decoded source frame.
+      this.sourceStartSeconds = video.currentTime;
+      const durationMS = Math.floor(video.duration * 1000);
+      if (!Number.isSafeInteger(durationMS) || durationMS < 1000 || durationMS > this.visual.state.maxVideoSourceDurationMS || !video.videoWidth || !video.videoHeight) throw Object.assign(new Error('Unsupported source.'),{videoAction:'sourceUnsupported'});
+      // Browser playback alone does not establish background compatibility.
+      // Validate once before offering cut controls; previews reuse this source.
+      const staged = await this.uploadSource(controller.signal);
+      if (!this.owns(generation) || controller.signal.aborted || this.visual.state.id !== operationID) return;
+      this.source = staged;
       this.visual.candidateKind = 'video';
-      this.visual.previewSourceSize = {width:source.width, height:source.height};
+      this.visual.previewSourceSize = {width:staged.width, height:staged.height};
       this.showSource(0);
-      this.visual.sendAction({action:'staged', id:operationID, kind:'video', durationMS:source.durationMS});
+      this.visual.sendAction({action:'sourceSelected', id:operationID, kind:'video', durationMS:staged.durationMS});
     } catch (error) {
       if (this.owns(generation)) {this.close(); throw error;}
     } finally {
       if (this.controller === controller) this.controller = undefined;
     }
   }
-  makeVideo(url) {
+  setStage(label, operationID) {
+    if (this.visual.state.id !== operationID) return;
+    const status = document.getElementById('video-preparation-label');
+    if (status) status.textContent = label;
+  }
+  uploadSource(signal) {
+    // Send the File directly without an ArrayBuffer copy. XHR supplies a bounded
+    // transfer timeout and cancellation while the native side validates it.
+    return new Promise((resolve,reject) => {
+      const upload = new XMLHttpRequest();
+      const finish = (error,source) => {
+        signal.removeEventListener('abort',abort);
+        upload.onload=upload.onerror=upload.onabort=upload.ontimeout=null;
+        error ? reject(error) : resolve(source);
+      };
+      const abort = () => upload.abort();
+      upload.open('POST','/visual/video/source');
+      upload.setRequestHeader('X-Visual-Editor',this.editorID);
+      upload.responseType='json';
+      upload.timeout=22*60*1000;
+      upload.onload=()=>{
+        if (upload.status===200 && upload.response?.sourceID) {finish(null,upload.response);return;}
+        const error=new Error('Video source unavailable.');
+        error.videoAction=this.failureAction(upload.status,upload.getResponseHeader('X-Video-Rejection'));
+        finish(error);
+      };
+      upload.onerror=upload.onabort=()=>finish(new Error('Video transfer unavailable.'));
+      upload.ontimeout=()=>{const error=new Error('Video transfer timed out.');error.videoAction='sourceTimeout';finish(error);};
+      signal.addEventListener('abort',abort,{once:true});
+      if (signal.aborted) {finish(new Error('Video transfer cancelled.'));return;}
+      upload.send(this.localFile);
+    });
+  }
+  makeVideo(url, preload = 'auto') {
     const video = document.createElement('video');
     video.muted = true; video.loop = true; video.playsInline = true;
-    video.preload = 'auto'; video.hidden = true; video.src = url;
+    video.preload = preload; video.hidden = true; video.src = url;
     return video;
   }
   ready(video, signal) {
@@ -69,9 +127,11 @@ class ThoughtsVideoTrim {
   }
   attach(video) {
     const visual = this.visual;
+    visual.sourcePreviewStatus.hidden = true;
     visual.stopPreviewPlayback();
     if (visual.previewVideo && visual.previewVideo !== video) visual.previewVideo.remove();
     visual.previewVideo = video;
+    visual.preview.hidden = video === this.sourceVideo;
     video.id = 'background-preview-video';
     visual.previewFrameElement.append(video);
     video.hidden = false;
@@ -83,7 +143,13 @@ class ThoughtsVideoTrim {
     if (this.visual.previewVideo !== this.sourceVideo) this.attach(this.sourceVideo);
     // Coalesce seek requests: one in flight and one latest target. No playback
     // timer, frame copying or FFmpeg work occurs while moving cut controls.
-    this.seekTarget = Math.min(positionMS / 1000, Math.max(0,this.sourceVideo.duration - 0.001));
+    const targetSeconds = this.sourceStartSeconds + positionMS / 1000;
+    // Chromium can retain a nonzero origin but clamp seeks to the unshifted
+    // duration. Native Preview loop can still prepare those later source cuts.
+    const unavailable = this.sourceStartSeconds > 0 && targetSeconds >= this.sourceVideo.duration;
+    this.visual.sourcePreviewStatus.hidden = !unavailable;
+    if (unavailable) { this.seekTarget = undefined; return; }
+    this.seekTarget = Math.min(targetSeconds, this.sourceVideo.duration - 0.001);
     this.seekSource();
   }
   seekSource() {
@@ -92,14 +158,25 @@ class ThoughtsVideoTrim {
     const target = this.seekTarget;
     this.seekTarget = undefined;
     if (Math.abs(video.currentTime-target) < 0.001) return;
-    video.addEventListener('seeked', () => {
+    // Keep the browser's decoded frame visible during seeking. Hiding the
+    // source exposes an unrelated saved poster or the empty image placeholder.
+    // An older seeked event can arrive after a newer seek starts. A one-use
+    // handler could be consumed too early and strand the latest target.
+    video.onseeked = () => {
       if (this.sourceVideo === video) this.seekSource();
-    }, {once:true});
+    };
     video.currentTime = target;
   }
+  repeatedArrowSequence(event) {
+    if (!this.visual.state?.trimming || event.type !== 'keydown' || !event.repeat || event.ctrlKey || event.altKey || event.metaKey) return '';
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return '';
+    // The terminal protocol's :2 marks held-key repeats. Go owns acceleration;
+    // ordinary taps still take xterm's normal path and reset the step size.
+    return `\x1b[1;${event.shiftKey ? 2 : 1}:2${event.key === 'ArrowLeft' ? 'D' : 'C'}`;
+  }
   sync(state, previous) {
-    if (!this.source) return;
-    if (state.trimming && state.sourceFrame && (!previous.sourceFrame || state.sourcePositionMS !== previous.sourcePositionMS)) this.showSource(state.sourcePositionMS);
+    if (!this.localFile) return;
+    if (state.trimming && state.sourceFrame && (!previous.sourceFrame || state.sourcePreviewMS !== previous.sourcePreviewMS)) this.showSource(state.sourcePreviewMS);
     if (!state.trimming && previous.trimming && this.acceptedVideo && this.visual.previewVideo !== this.acceptedVideo) this.showAccepted(false);
   }
   async prepare(state) {
@@ -111,6 +188,12 @@ class ThoughtsVideoTrim {
     this.controller = controller;
     let candidate, videoURL, posterURL;
     try {
+      const {startMS,endMS}=state.trim;
+      if (startMS < 0 || endMS > this.source.durationMS || endMS-startMS < 1000 || endMS-startMS > 30000) {
+        visual.sendAction({action:'sourceBounds',id:operationID});
+        return;
+      }
+      this.setStage(`Preparing ${(endMS-startMS)/1000}-second loop…`, operationID);
       const response = await this.request('/visual/video/preview', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceID:this.source.sourceID, trim:state.trim,videoQuality:state.videoQuality})},controller.signal);
       const prepared = await response.json();
       if (!this.owns(generation)) return;
@@ -137,10 +220,10 @@ class ThoughtsVideoTrim {
       }
       this.showAccepted(true);
       visual.sendAction({action:'loopReady',id:operationID,trim:this.accepted.trim,durationMS:this.accepted.durationMS,videoQuality:this.accepted.videoQuality,width:this.accepted.width,height:this.accepted.height,frameRate:this.accepted.frameRate});
-    } catch {
-      if (this.owns(generation) && !controller.signal.aborted) {
+    } catch (error) {
+      if (this.owns(generation) && !controller.signal.aborted && visual.state.id === operationID) {
         if (this.acceptedVideo) this.showAccepted(false);
-        visual.reply('failed',operationID);
+        visual.reply(error.videoAction || 'failed',operationID);
       }
     } finally {
       visual.retireVideo(candidate);
@@ -183,9 +266,12 @@ class ThoughtsVideoTrim {
     visual.stopPreviewPlayback();
     visual.retireVideo(this.sourceVideo); visual.retireVideo(this.acceptedVideo);
     for (const url of [this.sourceURL,this.acceptedVideoURL,this.acceptedPosterURL]) if (url) URL.revokeObjectURL(url);
-    this.source = undefined; this.accepted = undefined;
+    this.source = undefined; this.localFile = undefined; this.accepted = undefined;
     this.sourceVideo = undefined; this.acceptedVideo = undefined;
     this.sourceURL = undefined; this.acceptedVideoURL = undefined; this.acceptedPosterURL = undefined;
     this.seekTarget = undefined;
+    this.sourceStartSeconds = 0;
+    this.visual.sourcePreviewStatus.hidden = true;
+    visual.preview.hidden = false;
   }
 }

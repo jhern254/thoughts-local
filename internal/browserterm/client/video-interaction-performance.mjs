@@ -1,22 +1,24 @@
 // Concrete stress-demo workloads for background-performance.mjs. This measures
 // a completed terminal transition, not the first unrelated DOM mutation.
 import {expect} from '@playwright/test';
-import {readFileSync, writeFileSync} from 'node:fs';
+import {writeFileSync, createReadStream, statSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 
 export async function measureVideoInteractions({page, cdp, url, videoFixturePath, output, add, usage, count, qualityStudy, openVisual, chooseImage, clickControl}) {
-  const source = readFileSync(videoFixturePath);
+  const sourceBytes=statSync(videoFixturePath).size;
+  const sourceHash=createHash('sha256');for await(const chunk of createReadStream(videoFixturePath))sourceHash.update(chunk);
+  const sourceSHA256=sourceHash.digest('hex');
   await openVisual(page);
   const previewStart = performance.now();
-  await chooseImage(page,{name:'synthetic-interaction.mp4',mimeType:'video/mp4',...(qualityStudy ? {path:videoFixturePath} : {buffer:source})});
+  await chooseImage(page,{name:'synthetic-interaction.mp4',mimeType:'video/mp4',path:videoFixturePath});
   const previewMs = performance.now() - previewStart;
   const applyStart = performance.now();
   await clickControl(page,'Apply');
   await expect(page.locator('.xterm-rows')).not.toContainText('Background darkness:');
-  add({phase:'video-import', fixtureInput:qualityStudy ? 'local-file' : 'driver-buffer', previewMs, applyMs:performance.now()-applyStart});
+  add({phase:'video-import', fixtureInput:'local-file', previewMs, applyMs:performance.now()-applyStart});
   const prepared = await (await page.request.get(`${url}/visual/background`)).body();
   const poster = await (await page.request.get(`${url}/visual/poster`)).body();
-  add({phase:'interaction-fixture', sourceBytes:source.length, sourceSHA256:createHash('sha256').update(source).digest('hex'), preparedSHA256:createHash('sha256').update(prepared).digest('hex')});
+  add({phase:'interaction-fixture', sourceBytes, sourceSHA256, preparedSHA256:createHash('sha256').update(prepared).digest('hex')});
 
   // Fixture substitution is confined to the browser's authorized selected-asset
   // routes. Static mode uses the exact poster, not an unrelated cheaper picture.
@@ -243,7 +245,7 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
       await openVisual(page);
       // Quality qualification measures repeated interaction with the same exact
       // prepared bytes. Its one-time import is recorded separately above.
-      if (!qualityStudy) await chooseImage(page,{name:`synthetic-interaction-${run}.mp4`,mimeType:'video/mp4',buffer:source});
+      if (!qualityStudy) await chooseImage(page,{name:`synthetic-interaction-${run}.mp4`,mimeType:'video/mp4',path:videoFixturePath});
       await clickControl(page,'Apply');
       await expect(page.locator('.xterm-rows')).not.toContainText('Background darkness:',{timeout:120000});
       await expect(page.locator('#background-video')).toBeVisible();

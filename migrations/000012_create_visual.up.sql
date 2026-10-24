@@ -1,7 +1,7 @@
 CREATE TABLE visual (
     user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(user_id),
     background_asset TEXT,
-    darkness INTEGER NOT NULL DEFAULT 70 CHECK (typeof(darkness) = 'integer' AND darkness BETWEEN 0 AND 95),
+    darkness INTEGER NOT NULL DEFAULT 42 CHECK (typeof(darkness) = 'integer' AND darkness BETWEEN 0 AND 95),
     fit TEXT NOT NULL DEFAULT 'fill' CHECK (fit IN ('fill', 'fit')),
     zoom INTEGER NOT NULL DEFAULT 100 CHECK (typeof(zoom) = 'integer' AND zoom BETWEEN 100 AND 300),
     position_x INTEGER NOT NULL DEFAULT 5000 CHECK (typeof(position_x) = 'integer' AND position_x BETWEEN 0 AND 10000),

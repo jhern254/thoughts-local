@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -22,36 +23,40 @@ type BrowserOptionsMsg struct {
 	Height          int                    `json:"height"`
 	Action          string                 `json:"action"`
 	ID              uint64                 `json:"id"`
-	DurationMS      int64                  `json:"durationMS"`
-	Trim            visual.VideoTrim       `json:"trim"`
+	DurationMS      int64                  `json:"durationMS"` // Full source length for source replies; prepared loop length for loopReady.
+	Trim            visual.VideoTrim       `json:"trim"`       // Source interval used by the acknowledged loopReady preview.
 	Darkness        int                    `json:"darkness"`
 	Background      bool                   `json:"background"`
 	Kind            string                 `json:"kind"`
 	SpeedPercent    int                    `json:"speedPercent"`
 	UserPaused      bool                   `json:"userPaused"`
-	PlaybackBlocked bool                   `json:"playbackBlocked"`
+	PlaybackBlocked bool                   `json:"playbackBlocked"` // Playback failed or reduced-motion settings prevent play; separate from user Pause.
 	Framing         data.BackgroundFraming `json:"framing"`
 }
 
+// PreviewRect reserves space for browser media in terminal cells, not pixels.
 type PreviewRect struct{ X, Y, Width, Height int }
 
-// BrowserOptionsState exposes the reserved terminal cells, not pixel geometry.
+// BrowserOptionsState tells the browser which visual controls and preview to show.
 // ID changes for each browser operation so late results cannot affect a new page.
 type BrowserOptionsState struct {
-	VideoQuality     visual.VideoQuality    `json:"videoQuality"`
-	Open             bool                   `json:"open"`
-	ID               uint64                 `json:"id"`
-	Request          string                 `json:"request"`
-	Editing          bool                   `json:"editing"`
-	Framing          data.BackgroundFraming `json:"framing"`
-	Darkness         int                    `json:"darkness"`
-	SpeedPercent     int                    `json:"speedPercent"`
-	UserPaused       bool                   `json:"userPaused"`
-	Preview          PreviewRect            `json:"preview"`
-	Trimming         bool                   `json:"trimming"`
-	SourceFrame      bool                   `json:"sourceFrame"`
-	SourcePositionMS int64                  `json:"sourcePositionMS"`
-	Trim             visual.VideoTrim       `json:"trim"`
+	MaxVideoSourceBytes      int64                  `json:"maxVideoSourceBytes"`
+	MaxVideoSourceDurationMS int64                  `json:"maxVideoSourceDurationMS"`
+	VideoQuality             visual.VideoQuality    `json:"videoQuality"`
+	Open                     bool                   `json:"open"`
+	ID                       uint64                 `json:"id"`
+	Request                  string                 `json:"request"`
+	Editing                  bool                   `json:"editing"` // Framing controls (zoom/position) are open.
+	Framing                  data.BackgroundFraming `json:"framing"`
+	Darkness                 int                    `json:"darkness"`
+	SpeedPercent             int                    `json:"speedPercent"`
+	UserPaused               bool                   `json:"userPaused"`
+	Preview                  PreviewRect            `json:"preview"`
+	Preparation              PreviewRect            `json:"preparation"`     // Reserved cells keep controls fixed while the browser shows loading activity.
+	Trimming                 bool                   `json:"trimming"`        // Cut-selection controls are open; this does not mean encoding is running.
+	SourceFrame              bool                   `json:"sourceFrame"`     // Show the original-source frame instead of the prepared loop.
+	SourcePreviewMS          int64                  `json:"sourcePreviewMS"` // Source-relative position of the boundary being adjusted.
+	Trim                     visual.VideoTrim       `json:"trim"`            // Draft start/end times in source milliseconds; may differ from the accepted preview.
 }
 
 const (
@@ -92,20 +97,25 @@ type optionsState struct {
 
 	// Cut controls are drafts. Only loopReady/acceptedTrim identify the loop
 	// acknowledged by the browser; moving draft markers must never revoke it.
-	newVideo         bool
-	trimming         bool
-	trimFocus        int
-	sourceFrame      bool
-	sourceDurationMS int64
-	sourcePositionMS int64
-	trim             visual.VideoTrim
-	acceptedQuality  visual.VideoQuality
-	acceptedWidth    int
-	acceptedHeight   int
-	acceptedRate     visual.VideoFrameRate
-	acceptedTrim     visual.VideoTrim
-	loopDurationMS   int64
-	loopReady        bool
+	newVideo            bool // An unsaved source is selected; Edit loop remains available until Apply/discard.
+	trimming            bool
+	trimFocus           int
+	trimTimecode        textinput.Model
+	trimTimecodeEditing bool // Keyboard input is editing the Source / Start timecode.
+	trimRepeatKey       string
+	trimRepeatFocus     int
+	trimRepeatCount     int
+	sourcePreviewMS     int64
+	sourceFrame         bool
+	sourceDurationMS    int64
+	trim                visual.VideoTrim
+	acceptedQuality     visual.VideoQuality
+	acceptedWidth       int
+	acceptedHeight      int
+	acceptedRate        visual.VideoFrameRate
+	acceptedTrim        visual.VideoTrim // Source cuts for the acknowledged loop, retained while draft cuts change.
+	loopDurationMS      int64
+	loopReady           bool
 }
 
 func (m *Model) requestOptions(action string) {
@@ -119,20 +129,23 @@ func (m Model) OptionsState() BrowserOptionsState {
 	}
 	_, rect := m.optionsLayout()
 	return BrowserOptionsState{
-		Open:             m.options.open,
-		VideoQuality:     m.options.videoQuality,
-		ID:               m.options.id,
-		Request:          m.options.request,
-		Editing:          m.options.editing,
-		Framing:          m.options.framing,
-		Darkness:         m.options.darkness,
-		SpeedPercent:     m.options.speedPercent,
-		UserPaused:       m.options.userPaused,
-		Preview:          rect,
-		Trimming:         m.options.trimming,
-		SourceFrame:      m.options.sourceFrame,
-		SourcePositionMS: m.options.sourcePositionMS,
-		Trim:             m.options.trim,
+		MaxVideoSourceBytes:      visual.MaxVideoSourceBytes,
+		MaxVideoSourceDurationMS: visual.MaxVideoSourceDuration * 1000,
+		Open:                     m.options.open,
+		VideoQuality:             m.options.videoQuality,
+		ID:                       m.options.id,
+		Request:                  m.options.request,
+		Editing:                  m.options.editing,
+		Framing:                  m.options.framing,
+		Darkness:                 m.options.darkness,
+		SpeedPercent:             m.options.speedPercent,
+		UserPaused:               m.options.userPaused,
+		Preview:                  rect,
+		Preparation:              m.videoPreparationRect(),
+		Trimming:                 m.options.trimming,
+		SourceFrame:              m.options.sourceFrame,
+		SourcePreviewMS:          m.options.sourcePreviewMS,
+		Trim:                     m.options.trim,
 	}
 }
 
@@ -159,7 +172,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			m.options.hasBackground = false
 			m.options.framing = data.DefaultBackgroundFraming()
 			m.options.focus = optionsFocusChooseBackground
-			m.options.darkness = 70
+			m.options.darkness = data.DefaultBackgroundDarkness
 			m.options.speedPercent = 100
 			m.options.videoQuality = visual.VideoQualityEfficient
 			m.options.userPaused = false
@@ -185,7 +198,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 	switch msg.Action {
-	case "staged":
+	case "sourceSelected":
 		if m.options.request != "choose" || msg.DurationMS < 1000 || msg.DurationMS > visual.MaxVideoSourceDuration*1000 {
 			return m, nil
 		}
@@ -198,11 +211,24 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		m.options.hasBackground = true
 		m.options.trimming = true
 		m.options.sourceFrame = !m.options.loopReady
+		m.options.sourcePreviewMS = 0
+		m.options.trimRepeatCount = 0
 		m.options.trimFocus = trimFocusSource
+		m.options.trimTimecodeEditing = false
 		m.options.sourceDurationMS = msg.DurationMS
-		m.options.sourcePositionMS = 0
 		m.options.trim = visual.VideoTrim{StartMS: 0, EndMS: min(visual.MaxVideoDuration*1000, msg.DurationMS)}
 		m.options.status = "Set cut points, then Preview loop."
+	case "sourceChecking":
+		if m.options.request != "choose" {
+			return m, nil
+		}
+		m.options.status = "Checking video compatibility… Esc: cancel"
+		return m, nil
+	case "sourceBounds":
+		if m.options.request != "prepareLoop" {
+			return m, nil
+		}
+		m.options.status = "Verified source bounds differ. Adjust Start/End and preview again."
 	case "loopReady":
 		if m.options.request != "prepareLoop" || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
 			return m, nil
@@ -218,10 +244,14 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		m.options.loopReady = true
 		m.options.sourceFrame = false
 		m.options.status = "Preview ready. Done uses this loop."
+		if m.options.trimFocus == trimFocusPreview {
+			m.options.trimFocus = trimFocusDone
+		}
 	case "discarded":
 		if m.options.request != "discardVideo" {
 			return m, nil
 		}
+		m.options.trimTimecodeEditing = false
 		m.options.trimming = false
 		m.options.newVideo = false
 		m.options.loopReady = false
@@ -246,7 +276,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if msg.Framing.Valid() {
 			m.options.framing = msg.Framing
 		}
-		m.options.status = "JPEG/PNG · MP4/MOV SDR H.264 · source ≤120s / loop 1–30s / 128 MiB"
+		m.options.status = "JPEG/PNG · MP4/MOV SDR H.264 · source ≤4h / 8 GiB · loop 1–30s"
 	case "selected":
 		if m.options.request != "choose" {
 			return m, nil
@@ -294,7 +324,10 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		} else {
 			m.options.status = "Saved. Some background files could not be removed."
 		}
-	case "failed":
+	case "failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
+		if m.options.request == "prepareLoop" && m.options.loopReady {
+			m.options.sourceFrame = false
+		}
 		if m.options.request == "choose" {
 			m.options.newVideo = false
 			m.options.loopReady = false
@@ -311,6 +344,34 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			}
 		}
 		m.options.status = "Could not load or apply. Check media limits and retry."
+		if m.options.request == "prepareLoop" {
+			m.options.status = "Could not prepare this loop. Retry or choose another cut."
+		}
+		switch msg.Action {
+		case "sourceCodec":
+			m.options.status = "Unsupported video codec. H.264 is required."
+		case "sourceColor":
+			m.options.status = "Unsupported video color. Use 8-bit SDR Rec.709."
+		case "sourceDimensions":
+			m.options.status = "Video exceeds 4096 pixels per side or 9 million pixels."
+		case "sourceRate":
+			m.options.status = "Unsupported frame rate. Videos must be at most 60 FPS."
+		case "sourceDuration":
+			m.options.status = "Unsupported duration. Videos must be 1 second–4 hours."
+		case "sourceSize":
+			m.options.status = "Video exceeds the 8 GiB upload limit."
+		case "sourceTools":
+			m.options.status = "Video processing unavailable. Install FFmpeg and ffprobe."
+		case "sourceBusy":
+			m.options.status = "Another visual operation is running. Try again shortly."
+		case "sourceSpace":
+			m.options.status = "Not enough temporary disk space for the video source."
+		case "sourceTimeout":
+			m.options.status = "Video operation timed out. Try again or use a shorter cut."
+		case "sourceUnsupported":
+			m.options.status = "Could not validate this video. Use an intact H.264 MP4/MOV."
+		}
+
 	default:
 		return m, nil
 	}
@@ -454,7 +515,7 @@ func (m *Model) activateOption() {
 func (m Model) optionsLayout() (int, PreviewRect) {
 	if m.options.trimming {
 		width := max(10, min(80, m.width-4))
-		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-24))}
+		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-33))}
 	}
 	if m.options.editing {
 		width := max(10, min(80, m.width-4))
@@ -464,7 +525,7 @@ func (m Model) optionsLayout() (int, PreviewRect) {
 	x := max(0, (m.width-width)/2)
 	reserved := 24
 	if m.options.newVideo && m.options.loopReady {
-		reserved += 3
+		reserved += 4
 	}
 	if m.options.video {
 		reserved += m.videoOptionRows()
@@ -564,7 +625,7 @@ func (m Model) viewOptions() tea.View {
 	}
 	lines = append(lines, "", label(optionsFocusApply, "Apply"), label(optionsFocusRemoveBackground, "Remove background"), label(optionsFocusBack, "Back"))
 	if m.options.newVideo && m.options.loopReady {
-		lines = append(lines, m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
+		lines = append(lines, "", m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
 	}
 	if rect.Height == 0 && m.height < 20 {
 		lines = append(lines, muted.Render(m.options.status), muted.Render("↑/↓: focus · ←/→: value · Enter: activate · Q/Esc: back"))
@@ -613,7 +674,7 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.options.hasBackground = false
 		m.options.framing = data.DefaultBackgroundFraming()
 		m.options.focus = optionsFocusChooseBackground
-		m.options.darkness = 70
+		m.options.darkness = data.DefaultBackgroundDarkness
 		m.options.speedPercent = 100
 		m.options.userPaused = false
 		m.options.status = "Loading visual…"
@@ -693,7 +754,10 @@ func (m Model) acceptedVideoLabel() string {
 	return fmt.Sprintf("Previewed: %s · %d×%d · %s FPS", m.options.acceptedQuality.Label(), m.options.acceptedWidth, m.options.acceptedHeight, m.options.acceptedRate.Display())
 }
 func (m Model) acceptedVideoRangeLabel() string {
-	return fmt.Sprintf("Range: %s–%ss · plays %.2fs", trimSeconds(m.options.acceptedTrim.StartMS), trimSeconds(m.options.acceptedTrim.EndMS), float64(m.options.loopDurationMS)/float64(max(25, m.options.speedPercent)*10))
+	startTimecode := strings.TrimSuffix(trimTimecode(m.options.acceptedTrim.StartMS), ".000")
+	endTimecode := strings.TrimSuffix(trimTimecode(m.options.acceptedTrim.EndMS), ".000")
+	playbackSeconds := float64(m.options.loopDurationMS) / float64(max(25, m.options.speedPercent)*10)
+	return fmt.Sprintf("Range: %s - %s · plays %.2fs", startTimecode, endTimecode, playbackSeconds)
 }
 func (m Model) draftVideoQualityLabel() string {
 	if m.options.videoQuality != m.options.acceptedQuality {

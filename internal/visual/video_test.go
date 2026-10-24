@@ -20,6 +20,41 @@ func mp4Box(kind string, payload []byte) []byte {
 }
 
 func TestVideoContainer(t *testing.T) {
+	t.Run("source fragments retain metadata bounds and cannot become prepared output", func(t *testing.T) {
+		fileType := mp4Box("ftyp", []byte("isom0000isom"))
+		movie := mp4Box("moov", nil)
+		fragment := mp4Box("moof", mp4Box("traf", nil))
+		media := mp4Box("mdat", []byte{1})
+		source := bytes.Join([][]byte{fileType, movie, fragment, media}, nil)
+		if err := validateVideoContainer(bytes.NewReader(source), int64(len(source))); err != nil {
+			t.Fatalf("fragmented source: %v", err)
+		}
+		if err := inspectVideoContainer(bytes.NewReader(source), int64(len(source)), true); !errors.Is(err, ErrVideo) {
+			t.Fatalf("prepared fragments: got %v, want ErrVideo", err)
+		}
+		externalReference := mp4Box("dref", append([]byte{0, 0, 0, 0, 0, 0, 0, 1}, mp4Box("url ", []byte{0, 0, 0, 0})...))
+		for _, invalid := range [][]byte{
+			bytes.Join([][]byte{fileType, movie, mp4Box("moof", mp4Box("traf", externalReference)), media}, nil),
+			bytes.Join([][]byte{fileType, fragment, movie, media}, nil),
+			bytes.Join([][]byte{fileType, mp4Box("moov", fragment), media}, nil),
+		} {
+			if err := validateVideoContainer(bytes.NewReader(invalid), int64(len(invalid))); !errors.Is(err, ErrVideo) {
+				t.Fatalf("unsafe or misplaced fragment: got %v, want ErrVideo", err)
+			}
+		}
+		// Large metadata is virtual; the validator must bound it without reading payloads.
+		fragmentSize := int64(32 << 20)
+		header := make([]byte, 8)
+		binary.BigEndian.PutUint32(header, uint32(fragmentSize))
+		copy(header[4:], "moof")
+		offset := int64(len(fileType) + len(movie))
+		large := videoContainerHeaders{size: offset + fragmentSize + int64(len(media)), headers: map[int64][]byte{
+			0: fileType, int64(len(fileType)): movie, offset: header, offset + fragmentSize: media,
+		}}
+		if err := validateVideoContainer(large, large.size); !errors.Is(err, ErrVideo) {
+			t.Fatalf("combined movie and fragment metadata: got %v, want ErrVideo", err)
+		}
+	})
 	t.Run("accepts only self contained data references", func(t *testing.T) {
 		entry := mp4Box("url ", []byte{0, 0, 0, 1})
 		dref := append([]byte{0, 0, 0, 0, 0, 0, 0, 1}, entry...)
@@ -45,6 +80,29 @@ func TestVideoContainer(t *testing.T) {
 }
 
 func TestVideoLimits(t *testing.T) {
+	t.Run("source rejections identify the unsupported property without decoder text", func(t *testing.T) {
+		for _, scenario := range []struct {
+			name   string
+			change func(*videoStream)
+			want   error
+		}{
+			{"codec", func(stream *videoStream) { stream.CodecName = "hevc" }, ErrVideoCodec},
+			{"pixel format", func(stream *videoStream) { stream.PixFmt = "yuv420p10le" }, ErrVideoColor},
+			{"HDR", func(stream *videoStream) { stream.ColorTransfer = "smpte2084" }, ErrVideoColor},
+			{"resolution", func(stream *videoStream) { stream.Width = 7680 }, ErrVideoDimensions},
+			{"frame rate", func(stream *videoStream) { stream.AvgFrameRate = "120/1" }, ErrVideoFrameRate},
+			{"duration", func(stream *videoStream) { stream.Duration = "14401" }, ErrVideoDuration},
+		} {
+			t.Run(scenario.name, func(t *testing.T) {
+				stream := videoStream{CodecName: "h264", CodecType: "video", Width: 1920, Height: 1080, PixFmt: "yuv420p", AvgFrameRate: "30/1", Duration: "1020"}
+				scenario.change(&stream)
+				err := (videoProbe{Streams: []videoStream{stream}}).validate(false)
+				if !errors.Is(err, scenario.want) || !errors.Is(err, ErrVideo) {
+					t.Fatalf("got %v, want %v and ErrVideo", err, scenario.want)
+				}
+			})
+		}
+	})
 	t.Run("validates supported source and independent prepared output", func(t *testing.T) {
 		stream := videoStream{CodecName: "h264", CodecType: "video", Profile: "Constrained Baseline", Level: 32, Width: 1280, Height: 720, PixFmt: "yuv420p", AvgFrameRate: "24/1", SampleAspectRatio: "1:1", Duration: "8.0", ColorSpace: "bt709", ColorTransfer: "bt709", ColorPrimaries: "bt709", ColorRange: "tv"}
 		info := videoProbe{Streams: []videoStream{stream}}
@@ -54,7 +112,7 @@ func TestVideoLimits(t *testing.T) {
 		if err := info.validate(true); err != nil {
 			t.Fatal(err)
 		}
-		for _, change := range []func(*videoStream){func(s *videoStream) { s.PixFmt = "yuv420p10le" }, func(s *videoStream) { s.ColorTransfer = "smpte2084" }, func(s *videoStream) { s.Duration = "121" }, func(s *videoStream) { s.AvgFrameRate = "61/1" }, func(s *videoStream) { s.CodecName = "hevc" }} {
+		for _, change := range []func(*videoStream){func(s *videoStream) { s.PixFmt = "yuv420p10le" }, func(s *videoStream) { s.ColorTransfer = "smpte2084" }, func(s *videoStream) { s.Duration = "14400.001" }, func(s *videoStream) { s.AvgFrameRate = "61/1" }, func(s *videoStream) { s.CodecName = "hevc" }} {
 			bad := stream
 			change(&bad)
 			if err := (videoProbe{Streams: []videoStream{bad}}).validate(false); !errors.Is(err, ErrVideo) {
@@ -67,7 +125,7 @@ func TestVideoLimits(t *testing.T) {
 		}
 	})
 	t.Run("source duration and aggregate work remain separate from selected footage", func(t *testing.T) {
-		stream := videoStream{CodecName: "h264", CodecType: "video", Width: 1280, Height: 720, PixFmt: "yuv420p", AvgFrameRate: "24/1", Duration: "120"}
+		stream := videoStream{CodecName: "h264", CodecType: "video", Width: 1280, Height: 720, PixFmt: "yuv420p", AvgFrameRate: "24/1", Duration: "14400"}
 		if err := (videoProbe{Streams: []videoStream{stream}}).validate(false); err != nil {
 			t.Fatal(err)
 		}

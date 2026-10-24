@@ -1036,3 +1036,170 @@ and stale operation ownership. Temporary measurement scripts, JSON records and
 captures are kept together under `/tmp/thoughts-sine-preview`; the retained
 transform measurements are `performance-css-transforms.json`. They are local
 review artifacts, not required runtime assets or a new performance framework.
+
+## Long video sources
+
+The long-source editor accepts compatible local MP4/MOV sources from one second
+to four hours, up to **8 GiB**. Prepared backgrounds remain **1–30 seconds** at the
+existing Efficient, High quality and Maximum ceilings. Selection now streams the
+File once to native staging and validates compatibility before opening the cut
+editor. Known unsupported formats receive fixed feedback at that point. Start
+seeks the paused browser-local video and proposes the next 30 seconds, with a
+one-second minimum remaining at the source boundary. End can shorten that
+proposal and previews just before its exclusive boundary. Held arrows increase
+from 0.1-second to 1-second and then 5-second steps; fresh taps restore precision,
+and Shift multiplies the step by ten. Both cut controls reuse the same local seek
+coalescing (one seek in flight, one latest target), without processing requests.
+Explicit previews reuse the validated source; Apply copies the
+acknowledged derivative/poster without another encode. This moves the existing
+transfer/inspection earlier; it adds no complete-movie decode or extra upload.
+
+A transfer has a 20-minute total limit and 30-second idle-read limit. Source
+container/probe validation starts its own two-minute deadline after transfer;
+preparation keeps its existing separate two-minute deadline. The decoded-work
+limits stay at four billion source pixels and 7,200 frames **per preparation**,
+including keyframe preroll. Increasing source duration does not increase them.
+Native container inspection skips media payload using 64-bit offsets. The bounded
+source movie index ceiling increases from 8 to 32 MiB; an independently generated
+two-hour 60 FPS H.264/AAC sample had an 11,863,918-byte index. Prepared-loop indexes
+retain their 8 MiB ceiling. No complete-movie decode, transcode or thumbnail index
+is needed to stage or browse a source.
+
+Browser imports accept nonzero video/container timestamps. Chromium may retain
+that offset while Firefox starts the same file at zero. Local cut controls count
+from the browser's first decoded frame, and seeking adds that browser-specific
+offset back. Native preparation continues to use source-relative cuts. The
+original file is neither remuxed nor re-exported merely to change timestamps.
+For an offset source, Chromium can clip local seeking near the end; those cuts
+show a source-preview notice and remain available through native Preview loop.
+
+Self-contained fragmented MP4 sources are also accepted directly. Their initial
+movie and fragment indexes share the existing metadata budget; they need no
+whole-source remux. The output remains a validated, nonfragmented background.
+This addresses a reported compatible H.264 file rejected solely for its layout.
+
+### T480s observations
+
+These measurements predate moving transfer/validation to file selection; the
+recorded phase timings describe the earlier Preview-triggered transfer.
+
+Measured on 2026-10-21–22 with the reference i5-8250U/UHD 620 ThinkPad T480s, Linux,
+Go 1.25.14 and Brave/Chromium 148.0.7778.217. The headful browser reported a
+1920×1080 requested viewport. Three final runs used a synthetic 1920×1080, 30/1 FPS,
+7,200-second MP4: 216,000 frames, two-second keyframe interval, no B frames/audio,
+and **2,835,203,027 bytes (2.64 GiB)**. SHA-256:
+`a56a77e62d9a80c49060643db338d29f08da5c9d6edbf37b0ae3d7473008c678`.
+Its ten-second high-motion seed was repeated with stream copy, outside timing.
+The prepared late interval was 01:59:50–02:00:00, Efficient 1280×720 at 30/1 FPS,
+300 frames and 10,000 milliseconds.
+
+The final browser series ran after competing test/build processes finished, with
+no local builds or tests during timing. These are three observations, not a
+performance guarantee. Source hashes were streamed before timing; page-cache
+state was not reset. Native measurements below came from an earlier series under
+shared-machine load and are identified separately.
+
+| Browser operation | Median | Observed range |
+| --- | ---: | ---: |
+| File selection → usable paused source | 163 ms | 155–223 ms |
+| Direct source jump → completed seek, nine samples | 135 ms | 128–184 ms |
+| Initial whole-source transfer, browser upload-complete notification | 15.08 s | 12.00–16.27 s |
+| Transfer plus native validation/response | 15.15 s | 12.28–16.31 s |
+| Native late-loop preparation/verification and response | 4.42 s | 4.39–5.21 s |
+| Prepared preview loading/acknowledgement and TUI reply | 103 ms | 87–107 ms |
+| Apply, including activation and return navigation | 292 ms | 181–409 ms |
+
+Upload completion is a browser notification, not an authoritative processor-phase
+boundary; subtracting it from response timing does not isolate FFprobe CPU time.
+The earlier shared-load native benchmark measured container/probe validation at a median
+76.8 ms. Native staging, including a real local-file copy, took a median 22.68 s
+(range 18.98–32.00 s). Native ten-second preparation medians were 4.59 s at the
+start, 4.56 s in the middle and 4.89 s at the end; Apply was 56 ms. This supports
+late seeking within the fixed work budget for this indexed, short-GOP fixture;
+it does not establish fast seeking for every supported container.
+
+During each complete browser import/seek/prepare/Apply workload, browser CPU
+increased by 12.66–14.38 CPU-seconds and native-host CPU by 6.79–7.71 CPU-seconds.
+The host counter excludes processor children. Sampled host peak RSS was
+32.4–36.7 MiB. Summed browser peak RSS was 729–853 MiB, which double-counts shared
+pages; peak browser PSS was 265–348 MiB and ending PSS was 226–245 MiB. These are process observations, not
+hard RSS bounds, and exclude kernel file caches. The earlier shared-load native benchmark
+series, including children and untimed setup, consumed 45.46 user/14.60 system
+CPU-seconds over 141.42 seconds; GNU time reported peak RSS of 119.8 MiB. Staging
+allocated approximately 130–161 KiB of Go heap per operation rather than a
+movie-sized byte slice. Peak native temporary input occupies one source's size,
+plus bounded loop candidates/posters; a previous staged source is retired before
+receiving its replacement. Normal Apply/Cancel/session retirement removed staging. The final browser series
+sampled a peak 2,840,060,658 logical temporary bytes (2,840,068,096 allocated),
+consistent with one source plus bounded output; no temporary files remained.
+
+CDP reported `VaapiVideoDecoder` with `kIsPlatformVideoDecoder=true` for observed
+players. This is an observed decoder selection, not a matched software-decoder
+comparison or a guarantee for other machines. Steady playback, slowdown and
+reduced-motion costs are unchanged architecturally; the earlier quality study
+remains separate from these one-time import measurements.
+
+### Reproduction and limits
+
+Generate only disposable, non-private fixtures outside routine CI:
+
+```sh
+ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=10 \
+  -c:v libx264 -threads 2 -preset ultrafast -pix_fmt yuv420p \
+  -b:v 3M -minrate 3M -maxrate 3M -bufsize 6M -x264-params nal-hrd=cbr \
+  -g 60 -color_primaries bt709 -color_trc bt709 -colorspace bt709 \
+  -color_range tv -movflags +faststart /tmp/seed.mp4
+ffmpeg -stream_loop -1 -i /tmp/seed.mp4 -t 7200 -c copy \
+  -movflags +faststart /tmp/two-hours.mp4
+
+THOUGHTS_BACKGROUND_PERF_DISPOSABLE=1 THOUGHTS_PERF_LONG_SOURCE=1 \
+THOUGHTS_PERF_IMPORT_ONLY=1 THOUGHTS_PERF_SAMPLES=3 \
+THOUGHTS_PERF_VIDEO_FIXTURE=/tmp/two-hours.mp4 \
+  node internal/browserterm/client/background-performance.mjs \
+  http://127.0.0.1:PORT APP_PID /tmp/long-source-results.json
+```
+
+The existing `BenchmarkVideoTrim` now opens source files as streams, separates
+validation, and measures first/middle/end preparation and Apply. Use the existing
+compiled-benchmark invocation with `THOUGHTS_VIDEO_BENCH_FIXTURE` pointing to the
+long fixture. Browser and native harnesses stream fixture hashes/input rather
+than loading a multi-gigabyte source into their own memory. Preparation still
+loads only bounded derivatives where the established API requires bytes.
+
+Routine CI uses small two-hour synthetic media, virtual large containers and
+counting readers for the exact 8 GiB boundary. The real smoke source above was
+2.64 GiB; an actual 8 GiB transfer was not measured. Extremely long GOPs, large
+indexes, unsupported timestamps/codecs and processing deadlines can still cause
+safe rejection. A two-hour, two-FPS single-GOP regression proves that a late cut
+cannot expand the unchanged 7,200-frame decode budget. Original sources remain
+unencrypted temporary presentation inputs, not archived attachments; abnormal
+termination can leave large private staging files. See the media-handling policy
+for cleanup and disk-exposure details. Raw qualification artifacts were kept under
+`/tmp/thoughts-long-video-review`; fixtures can be regenerated with the recipe.
+
+### Matched short-source comparison
+
+The short fixture uses the same 1080p30 seed, 60 seconds/1,800 frames, SHA-256
+`e3bb86156e6f9f930e8e3bf60dcec9c373b93b6dff3f61675b26137c9a6b850e`.
+After other worktrees' tests finished, three alternating baseline/current runs
+measured the same ten-second late cut. The baseline tree was identical to merged
+master `afb7939`; compilation happened before timing. Native preparation medians
+were **4.741 s baseline** (4.590–4.800) and **4.667 s current** (4.614–4.723).
+The ranges overlap: this workload shows no detectable regression, rather than
+an established speedup. Earlier contended, non-alternating results were excluded
+from that comparison. Short-source staging medians from the shared-load series
+were 146 ms baseline and 137 ms current; those are not controlled speedup claims.
+The source copy/probe boundary changed, while the encoder arguments and bounded
+prepared-output checks remain the same.
+
+### Four-hour source ceiling
+
+The source ceiling is now four hours, with the same 8 GiB byte limit, 32 MiB
+source-index limit, 1–30-second derivative, quality tiers, transfer/processing
+deadlines and per-preparation decoded-work budgets. Increasing duration alone
+adds no recurring playback work. Transfer cost still depends on source bytes;
+index size and keyframe spacing can affect validation and seeking. The measured
+2.64 GiB/two-hour results above are not four-hour performance measurements.
+Small synthetic four-hour sources verify late native cuts and browser-local
+seeking/upload reuse. MKV remains outside this PR: container validation and
+cross-browser local preview require a separate compatibility design.

@@ -89,9 +89,38 @@ data streams, chapters, source location/device/date metadata and comments are
 not retained. Display rotation is normalized into frames; only supported SDR
 color interpretation and necessary playback/container information remain.
 
-Source limits are 128 MiB, 1–120 seconds, 4,096 pixels per axis, 9 million pixels
-per frame and 60 FPS. Selected footage is 1–30 seconds. Import quality is a
-persisted preference, initially Efficient, with these output ceilings:
+### Upload compatibility at a glance
+
+An `.mp4` or `.mov` extension describes the container, not the video encoding
+inside it. Supported uploads must meet all applicable limits below and be
+decodable by the browser used for source preview.
+
+| Video characteristic | Current support |
+| --- | --- |
+| H.264, 8-bit SDR with supported Rec.709 color | Supported; untagged color is interpreted as Rec.709. |
+| Standard or self-contained fragmented MP4 | Supported; fragmentation alone does not require re-exporting the source. |
+| Nonzero starting timestamps | Supported; some late-frame previews are limited by the browser. Native Preview loop remains available. |
+| Large or long sources | Up to 8 GiB and 1 second–4 hours. Saved loops remain 1–30 seconds. |
+| 1080p and 4K | Supported within 4,096 pixels per axis and 9 million pixels per frame. |
+| Frame rates up to 60 FPS, including 29.97/59.94 | Supported. |
+| Portrait video and ordinary 90° rotation | Supported; orientation is normalized in the saved loop. |
+| Audio/subtitle tracks | Allowed, then removed; one video track and four total tracks maximum. |
+| HEVC/H.265, AV1, VP9 or ProRes inside MP4/MOV | Not currently supported. |
+| HDR, 10-bit video or explicitly tagged colors other than Rec.709 | Not currently supported, including some valid older SDR files. |
+| 120 FPS, 8K or sources exceeding the limits above | Rejected at selection. |
+| Encrypted video, external-file references, malformed or excessively complex containers | Rejected for safety or bounded processing. |
+
+The main format gaps are HEVC, HDR/10-bit and other color formats. These are
+implementation limitations, not evidence that such files are unsafe.
+Selection checks catch known incompatibilities; damaged frames, unusually
+expensive decoding or storage failures can still prevent a particular preview.
+Preparation failures leave the existing background selected and report fixed
+feedback.
+
+### Prepared output
+
+Import quality is a persisted preference, initially Efficient, with these output
+ceilings:
 
 | Quality | Longest axis | Pixels/frame | FPS | Video bytes | VBV maximum rate / buffer |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -112,7 +141,7 @@ bounds, following the H.264 Annex A limits also used by
 Visible even dimensions alone do not establish level compatibility.
 Re-encoding is lossy. Untagged SDR
 is interpreted as Rec.709; explicit incompatible primaries/transfer, ICC video
-profiles, HDR/HEVC, encrypted/fragmented/reference movies, arbitrary display
+profiles, HDR/HEVC, encrypted/reference movies, arbitrary display
 transforms and unsupported encodings are rejected rather than silently relabeled.
 
 Native processing stages private application-named files, uses explicit argument
@@ -121,14 +150,24 @@ references, limits work and joins canceled subprocesses before cleanup. FFmpeg
 and ffprobe are installed separately and must be maintained by the user. This
 boundary is not an OS sandbox; protocol restrictions alone do not confine files.
 Staging bounds the source bytes/container/stream declarations without rejecting
-a two-minute 1080p60 source merely because its full duration exceeds a decoded
+a four-hour source merely because its full duration exceeds a decoded
 pixel budget. Each preparation instead counts decoded frames before timestamp
 trimming and FPS reduction, including preceding-keyframe seek preroll. Exceeding
 four billion nominal source pixels or 7,200 frames cancels and joins FFmpeg.
 Decoder and pipe read-ahead can occur; this is an application work budget, not
 a hard CPU, process-memory or OS sandbox limit. Extremely long GOPs can make
 a late cut exceed it; choose an earlier/shorter cut or export a source with more
-frequent keyframes. Finite two-minute operation deadlines remain unchanged.
+frequent keyframes. Transfer has a finite 20-minute total limit and a 30-second no-progress read
+limit. Native container/probe validation receives a fresh two-minute deadline
+after transfer; each preparation retains its separate two-minute deadline.
+Increasing source duration does not increase the decoded-frame or pixel budgets.
+Self-contained fragmented MP4 is accepted directly: its packet indexes are
+spread across fragments rather than stored in one initial movie index. FFmpeg
+reads that layout without a preliminary whole-file remux. Initial movie and
+fragment metadata share the 32 MiB source-index budget; prepared output remains
+nonfragmented. External file references and encrypted movies remain rejected.
+Source movie indexes are bounded to 32 MiB; prepared-loop indexes remain bounded
+to 8 MiB. Four-stream, nesting, box-count and processor-allocation limits remain.
 
 Prepared output has its own tier-size limit, container/stream checks, actual
 packet cadence/count and VBV-envelope validation, and a bounded full independent
@@ -142,11 +181,34 @@ preview exclusivity and playback failure are browser lifecycle conditions, never
 saved pause preferences. A stable poster covers loading, buffering, pause and
 failure. No frames travel through the terminal or WebSocket. Local video/poster
 assets and staging files are not encrypted; crashes can leave unselected files.
-Future vault work must include these assets. New-upload trimming temporarily
-retains one privately staged source while Visual is open; Apply, Cancel, closing
+Future vault work must include these assets.
+
+Choosing a video streams it once into private native staging and checks its
+container and technical properties before opening the cut editor. Known
+unsupported codecs, color formats, dimensions, frame rates and durations receive
+fixed rejection messages at selection. This inspection does not encode or decode
+the complete movie. It is not a guarantee that every later cut will succeed:
+damaged frames, processing budgets, disk failures and cancellation can still
+prevent preparation. A prepared loop is usable only after output validation and
+browser acknowledgement.
+
+The browser keeps the File/object URL and one muted, paused source-video element.
+Moving Start or End seeks that element without another upload, native processing or
+thumbnail generation. Previews reuse the validated native source. The application
+never buffers the whole movie into a JavaScript ArrayBuffer or Go byte slice.
+Nonzero timestamp origins are accepted; source-relative controls account for the
+browser's origin. Where Chromium cannot seek a late source frame, a fixed notice
+directs the user to native Preview loop instead.
+New-upload trimming temporarily retains that source while Visual is open; Apply, Cancel, closing
 Visual, disconnect and orderly shutdown remove it after joining processing.
 It is not an archive; saved clips have no retained source or re-trim metadata.
 A crash can leave staging files, as with other incomplete filesystem operations.
+An 8 GiB source can occupy roughly that much additional temporary disk space,
+plus bounded candidates and accepted output. Sources and derivatives are
+unencrypted; larger staging increases the amount and duration of private data
+exposed on local storage. Orderly cleanup is not secure erasure. Unsupported,
+poorly indexed or very long-GOP movies may still be rejected. The source file
+on the user's device is never changed.
 Only explicit Preview loop encodes; Apply saves the last acknowledged prepared
 video and poster unchanged. Draft cut or quality edits do not replace that
 accepted loop. Its quality, dimensions, rational FPS and interval belong to the

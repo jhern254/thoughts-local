@@ -4,12 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/visual"
@@ -199,4 +205,237 @@ func TestVideoEditor_Routes(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestVideoSource_Admission(t *testing.T) {
+	t.Run("source rejections expose only fixed reasons", func(t *testing.T) {
+		for _, scenario := range []struct {
+			err    error
+			reason string
+		}{
+			{visual.ErrVideoCodec, "sourceCodec"},
+			{visual.ErrVideoColor, "sourceColor"},
+			{visual.ErrVideoDimensions, "sourceDimensions"},
+			{visual.ErrVideoFrameRate, "sourceRate"},
+			{visual.ErrVideoDuration, "sourceDuration"},
+		} {
+			t.Run(scenario.reason, func(t *testing.T) {
+				response := httptest.NewRecorder()
+				videoSourceError(response, errors.Join(scenario.err, errors.New("PRIVATE decoder path")))
+				if response.Code != http.StatusBadRequest || response.Header().Get("X-Video-Rejection") != scenario.reason {
+					t.Fatalf("got %d %q, want 400 %q", response.Code, response.Header().Get("X-Video-Rejection"), scenario.reason)
+				}
+				if strings.Contains(response.Body.String(), "PRIVATE") || strings.Contains(response.Header().Get("X-Video-Rejection"), "PRIVATE") {
+					t.Fatal("rejection exposed decoder text")
+				}
+			})
+		}
+	})
+	t.Run("transfer does not consume the preparation deadline", func(t *testing.T) {
+		s := &server{videoEditor: newVideoEditor(t.Context())}
+		id, _ := s.videoEditor.setOpen(true)
+		defer s.videoEditor.Close()
+		for _, path := range []string{"/visual/video/source", "/visual/video/preview"} {
+			r := httptest.NewRequest("POST", path, nil)
+			r.Header.Set("X-Visual-Editor", id)
+			_, ctx, finish, ok := s.beginVideoEdit(httptest.NewRecorder(), r, false)
+			if !ok {
+				t.Fatal("admission failed")
+			}
+			deadline, _ := ctx.Deadline()
+			remaining := time.Until(deadline)
+			finish()
+			want := visual.MaxVideoProcessingTime
+			if path == "/visual/video/source" {
+				want += visual.MaxVideoTransferTime
+			}
+			if remaining > want || remaining < want-time.Second {
+				t.Fatalf("%s deadline=%v, want approximately %v", path, remaining, want)
+			}
+		}
+	})
+	t.Run("rejects oversized Content-Length before reading", func(t *testing.T) {
+		s := &server{videoEditor: newVideoEditor(t.Context()), authority: "127.0.0.1:7777", visual: visual.NewService(&visualStore{}, "user", t.TempDir())}
+		id, _ := s.videoEditor.setOpen(true)
+		defer s.videoEditor.Close()
+		r := httptest.NewRequest("POST", "http://127.0.0.1:7777/visual/video/source", nil)
+		r.Header.Set("Origin", "http://127.0.0.1:7777")
+		r.Header.Set("X-Visual-Editor", id)
+		r.ContentLength = visual.MaxVideoSourceBytes + 1
+		r.Body = unreadableVideoBody{t: t}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != 413 || strings.Contains(w.Body.String(), "PRIVATE") {
+			t.Fatalf("response=%d %q, want fixed 413", w.Code, w.Body.String())
+		}
+	})
+	t.Run("disk failures return fixed feedback without OS paths", func(t *testing.T) {
+		failures := []error{syscall.ENOSPC, syscall.EDQUOT}
+		if runtime.GOOS == "windows" {
+			failures = append(failures, syscall.Errno(112), syscall.Errno(39))
+		}
+		for _, failure := range failures {
+			w := httptest.NewRecorder()
+			videoError(w, &os.PathError{Op: "write", Path: "PRIVATE", Err: failure})
+			if w.Code != 507 || !strings.Contains(w.Body.String(), "temporary disk space") || strings.Contains(w.Body.String(), "PRIVATE") {
+				t.Fatalf("disk failure %v: response=%d %q", failure, w.Code, w.Body.String())
+			}
+		}
+	})
+}
+
+type unreadableVideoBody struct{ t *testing.T }
+
+func (body unreadableVideoBody) Read([]byte) (int, error) {
+	body.t.Fatal("oversized source body was read")
+	return 0, io.EOF
+}
+func (unreadableVideoBody) Close() error { return nil }
+
+func TestVideoSource_ReadDeadline(t *testing.T) {
+	t.Run("a stalled transfer keeps its finite total deadline", func(t *testing.T) {
+		response := &videoDeadlineResponse{ResponseRecorder: httptest.NewRecorder()}
+		total := time.Now().Add(-time.Second)
+		reader := videoTransferReader{ctx: t.Context(), input: deadlineVideoInput{response}, controller: http.NewResponseController(response), deadline: total}
+		_, err := reader.Read(make([]byte, 32))
+		if !errors.Is(err, os.ErrDeadlineExceeded) || !response.deadline.Equal(total) {
+			t.Fatalf("read=%v deadline=%v, want expired total %v", err, response.deadline, total)
+		}
+		w := httptest.NewRecorder()
+		videoError(w, err)
+		if w.Code != 408 {
+			t.Fatalf("status=%d, want 408", w.Code)
+		}
+	})
+	t.Run("cancellation wins even if the idle deadline was just reset", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		response := &videoDeadlineResponse{ResponseRecorder: httptest.NewRecorder()}
+		reader := videoTransferReader{ctx: ctx, input: unreadableVideoBody{t: t}, controller: http.NewResponseController(response), deadline: time.Now().Add(visual.MaxVideoTransferTime)}
+		_, err := reader.Read(make([]byte, 32))
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("read=%v, want canceled", err)
+		}
+		if remaining := time.Until(response.deadline); remaining > visual.MaxVideoTransferIdleTime || remaining < visual.MaxVideoTransferIdleTime-time.Second {
+			t.Fatalf("idle deadline=%v, want approximately 30s", remaining)
+		}
+	})
+}
+
+type videoDeadlineResponse struct {
+	*httptest.ResponseRecorder
+	deadline time.Time
+}
+
+func (response *videoDeadlineResponse) SetReadDeadline(deadline time.Time) error {
+	response.deadline = deadline
+	return nil
+}
+
+type deadlineVideoInput struct{ response *videoDeadlineResponse }
+
+func (input deadlineVideoInput) Read([]byte) (int, error) {
+	if input.response.deadline.Before(time.Now()) {
+		return 0, os.ErrDeadlineExceeded
+	}
+	return 0, io.EOF
+}
+
+func TestVideoSource_Replacement(t *testing.T) {
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Skip("requires video tools")
+	}
+	sources := t.TempDir()
+	t.Setenv("TMPDIR", sources)
+	s := &server{videoEditor: newVideoEditor(t.Context()), authority: "127.0.0.1:7777", visual: visual.NewService(&visualStore{}, "user", t.TempDir())}
+	id, _ := s.videoEditor.setOpen(true)
+	defer s.videoEditor.Close()
+	fixture, err := os.ReadFile("client/fixtures/visual-video.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := videoEditRequest(t, s, id, "POST", "/visual/video/source", fixture); w.Code != 200 {
+		t.Fatalf("initial stage=%d", w.Code)
+	}
+	r := httptest.NewRequest("POST", "http://127.0.0.1:7777/visual/video/source", nil)
+	r.Header.Set("Origin", "http://127.0.0.1:7777")
+	r.Header.Set("X-Visual-Editor", id)
+	r.Body = io.NopCloser(replacementVideoBody{t: t, directory: sources})
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != 400 {
+		t.Fatalf("invalid replacement=%d, want 400", w.Code)
+	}
+	files, err := os.ReadDir(sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 || s.videoEditor.source != nil {
+		t.Fatalf("replacement failure retained %d inputs", len(files))
+	}
+}
+
+type replacementVideoBody struct {
+	t         *testing.T
+	directory string
+}
+
+func (body replacementVideoBody) Read([]byte) (int, error) {
+	files, err := os.ReadDir(body.directory)
+	if err != nil {
+		body.t.Fatal(err)
+	}
+	if len(files) != 1 {
+		body.t.Fatalf("staging owns %d source directories, want only the replacement", len(files))
+	}
+	return 0, io.EOF
+}
+
+func TestVideoSource_BrowserTimeline(t *testing.T) {
+	tool, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("requires video tools")
+	}
+	directory := t.TempDir()
+	path := filepath.Join(directory, "offset.mp4")
+	command := exec.CommandContext(t.Context(), tool, "-v", "error", "-f", "lavfi", "-i", "color=size=32x24:rate=24:duration=2", "-c:v", "libx264", "-threads", "1", "-pix_fmt", "yuv420p", "-output_ts_offset", "5", "-movflags", "+faststart", path)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("fixture: %v %s", err, output)
+	}
+	staging := filepath.Join(directory, "staging")
+	if err := os.Mkdir(staging, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", staging)
+	s := &server{videoEditor: newVideoEditor(t.Context()), authority: "127.0.0.1:7777", visual: visual.NewService(&visualStore{}, "user", filepath.Join(directory, "assets"))}
+	id, _ := s.videoEditor.setOpen(true)
+	defer s.videoEditor.Close()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := videoEditRequest(t, s, id, "POST", "/visual/video/source", body)
+	if response.Code != http.StatusOK {
+		t.Fatalf("timeline response=%d %q", response.Code, response.Body.String())
+	}
+	files, err := os.ReadDir(staging)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || s.videoEditor.source == nil {
+		t.Fatal("nonzero timestamp prevented normal source staging")
+	}
+	if got := s.videoEditor.source.Info().DurationMS; got != 2000 {
+		t.Fatalf("source duration = %d, want 2000 independent of timestamp origin", got)
+	}
+	if err := s.videoEditor.Close(); err != nil {
+		t.Fatal(err)
+	}
+	files, err = os.ReadDir(staging)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
+		t.Fatal("closing editor retained staged source")
+	}
 }
