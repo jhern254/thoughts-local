@@ -70,7 +70,13 @@ create a separate empty Subject after confirmation. Existing records stay with
 the original Subject.
 
 - Q and Esc go back through lists, details, expanded events, and curve controls.
-- In forms and filter input, Q remains text; Esc cancels or goes back.
+- In forms and filter input, Q remains text; Esc cancels or goes back. Thought
+  drafts start in **Insert**: Esc switches to **Normal**, where h/j/k/l or arrows
+  move and i/a/o resume insertion. In Normal mode, **v** starts/stops dictation
+  and **u** restores an automatically removed spoken prefix. **Ctrl+C** also leaves Insert mode (browser selections still copy). **Ctrl+Q** cancels a draft, confirming when it
+  contains text; **Ctrl+S** saves. Esc during recording stops capture and preserves
+  the draft. **Options → Editor** saves current-line highlighting (off by default)
+  and the speech-pause newline threshold (1.5 seconds by default, configurable or off).
 - At top-level Events or the focused entity selector, Esc or Ctrl+C opens an
   exit confirmation. No is selected by default. Use Left/Right or Tab to select,
   then Enter to accept; Y exits immediately, and N/Q/Esc cancels.

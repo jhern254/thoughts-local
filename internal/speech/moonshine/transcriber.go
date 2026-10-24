@@ -272,3 +272,17 @@ func modelCleanupFailure(err error) error {
 	}
 	return &modelCleanupError{cause: err}
 }
+
+func joinTranscriptSegments(segments []speech.Segment) string {
+	var text strings.Builder
+	for _, segment := range segments {
+		if segment.Text == "" {
+			continue
+		}
+		if text.Len() > 0 {
+			text.WriteByte(' ')
+		}
+		text.WriteString(segment.Text)
+	}
+	return text.String()
+}

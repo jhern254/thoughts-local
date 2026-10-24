@@ -180,14 +180,21 @@ func TestModel_BackKeys(t *testing.T) {
 	}{
 		{"editor", enterKey()}, {"filter", runeKey('/')},
 	} {
-		t.Run("Q remains text in thought "+state.name+" and Ctrl+C is ignored", func(t *testing.T) {
+		t.Run("Q remains text in thought "+state.name+" while Ctrl+C preserves the draft", func(t *testing.T) {
 			m := rootOpenThoughts(t, filterRoot(t))
 			m, _ = rootUpdate(m, state.key)
 			m, _ = rootUpdate(m, runeKey('q'))
 			before := m.View().Content
 			m, cmd := rootUpdate(m, controlC())
-			if cmd != nil || m.View().Content != before || !strings.Contains(before, "q") {
-				t.Fatal("Ctrl+C changed input or Q was not text")
+			if !strings.Contains(before, "q") || m.exitPromptOpen {
+				t.Fatal("Q was not text or Ctrl+C opened app exit")
+			}
+			if state.name == "editor" {
+				if !m.thoughts.Creating() || !strings.Contains(m.View().Content, "NORMAL") || !strings.Contains(m.View().Content, "q") {
+					t.Fatal("Ctrl+C did not preserve the draft in Normal mode")
+				}
+			} else if cmd != nil || m.View().Content != before {
+				t.Fatal("Ctrl+C changed filter input")
 			}
 		})
 	}

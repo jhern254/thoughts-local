@@ -41,7 +41,7 @@ type voiceSubjectSuggestion struct {
 	frozenCommand     subjectdiscovery.SpokenPrefix // Confirmed boundary retained at Stop for cleanup and late resolution.
 	proposedName      string                        // Optional unknown name; must not block saving as Misc.
 	proposedCommand   subjectdiscovery.SpokenPrefix // Uncertain boundary awaiting explicit Subject confirmation.
-	cleanup           *voicePrefixCleanup           // One-shot F9 restoration; retired by restore or another recording.
+	cleanup           *voicePrefixCleanup           // One-shot prefix restoration; retired by restore or another recording.
 }
 
 // ConfigureVoiceSubjectDiscovery supplies the read-only coordinator at application

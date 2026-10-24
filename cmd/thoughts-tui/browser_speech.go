@@ -23,6 +23,7 @@ type browserSpeechConsumer struct {
 	normalizedSamples       [1600]float32
 	lastPublishedTranscript string
 	transcriptRevision      uint64
+	formatter               voice.TranscriptFormatter
 }
 
 func (consumer *browserSpeechConsumer) ConsumePCM(ctx context.Context, pcmSamples []int16) error {
@@ -52,6 +53,10 @@ func (consumer *browserSpeechConsumer) ConsumePCM(ctx context.Context, pcmSample
 	if !utf8.ValidString(transcript.Text) || len(transcript.Text) > voice.MaximumTranscriptBytes {
 		return speech.ErrTranscription
 	}
+	transcript.Text = consumer.formatter.Format(transcript)
+	if !utf8.ValidString(transcript.Text) || len(transcript.Text) > voice.MaximumTranscriptBytes {
+		return speech.ErrTranscription
+	}
 	if transcript.Text == consumer.lastPublishedTranscript {
 		return nil
 	}
@@ -70,6 +75,7 @@ func (consumer *browserSpeechConsumer) ConsumePCM(ctx context.Context, pcmSample
 func (consumer *browserSpeechConsumer) Close() error {
 	clear(consumer.normalizedSamples[:])
 	consumer.lastPublishedTranscript = ""
+	consumer.formatter = voice.TranscriptFormatter{}
 	return consumer.moonshineStream.Close()
 }
 

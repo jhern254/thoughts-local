@@ -13,6 +13,8 @@ import (
 func TestModel_RestoreVoicePrefix(t *testing.T) {
 	for _, text := range []string{
 		"fitness thought, exercised today.",
+		"fitness thought, first sentence.\nSecond sentence.",
+		"fitness thoughts, first sentence.\nSecond sentence.",
 		"meditation thought — étudier 日本語.",
 		"Programming in Go thought: practiced interfaces.",
 		"Fitness thoughts: try shorter workouts",
@@ -27,7 +29,7 @@ func TestModel_RestoreVoicePrefix(t *testing.T) {
 				m, recording := startDiscoveryRecording(m)
 				m = transcript(m, recording, 1, text)
 				m, _ = m.Update(voice.RecordingEnded{Recording: recording})
-				if m.input.Value() == text || !strings.Contains(m.View(), "F9: Restore prefix") {
+				if m.input.Value() == text || !strings.Contains(m.View(), "u: Restore prefix") {
 					t.Fatal("cleanup did not offer restore")
 				}
 				if focus == "subject" {
@@ -39,7 +41,7 @@ func TestModel_RestoreVoicePrefix(t *testing.T) {
 				}
 				m, _ = m.Update(key(tea.KeyF9))
 				m.refreshSpokenSubject(true)
-				if m.input.Value() != text || strings.Contains(m.View(), "F9: Restore prefix") {
+				if m.input.Value() != text || strings.Contains(m.View(), "u: Restore prefix") {
 					t.Fatal("restore duplicated or re-cleaned prefix")
 				}
 				_, save := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
@@ -123,7 +125,9 @@ func TestModel_RestoreVoicePrefix(t *testing.T) {
 				m = transcript(m, r, 1, "Literal addition.")
 				m, _ = m.Update(voice.RecordingEnded{Recording: r})
 			case "cancel":
-				m, _ = m.Update(key(tea.KeyEscape))
+				m, _ = m.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
+				m, _ = m.Update(key(tea.KeyTab))
+				m, _ = m.Update(key(tea.KeyEnter))
 			case "reset":
 				m.Reset()
 			case "save":
@@ -137,7 +141,7 @@ func TestModel_RestoreVoicePrefix(t *testing.T) {
 			}
 			before := m.input.Value()
 			m, _ = m.Update(key(tea.KeyF9))
-			if m.input.Value() != before || strings.Contains(m.View(), "F9: Restore prefix") {
+			if m.input.Value() != before || strings.Contains(m.View(), "u: Restore prefix") {
 				t.Fatal("retired cleanup survived")
 			}
 		})

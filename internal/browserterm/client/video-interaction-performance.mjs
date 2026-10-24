@@ -335,7 +335,7 @@ export async function measureVideoInteractions({page, cdp, url, videoFixturePath
     await expect(page.locator('#status')).toHaveText('Transcribing…');
     await sample('synthetic-microphone');
     await page.keyboard.press('F8');
-    await expect(page.locator('.xterm-rows')).toContainText('F8: Record');
+    await expect(page.locator('.xterm-rows')).toContainText('v: Record');
     await page.keyboard.press('Escape');
     await openVisual(page);
     await clickControl(page,'Playback speed: 100%');

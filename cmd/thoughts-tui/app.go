@@ -9,6 +9,7 @@ import (
 	"github.com/jhern254/go-thoughts/cmd/internal/cliutil"
 	appcore "github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/editorprefs"
 	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
@@ -25,6 +26,7 @@ const defaultSQLiteDSN = appcore.DefaultSQLiteDSN
 
 type runtime interface {
 	LocalUser() *data.User
+	EditorPreferences() *editorprefs.Service
 	Subjects() *subject.Service
 	Thoughts() *thought.Service
 	Metrics() *metrics.Service
@@ -44,7 +46,7 @@ type application struct {
 	runtime     runtime
 	openRuntime func(context.Context, string) (runtime, error)
 	runProgram  func(context.Context, tea.Model, io.Reader, io.Writer) error
-	runBrowser  func(context.Context, int, bool, string, func(context.Context, tui.SpeechModelSetup) tea.Model, io.Writer, logging.Logger, *visual.Service) error
+	runBrowser  func(context.Context, browserConfig) error
 }
 
 func newApplication(in io.Reader, out, errOut io.Writer, logger logging.Logger) *application {
@@ -102,7 +104,11 @@ func newTUI(app *application) *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			newModel := func(ctx context.Context) tui.Model {
-				return tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.runtime.Events(), app.runtime.TimelineView(), app.logger)
+				model := tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.runtime.Events(), app.runtime.TimelineView(), app.logger)
+				if preferences := app.runtime.EditorPreferences(); preferences != nil {
+					model.ConfigureEditorPreferences(preferences)
+				}
+				return model
 			}
 			var err error
 			if cmd.Bool("browser") {
@@ -119,7 +125,16 @@ func newTUI(app *application) *cli.Command {
 					}
 					return model
 				}
-				err = app.runBrowser(ctx, cmd.Int("browser-port"), cmd.Bool("browser-open"), cmd.String("models-dir"), newBrowserModel, app.out, app.logger, backgrounds)
+				err = app.runBrowser(ctx, browserConfig{
+					NewModel:          newBrowserModel,
+					Output:            app.out,
+					Logger:            app.logger,
+					Visual:            backgrounds,
+					EditorPreferences: app.runtime.EditorPreferences(),
+					Port:              cmd.Int("browser-port"),
+					ModelDirectory:    cmd.String("models-dir"),
+					AutoOpen:          cmd.Bool("browser-open"),
+				})
 			} else {
 				sessionCtx, cancel := context.WithCancel(ctx)
 				session := tui.NewSession(sessionCtx, cancel, func(ctx context.Context) tea.Model { return newModel(ctx) })

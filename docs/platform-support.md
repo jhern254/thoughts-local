@@ -99,3 +99,13 @@ controlled streaming readers rather than a huge routine test fixture. Windows
 video-write feedback recognizes Win32 disk-full codes 112 and 39; macOS/Windows
 large-file hosting, cleanup permissions and browser runtime behavior remain
 unverified. Build-only checks do not establish large-source runtime support.
+
+### Phrase timing for editor newlines
+
+The Moonshine v0.1.5 adapter now copies phrase identity, start/duration, and
+completion fields from the same pinned C API. It retains the existing native
+runtime gate and copies no audio data. Linux amd64 has runtime evidence from the
+licensed speech → four-second silence → speech integration fixture, including
+one generated newline and no trailing break. This does not establish new runtime
+verification for macOS or Windows; their existing support classifications remain
+unchanged. Word timestamps and speaker identification remain disabled.

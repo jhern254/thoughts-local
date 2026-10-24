@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/testutils"
@@ -21,6 +22,7 @@ func TestModel_ThoughtCaptureTime(t *testing.T) {
 	}{
 		{"browser t shortcut", tea.KeyPressMsg{Code: 't', Text: "t"}},
 		{"browser F8 shortcut", tea.KeyPressMsg{Code: tea.KeyF8}},
+		{"browser v shortcut", tea.KeyPressMsg{Code: 'v', Text: "v"}},
 		{"browser open action", thoughts.VoiceAction{Action: "open"}},
 	} {
 		t.Run(entry.name+" saves the time of entry", func(t *testing.T) {
@@ -89,7 +91,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 't', Text: "t"}))
 		heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
-		if !m.thoughts.Creating() || !strings.HasPrefix(m.View().Content, heading+"\nCreate thought\n") || strings.Contains(m.View().Content, "Voice thought") {
+		if !m.thoughts.Creating() || !strings.HasPrefix(ansi.Strip(m.View().Content), ansi.Strip(heading)+"\nCreate thought · INSERT \n") || strings.Contains(m.View().Content, "Voice thought") {
 			t.Fatalf("quick entry got %q, want normal Thoughts heading and editor", m.View().Content)
 		}
 		quick := m.View().Content
@@ -117,8 +119,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 		m, cmd := rootUpdate(m, thoughts.VoiceAction{Action: "open"})
 		original := &data.Subject{SubjectID: 7, SubjectName: "Original"}
 		m.subjects.selected = original
-		batch := cmd().(tea.BatchMsg)
-		m, _ = rootUpdate(m, batch[1]())
+		m, _ = rootUpdate(m, cmd())
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: "preserved draft 界"})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: "Voice subject"})
@@ -131,7 +132,9 @@ func TestModel_VoiceDraft(t *testing.T) {
 		if m.subjects.selected != original || m.screen != screenVoiceThought || !strings.Contains(view, "preserved draft 界") || !strings.Contains(view, "Voice subject") || m.VoiceState().DraftID == 0 {
 			t.Fatalf("got resumed view %s", view)
 		}
-		m, _ = rootUpdate(m, escapeKey())
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		m, _ = rootUpdate(m, enterKey())
 		if m.screen != screenEvents || m.VoiceState().DraftID != 0 {
 			t.Fatal("cancel did not end voice draft")
 		}

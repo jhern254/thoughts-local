@@ -160,6 +160,7 @@ test('persists one image without resetting the terminal or its draft', async ({p
   await page.keyboard.press('Tab');
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter');
+  await clickControl(page, 'Visual');
   await expect(screen(page)).toContainText('Background darkness:');
   await expect(screen(page)).not.toContainText('Loading visual');
   await clickControl(page, 'Remove background');
@@ -266,6 +267,7 @@ test('publishes a decoded odd-sized wallpaper before returning and moving entity
   await expect(screen(page)).toContainText('Tab: mindset • Q: events');
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter');
+  await clickControl(page, 'Visual');
   await expect(screen(page)).toContainText('Background darkness:');
   await expect(screen(page)).not.toContainText('Loading visual');
   for (const size of [{width:91, height:4093}, {width:4093, height:91}]) {
@@ -303,6 +305,7 @@ test('publishes a decoded odd-sized wallpaper before returning and moving entity
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
     await page.screenshot({path:`/tmp/upload-return-${testInfo.project.name}-${size.width}x${size.height}.png`});
     await page.keyboard.press('Enter');
+    await clickControl(page, 'Visual');
     await expect(screen(page)).toContainText('Background darkness:');
     await expect(screen(page)).not.toContainText('Loading visual');
   }
@@ -419,6 +422,7 @@ test('returning to the entity picker repaints behind the closed preview', async 
   await page.keyboard.press('ArrowRight');
   for (const exit of ['Escape', 'Back']) {
     await page.keyboard.press('Enter');
+    await clickControl(page, 'Visual');
     await expect(page.locator('#background-preview-wrap')).toBeVisible();
     await page.evaluate(() => { window.refreshes = []; });
     if (exit === 'Escape') await page.keyboard.press('Escape');

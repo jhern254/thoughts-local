@@ -30,8 +30,11 @@ func (m *Model) stopClipboard() {
 }
 
 func (m Model) updateInput(msg tea.Msg) (Model, tea.Cmd) {
-	if m.loading || !m.input.Focused() {
+	if m.loading || !m.input.Focused() || m.discardPrompt {
 		return m, nil
+	}
+	if m.normalMode {
+		return m.updateNormalInput(msg)
 	}
 	var text string
 	switch message := msg.(type) {

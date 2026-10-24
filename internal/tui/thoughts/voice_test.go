@@ -98,11 +98,11 @@ func TestModel_Voice(t *testing.T) {
 	t.Run("recording shortcut preserves ordinary v input and shows one active action", func(t *testing.T) {
 		m := voiceModel(t)
 		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
-		if m.input.Value() != "v" || !strings.Contains(m.View(), "F8: Record") || strings.Contains(m.View(), "F8: Stop") || strings.Contains(m.View(), "Voice thought") {
+		if m.input.Value() != "v" || !strings.Contains(m.View(), "v: Record") || strings.Contains(m.View(), "v: Stop") || strings.Contains(m.View(), "Voice thought") {
 			t.Fatalf("got %q, want normal editor with v and Record only", m.View())
 		}
 		m, _ = m.Update(key(tea.KeyF8))
-		if m.VoiceState().RecordingStatus != "requesting" || !strings.Contains(m.View(), "F8: Stop") || strings.Contains(m.View(), "F8: Record") {
+		if m.VoiceState().RecordingStatus != "requesting" || !strings.Contains(m.View(), "v: Stop") || strings.Contains(m.View(), "v: Record") {
 			t.Fatalf("got %q, want Stop only while requesting", m.View())
 		}
 		m, _ = m.Update(key(tea.KeyF8))
@@ -131,7 +131,9 @@ func TestModel_Voice(t *testing.T) {
 					t.Fatal("save did not persist and invalidate the chosen subject")
 				}
 			} else {
-				m, _ = m.Update(key(tea.KeyEsc))
+				m, _ = m.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
+				m, _ = m.Update(key(tea.KeyTab))
+				m, _ = m.Update(key(tea.KeyEnter))
 			}
 			if m.subjectID == nil || *m.subjectID != original || m.VoiceOpen() {
 				t.Fatal("leaving editor lost its original browsing scope")

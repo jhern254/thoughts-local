@@ -132,5 +132,5 @@ test('Maximum preparation preserves the recording, draft and terminal connection
   await expect(page.locator('#status')).toHaveText('Transcribing…');
   await expect.poll(() => page.locator('#background-video').evaluate(video => video.videoWidth)).toBe(1920);
   await page.keyboard.press('F8');
-  await expect(screen(page)).toContainText('F8: Record');
+  await expect(screen(page)).toContainText('v: Record');
 });

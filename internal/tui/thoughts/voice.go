@@ -45,6 +45,9 @@ type VoiceState struct {
 	// CanOpenThoughtDraft means the current screen permits quick thought entry
 	// without interrupting an active form or filter.
 	CanOpenThoughtDraft bool `json:"canOpenThoughtDraft"`
+	// CanUseVoiceKey lets the browser prepare audio for v only when Go treats
+	// it as a command, never while typing in Insert or the Subject field.
+	CanUseVoiceKey bool `json:"canUseVoiceKey"`
 	// DraftID is zero when no draft is accepting browser recording controls.
 	DraftID uint64 `json:"draftID"`
 	// RecordingID identifies an attempt within the draft, rejecting late replies
@@ -142,12 +145,14 @@ func (m Model) VoiceState() VoiceState {
 		SessionID:                  m.browserSessionID,
 		SpeechRecognitionAvailable: m.speechRecognitionAvailable,
 		TranscriptAuthority:        m.voice.transcriptAuthority,
+		CanUseVoiceKey:             m.VoiceOpen() && !m.discardPrompt && (m.voiceLocked() || (m.normalMode && !m.voice.subjectFocused)),
 		DraftID:                    m.voice.draftID,
 		RecordingID:                m.voice.recordingID,
 		RecordingStatus:            m.voice.recordingStatus,
 	}
 	if m.voice.suspended || m.screen != create || m.loading {
 		state.DraftID = 0
+		state.CanUseVoiceKey = false
 		state.RecordingStatus = ""
 	}
 	return state
@@ -158,6 +163,7 @@ func (m Model) voiceLocked() bool {
 }
 func (m *Model) resizeVoice(width, height int) {
 	m.voice.width, m.voice.height = max(1, width), max(1, height)
+	m.editorWidth, m.editorHeight = max(1, width), max(1, height)
 	// Bubbles adds a trailing cursor cell beyond the input width, in addition
 	// to its two-cell prompt. Reserve both so narrow editors do not wrap.
 	m.voice.query.SetWidth(max(1, width-3))
@@ -208,6 +214,9 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 	}
 	switch action.Action {
 	case "start":
+		if m.discardPrompt {
+			return m, nil
+		}
 		if !m.speechRecognitionAvailable {
 			m.voice.message = "Speech recognition is not configured. You can still type and save."
 			return m, nil
@@ -254,6 +263,9 @@ func (m Model) updateVoiceAction(action VoiceAction) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.voice.recordingStatus = "idle"
+		if m.discardPrompt && m.input.Value() == "" {
+			return m.discardDraft()
+		}
 		m.voice.message = map[string]string{"denied": "Microphone permission was denied. Draft unchanged.", "unavailable": "Microphone unavailable. Draft unchanged.", "failed": "Microphone capture failed. Draft unchanged."}[action.Action]
 		m.voice.subjectFocused = false
 		m.resizeVoice(m.voice.width, m.voice.height)
@@ -444,6 +456,9 @@ func (m Model) recordingEnded(ended voice.RecordingEnded) (Model, tea.Cmd) {
 	m.finishSpokenSubject()
 	m.voice.recordingBaseText = ""
 	m.voice.recordingStatus = "idle"
+	if m.discardPrompt && m.input.Value() == "" {
+		return m.discardDraft()
+	}
 	if ended.Failed && m.voice.message == "" {
 		m.voice.message = "Audio capture stopped. Draft preserved."
 	}

@@ -169,7 +169,7 @@ func TestModel_ClipboardIntegrity(t *testing.T) {
 	t.Run("ignores clipboard results from a cancelled draft", func(t *testing.T) {
 		m := thoughtEditor(t)
 		request := m.request
-		m, _ = m.Update(key(tea.KeyEscape))
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 		m, _ = m.Update(key(tea.KeyEnter))
 		m.input.SetValue("new draft")
 		m, _ = m.Update(clipboardResult{request: request, content: "old clipboard"})
@@ -186,7 +186,7 @@ func TestModel_ClipboardCancellation(t *testing.T) {
 		if cmd == nil {
 			t.Fatal("paste did not produce a command")
 		}
-		m, _ = m.Update(key(tea.KeyEscape))
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 		if got := cmd(); got != nil {
 			t.Fatalf("got %T, want no cancelled clipboard reply", got)
 		}

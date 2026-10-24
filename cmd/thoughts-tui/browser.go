@@ -16,23 +16,36 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/browserterm"
+	"github.com/jhern254/go-thoughts/internal/editorprefs"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
-func runBrowser(ctx context.Context, port int, autoOpen bool, modelDirectory string, newModel func(context.Context, tui.SpeechModelSetup) tea.Model, out io.Writer, logger logging.Logger, visual *visual.Service) error {
-	var opener func(context.Context, string) error
-	if autoOpen {
-		opener = openDefaultBrowser
-	}
-	return serveBrowser(ctx, port, modelDirectory, newModel, out, logger, visual, opener)
+type browserConfig struct {
+	NewModel          func(context.Context, tui.SpeechModelSetup) tea.Model
+	Output            io.Writer
+	Logger            logging.Logger
+	Visual            *visual.Service
+	EditorPreferences *editorprefs.Service
+
+	Port           int
+	ModelDirectory string
+	AutoOpen       bool
 }
 
-func serveBrowser(ctx context.Context, port int, modelDirectory string, newModel func(context.Context, tui.SpeechModelSetup) tea.Model, out io.Writer, logger logging.Logger, visual *visual.Service, opener func(context.Context, string) error) (serveErr error) {
+func runBrowser(ctx context.Context, config browserConfig) error {
+	var opener func(context.Context, string) error
+	if config.AutoOpen {
+		opener = openDefaultBrowser
+	}
+	return serveBrowser(ctx, config, opener)
+}
+
+func serveBrowser(ctx context.Context, config browserConfig, opener func(context.Context, string) error) (serveErr error) {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	speechSetup, err := newBrowserSpeechSetup(modelDirectory)
+	speechSetup, err := newBrowserSpeechSetup(config.ModelDirectory)
 	if err != nil {
 		return err
 	}
@@ -47,21 +60,21 @@ func serveBrowser(ctx context.Context, port int, modelDirectory string, newModel
 		}
 		serveErr = errors.Join(serveErr, closeErr)
 	}()
-	consumerFactory := speechSetup.RecordingConsumerFactory()
-	browserModel := func(ctx context.Context) tea.Model { return newModel(ctx, speechSetup) }
+	consumerFactory := speechSetup.RecordingConsumerFactory(config.EditorPreferences)
+	browserModel := func(ctx context.Context) tea.Model { return config.NewModel(ctx, speechSetup) }
 
-	listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(config.Port)))
 	if err != nil {
 		return err
 	}
 	defer listener.Close()
-	if _, err = fmt.Fprintf(out, "Thoughts: http://%s\nPress Ctrl+C here to stop the browser server.\n", listener.Addr().String()); err != nil {
+	if _, err = fmt.Fprintf(config.Output, "Thoughts: http://%s\nPress Ctrl+C here to stop the browser server.\n", listener.Addr().String()); err != nil {
 		return err
 	}
 	// Serve rejects terminal tracing before startup. Let that validation finish
 	// without opening a tab for a server that cannot run.
 	if opener == nil || os.Getenv("TEA_TRACE") != "" {
-		return browserterm.ServeWithAudioConsumerFactory(ctx, listener, browserModel, logger, consumerFactory, visual)
+		return browserterm.ServeWithAudioConsumerFactory(ctx, listener, browserModel, config.Logger, consumerFactory, config.Visual)
 	}
 	openingCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -71,10 +84,10 @@ func serveBrowser(ctx context.Context, port int, modelDirectory string, newModel
 		launchCtx, stop := context.WithTimeout(openingCtx, 5*time.Second)
 		defer stop()
 		if err := opener(launchCtx, "http://"+listener.Addr().String()); err != nil && openingCtx.Err() == nil {
-			fmt.Fprintln(out, "Could not open the default browser. Open the printed address manually.")
+			fmt.Fprintln(config.Output, "Could not open the default browser. Open the printed address manually.")
 		}
 	}()
-	err = browserterm.ServeWithAudioConsumerFactory(ctx, listener, browserModel, logger, consumerFactory, visual)
+	err = browserterm.ServeWithAudioConsumerFactory(ctx, listener, browserModel, config.Logger, consumerFactory, config.Visual)
 	cancel()
 	<-opened
 	return err

@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/editorprefs"
 	"github.com/jhern254/go-thoughts/internal/modelassets"
 	"github.com/jhern254/go-thoughts/internal/speech"
 	"github.com/jhern254/go-thoughts/internal/voice"
@@ -171,7 +174,7 @@ func TestBrowserSpeechSetup_Repair(t *testing.T) {
 			if oldBackend.closeCalls != 1 {
 				t.Fatal("repair preceded native cleanup")
 			}
-			if _, err := setup.RecordingConsumerFactory()(ctx, voice.RecordingKey{}, nil); !errors.Is(err, speech.ErrRuntime) {
+			if _, err := setup.RecordingConsumerFactory(nil)(ctx, voice.RecordingKey{}, nil); !errors.Is(err, speech.ErrRuntime) {
 				t.Fatalf("old consumer still available: %v", err)
 			}
 			return nil
@@ -278,6 +281,50 @@ func TestBrowserSpeechSetup_RepairStatus(t *testing.T) {
 		}
 		if _, err := os.Stat(directory); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("unexpected directory: %v", err)
+		}
+	})
+}
+
+type recordingPreferencesStore struct {
+	pause int
+	err   error
+}
+
+func (s *recordingPreferencesStore) Load(context.Context, string) (data.EditorPreferences, error) {
+	return data.EditorPreferences{SpeechPauseMS: s.pause}, s.err
+}
+func (s *recordingPreferencesStore) Save(_ context.Context, _ string, p data.EditorPreferences) error {
+	s.pause = p.SpeechPauseMS
+	return s.err
+}
+func TestBrowserSpeechSetup_RecordingPreferences(t *testing.T) {
+	t.Run("snapshots preferences once per recording and preserves active setting", func(t *testing.T) {
+		backend := &setupTestTranscriber{}
+		setup := &browserSpeechSetup{transcriber: backend}
+		store := &recordingPreferencesStore{pause: 2000}
+		factory := setup.RecordingConsumerFactory(editorprefs.NewService(store, "user"))
+		first, err := factory(t.Context(), voice.RecordingKey{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer first.Close()
+		store.pause = 0
+		second, err := factory(t.Context(), voice.RecordingKey{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer second.Close()
+		if first.(*browserSpeechConsumer).formatter.Pause != 2*time.Second || second.(*browserSpeechConsumer).formatter.Pause != 0 {
+			t.Fatal("preference changed active recording or failed to apply to next")
+		}
+	})
+	t.Run("failed preference read does not start native work", func(t *testing.T) {
+		backend := &setupTestTranscriber{}
+		setup := &browserSpeechSetup{transcriber: backend}
+		cause := errors.New("private preference read error")
+		factory := setup.RecordingConsumerFactory(editorprefs.NewService(&recordingPreferencesStore{err: cause}, "user"))
+		if _, err := factory(t.Context(), voice.RecordingKey{}, nil); !errors.Is(err, cause) || backend.streams != 0 {
+			t.Fatal("failed read started native stream or hid error")
 		}
 	})
 }

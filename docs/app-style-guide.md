@@ -67,3 +67,23 @@ measure the integrated indicator during real video preparation on reference
 hardware: animation frame timing, CPU and memory use, and input responsiveness.
 Check repeated operations for lingering timers or resource growth. Browser
 rendering and braille glyphs alone do not establish low cost.
+
+## Thought draft editor
+
+Use the shared Bubble Tea textarea for text and cursor movement. New drafts
+start in Insert; show INSERT in a teal block or NORMAL in the shared purple
+highlight beside the title, with mode-specific help
+below the text. Use a steady, contrasting block cursor. Current-line background
+highlighting is a separate saved preference, off by default; it must not replace
+or obscure the cursor. Modal letter commands apply only to focused thought text,
+not the subject picker. In Normal mode, v controls recording and u restores the
+last automatic voice-prefix cleanup. These letters remain text in Insert and
+the Subject field; while recording locks editing, v can also stop capture.
+
+Esc preserves the draft and enters Normal, stopping recording first if needed.
+Ctrl+C in Insert mode behaves like Esc; browser selections still copy.
+Ctrl+Q explicitly cancels; a nonempty draft requires confirmation with Keep
+editing selected initially. Dictation appends at the end, with editing locked
+until capture cleanup completes. Reserve the actual wrapped help/confirmation
+rows before sizing the textarea so narrow layouts retain visible actions and a
+visible cursor. Browser enhancements do not own this editing workflow.

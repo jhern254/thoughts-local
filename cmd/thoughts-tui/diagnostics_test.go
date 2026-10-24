@@ -14,8 +14,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
-	"github.com/jhern254/go-thoughts/internal/tui"
-	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
 func TestTUI_DiagnosticOutput(t *testing.T) {
@@ -147,7 +145,7 @@ func TestTUI_BrowserStartupDiagnostics(t *testing.T) {
 			}
 			app := newApplication(strings.NewReader(""), io.Discard, &feedback, logger)
 			app.openRuntime = func(context.Context, string) (runtime, error) { return &runtimeStub{}, nil }
-			app.runBrowser = func(context.Context, int, bool, string, func(context.Context, tui.SpeechModelSetup) tea.Model, io.Writer, logging.Logger, *visual.Service) error {
+			app.runBrowser = func(context.Context, browserConfig) error {
 				return scenario.err
 			}
 			err = newTUI(app).Run(t.Context(), []string{"thoughts-tui", "--browser", "--browser-port", "7878"})

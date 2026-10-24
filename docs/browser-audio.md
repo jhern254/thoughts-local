@@ -5,10 +5,12 @@ to record, stop, review the words, and save through the same editor they already
 use for typing.
 
 With the approved model installed and the native runtime configured, browser
-recording uses local Moonshine speech recognition. On the Events timeline, F8
+recording uses local Moonshine speech recognition. On the Events timeline, v
 opens a thought and immediately starts recording. T opens a draft for typing.
-Inside the draft, F8 starts or stops recording. Review and edit the words before
-saving.
+Inside the draft, press Esc for Normal mode, then v to start recording; v also
+stops capture while editing is locked. In Insert or the Subject field, v and u
+remain ordinary text. F8/F9 remain compatible shortcuts for recording/prefix
+restoration. Review and edit the words before saving.
 
 Without speech configured, Thoughts still starts and supports typed drafts.
 Trying to record explains that speech is unavailable without requesting the
@@ -16,13 +18,13 @@ microphone. See [Moonshine setup](moonshine.md#browser-speech) to enable it.
 
 ## Keep recording part of the existing draft
 
-A recording belongs to the draft open when the user presses F8. If permission
+A recording belongs to the draft open when the user starts recording. If permission
 is denied or capture fails, that draft remains available. When a recognizer
 supplies text, it updates the unsaved draft while preserving what the user typed
 before recording. Saving remains the user's decision.
 
 A thought's observation time is captured when its draft opens, whether through
-Create thought, T, or F8. Recording restarts, subject selection or creation, and
+Create thought, T, or v. Recording restarts, subject selection or creation, and
 save retries retain that time. Canceling and opening another draft captures a
 new time. Database creation and update timestamps still describe persistence.
 Event start and end forms likewise capture their default time when opened and
@@ -101,12 +103,12 @@ Unconfirmed possible commands retain their text. Editing the body or recording
 again prevents later confirmation from replacing that text; a new recording
 retires the earlier cleanup permission.
 
-After automatic cleanup, **F9: Restore prefix** appears in the voice editor help.
+After automatic cleanup, **u: Restore prefix** in Normal mode appears in the voice editor help.
 It restores an untouched transcript exactly, or prepends the original prefix to
 the current edited body. It clears only automatic Subject choices; explicit
 selections and created Subjects remain. Restoration is one-shot and retires
 delayed cleanup permission. Starting another recording or leaving the draft
-discards it. F9 is unavailable during recording, Stop, saving, or Subject creation.
+discards it. Prefix restoration is unavailable during recording, Stop, saving, or Subject creation.
 Restoration exceeding the existing character/line limits leaves the draft unchanged.
 
 Neutral multiword names such as “Machine Learning Research” retain the existing
@@ -229,3 +231,30 @@ The exact message format lives in
 lives in [pcm-worklet.js](../internal/browserterm/static/pcm-worklet.js), and
 [recording.go](../internal/voice/recording.go) defines permission to apply
 transcript updates.
+
+## Speech pauses and draft editing
+
+Options → Editor stores **Newline after speech pause** per local user. The default
+is 1.5 seconds; choose Off or 0.5–10 seconds in 0.5-second steps. The recording
+consumer reads this preference once at recording startup. Changes affect the next
+recording, not existing text or an active transcript.
+
+Moonshine provides phrase start/duration and completion metadata. The native
+adapter copies those values with the text under its existing runtime gate,
+without copying audio or enabling word timestamps. A recording-owned Go formatter
+inserts one newline when the gap between recognized phrases reaches the selected
+threshold. These are recognizer-estimated phrase boundaries, not a precise
+measurement of every acoustic silence. Missing/invalid timing keeps space-joined
+text. Processing or network delays never count as silence. A chosen separator is
+retained by stable phrase identity across interim revisions; silence alone adds
+no trailing blank lines. The existing transcript byte and editor line limits
+still apply.
+
+Drafts begin in Insert with a steady block cursor. Esc stops recording and enters
+Normal without clearing text; editing stays locked until native cleanup finishes.
+Ctrl+C in Insert mode behaves like Esc; browser selections still copy.
+v also stops capture, preserving the editing mode. Ctrl+Q stops capture and asks
+before discarding nonempty text; declining leaves the draft stopped and editable.
+Normal uses h/j/k/l or arrows and i/a/o to resume insertion. Ctrl+S saves from
+either mode. Dictation still appends at the end; subject-prefix detection and
+prefix restoration continue to operate on the same draft.

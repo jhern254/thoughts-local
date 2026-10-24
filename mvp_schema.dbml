@@ -378,3 +378,11 @@ Table visual {
   speed_percent integer [not null, default: 100, note: 'Integer playback percentage, 25 through 100']
   user_paused integer [not null, default: 0, note: 'Deliberate user pause only; integer 0 or 1']
 }
+
+Table editor_preferences {
+  user_id text [pk, not null, ref: > users.user_id]
+  highlight_current_line integer [not null, default: 0, note: 'Integer 0 or 1']
+  speech_pause_ms integer [not null, default: 1500, note: 'Integer 0–10000 in steps of 500; zero disables automatic newlines']
+
+  Note: 'Per-user editing preferences. Missing rows use the same defaults. Migration 000014 is authoritative; user deletion cascades.'
+}

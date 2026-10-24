@@ -134,7 +134,10 @@ test('browser paste preserves Unicode and rejects unsupported content without de
   await page.setViewportSize({width: 620, height: 700});
   await expect(screen(page)).toContainText('browser draft');
   await expect(screen(page)).toContainText('Ctrl+S');
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+q');
+  await expect(screen(page)).toContainText('Discard draft?');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
   await expect(screen(page)).not.toContainText('Ctrl+S');
   expect(errors).toEqual([]);
 });
