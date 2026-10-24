@@ -22,12 +22,12 @@ type videoEditor struct {
 	gate       chan struct{}
 
 	cleanupErr error
-	filesOwner string
+	filesOwner string // Editor ID owning staged files; delayed cleanup must not remove a newer editor's files.
 	source     *visual.VideoSource
 	sourceID   string
-	accepted   *visual.PreparedVideo
+	accepted   *visual.PreparedVideo // Browser-acknowledged loop eligible for Apply; not yet a saved background.
 	acceptedID string
-	pending    *visual.PreparedVideo
+	pending    *visual.PreparedVideo // Prepared candidate awaiting acknowledgement; the accepted loop stays usable.
 	pendingID  string
 }
 

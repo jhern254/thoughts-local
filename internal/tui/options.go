@@ -23,20 +23,21 @@ type BrowserOptionsMsg struct {
 	Height          int                    `json:"height"`
 	Action          string                 `json:"action"`
 	ID              uint64                 `json:"id"`
-	DurationMS      int64                  `json:"durationMS"`
-	Trim            visual.VideoTrim       `json:"trim"`
+	DurationMS      int64                  `json:"durationMS"` // Full source length for source replies; prepared loop length for loopReady.
+	Trim            visual.VideoTrim       `json:"trim"`       // Source interval used by the acknowledged loopReady preview.
 	Darkness        int                    `json:"darkness"`
 	Background      bool                   `json:"background"`
 	Kind            string                 `json:"kind"`
 	SpeedPercent    int                    `json:"speedPercent"`
 	UserPaused      bool                   `json:"userPaused"`
-	PlaybackBlocked bool                   `json:"playbackBlocked"`
+	PlaybackBlocked bool                   `json:"playbackBlocked"` // Playback failed or reduced-motion settings prevent play; separate from user Pause.
 	Framing         data.BackgroundFraming `json:"framing"`
 }
 
+// PreviewRect reserves space for browser media in terminal cells, not pixels.
 type PreviewRect struct{ X, Y, Width, Height int }
 
-// BrowserOptionsState exposes the reserved terminal cells, not pixel geometry.
+// BrowserOptionsState tells the browser which visual controls and preview to show.
 // ID changes for each browser operation so late results cannot affect a new page.
 type BrowserOptionsState struct {
 	MaxVideoSourceBytes      int64                  `json:"maxVideoSourceBytes"`
@@ -45,15 +46,15 @@ type BrowserOptionsState struct {
 	Open                     bool                   `json:"open"`
 	ID                       uint64                 `json:"id"`
 	Request                  string                 `json:"request"`
-	Editing                  bool                   `json:"editing"`
+	Editing                  bool                   `json:"editing"` // Framing controls (zoom/position) are open.
 	Framing                  data.BackgroundFraming `json:"framing"`
 	Darkness                 int                    `json:"darkness"`
 	SpeedPercent             int                    `json:"speedPercent"`
 	UserPaused               bool                   `json:"userPaused"`
 	Preview                  PreviewRect            `json:"preview"`
-	Trimming                 bool                   `json:"trimming"`
-	SourceFrame              bool                   `json:"sourceFrame"`
-	Trim                     visual.VideoTrim       `json:"trim"`
+	Trimming                 bool                   `json:"trimming"`    // Cut-selection controls are open; this does not mean encoding is running.
+	SourceFrame              bool                   `json:"sourceFrame"` // Show a paused original-source frame at Trim.StartMS instead of the prepared loop.
+	Trim                     visual.VideoTrim       `json:"trim"`        // Draft start/end times in source milliseconds; may differ from the accepted preview.
 }
 
 const (
@@ -94,11 +95,11 @@ type optionsState struct {
 
 	// Cut controls are drafts. Only loopReady/acceptedTrim identify the loop
 	// acknowledged by the browser; moving draft markers must never revoke it.
-	newVideo            bool
+	newVideo            bool // An unsaved source is selected; Edit loop remains available until Apply/discard.
 	trimming            bool
 	trimFocus           int
 	trimTimecode        textinput.Model
-	trimTimecodeEditing bool
+	trimTimecodeEditing bool // Keyboard input is editing the Source / Start timecode.
 	sourceFrame         bool
 	sourceDurationMS    int64
 	trim                visual.VideoTrim
@@ -106,7 +107,7 @@ type optionsState struct {
 	acceptedWidth       int
 	acceptedHeight      int
 	acceptedRate        visual.VideoFrameRate
-	acceptedTrim        visual.VideoTrim
+	acceptedTrim        visual.VideoTrim // Source cuts for the acknowledged loop, retained while draft cuts change.
 	loopDurationMS      int64
 	loopReady           bool
 }
