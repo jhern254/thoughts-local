@@ -29,8 +29,8 @@ func TestModel_VideoTrim(t *testing.T) {
 			}
 			speedRow := findRow(before, "Playback speed:")
 			previewRow := findRow(before, "Preview loop")
-			if previewRow-speedRow != 4 {
-				t.Fatalf("%v: preview row = %d, want three reserved rows after speed row %d", size, previewRow, speedRow)
+			if previewRow-speedRow != 8 {
+				t.Fatalf("%v: preview row = %d, want seven reserved rows after speed row %d", size, previewRow, speedRow)
 			}
 			for _, request := range []string{"prepareLoop", ""} {
 				m.options.request = request
@@ -48,7 +48,11 @@ func TestModel_VideoTrim(t *testing.T) {
 				if len(rows) > size[1] {
 					t.Fatalf("%v: %d rows exceed height", size, len(rows))
 				}
-				if m.options.loopReady && strings.TrimSpace(rows[findRow(rows, "Previewed:")+3]) != "" {
+				statisticsRows := 3
+				if size[1] == 24 {
+					statisticsRows = 2
+				}
+				if m.options.loopReady && strings.TrimSpace(rows[findRow(rows, "Previewed:")+statisticsRows]) != "" {
 					t.Fatal("missing blank row after preview statistics")
 				}
 			}

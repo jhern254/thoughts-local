@@ -148,7 +148,7 @@ class ThoughtsVisual {
     const width = reserved.Width * cellWidth;
     Object.assign(this.preparationStatus.style, {
       left: `${screen.left + reserved.X * cellWidth}px`, width: `${width}px`,
-      top: `${screen.top + reserved.Y * cellHeight}px`, height: `${reserved.Height * cellHeight}px`
+      top: `${screen.top + reserved.Y * cellHeight}px`
     });
     const wave = document.getElementById('video-preparation-wave');
     const layer = this.preparationWave.trace;

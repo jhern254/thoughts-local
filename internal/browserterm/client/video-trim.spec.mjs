@@ -70,12 +70,15 @@ test('preparing a loop reserves a braille wave between speed and Preview loop an
     await expect(bar.locator('pre')).toHaveCount(2);
     async function expectWavePlacement() {
       await expect.poll(()=>page.evaluate(()=>{
+        const indicator=document.getElementById('video-preparation').getBoundingClientRect();
+        const expectedHeight=Math.min(112,Math.max(72,innerHeight*0.14))-8;
         const wave=document.getElementById('video-preparation-wave').getBoundingClientRect();
         const preview=document.getElementById('background-preview-wrap').getBoundingClientRect();
         const rows=[...document.querySelectorAll('.xterm-rows > div')];
         const speed=rows.find(row=>row.textContent.includes('Playback speed:')).getBoundingClientRect();
         const action=rows.find(row=>row.textContent.trim()==='Preview loop').getBoundingClientRect();
-        return wave.top>=speed.bottom && wave.bottom<=action.top+1 && Math.abs(wave.left-preview.left)<1 && Math.abs(wave.width-preview.width)<1;
+        const aligned=!preview.width || (Math.abs(wave.left-preview.left)<1 && Math.abs(wave.width-preview.width)<1);
+        return Math.abs(indicator.height-expectedHeight)<1 && wave.top>=speed.bottom && wave.bottom<=action.top+1 && aligned;
       })).toBe(true);
     }
     await expectWavePlacement();

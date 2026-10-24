@@ -491,7 +491,7 @@ func (m *Model) activateOption() {
 func (m Model) optionsLayout() (int, PreviewRect) {
 	if m.options.trimming {
 		width := max(10, min(80, m.width-4))
-		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-29))}
+		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-33))}
 	}
 	if m.options.editing {
 		width := max(10, min(80, m.width-4))

@@ -12,7 +12,8 @@ import (
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
-const videoPreparationRows = 3
+const videoPreparationRows = 7
+const compactVideoTrimHeight = 28
 
 const (
 	trimFocusSource = iota
@@ -192,9 +193,12 @@ func (m *Model) moveVideoTrimFocus(direction int) {
 	}
 }
 
-func videoTrimControlsTop(preview PreviewRect) int {
+func (m Model) videoTrimControlsTop(preview PreviewRect) int {
 	if preview.Height > 0 {
 		return preview.Y + preview.Height + 2
+	}
+	if m.height < compactVideoTrimHeight {
+		return 2
 	}
 	return 4
 }
@@ -204,7 +208,7 @@ func (m Model) videoPreparationRect() PreviewRect {
 		return PreviewRect{}
 	}
 	_, preview := m.optionsLayout()
-	return PreviewRect{X: preview.X, Y: videoTrimControlsTop(preview) + 6, Width: preview.Width, Height: videoPreparationRows}
+	return PreviewRect{X: preview.X, Y: m.videoTrimControlsTop(preview) + 6, Width: preview.Width, Height: videoPreparationRows}
 }
 
 func (m *Model) clickVideoTrim(x, y int, activate bool) {
@@ -213,7 +217,7 @@ func (m *Model) clickVideoTrim(x, y int, activate bool) {
 	if x < left || x >= left+width {
 		return
 	}
-	row := y - videoTrimControlsTop(rect)
+	row := y - m.videoTrimControlsTop(rect)
 	if row == 1 && m.options.request == "" {
 		m.options.trimFocus = trimFocusSource
 		m.setTrimStart(int64(max(0, min(width-1, x-left))) * m.options.sourceDurationMS / int64(max(1, width-1)))
@@ -272,6 +276,9 @@ func (m Model) viewVideoTrim() tea.View {
 		heading = "Visual · Source frame"
 	}
 	lines := []string{selected.Render("Options"), "", heading, ""}
+	if m.height < compactVideoTrimHeight {
+		lines = []string{selected.Render("Options"), heading}
+	}
 	if rect.Height > 0 {
 		lines = append(lines, muted.Render("╭"+strings.Repeat("─", rect.Width)+"╮"))
 		for range rect.Height {
@@ -292,7 +299,10 @@ func (m Model) viewVideoTrim() tea.View {
 	}
 	lines = append(lines, label(trimFocusPreview, "Preview loop"), label(trimFocusDone, "Done — use previewed loop"), label(trimFocusCancel, "Cancel upload"), "")
 	if m.options.loopReady {
-		lines = append(lines, m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
+		lines = append(lines, m.acceptedVideoLabel(), m.acceptedVideoRangeLabel())
+		if m.height >= compactVideoTrimHeight {
+			lines = append(lines, m.draftVideoQualityLabel())
+		}
 	} else {
 		lines = append(lines, "No prepared loop yet.")
 	}
@@ -311,6 +321,9 @@ func (m Model) viewVideoTrim() tea.View {
 		lines = append(lines, muted.Render("Enter: jump · Esc: back"), muted.Render("HH:MM:SS or HH:MM:SS.mmm"))
 	} else {
 		lines = append(lines, muted.Render("←/→: 0.1s · Shift: 1s · ↑/↓: focus"), muted.Render("PgUp/Dn: 60s · Home/End · Enter: timecode"))
+	}
+	if m.height < compactVideoTrimHeight {
+		lines = lines[:len(lines)-1] // Keep the primary key help; omit its second detail row.
 	}
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")

@@ -25,7 +25,8 @@ header { position: relative; }
 
 #video-status { font-size: 12px; }
 
-#video-preparation { position: fixed; pointer-events: none; }
+:root { --video-preparation-height: clamp(72px, 14vh, 112px); }
+#video-preparation { position: fixed; height: calc(var(--video-preparation-height) - 8px); pointer-events: none; }
 #video-preparation:not([hidden]) { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 #video-preparation-label { color: #c2bcec; line-height: 16px; }
 #video-preparation-wave { position: relative; flex: 1; min-height: 0; overflow: hidden; }

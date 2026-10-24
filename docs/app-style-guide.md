@@ -43,10 +43,9 @@ dot measures work completed.
 The browser renders the braille curve once for the fading trail and bright head.
 CSS moves clipped light windows over that fixed text in about 12 steps per
 second. These are implementation choices, not a required rendering API or a
-performance guarantee. The TUI reserves three terminal rows for the browser
-indicator throughout cut selection; resizing uses the existing terminal layout
-and transport.
-Animation frames remain local and do not rewrite text or send terminal or HTTP
+performance guarantee. The TUI reserves seven terminal rows for the browser
+indicator throughout cut selection, preserving its original responsive height.
+Resizing uses the existing terminal layout and transport. Animation frames remain local and do not rewrite text or send terminal or HTTP
 updates. See the [measurement notes](browser-background-performance.md#video-preparation-activity-wave)
 for the cost of the integrated indicator.
 
