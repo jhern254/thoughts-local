@@ -114,6 +114,24 @@ func TestModel_MetricsDayCycle(t *testing.T) {
 	})
 }
 
+func TestModel_NowDayCycle(t *testing.T) {
+	t.Run("root day keys retain the boundary view and today cannot open a card", func(t *testing.T) {
+		m := newMindsetHome(t, 0)
+		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
+		day := m.events.Day()
+		for _, step := range []struct {
+			key   rune
+			delta int
+		}{{tea.KeyLeft, -1}, {tea.KeyRight, 0}, {tea.KeyRight, 0}} {
+			moved, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: step.key}))
+			m = runHomeData(t, moved, cmd)
+			if m.homeFocus() != homePanelEvents || !m.events.Day().Equal(day.AddDate(0, 0, step.delta)) || !strings.Contains(m.events.View(), "↑: latest card") || strings.Contains(m.events.View(), "←: collapse") {
+				t.Fatalf("key %q lost the boundary view or day: %q", step.key, ansi.Strip(m.events.View()))
+			}
+		}
+	})
+}
+
 func TestModel_DayActivityArrowEntry(t *testing.T) {
 	t.Run("Up enters the graph and Down returns to Events on the selected day", func(t *testing.T) {
 		m := newMindsetHome(t, 0)
