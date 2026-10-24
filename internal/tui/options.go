@@ -525,7 +525,7 @@ func (m Model) optionsLayout() (int, PreviewRect) {
 	x := max(0, (m.width-width)/2)
 	reserved := 24
 	if m.options.newVideo && m.options.loopReady {
-		reserved += 3
+		reserved += 4
 	}
 	if m.options.video {
 		reserved += m.videoOptionRows()
@@ -625,7 +625,7 @@ func (m Model) viewOptions() tea.View {
 	}
 	lines = append(lines, "", label(optionsFocusApply, "Apply"), label(optionsFocusRemoveBackground, "Remove background"), label(optionsFocusBack, "Back"))
 	if m.options.newVideo && m.options.loopReady {
-		lines = append(lines, m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
+		lines = append(lines, "", m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
 	}
 	if rect.Height == 0 && m.height < 20 {
 		lines = append(lines, muted.Render(m.options.status), muted.Render("↑/↓: focus · ←/→: value · Enter: activate · Q/Esc: back"))
@@ -757,7 +757,7 @@ func (m Model) acceptedVideoRangeLabel() string {
 	startTimecode := strings.TrimSuffix(trimTimecode(m.options.acceptedTrim.StartMS), ".000")
 	endTimecode := strings.TrimSuffix(trimTimecode(m.options.acceptedTrim.EndMS), ".000")
 	playbackSeconds := float64(m.options.loopDurationMS) / float64(max(25, m.options.speedPercent)*10)
-	return fmt.Sprintf("Range: %s–%s · plays %.2fs", startTimecode, endTimecode, playbackSeconds)
+	return fmt.Sprintf("Range: %s - %s · plays %.2fs", startTimecode, endTimecode, playbackSeconds)
 }
 func (m Model) draftVideoQualityLabel() string {
 	if m.options.videoQuality != m.options.acceptedQuality {

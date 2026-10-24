@@ -337,13 +337,21 @@ func TestModel_VideoTrim(t *testing.T) {
 		if m.OptionsState().Trim.StartMS != 100 || m.options.acceptedTrim != accepted || !m.options.loopReady {
 			t.Fatal("draft edit lost accepted loop")
 		}
-		if !strings.Contains(m.View().Content, "Range: 00:00:00–00:00:30") {
+		if !strings.Contains(m.View().Content, "Range: 00:00:00 - 00:00:30") {
 			t.Fatal("accepted range not visible")
 		}
 		m.options.trimFocus = trimFocusDone
 		m, _ = rootUpdate(m, enterKey())
 		if m.OptionsState().Trimming {
 			t.Fatal("Done did not return to Visual")
+		}
+		rows := strings.Split(ansi.Strip(m.View().Content), "\n")
+		for rowIndex, row := range rows {
+			if strings.HasPrefix(strings.TrimSpace(row), "Previewed:") {
+				if rowIndex < 2 || strings.TrimSpace(rows[rowIndex-1]) != "" || strings.TrimSpace(rows[rowIndex-2]) != "Back" {
+					t.Fatalf("preview details must follow Back and a blank row:\n%s", m.View().Content)
+				}
+			}
 		}
 		m.options.focus = optionsFocusApply
 		m, _ = rootUpdate(m, enterKey())
@@ -630,11 +638,11 @@ func TestModel_AcceptedVideoRangeLabel(t *testing.T) {
 		speedPercent int
 		want         string
 	}{
-		{"short loop", 0, 30000, 100, "Range: 00:00:00–00:00:30 · plays 30.00s"},
-		{"crosses minute", 57000, 60000, 100, "Range: 00:00:57–00:01:00 · plays 3.00s"},
-		{"long source", 5683000, 5699000, 100, "Range: 01:34:43–01:34:59 · plays 16.00s"},
-		{"fractional cut", 10250, 11250, 100, "Range: 00:00:10.250–00:00:11.250 · plays 1.00s"},
-		{"slower playback", 10000, 26000, 50, "Range: 00:00:10–00:00:26 · plays 32.00s"},
+		{"short loop", 0, 30000, 100, "Range: 00:00:00 - 00:00:30 · plays 30.00s"},
+		{"crosses minute", 57000, 60000, 100, "Range: 00:00:57 - 00:01:00 · plays 3.00s"},
+		{"long source", 5683000, 5699000, 100, "Range: 01:34:43 - 01:34:59 · plays 16.00s"},
+		{"fractional cut", 10250, 11250, 100, "Range: 00:00:10.250 - 00:00:11.250 · plays 1.00s"},
+		{"slower playback", 10000, 26000, 50, "Range: 00:00:10 - 00:00:26 · plays 32.00s"},
 	} {
 		t.Run(scenario.description, func(t *testing.T) {
 			model := newRootTestModel()

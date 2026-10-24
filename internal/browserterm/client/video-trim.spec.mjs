@@ -253,7 +253,7 @@ test('preparing a loop reserves a braille wave between speed and Preview loop an
       releaseFailure();
       await expect(screen(page)).toContainText('Could not prepare this loop.');
       await expect(bar).toBeHidden();
-      await expect(screen(page)).toContainText('Range: 00:00:00–00:00:01');
+      await expect(screen(page)).toContainText('Range: 00:00:00 - 00:00:01');
     } finally { releaseFailure(); }
     await page.unroute('**/visual/video/preview');
 
@@ -365,7 +365,7 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   await expect(screen(page)).toContainText('End: 00:01:00.000 (max 00:01:00.000)');
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.currentTime)).toBe(57);
   await clickControl(page,'Preview loop');
-  await expect(screen(page)).toContainText('Range: 00:00:57–00:01:00');
+  await expect(screen(page)).toContainText('Range: 00:00:57 - 00:01:00');
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(false);
   expect(await page.locator('#background-preview-video').evaluate(video=>video.duration)).toBe(3);
   // Capture the actual fetched bytes before they become a media blob.
@@ -374,7 +374,7 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   await page.screenshot({path:`/tmp/trim-${testInfo.project.name}-desktop.png`});
   await clickControl(page,'Source / Start: 00:00:57.000 / 00:01:00.000');await page.keyboard.press('Home');
   await expect(screen(page)).toContainText('End: 00:00:30.000 (max 00:00:30.000)');
-  await expect(screen(page)).toContainText('Range: 00:00:57–00:01:00');
+  await expect(screen(page)).toContainText('Range: 00:00:57 - 00:01:00');
   expect(prepares).toBe(1);
   await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('00:00:57.000');await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('End: 00:01:00.000 (max 00:01:00.000)');
@@ -387,7 +387,7 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   });
   await clickControl(page,'Preview loop');
   await expect(screen(page)).toContainText('Could not prepare this loop.');
-  await expect(screen(page)).toContainText('Range: 00:00:57–00:01:00');
+  await expect(screen(page)).toContainText('Range: 00:00:57 - 00:01:00');
   expect(await page.locator('#background-preview-video').evaluate(video=>video.duration)).toBe(3);
   await page.unroute('**/visual/video/preview');
   await page.setViewportSize({width:650,height:750});
@@ -406,6 +406,11 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   await page.screenshot({path:`/tmp/trim-${testInfo.project.name}-narrow.png`});
   await clickControl(page,'Done — use previewed loop');
   await expect(screen(page)).toContainText('Background darkness:');
+  await expect.poll(()=>page.locator('.xterm-rows > div').evaluateAll(rows=>{
+    const previewedRow=rows.findIndex(row=>row.textContent.trim().startsWith('Previewed:'));
+    return previewedRow>=2 && rows[previewedRow-1].textContent.trim()==='' && rows[previewedRow-2].textContent.trim()==='Back';
+  })).toBe(true);
+  await page.screenshot({path:`/tmp/visual-spacing-${testInfo.project.name}.png`});
   await clickControl(page,'Apply');
   await expect(screen(page)).toContainText('Keep this trim draft 界');
   expect(applies).toBe(1);expect(prepares).toBe(2);expect(sockets).toBe(connectedSockets);
@@ -465,7 +470,7 @@ test('disconnect retires an editor and its prepared URLs without changing the se
   await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
   await clickControl(page,'Preview loop');
   const editorID=(await staged).headers()['x-visual-editor'];
-  await expect(screen(page)).toContainText('Range: 00:00:00–00:00:01');
+  await expect(screen(page)).toContainText('Range: 00:00:00 - 00:00:01');
   await page.emulateMedia({reducedMotion:'reduce'});
   await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video.paused)).toBe(true);
   await page.evaluate(()=>window.trimSocket.close());
@@ -651,7 +656,7 @@ test('nonzero timestamp sources preview and prepare the same selected scene',asy
  await clickControl(page,'End: 00:00:12.000 (max 00:00:12.000)');await page.keyboard.press('Home');
  await clickControl(page,'Preview loop');
  await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
- await expect(screen(page)).toContainText('Range: 00:00:10.250–00:00:11.250');
+ await expect(screen(page)).toContainText('Range: 00:00:10.250 - 00:00:11.250');
  await expect(page.locator('#source-preview-status')).toBeHidden();
  await expect.poll(brightness).toBeGreaterThan(154);
  await expect.poll(brightness).toBeLessThan(172);
@@ -676,7 +681,7 @@ test('fragmented MP4 validates up front and prepares a sixteen-second background
  await expect(screen(page)).toContainText('Selected: 16.0 seconds');
  await clickControl(page,'Preview loop');
  await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
- await expect(screen(page)).toContainText('Range: 00:00:10–00:00:26');
+ await expect(screen(page)).toContainText('Range: 00:00:10 - 00:00:26');
  await clickControl(page,'Done — use previewed loop');
  await clickControl(page,'Apply');
  await expect(screen(page)).not.toContainText('Background darkness:');
