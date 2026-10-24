@@ -89,9 +89,38 @@ data streams, chapters, source location/device/date metadata and comments are
 not retained. Display rotation is normalized into frames; only supported SDR
 color interpretation and necessary playback/container information remain.
 
-Source limits are 8 GiB, 1–14,400 seconds, 4,096 pixels per axis, 9 million pixels
-per frame and 60 FPS. Selected footage is 1–30 seconds. Import quality is a
-persisted preference, initially Efficient, with these output ceilings:
+### Upload compatibility at a glance
+
+An `.mp4` or `.mov` extension describes the container, not the video encoding
+inside it. Supported uploads must meet all applicable limits below and be
+decodable by the browser used for source preview.
+
+| Video characteristic | Current support |
+| --- | --- |
+| H.264, 8-bit SDR with supported Rec.709 color | Supported; untagged color is interpreted as Rec.709. |
+| Standard or self-contained fragmented MP4 | Supported; fragmentation alone does not require re-exporting the source. |
+| Nonzero starting timestamps | Supported; some late-frame previews are limited by the browser. Native Preview loop remains available. |
+| Large or long sources | Up to 8 GiB and 1 second–4 hours. Saved loops remain 1–30 seconds. |
+| 1080p and 4K | Supported within 4,096 pixels per axis and 9 million pixels per frame. |
+| Frame rates up to 60 FPS, including 29.97/59.94 | Supported. |
+| Portrait video and ordinary 90° rotation | Supported; orientation is normalized in the saved loop. |
+| Audio/subtitle tracks | Allowed, then removed; one video track and four total tracks maximum. |
+| HEVC/H.265, AV1, VP9 or ProRes inside MP4/MOV | Not currently supported. |
+| HDR, 10-bit video or explicitly tagged colors other than Rec.709 | Not currently supported, including some valid older SDR files. |
+| 120 FPS, 8K or sources exceeding the limits above | Rejected at selection. |
+| Encrypted video, external-file references, malformed or excessively complex containers | Rejected for safety or bounded processing. |
+
+The main format gaps are HEVC, HDR/10-bit and other color formats. These are
+implementation limitations, not evidence that such files are unsafe.
+Selection checks catch known incompatibilities; damaged frames, unusually
+expensive decoding or storage failures can still prevent a particular preview.
+Preparation failures leave the existing background selected and report fixed
+feedback.
+
+### Prepared output
+
+Import quality is a persisted preference, initially Efficient, with these output
+ceilings:
 
 | Quality | Longest axis | Pixels/frame | FPS | Video bytes | VBV maximum rate / buffer |
 | --- | ---: | ---: | ---: | ---: | ---: |
