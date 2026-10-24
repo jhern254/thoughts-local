@@ -284,15 +284,20 @@ class ThoughtsVisual {
     });
     const availableWidth = previewRect.Width * cellWidth;
     const availableHeight = previewRect.Height * cellHeight;
-    const scale = Math.min(availableWidth / window.innerWidth, availableHeight / window.innerHeight);
-    const width = window.innerWidth * scale;
-    const height = window.innerHeight * scale;
+    // Scene selection shows the complete movie; wallpaper framing still previews
+    // the browser viewport crop outside the trimmer.
+    const aspect = this.state.trimming && this.previewSourceSize
+      ? this.previewSourceSize : {width: window.innerWidth, height: window.innerHeight};
+    const scale = Math.min(availableWidth / aspect.width, availableHeight / aspect.height);
+    const width = aspect.width * scale;
+    const height = aspect.height * scale;
     Object.assign(this.previewFrameElement.style, {
       left: `${(availableWidth-width)/2}px`, top: `${(availableHeight-height)/2}px`, width: `${width}px`, height: `${height}px`
     });
     this.previewFrameElement.dataset.editing = String(!!this.state.editing);
-    this.placeImage(this.preview, width, height, this.state.framing, this.previewSourceSize);
-    if (this.previewVideo) this.placeImage(this.previewVideo, width, height, this.state.framing, this.previewSourceSize);
+    const framing = this.state.trimming ? {...defaultBackgroundFraming(), fit: 'fit'} : this.state.framing;
+    this.placeImage(this.preview, width, height, framing, this.previewSourceSize);
+    if (this.previewVideo) this.placeImage(this.previewVideo, width, height, framing, this.previewSourceSize);
     this.previewContainer.hidden = false;
   }
   discardPreview() {

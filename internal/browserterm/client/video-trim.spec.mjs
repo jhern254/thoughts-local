@@ -825,3 +825,28 @@ for(const stop of ['Escape','click'])test(`Stop rendering via ${stop} retains up
  await clickControl(page,'Done — use previewed loop');await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
  expect(uploads).toBe(1);expect(preparations).toBe(3);expect(sockets).toBe(1);
 });
+
+test('complete source and prepared movie frames fit the preview after narrow resize', async ({page}, testInfo) => {
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await openVisual(page);await stageSource(page);
+ const completeFrame=()=>page.evaluate(()=>{
+  const frame=document.getElementById('background-preview-frame').getBoundingClientRect();
+  const media=[...document.querySelectorAll('#background-preview-frame video, #background-preview')].find(element=>!element.hidden);
+  if(!media)return false;
+  const bounds=media.getBoundingClientRect();
+  const ratio=(media.videoWidth||media.naturalWidth)/(media.videoHeight||media.naturalHeight);
+  return bounds.width>0 && bounds.height>0 && Math.abs(frame.width/frame.height-ratio)<0.01 &&
+   bounds.left>=frame.left-1 && bounds.right<=frame.right+1 && bounds.top>=frame.top-1 && bounds.bottom<=frame.bottom+1;
+ });
+ await expect.poll(completeFrame).toBe(true);
+ await page.setViewportSize({width:650,height:850});
+ await expect.poll(completeFrame).toBe(true);
+ if(process.env.THOUGHTS_BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-full-source-narrow.png`});
+ await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
+ await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ await expect.poll(completeFrame).toBe(true);
+ if(process.env.THOUGHTS_BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-full-loop-narrow.png`});
+ await page.setViewportSize({width:1200,height:850});
+ await expect.poll(completeFrame).toBe(true);
+});
