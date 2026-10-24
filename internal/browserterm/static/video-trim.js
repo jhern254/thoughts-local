@@ -21,7 +21,7 @@ class ThoughtsVideoTrim {
   }
   failureAction(status, rejection) {
     // Only fixed control actions may cross back into the terminal connection.
-    const reasons = ['sourceCodec','sourceColor','sourceDimensions','sourceRate','sourceDuration'];
+    const reasons = ['sourceProtected','sourceTracks','sourceContainer','sourceCodec','sourceColor','sourceDimensions','sourceRate','sourceDuration'];
     if (status === 400 && reasons.includes(rejection)) return rejection;
     switch (status) {
       case 400: return 'sourceUnsupported';
@@ -45,20 +45,27 @@ class ThoughtsVideoTrim {
       if (file.size > this.visual.state.maxVideoSourceBytes) throw Object.assign(new Error('Video source exceeds the limit.'),{videoAction:'sourceSize'});
       this.localFile = file;
       this.sourceURL = URL.createObjectURL(file);
-      const video = this.makeVideo(this.sourceURL, 'metadata');
-      this.sourceVideo = video;
-      await this.ready(video, controller.signal);
-      if (!this.owns(generation) || this.visual.state.id !== operationID) return;
-      // Some browsers retain a file's timestamp offset; others start at zero.
-      // Cut controls always count from the first decoded source frame.
-      this.sourceStartSeconds = video.currentTime;
-      const durationMS = Math.floor(video.duration * 1000);
-      if (!Number.isSafeInteger(durationMS) || durationMS < 1000 || durationMS > this.visual.state.maxVideoSourceDurationMS || !video.videoWidth || !video.videoHeight) throw Object.assign(new Error('Unsupported source.'),{videoAction:'sourceUnsupported'});
-      // Browser playback alone does not establish background compatibility.
-      // Validate once before offering cut controls; previews reuse this source.
+      // Native compatibility is authoritative. Browser codec/container support
+      // only selects a source-preview renderer, never whether a movie may trim.
       const staged = await this.uploadSource(controller.signal);
       if (!this.owns(generation) || controller.signal.aborted || this.visual.state.id !== operationID) return;
       this.source = staged;
+      this.sourcePreviewMode = 'native';
+      if (staged.browserPreview !== false) {
+        const video = this.makeVideo(this.sourceURL, 'auto');
+        this.sourceVideo = video;
+        try {
+          await this.ready(video, controller.signal, 3000);
+          if (!this.owns(generation) || controller.signal.aborted) return;
+          this.sourceStartSeconds = video.currentTime;
+          this.sourcePreviewMode = 'browser';
+          video.onerror = () => this.useNativeSourcePreview();
+        } catch {
+          this.visual.retireVideo(video);
+          if (this.sourceVideo === video) this.sourceVideo = undefined;
+        }
+      }
+      if (!this.owns(generation) || controller.signal.aborted || this.visual.state.id !== operationID) return;
       this.visual.candidateKind = 'video';
       this.visual.previewSourceSize = {width:staged.width, height:staged.height};
       this.showSource(0);
@@ -108,7 +115,7 @@ class ThoughtsVideoTrim {
     video.preload = preload; video.hidden = true; video.src = url;
     return video;
   }
-  ready(video, signal) {
+  ready(video, signal, timeoutMS = 10000) {
     return new Promise((resolve, reject) => {
       const finish = success => {
         clearTimeout(timeout);
@@ -118,7 +125,7 @@ class ThoughtsVideoTrim {
         success ? resolve() : reject(new Error('Video preview unavailable.'));
       };
       const loaded = () => finish(true), failed = () => finish(false);
-      const timeout = setTimeout(failed, 10000);
+      const timeout = setTimeout(failed, timeoutMS);
       video.addEventListener('loadeddata', loaded);
       video.addEventListener('error', failed);
       signal.addEventListener('abort', failed, {once:true});
@@ -138,6 +145,12 @@ class ThoughtsVideoTrim {
     visual.queuePreview();
   }
   showSource(positionMS) {
+    this.showingSource = true;
+    this.sourcePositionMS = positionMS;
+    if (this.sourcePreviewMode === 'native') {
+      this.queueSourceFrame(positionMS);
+      return;
+    }
     if (!this.sourceVideo) return;
     if (this.source) this.visual.previewSourceSize = {width:this.source.width,height:this.source.height};
     if (this.visual.previewVideo !== this.sourceVideo) this.attach(this.sourceVideo);
@@ -148,7 +161,7 @@ class ThoughtsVideoTrim {
     // duration. Native Preview loop can still prepare those later source cuts.
     const unavailable = this.sourceStartSeconds > 0 && targetSeconds >= this.sourceVideo.duration;
     this.visual.sourcePreviewStatus.hidden = !unavailable;
-    if (unavailable) { this.seekTarget = undefined; return; }
+    if (unavailable) { this.useNativeSourcePreview(); return; }
     this.seekTarget = Math.min(targetSeconds, this.sourceVideo.duration - 0.001);
     this.seekSource();
   }
@@ -162,10 +175,87 @@ class ThoughtsVideoTrim {
     // source exposes an unrelated saved poster or the empty image placeholder.
     // An older seeked event can arrive after a newer seek starts. A one-use
     // handler could be consumed too early and strand the latest target.
+    clearTimeout(this.seekTimeout);
     video.onseeked = () => {
-      if (this.sourceVideo === video) this.seekSource();
+      if (this.sourceVideo !== video) return;
+      if (video.seeking) return;
+      clearTimeout(this.seekTimeout);
+      this.seekSource();
     };
-    video.currentTime = target;
+    this.seekTimeout = setTimeout(() => this.useNativeSourcePreview(), 3000);
+    try { video.currentTime = target; } catch { this.useNativeSourcePreview(); }
+  }
+  useNativeSourcePreview() {
+    if (!this.source || !this.showingSource) return;
+    clearTimeout(this.seekTimeout);
+    const video = this.sourceVideo;
+    if (this.visual.previewVideo === video) this.visual.previewVideo = undefined;
+    this.visual.retireVideo(video);
+    this.sourceVideo = undefined;
+    this.sourcePreviewMode = 'native';
+    this.queueSourceFrame(this.sourcePositionMS ?? 0);
+  }
+  queueSourceFrame(positionMS) {
+    if (!this.source) return;
+    const visual = this.visual;
+    visual.stopPreviewPlayback();
+    if (visual.previewVideo) { visual.previewVideo.hidden = true; visual.previewVideo = undefined; }
+    visual.previewSourceSize = {width:this.source.width,height:this.source.height};
+    visual.preview.hidden = false;
+    visual.sourcePreviewStatus.textContent = 'Native source preview';
+    visual.sourcePreviewStatus.hidden = false;
+    this.frameTarget = positionMS;
+    clearTimeout(this.frameTimer);
+    // One in-flight extraction plus one latest position. Arrow repeats never
+    // queue decoders; stale frames cannot replace the last valid visible frame.
+    this.frameTimer = setTimeout(() => this.extractSourceFrame(), 150);
+    visual.queuePreview();
+  }
+  async extractSourceFrame() {
+    if (this.frameRequest || this.frameTarget === undefined || !this.source || !this.showingSource) return;
+    const positionMS = this.frameTarget;
+    this.frameTarget = undefined;
+    const generation = this.generation;
+    const sourceID = this.source.sourceID;
+    const controller = new AbortController();
+    this.frameController = controller;
+    const request = this.loadSourceFrame(sourceID, positionMS, generation, controller);
+    this.frameRequest = request;
+    try { await request; } finally {
+      if (this.frameRequest === request) this.frameRequest = undefined;
+      if (this.frameController === controller) this.frameController = undefined;
+      if (this.owns(generation) && this.showingSource && this.frameTarget !== undefined) {
+        clearTimeout(this.frameTimer);
+        this.frameTimer = setTimeout(() => this.extractSourceFrame(), 150);
+      }
+    }
+  }
+  async loadSourceFrame(sourceID, positionMS, generation, controller) {
+    let url;
+    try {
+      const response = await this.request('/visual/video/frame', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceID,positionMS})},controller.signal);
+      url = URL.createObjectURL(await response.blob());
+      const image = new Image(); image.src = url; await image.decode();
+      if (!this.owns(generation) || controller.signal.aborted || !this.showingSource || this.source?.sourceID !== sourceID || this.sourcePositionMS !== positionMS) return;
+      this.visual.preview.src = url;
+      this.visual.queuePreview();
+      if (this.sourceFrameURL) URL.revokeObjectURL(this.sourceFrameURL);
+      this.sourceFrameURL = url; url = undefined;
+      this.visual.sourcePreviewStatus.textContent = 'Native source preview';
+    } catch {
+      if (this.owns(generation) && !controller.signal.aborted && this.showingSource && this.sourcePositionMS === positionMS) {
+        this.visual.sourcePreviewStatus.textContent = 'Source frame unavailable. Try another position or Preview loop.';
+      }
+    } finally { if (url) URL.revokeObjectURL(url); }
+  }
+  async finishSourcePreview() {
+    this.showingSource = false;
+    this.frameTarget = undefined;
+    clearTimeout(this.frameTimer);
+    clearTimeout(this.seekTimeout);
+    // Let the sole bounded extraction join before asking for loop preparation.
+    // Closing the editor instead aborts it through the owner context.
+    if (this.frameRequest) await this.frameRequest;
   }
   repeatedArrowSequence(event) {
     if (!this.visual.state?.trimming || event.type !== 'keydown' || !event.repeat || event.ctrlKey || event.altKey || event.metaKey) return '';
@@ -188,6 +278,8 @@ class ThoughtsVideoTrim {
     this.controller = controller;
     let candidate, videoURL, posterURL;
     try {
+      await this.finishSourcePreview();
+      if (!this.owns(generation) || controller.signal.aborted || visual.state.id !== operationID) return;
       const {startMS,endMS}=state.trim;
       if (startMS < 0 || endMS > this.source.durationMS || endMS-startMS < 1000 || endMS-startMS > 30000) {
         visual.sendAction({action:'sourceBounds',id:operationID});
@@ -234,6 +326,8 @@ class ThoughtsVideoTrim {
   }
   showAccepted(play) {
     if (!this.acceptedVideo) return;
+    this.showingSource = false; this.frameTarget = undefined;
+    clearTimeout(this.frameTimer); clearTimeout(this.seekTimeout);
     const visual = this.visual;
     if (this.accepted) visual.previewSourceSize = {width:this.accepted.width,height:this.accepted.height};
     this.attach(this.acceptedVideo);
@@ -260,16 +354,22 @@ class ThoughtsVideoTrim {
   }
   close() {
     this.generation++;
+    clearTimeout(this.frameTimer); clearTimeout(this.seekTimeout);
+    this.showingSource = false; this.frameTarget = undefined;
+    this.frameController?.abort(); this.frameController = undefined;
+    this.frameRequest = undefined;
     this.controller?.abort(); this.controller = undefined;
     const visual = this.visual;
     if (visual.previewVideo === this.sourceVideo || visual.previewVideo === this.acceptedVideo) visual.previewVideo = undefined;
     visual.stopPreviewPlayback();
     visual.retireVideo(this.sourceVideo); visual.retireVideo(this.acceptedVideo);
-    for (const url of [this.sourceURL,this.acceptedVideoURL,this.acceptedPosterURL]) if (url) URL.revokeObjectURL(url);
+    for (const url of [this.sourceURL,this.acceptedVideoURL,this.acceptedPosterURL,this.sourceFrameURL]) if (url) URL.revokeObjectURL(url);
     this.source = undefined; this.localFile = undefined; this.accepted = undefined;
     this.sourceVideo = undefined; this.acceptedVideo = undefined;
     this.sourceURL = undefined; this.acceptedVideoURL = undefined; this.acceptedPosterURL = undefined;
     this.seekTarget = undefined;
+    this.sourceFrameURL = undefined; this.sourcePositionMS = undefined;
+    this.sourcePreviewMode = undefined;
     this.sourceStartSeconds = 0;
     this.visual.sourcePreviewStatus.hidden = true;
     visual.preview.hidden = false;

@@ -60,11 +60,12 @@ func BenchmarkVideoTrim(b *testing.B) {
 				cancel()
 				b.Fatal(err)
 			}
-			err = validateVideoContainer(input, stat.Size())
+			var container videoSourceContainer
+			container, err = identifyVideoContainer(ctx, input, stat.Size())
 			input.Close()
 			if err == nil {
 				var probe videoProbe
-				probe, err = probeVideo(ctx, source.ffprobe, path)
+				probe, err = probeVideoSource(ctx, source.ffprobe, path, container)
 				if err == nil {
 					err = probe.validate(false)
 				}
@@ -92,6 +93,19 @@ func BenchmarkVideoTrim(b *testing.B) {
 					b.Fatal(err)
 				}
 				if err := loop.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+	for _, position := range []struct {
+		name         string
+		milliseconds int64
+	}{{"First", 0}, {"Middle", duration / 2}, {"End", duration - 1}} {
+		b.Run("SourceFrame/"+position.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				if _, err := source.PreviewFrame(b.Context(), position.milliseconds); err != nil {
 					b.Fatal(err)
 				}
 			}

@@ -105,7 +105,7 @@ the original Subject.
 ### Browser background
 
 Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use
-**Ctrl+,** / **Cmd+,** without leaving a draft. Under Visual, choose a local JPEG/PNG image or SDR H.264 MP4/MOV video, preview it, and
+**Ctrl+,** / **Cmd+,** without leaving a draft. Under Visual, choose a local JPEG/PNG image or supported SDR MP4/MOV/MKV video, preview it, and
 apply it behind the terminal. Background darkness changes only the readability
 overlay; Apply saves it. Remove background returns to the normal dark surface.
 Controls are rendered in the TUI: Tab/Shift+Tab moves focus, arrows adjust
@@ -165,14 +165,14 @@ or **Play/Pause video**; Apply saves these preferences. Slower playback can look
 less smooth. Hidden tabs, disconnected sessions and reduced-motion preferences
 pause playback automatically; a deliberate Play action can override reduced
 motion for the current session. Preview playback pauses the active background.
-For a new upload, browse a paused local preview before transferring the source.
+Selecting a video uploads and validates it once, then opens the cut controls.
+Browse paused source frames using browser decoding or a native still preview.
 **Source / Start** moves the frame and proposes the next 30 seconds, clamped to
 the source; shorten **End** for a smaller cut. Arrow keys adjust by 0.1 seconds,
 Shift by one second, PageUp/PageDown by one minute, and Home/End reach the source
 boundaries. Enter on Source / Start accepts `HH:MM:SS` with optional milliseconds.
-The first **Preview loop** transfers the whole source once to temporary local
-staging, validates it, and prepares only the selected 1–30 seconds. Later previews
-reuse that staged source until the editor closes. A fading braille wave above Options shows activity during preparation; press
+**Preview loop** prepares only the selected 1–30 seconds from temporary local
+staging. Later previews reuse that source until the editor closes. A fading braille wave above Options shows activity during preparation; press
 Esc or Tab then Enter to cancel the upload. **Done** and **Apply** use the last successful preview,
 even if you subsequently change the cut points or quality. The editor shows the
 previewed quality and actual dimensions/FPS; preview again to accept a new quality.
@@ -180,9 +180,9 @@ Apply saves those exact previewed bytes and their quality preference. With no
 pending import, changing quality only changes the preference for future imports.
 Speed changes playback duration,
 not the selected footage. Saved videos cannot be re-trimmed; reimport the source.
-Some MP4/MOV timestamp layouts cannot be previewed consistently across browsers;
-export with timestamps starting at zero if requested. HDR/HEVC and AI animation
-remain separate work.
+Supported SDR inputs include H.264, HEVC Main/Main10, and 8-bit VP9/AV1 when
+the installed decoder is available. HDR conversion and AI animation remain future
+work. See the [compatibility table](docs/media-handling-policy.md#upload-compatibility-at-a-glance).
 
 Background assets remain local and are not cloud-uploaded.
 

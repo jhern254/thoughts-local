@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
-	"image/jpeg"
 	"io"
 	"math"
 	"os"
@@ -26,20 +24,28 @@ const (
 	// Duration bounds are source footage seconds, independent of playbackRate.
 	MaxVideoDuration       = 30
 	MaxVideoSourceDuration = 14400
-	maxVideoStreams        = 4
-	maxVideoDecodedPixels  = 4_000_000_000
+	// Movie language/subtitle/attachment tracks are bounded at probe time;
+	// preparation still maps only one verified moving-video stream.
+	maxVideoStreams       = 64
+	maxVideoDecodedPixels = 4_000_000_000
 	// Per-preparation work includes seek preroll, independent of source length.
 	maxVideoDecodedFrames    int64 = 7200
 	MaxVideoTransferTime           = 20 * time.Minute
 	MaxVideoTransferIdleTime       = 30 * time.Second
 	MaxVideoProcessingTime         = 2 * time.Minute
 	maxVideoProbeBytes             = 64 << 10
+	maxVideoProbeInputBytes        = 5_000_000
+	maxVideoProbeAnalyzeTime       = 5 * time.Second
+	maxVideoProbePackets           = 2500
 	// This limits each FFmpeg allocation, not total process memory. Frame size,
 	// stream count, decoder threads and duration bound the remaining work.
 	maxVideoAllocation = 64 << 20
 )
 
-var ErrVideo = errors.New("choose a self-contained SDR H.264 MP4 or MOV within the video limits")
+var ErrVideo = errors.New("choose a supported self-contained SDR MP4, MOV or MKV within the video limits")
+var ErrVideoContainer = fmt.Errorf("%w: invalid or externally dependent container", ErrVideo)
+var ErrVideoProtected = fmt.Errorf("%w: protected movie", ErrVideo)
+var ErrVideoTracks = fmt.Errorf("%w: ambiguous video tracks", ErrVideo)
 var ErrVideoCodec = fmt.Errorf("%w: unsupported codec", ErrVideo)
 var ErrVideoColor = fmt.Errorf("%w: unsupported color format", ErrVideo)
 var ErrVideoDimensions = fmt.Errorf("%w: unsupported resolution", ErrVideo)
@@ -50,7 +56,11 @@ var ErrVideoTools = errors.New("video backgrounds require FFmpeg and ffprobe")
 var ErrPlayback = errors.New("video speed must be between 25 and 100 percent")
 
 type videoStream struct {
-	Index             int    `json:"index"`
+	Index       int `json:"index"`
+	Disposition struct {
+		Default     int `json:"default"`
+		AttachedPic int `json:"attached_pic"`
+	} `json:"disposition"`
 	CodecName         string `json:"codec_name"`
 	CodecType         string `json:"codec_type"`
 	Profile           string `json:"profile"`
@@ -76,8 +86,9 @@ type videoStream struct {
 }
 
 type videoProbe struct {
-	Streams []videoStream `json:"streams"`
-	Format  struct {
+	container videoSourceContainer
+	Streams   []videoStream `json:"streams"`
+	Format    struct {
 		Duration  string `json:"duration"`
 		StartTime string `json:"start_time"`
 	} `json:"format"`
@@ -99,29 +110,77 @@ func videoRatio(text, separator string) float64 {
 	return numerator / denominator
 }
 
+// Attached covers are not moving-video candidates. A unique default track is
+// authoritative; otherwise multiple moving tracks need an explicit future UI.
 func (info videoProbe) video() (videoStream, bool) {
-	var selected videoStream
-	count := 0
+	var selected, preferred videoStream
+	count, defaults := 0, 0
 	for _, stream := range info.Streams {
-		if stream.CodecType == "video" {
-			selected = stream
-			count++
+		if stream.CodecType != "video" || stream.Disposition.AttachedPic != 0 {
+			continue
+		}
+		selected = stream
+		count++
+		if stream.Disposition.Default != 0 {
+			preferred = stream
+			defaults++
 		}
 	}
-	return selected, count == 1
+	if count == 1 {
+		return selected, true
+	}
+	return preferred, defaults == 1
+}
+
+// Matroska commonly omits stream duration. Its segment duration denotes the
+// timestamp endpoint; subtract the selected video's origin, not an audio origin.
+func (info videoProbe) sourceDuration() (float64, error) {
+	stream, ok := info.video()
+	if !ok {
+		return 0, ErrVideoTracks
+	}
+	if stream.Duration != "" && stream.Duration != "N/A" {
+		duration, err := strconv.ParseFloat(stream.Duration, 64)
+		if err == nil && finitePositive(duration) {
+			return duration, nil
+		}
+		return 0, ErrVideoDuration
+	}
+	if info.container != sourceMatroska {
+		return 0, ErrVideoDuration
+	}
+	end, err := strconv.ParseFloat(info.Format.Duration, 64)
+	if err != nil || !finitePositive(end) {
+		return 0, ErrVideoDuration
+	}
+	start := float64(0)
+	if stream.StartTime != "" && stream.StartTime != "N/A" {
+		start, err = strconv.ParseFloat(stream.StartTime, 64)
+		if err != nil || math.IsNaN(start) || math.IsInf(start, 0) {
+			return 0, ErrVideoDuration
+		}
+	}
+	duration := end - start
+	if !finitePositive(duration) {
+		return 0, ErrVideoDuration
+	}
+	return duration, nil
 }
 
 func (info videoProbe) validate(prepared bool) error {
 	stream, ok := info.video()
-	if !ok || len(info.Streams) > maxVideoStreams {
-		return ErrVideo
+	if !ok {
+		return ErrVideoTracks
 	}
-	duration, err := strconv.ParseFloat(stream.Duration, 64)
+	if len(info.Streams) > maxVideoStreams {
+		return ErrVideoContainer
+	}
+	duration, err := info.sourceDuration()
 	maxDuration := MaxVideoSourceDuration
 	if prepared {
 		maxDuration = MaxVideoDuration
 	}
-	if info.Format.Duration != "" {
+	if info.container == sourceMOV && info.Format.Duration != "" {
 		containerDuration, parseErr := strconv.ParseFloat(info.Format.Duration, 64)
 		if parseErr != nil || !finitePositive(containerDuration) || containerDuration < 1 || containerDuration > float64(maxDuration) {
 			return ErrVideoDuration
@@ -142,10 +201,21 @@ func (info videoProbe) validate(prepared bool) error {
 	if !finitePositive(sar) || sar < .25 || sar > 4 {
 		return ErrVideo
 	}
-	if stream.CodecName != "h264" {
+	switch stream.CodecName {
+	case "h264", "hevc", "vp9", "av1":
+	default:
 		return ErrVideoCodec
 	}
-	if stream.PixFmt != "yuv420p" && stream.PixFmt != "yuvj420p" {
+	if prepared && stream.CodecName != "h264" {
+		return ErrVideoCodec
+	}
+	tenBitSDR := stream.CodecName == "hevc" && stream.PixFmt == "yuv420p10le"
+	if stream.PixFmt != "yuv420p" && stream.PixFmt != "yuvj420p" && !tenBitSDR {
+		return ErrVideoColor
+	}
+	// Ten-bit is not synonymous with HDR. Require explicit SDR declarations for
+	// depth conversion rather than guessing the intent of an untagged 10-bit file.
+	if tenBitSDR && (stream.ColorSpace != "bt709" || stream.ColorTransfer != "bt709" || stream.ColorPrimaries != "bt709") {
 		return ErrVideoColor
 	}
 	if stream.Width < 2 || stream.Height < 2 || stream.Width > MaxVideoDimension || stream.Height > MaxVideoDimension || int64(stream.Width)*int64(stream.Height) > MaxVideoPixels {
@@ -184,6 +254,9 @@ func finitePositive(value float64) bool {
 func (stream videoStream) displayRotation() (int, error) {
 	rotation := 0
 	for _, side := range stream.SideData {
+		if side.Type == "Mastering display metadata" || side.Type == "Content light level metadata" || strings.Contains(side.Type, "DOVI") {
+			return 0, ErrVideoColor
+		}
 		if side.Type != "Display Matrix" {
 			return 0, ErrVideo
 		}
@@ -269,12 +342,36 @@ func runVideoTool(ctx context.Context, tool string, output io.Writer, args ...st
 }
 
 func probeVideo(ctx context.Context, tool, path string) (videoProbe, error) {
+	return probeVideoSource(ctx, tool, path, sourceMOV)
+}
+
+func probeVideoSource(ctx context.Context, tool, path string, container videoSourceContainer) (videoProbe, error) {
 	var output videoProbeBuffer
-	args := []string{"-v", "error", "-max_alloc", strconv.Itoa(maxVideoAllocation), "-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-export_all", "0", "-threads", "1", "-max_pixels", strconv.Itoa(MaxVideoPixels), "-show_entries", "stream=index,codec_name,codec_type,profile,level,refs,nb_frames,width,height,pix_fmt,avg_frame_rate,sample_aspect_ratio,duration,start_time,color_space,color_transfer,color_primaries,color_range:stream_side_data=side_data_type,rotation,displaymatrix:format=duration,start_time", "-of", "json", path}
+	args := []string{
+		"-v", "error", "-max_alloc", strconv.Itoa(maxVideoAllocation),
+		"-protocol_whitelist", "file",
+	}
+	args = append(args, container.inputArgs()...)
+	// Return technical facts only, never titles, attachment names, arbitrary tags
+	// or codec-private blobs. Probe input and JSON output have separate budgets.
+	const entries = "stream=index,codec_name,codec_type,profile,level,refs,nb_frames," +
+		"width,height,pix_fmt,avg_frame_rate,sample_aspect_ratio,duration,start_time," +
+		"color_space,color_transfer,color_primaries,color_range:" +
+		"stream_disposition=default,attached_pic:" +
+		"stream_side_data=side_data_type,rotation,displaymatrix:format=duration,start_time"
+	args = append(args, []string{
+		"-threads", "1", "-max_pixels", strconv.Itoa(MaxVideoPixels),
+		"-max_streams", strconv.Itoa(maxVideoStreams),
+		"-probesize", strconv.Itoa(maxVideoProbeInputBytes),
+		"-analyzeduration", strconv.FormatInt(maxVideoProbeAnalyzeTime.Microseconds(), 10),
+		"-max_probe_packets", strconv.Itoa(maxVideoProbePackets),
+		"-show_entries", entries, "-of", "json", path,
+	}...)
+
 	if err := runVideoTool(ctx, tool, &output, args...); err != nil {
 		return videoProbe{}, err
 	}
-	var info videoProbe
+	info := videoProbe{container: container}
 	if json.Unmarshal(output.Bytes(), &info) != nil {
 		return videoProbe{}, ErrVideo
 	}
@@ -317,8 +414,11 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 	args := []string{
 		"-nostdin", "-hide_banner", "-loglevel", "error", "-xerror",
 		"-max_alloc", strconv.Itoa(maxVideoAllocation), "-threads", "1", "-filter_threads", "1",
-		"-protocol_whitelist", "file", "-f", "mov", "-enable_drefs", "0", "-export_all", "0",
-		"-max_pixels", strconv.Itoa(videoDecoderPixelLimit(stream.Width, stream.Height)), "-ss", videoSeconds(trim.StartMS), "-noaccurate_seek", "-i", source,
+		"-protocol_whitelist", "file",
+	}
+	args = append(args, info.container.inputArgs()...)
+	args = append(args, []string{
+		"-max_pixels", strconv.Itoa(videoDecoderPixelLimit(stream.Width, stream.Height)), "-ss", info.inputPosition(trim.StartMS), "-noaccurate_seek", "-i", source,
 		"-map", fmt.Sprintf("0:%d", stream.Index), "-an", "-sn", "-dn",
 		"-map_metadata", "-1", "-map_metadata:s:v", "-1", "-map_chapters", "-1", "-t", videoSeconds(trim.EndMS - trim.StartMS), "-frames:v", strconv.FormatInt(plan.FrameCount, 10),
 		"-vf", fmt.Sprintf("metadata=mode=add:key=thoughts.frame:value=1,metadata=mode=print:key=thoughts.frame:file='pipe\\:1':direct=1,trim=start=0:end=%s,setpts=PTS-STARTPTS,scale=%d:%d:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,setsar=1,fps=%s", videoSeconds(trim.EndMS-trim.StartMS), width, height, plan.FrameRate.String()),
@@ -327,7 +427,7 @@ func encodeVideoLoop(ctx context.Context, ffmpeg, ffprobe, source, directory str
 		"-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv",
 		"-bsf:v", "filter_units=remove_types=6", "-movflags", "+faststart",
 		"-fs", strconv.Itoa(limits.MaxBytes), "-y", output,
-	}
+	}...)
 
 	encodeCtx, cancelEncode := context.WithCancel(ctx)
 	defer cancelEncode()
@@ -425,27 +525,7 @@ func prepareVideoPoster(ctx context.Context, ffmpeg, videoPath, directory string
 	if err != nil {
 		return nil, err
 	}
-	if len(pixels) != stream.Width*stream.Height*3 {
-		return nil, ErrVideo
-	}
-	// Video pixels are opaque. RGBA also uses the JPEG encoder's direct
-	// pixel path rather than allocating an interface color for every pixel.
-	decoded := image.NewRGBA(image.Rect(0, 0, stream.Width, stream.Height))
-	for pixel := 0; pixel < stream.Width*stream.Height; pixel++ {
-		copy(decoded.Pix[pixel*4:pixel*4+3], pixels[pixel*3:pixel*3+3])
-		decoded.Pix[pixel*4+3] = 255
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	var poster bytes.Buffer
-	if err := jpeg.Encode(&poster, decoded, &jpeg.Options{Quality: backgroundJPEGQuality}); err != nil {
-		return nil, ErrVideo
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return poster.Bytes(), nil
+	return encodeVideoRGB(ctx, pixels, stream.Width, stream.Height)
 }
 
 func readBoundedVideoAsset(path string, limit int) ([]byte, error) {
@@ -462,4 +542,14 @@ func readBoundedVideoAsset(path string, limit int) ([]byte, error) {
 		return nil, ErrVideo
 	}
 	return body, nil
+}
+
+func (info videoProbe) movingVideoCount() int {
+	count := 0
+	for _, stream := range info.Streams {
+		if stream.CodecType == "video" && stream.Disposition.AttachedPic == 0 {
+			count++
+		}
+	}
+	return count
 }

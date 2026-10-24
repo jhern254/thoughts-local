@@ -324,7 +324,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		} else {
 			m.options.status = "Saved. Some background files could not be removed."
 		}
-	case "failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
+	case "failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceProtected", "sourceTracks", "sourceContainer", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
 		if m.options.request == "prepareLoop" && m.options.loopReady {
 			m.options.sourceFrame = false
 		}
@@ -348,10 +348,16 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			m.options.status = "Could not prepare this loop. Retry or choose another cut."
 		}
 		switch msg.Action {
+		case "sourceProtected":
+			m.options.status = "Protected movies cannot be imported."
+		case "sourceTracks":
+			m.options.status = "Multiple video tracks: no unambiguous main track."
+		case "sourceContainer":
+			m.options.status = "Could not validate a self-contained MP4, MOV or MKV."
 		case "sourceCodec":
-			m.options.status = "Unsupported video codec. H.264 is required."
+			m.options.status = "Unsupported video encoding or unavailable decoder."
 		case "sourceColor":
-			m.options.status = "Unsupported video color. Use 8-bit SDR Rec.709."
+			m.options.status = "Unsupported HDR/color format. Use supported SDR Rec.709."
 		case "sourceDimensions":
 			m.options.status = "Video exceeds 4096 pixels per side or 9 million pixels."
 		case "sourceRate":
@@ -369,7 +375,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		case "sourceTimeout":
 			m.options.status = "Video operation timed out. Try again or use a shorter cut."
 		case "sourceUnsupported":
-			m.options.status = "Could not validate this video. Use an intact H.264 MP4/MOV."
+			m.options.status = "Could not validate this MP4, MOV or MKV."
 		}
 
 	default:

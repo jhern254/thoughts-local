@@ -100,6 +100,28 @@ try {
       }
     };
   });
+  if (longSourceStudy) await page.route('**/static/video-trim.js', async route => {
+    const response=await route.fetch();
+    const forceNative=process.env.THOUGHTS_PERF_NATIVE_FRAMES==='1';
+    await route.fulfill({response,body:await response.text()+`;
+      window.lastNativeFrameMS=undefined;
+      if(ThoughtsVideoTrim.prototype.loadSourceFrame){
+        const originalFrame=ThoughtsVideoTrim.prototype.loadSourceFrame;
+        ThoughtsVideoTrim.prototype.loadSourceFrame=async function(sourceID,positionMS,...rest){
+          const previous=this.sourceFrameURL;
+          await originalFrame.call(this,sourceID,positionMS,...rest);
+          if(this.sourceFrameURL&&this.sourceFrameURL!==previous)window.lastNativeFrameMS=positionMS;
+        };
+      }
+      if(${forceNative}){
+        const originalReady=ThoughtsVideoTrim.prototype.ready;
+        ThoughtsVideoTrim.prototype.ready=function(video,...rest){
+          if(video===this.sourceVideo)return Promise.reject(new Error('Synthetic native-preview qualification'));
+          return originalReady.call(this,video,...rest);
+        };
+      }
+    `});
+  });
   await page.route('**/static/visual.js', async route => {
     const response = await route.fetch();
     await route.fulfill({response,body:await response.text()+`;window.activationTimes=[];const measuredActivate=ThoughtsVisual.prototype.activate;ThoughtsVisual.prototype.activate=async function(...args){window.backgroundProbe=this;const start=performance.now();const result=await measuredActivate.apply(this,args);window.activationTimes.push(performance.now()-start);return result;};`});
@@ -250,38 +272,52 @@ try {
       const initial=await usage();let peakBrowserRSS=initial.browserRSS,peakBrowserPSS=initial.browserPSS,peakAppRSS=initial.appRSS;
       const timer=setInterval(async()=>{const current=await usage();peakBrowserRSS=Math.max(peakBrowserRSS,current.browserRSS);peakBrowserPSS=Math.max(peakBrowserPSS,current.browserPSS);peakAppRSS=Math.max(peakAppRSS,current.appRSS);},200);
       try {
-        const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');
-        const selectionStart=performance.now();await(await chooser).setFiles(videoFixturePath);
-        await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
-        await expect(page.locator('#background-preview-video')).toBeVisible();
-        const selectionMs=performance.now()-selectionStart;
-        const sourceInfo=await page.locator('#background-preview-video').evaluate(v=>({duration:v.duration,width:v.videoWidth,height:v.videoHeight}));
-        const seekMs=[];
-        for(const position of [sourceInfo.duration/2,sourceInfo.duration-10,sourceInfo.duration/4]) {
-          const start=performance.now();await page.keyboard.press('Enter');await page.keyboard.press('Control+u');
-          const ms=Math.floor(position*1000),time=`${String(Math.floor(ms/3600000)).padStart(2,'0')}:${String(Math.floor(ms/60000)%60).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(ms%1000).padStart(3,'0')}`;
-          await page.keyboard.insertText(time);await page.keyboard.press('Enter');
-          await expect.poll(()=>page.locator('#background-preview-video').evaluate((v,target)=>!v.seeking&&Math.abs(v.currentTime-target/1000)<.001,ms)).toBe(true);
-          seekMs.push(performance.now()-start);
-        }
-        // A final late cut is measured separately from exploratory seeking.
-        await page.keyboard.press('End');for(let i=0;i<9;i++)await page.keyboard.press('Shift+ArrowLeft');
         const stageReply=page.waitForResponse(r=>new URL(r.url()).pathname==='/visual/video/source'&&r.request().method()==='POST',{timeout:1325000});
-        const prepareReply=page.waitForResponse(r=>new URL(r.url()).pathname==='/visual/video/preview'&&r.request().method()==='POST',{timeout:1450000});
-        let transferredAt;
         await page.evaluate(()=>{
           window.longSourceTransferDone=undefined;
+          if(window.measuringSourceTransfer)return;
+          window.measuringSourceTransfer=true;
           const send=XMLHttpRequest.prototype.send;
           XMLHttpRequest.prototype.send=function(body){this.upload.addEventListener('load',()=>{window.longSourceTransferDone=performance.now();},{once:true});return send.call(this,body);};
         });
-        const browserStart=await page.evaluate(()=>performance.now());const prepareStart=performance.now();await clickControl(page,'Preview loop');
-        await stageReply;const stagingMs=performance.now()-prepareStart;
-        transferredAt=await page.evaluate(()=>window.longSourceTransferDone);
-        const response=await prepareReply;const prepared=await response.json(),preparationMs=performance.now()-prepareStart-stagingMs;
+        const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');
+        const browserStart=await page.evaluate(()=>performance.now());
+        const selectionStart=performance.now();await(await chooser).setFiles(videoFixturePath);
+        const staged=await stageReply,sourceInfo=await staged.json();
+        const stagingMs=performance.now()-selectionStart;
+        await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
+        const selectionMs=performance.now()-selectionStart;
+        const transferredAt=await page.evaluate(()=>window.longSourceTransferDone);
+        const seekMs=[];
+        const timecode=ms=>`${String(Math.floor(ms/3600000)).padStart(2,'0')}:${String(Math.floor(ms/60000)%60).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(ms%1000).padStart(3,'0')}`;
+        const waitForFrame=async ms=>{
+          await expect.poll(()=>page.evaluate(target=>{
+            const editor=window.backgroundProbe.videoTrim;
+            if(editor.sourcePreviewMode==='native')return window.lastNativeFrameMS===target;
+            const video=editor.sourceVideo;
+            return !!video&&!video.seeking&&Math.abs(video.currentTime-(target/1000+editor.sourceStartSeconds))<.001;
+          },ms),{timeout:15000}).toBe(true);
+        };
+        for(const position of [sourceInfo.durationMS/2,sourceInfo.durationMS-10000,sourceInfo.durationMS/4]) {
+          const start=performance.now(),ms=Math.floor(position);
+          await page.keyboard.press('Enter');await page.keyboard.press('Control+u');
+          await page.keyboard.insertText(timecode(ms));await page.keyboard.press('Enter');
+          await waitForFrame(ms);seekMs.push(performance.now()-start);
+        }
+        const rapidStart=performance.now();
+        for(let repeat=0;repeat<20;repeat++)await page.keyboard.press('ArrowRight');
+        const rapidPosition=await page.evaluate(()=>window.backgroundProbe.state.sourcePreviewMS);
+        await waitForFrame(rapidPosition);
+        const rapidSeekMs=performance.now()-rapidStart;
+        await page.keyboard.press('End');for(let i=0;i<9;i++)await page.keyboard.press('Shift+ArrowLeft');
+        const prepareReply=page.waitForResponse(r=>new URL(r.url()).pathname==='/visual/video/preview'&&r.request().method()==='POST',{timeout:125000});
+        const prepareStart=performance.now();await clickControl(page,'Preview loop');
+        const response=await prepareReply,prepared=await response.json(),preparationMs=performance.now()-prepareStart;
         const readyStart=performance.now();await expect(screen(page)).toContainText('Preview ready. Done uses this loop.',{timeout:125000});const previewLoadMs=performance.now()-readyStart;
+        await page.screenshot({path:output.replace('.json',`-${run}-prepared.png`)});
         await clickControl(page,'Done — use previewed loop');const applyStart=performance.now();await clickControl(page,'Apply');await expect(screen(page)).not.toContainText('Background darkness:');
         const end=await usage();
-        add({phase:'long-source-import',run,sourceInfo,selectionMs,seekMs,transferMs:transferredAt-browserStart,stagingMs,validationResponseMs:stagingMs-(transferredAt-browserStart),preparationMs,previewLoadMs,applyMs:performance.now()-applyStart,prepared,peakBrowserRSS,peakBrowserPSS,peakAppRSS,browserCPUMs:1000*(end.browserCPU-initial.browserCPU),appCPUMs:1000*(end.appCPU-initial.appCPU),...end});
+        add({phase:'long-source-import',run,sourceInfo,selectionMs,seekMs,rapidSeekMs,transferMs:transferredAt-browserStart,stagingMs,validationResponseMs:stagingMs-(transferredAt-browserStart),preparationMs,previewLoadMs,applyMs:performance.now()-applyStart,prepared,peakBrowserRSS,peakBrowserPSS,peakAppRSS,browserCPUMs:1000*(end.browserCPU-initial.browserCPU),appCPUMs:1000*(end.appCPU-initial.appCPU),...end});
       } finally {clearInterval(timer);}
     }
   }

@@ -304,7 +304,8 @@ for profile compatibility, privacy limits and one-time processing cost.
 
 ## Looping video ownership
 
-The Visual boundary additionally accepts self-contained SDR H.264 MP4/MOV.
+The Visual boundary accepts supported self-contained SDR MP4, MOV and Matroska
+sources; saved output remains H.264 MP4 plus JPEG poster.
 New uploads use the staged trimming routes below;
 `GET /visual/background` serves only the current selection with byte ranges,
 and `GET /visual/poster` serves only its generated still. Host/Origin validation,
@@ -343,7 +344,34 @@ Apply and editor close retire temporary files. Failed pre-commit saves retain
 the selected background; post-commit cleanup failures remain warnings.
 
 Bubble Tea owns millisecond cut controls and reserved preview cells. Browser
-source scrubbing is paused, coalesces seeks, and never invokes FFmpeg. Only the
+source scrubbing is paused and coalesces seeks. Browser decoding is optional;
+`POST /visual/video/frame` uses the same editor capability/source ID to return one
+bounded transient JPEG when native seeking is needed. It accepts only a
+source-relative timestamp, not a path or track choice. Only the
 prepared native clip loops; cut edits leave it intact until explicit Preview.
 One active background and candidate cannot play together. Closing/canceling
 releases candidate URLs/players and restores eligible selected playback.
+
+### Matroska and source-frame fallback
+
+The native source carries its verified container and selected moving-video track.
+MOV arguments/data-reference checks remain separate from Matroska demuxing;
+prepared output is always checked as MP4. A small structural preflight skips
+packet bodies and bounds metadata before FFmpeg can load attachments, rejects
+protected/linked sources, and leaves codec interpretation to FFmpeg. See the
+[compatibility and resource contract](../../docs/media-handling-policy.md#looping-video-backgrounds).
+
+Selection uploads once before attempting browser preview. Actual decode/seek
+failure switches to native stills without another transfer. Browser scrubbing
+keeps one seek in flight; native scrubbing keeps one extraction plus one latest
+position, coalesced at 150 ms. A native frame is at most 640×360/1 MiB and has a
+10-second deadline; preroll shares the existing decoded-work budget. The prior
+frame stays visible, and source/editor generations prevent retired publication.
+The native editor gate serializes extraction, preparation and teardown; canceled
+subprocesses join before files are removed. Prepared-loop acknowledgement and
+Apply reuse are unchanged. Source frames are not attachments or a movie proxy.
+
+FFprobe may inspect headers of ignored streams during its bounded analysis;
+preparation maps only the verified video and strips all other streams/metadata.
+FFmpeg is maintained external code, not an OS sandbox. No browser-decoder or
+hardware-acceleration guarantee follows from accepting a native source.

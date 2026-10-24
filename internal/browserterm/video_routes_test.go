@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -40,7 +41,7 @@ func TestVideoEditor_Routes(t *testing.T) {
 		}
 		id, _ := s.videoEditor.setOpen(true)
 		defer s.videoEditor.Close()
-		for _, path := range []string{"/visual/video/source", "/visual/video/preview", "/visual/video"} {
+		for _, path := range []string{"/visual/video/source", "/visual/video/preview", "/visual/video", "/visual/video/frame"} {
 			w := videoEditRequest(t, s, "PRIVATE", "POST", path, []byte("PRIVATE"))
 			if w.Code != 403 || strings.Contains(w.Body.String(), "PRIVATE") {
 				t.Fatalf("%s: got %d %q", path, w.Code, w.Body.String())
@@ -96,6 +97,20 @@ func TestVideoEditor_Routes(t *testing.T) {
 		}
 		if err := json.Unmarshal(staged.Body.Bytes(), &source); err != nil {
 			t.Fatal(err)
+		}
+		frameInput, _ := json.Marshal(map[string]any{"sourceID": source.SourceID, "positionMS": 250})
+		frame := videoEditRequest(t, s, id, "POST", "/visual/video/frame", frameInput)
+		if frame.Code != 200 || frame.Header().Get("Content-Type") != "image/jpeg" {
+			t.Fatalf("frame: %d %s", frame.Code, frame.Body.String())
+		}
+		if _, err := jpeg.Decode(bytes.NewReader(frame.Body.Bytes())); err != nil {
+			t.Fatal(err)
+		}
+		for _, invalid := range []string{`{"sourceID":"../../PRIVATE","positionMS":0}`, `{"sourceID":"` + source.SourceID + `","positionMS":-1}`, `{"sourceID":"` + source.SourceID + `","positionMS":9223372036854775807}`} {
+			response := videoEditRequest(t, s, id, "POST", "/visual/video/frame", []byte(invalid))
+			if response.Code == 200 || strings.Contains(response.Body.String(), "PRIVATE") {
+				t.Fatalf("unsafe frame: %d %s", response.Code, response.Body.String())
+			}
 		}
 		input, _ := json.Marshal(map[string]any{"sourceID": source.SourceID, "trim": visual.VideoTrim{StartMS: 250, EndMS: 1500}})
 		prepared := videoEditRequest(t, s, id, "POST", "/visual/video/preview", input)
@@ -213,6 +228,9 @@ func TestVideoSource_Admission(t *testing.T) {
 			err    error
 			reason string
 		}{
+			{visual.ErrVideoProtected, "sourceProtected"},
+			{visual.ErrVideoTracks, "sourceTracks"},
+			{visual.ErrVideoContainer, "sourceContainer"},
 			{visual.ErrVideoCodec, "sourceCodec"},
 			{visual.ErrVideoColor, "sourceColor"},
 			{visual.ErrVideoDimensions, "sourceDimensions"},

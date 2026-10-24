@@ -91,26 +91,32 @@ color interpretation and necessary playback/container information remain.
 
 ### Upload compatibility at a glance
 
-An `.mp4` or `.mov` extension describes the container, not the video encoding
-inside it. Supported uploads must meet all applicable limits below and be
-decodable by the browser used for source preview.
+MP4, MOV and Matroska (`.mkv`) are containers, not video encodings. Native
+validation determines compatibility from content. Browser source decoding is
+optional: a bounded native still preview is available when decoding or seeking
+is unavailable in the browser. All applicable limits below still apply.
 
 | Video characteristic | Current support |
 | --- | --- |
 | H.264, 8-bit SDR with supported Rec.709 color | Supported; untagged color is interpreted as Rec.709. |
 | Standard or self-contained fragmented MP4 | Supported; fragmentation alone does not require re-exporting the source. |
-| Nonzero starting timestamps | Supported; some late-frame previews are limited by the browser. Native Preview loop remains available. |
+| Nonzero starting timestamps | Supported on one selected-video-relative timeline; native still preview covers browser seek limitations. |
 | Large or long sources | Up to 8 GiB and 1 second–4 hours. Saved loops remain 1–30 seconds. |
 | 1080p and 4K | Supported within 4,096 pixels per axis and 9 million pixels per frame. |
 | Frame rates up to 60 FPS, including 29.97/59.94 | Supported. |
 | Portrait video and ordinary 90° rotation | Supported; orientation is normalized in the saved loop. |
-| Audio/subtitle tracks | Allowed, then removed; one video track and four total tracks maximum. |
-| HEVC/H.265, AV1, VP9 or ProRes inside MP4/MOV | Not currently supported. |
-| HDR, 10-bit video or explicitly tagged colors other than Rec.709 | Not currently supported, including some valid older SDR files. |
+| Matroska with H.264 8-bit SDR | Supported, including ordinary additional tracks and attachments. |
+| HEVC Main 8-bit / Main10 10-bit SDR | Supported; Main10 requires explicit Rec.709 matrix, transfer and primaries before conversion to 8-bit. |
+| VP9 / AV1 | Supported for 8-bit 4:2:0 SDR when the installed decoder is available. |
+| Audio, subtitles, fonts and cover attachments | Up to 64 total streams; ignored in preparation and never extracted or retained. Probe work may inspect stream headers. |
+| Multiple moving-video tracks | Select the sole default track, otherwise reject ambiguity. Attached cover images do not compete. |
+| Variable frame rate | Supported with valid reported timing/rational rate; saved output uses that rate capped to its quality tier, with duplication/dropping and no interpolation. Missing/unverifiable FPS is rejected. |
+| Missing Cues index | Bounded seeking is attempted; a particular late cut may exceed work/time limits. |
+| HDR/PQ/HLG, Dolby Vision, incompatible color, ProRes and other unqualified encodings | Unsupported; no tone mapping or arbitrary codec acceptance. VP9/AV1 10-bit remains unsupported. |
 | 120 FPS, 8K or sources exceeding the limits above | Rejected at selection. |
 | Encrypted video, external-file references, malformed or excessively complex containers | Rejected for safety or bounded processing. |
 
-The main format gaps are HEVC, HDR/10-bit and other color formats. These are
+The main format gaps are HDR, additional bit-depth/color combinations and other encodings. These are
 implementation limitations, not evidence that such files are unsafe.
 Selection checks catch known incompatibilities; damaged frames, unusually
 expensive decoding or storage failures can still prevent a particular preview.
@@ -141,7 +147,7 @@ bounds, following the H.264 Annex A limits also used by
 Visible even dimensions alone do not establish level compatibility.
 Re-encoding is lossy. Untagged SDR
 is interpreted as Rec.709; explicit incompatible primaries/transfer, ICC video
-profiles, HDR/HEVC, encrypted/reference movies, arbitrary display
+profiles, HDR, encrypted/reference movies, arbitrary display
 transforms and unsupported encodings are rejected rather than silently relabeled.
 
 Native processing stages private application-named files, uses explicit argument
@@ -167,7 +173,16 @@ reads that layout without a preliminary whole-file remux. Initial movie and
 fragment metadata share the 32 MiB source-index budget; prepared output remains
 nonfragmented. External file references and encrypted movies remain rejected.
 Source movie indexes are bounded to 32 MiB; prepared-loop indexes remain bounded
-to 8 MiB. Four-stream, nesting, box-count and processor-allocation limits remain.
+to 8 MiB. Stream declarations are capped at 64, with the existing MOV nesting/
+box-count and processor-allocation bounds. Matroska preflight limits its EBML
+header to 4 KiB, combined non-packet metadata to 32 MiB, and inspected element
+headers to two million (including unknown-sized streaming clusters). Known-size
+clusters are skipped without reading packets. It inspects only required structural
+and protection/reference declarations, not arbitrary tags or media payloads.
+This matters because the Matroska demuxer can allocate attachments before stream
+selection; limiting returned JSON alone would not bound that work. Segment links,
+external chapter references and protected tracks are rejected. Missing Cues alone
+is not a rejection. FFmpeg still performs technical/media validation.
 
 Prepared output has its own tier-size limit, container/stream checks, actual
 packet cadence/count and VBV-envelope validation, and a bounded full independent
@@ -192,13 +207,21 @@ damaged frames, processing budgets, disk failures and cancellation can still
 prevent preparation. A prepared loop is usable only after output validation and
 browser acknowledgement.
 
-The browser keeps the File/object URL and one muted, paused source-video element.
-Moving Start or End seeks that element without another upload, native processing or
-thumbnail generation. Previews reuse the validated native source. The application
-never buffers the whole movie into a JavaScript ArrayBuffer or Go byte slice.
-Nonzero timestamp origins are accepted; source-relative controls account for the
-browser's origin. Where Chromium cannot seek a late source frame, a fixed notice
-directs the user to native Preview loop instead.
+The browser retains the File/object URL without buffering a whole movie into a
+JavaScript ArrayBuffer or Go byte slice. Selection streams and validates once
+before opening the editor. A muted paused video element supplies source frames
+when actual decoding/seeking works; otherwise `/visual/video/frame` returns a
+transient JPEG from the already staged, selected track. Multiple moving-video
+tracks use native frames because browser track selection cannot be verified.
+Frames use a 640×360 bounding box without upscaling, a 1 MiB JPEG limit and a
+ten-second deadline, with the unchanged decoded-frame/pixel budgets including
+keyframe preroll. The covering frame remains available at End, including EOF.
+Rapid scrubbing coalesces at 150 ms with one extraction and one latest target;
+obsolete results cannot replace newer frames. Previous valid pixels remain
+visible while seeking. No thumbnail collection or playback proxy is retained.
+A frame failure does not discard an acknowledged loop. All previews use the same
+source-relative controls as final preparation. Apply still copies only the
+acknowledged video/poster bytes, without another encode.
 New-upload trimming temporarily retains that source while Visual is open; Apply, Cancel, closing
 Visual, disconnect and orderly shutdown remove it after joining processing.
 It is not an archive; saved clips have no retained source or re-trim metadata.

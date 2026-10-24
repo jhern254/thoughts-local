@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openVisual, clickControl, screen} from './visual-helpers.mjs';
 
-let source, longSource, offsetSource, fragmentedSource;
+let source, longSource, offsetSource, fragmentedSource, matroskaSource;
 // The native settings outlive each browser context. Give motion assertions an
 // explicit user preference rather than inheriting the preceding test's pause.
 test.beforeEach(async({request,baseURL})=>{
@@ -24,6 +24,9 @@ test.beforeAll(() => {
     const longPath=join(directory,'four-hours.mp4');
     execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=32x24:rate=1:duration=14400','-c:v','libx264','-threads','1','-g','60','-pix_fmt','yuv420p','-movflags','+faststart',longPath]);
     longSource={name:'four-hours.mp4',mimeType:'video/mp4',buffer:readFileSync(longPath)};
+    const mkvPath=join(directory,'movie.mkv');
+    execFileSync('ffmpeg',['-v','error','-f','lavfi','-i',"nullsrc=size=160x90:rate=24:duration=12,geq=lum='32+10*T':cb=128:cr=128",'-f','lavfi','-i','sine=duration=12','-map','0:v','-map','1:a','-map','1:a','-map','1:a','-map','1:a','-c:v','libx264','-threads','1','-g','120','-pix_fmt','yuv420p','-c:a','aac',mkvPath]);
+    matroskaSource={name:'synthetic-movie.mkv',mimeType:'video/x-matroska',buffer:readFileSync(mkvPath)};
     const offsetPath=join(directory,'offset.mp4');
     execFileSync('ffmpeg',['-v','error','-f','lavfi','-i',"nullsrc=size=64x48:rate=24:duration=12,geq=lum='32+12*T':cb=128:cr=128",'-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-output_ts_offset','5','-movflags','+faststart',offsetPath]);
     offsetSource={name:'offset.mp4',mimeType:'video/mp4',buffer:readFileSync(offsetPath)};
@@ -605,11 +608,11 @@ test('source rejection is visible before cutting and a valid upload can retry',a
   await expect(screen(page)).toContainText('Checking video compatibility… Esc: cancel');
   await expect(screen(page)).not.toContainText('Preview loop');
   finishValidation();
-  await expect(screen(page)).toContainText('Unsupported video color. Use 8-bit SDR Rec.709.');
+  await expect(screen(page)).toContainText('Unsupported HDR/color format. Use supported SDR Rec.709.');
   await expect(screen(page)).not.toContainText('Private decoder text');
   await expect(screen(page)).not.toContainText('Done — use previewed loop');
   await page.setViewportSize({width:650,height:600});
-  await expect(screen(page)).toContainText('Unsupported video color. Use 8-bit SDR Rec.709.');
+  await expect(screen(page)).toContainText('Unsupported HDR/color format. Use supported SDR Rec.709.');
   await page.screenshot({path:`/tmp/video-rejection-${testInfo.project.name}.png`});
  } finally {finishValidation();await page.unrouteAll({behavior:'wait'});}
  await page.setViewportSize({width:1200,height:850});
@@ -708,4 +711,63 @@ test('fragmented MP4 validates up front and prepares a sixteen-second background
  await clickControl(page,'Apply');
  await expect(screen(page)).not.toContainText('Background darkness:');
  expect((await(await page.request.get('/visual')).json()).kind).toBe('video');
+});
+
+
+for (const forceFallback of [false,true]) test(`Matroska scene browsing and exact Apply with forced fallback ${forceFallback}`,async({page},testInfo)=>{
+ let uploads=0,frames=0,activeFrames=0,maximumFrames=0,preparations=0,sockets=0;
+ page.on('websocket',()=>sockets++);
+ page.on('request',request=>{
+  if(request.method()!=='POST')return;
+  const path=new URL(request.url()).pathname;
+  if(path==='/visual/video/source')uploads++;
+  if(path==='/visual/video/preview')preparations++;
+  if(path==='/visual/video/frame'){frames++;activeFrames++;maximumFrames=Math.max(maximumFrames,activeFrames);}
+ });
+ const finished=request=>{if(new URL(request.url()).pathname==='/visual/video/frame')activeFrames--;};
+ page.on('requestfinished',finished);page.on('requestfailed',finished);
+ if(forceFallback)await page.addInitScript(()=>{
+  const sources=new Set(),create=URL.createObjectURL;
+  URL.createObjectURL=function(blob){const url=create.call(this,blob);if(blob.type==='video/x-matroska')sources.add(url);return url;};
+  const load=HTMLMediaElement.prototype.load;
+  HTMLMediaElement.prototype.load=function(){if(sources.has(this.src)){queueMicrotask(()=>this.dispatchEvent(new Event('error')));return;}return load.call(this);};
+ });
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await openVisual(page);
+ const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(matroskaSource);
+ await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
+ if(forceFallback)await expect(page.locator('#source-preview-status')).toContainText('Native source preview');
+ await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('00:00:04.200');await page.keyboard.press('Enter');
+ const brightness=()=>page.evaluate(()=>{
+  const video=document.querySelector('#background-preview-video');
+  const image=document.querySelector('#background-preview');
+  const element=video&&!video.hidden?video:image;
+  if(element instanceof HTMLVideoElement&&(element.seeking||element.readyState<2))return -1;
+  if(element instanceof HTMLImageElement&&(!element.complete||!element.naturalWidth))return -1;
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+  const context=canvas.getContext('2d');context.drawImage(element,0,0,1,1);return context.getImageData(0,0,1,1).data[0];
+ });
+ await expect.poll(brightness).toBeGreaterThan(60);await expect.poll(brightness).toBeLessThan(77);
+ for(let i=0;i<20;i++)await page.keyboard.press('ArrowRight');
+ await expect(screen(page)).toContainText('Source / Start: 00:00:06.200');
+ await expect.poll(brightness).toBeGreaterThan(84);await expect.poll(brightness).toBeLessThan(101);
+ if(forceFallback){expect(frames).toBeGreaterThan(0);expect(frames).toBeLessThan(8);expect(maximumFrames).toBe(1);}
+ await expect(page.locator('#background-preview-wrap')).toBeVisible();
+ await page.screenshot({path:`/tmp/mkv-${testInfo.project.name}-${forceFallback}.png`});
+ if(forceFallback){
+  await clickControl(page,'End: 00:00:12.023 (max 00:00:12.023)');
+  await page.keyboard.press('End');
+  await expect.poll(brightness).toBeGreaterThan(146);
+  await page.setViewportSize({width:650,height:850});
+  await expect(page.locator('#background-preview-wrap')).toBeVisible();
+  await page.screenshot({path:`/tmp/mkv-${testInfo.project.name}-narrow.png`});
+  await page.setViewportSize({width:1200,height:850});
+ }
+ await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ await expect.poll(brightness).toBeGreaterThan(84);await expect.poll(brightness).toBeLessThan(101);
+ await clickControl(page,'Done — use previewed loop');await clickControl(page,'Apply');
+ await expect(screen(page)).not.toContainText('Background darkness:');
+ expect((await(await page.request.get('/visual')).json()).kind).toBe('video');
+ expect(uploads).toBe(1);expect(preparations).toBe(1);expect(sockets).toBe(1);
 });

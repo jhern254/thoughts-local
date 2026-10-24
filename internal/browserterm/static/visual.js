@@ -315,7 +315,8 @@ class ThoughtsVisual {
     if (!file) {this.reply('cancelled', operationID); return;}
     try {
       const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-      if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp') {
+      if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp' ||
+          (signature[0] === 0x1a && signature[1] === 0x45 && signature[2] === 0xdf && signature[3] === 0xa3)) {
         await this.videoTrim.selectSource(file, operationID); return;
       }
       if (file.size > 16 * 1024 * 1024) throw new Error();

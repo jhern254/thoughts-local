@@ -60,7 +60,7 @@ func visualError(w http.ResponseWriter, err error) {
 		message = "Choose Efficient, High quality, or Maximum video quality."
 	case errors.Is(err, visual.ErrVideo):
 		status = http.StatusBadRequest
-		message = "Choose a self-contained SDR H.264 MP4 or MOV within the video limits."
+		message = "Choose a supported self-contained SDR MP4, MOV or MKV within the video limits."
 	case errors.Is(err, visual.ErrVideoTools):
 		status = http.StatusServiceUnavailable
 		message = "Install FFmpeg and ffprobe to import a video background."
@@ -109,6 +109,11 @@ func (s *server) serveVisual(w http.ResponseWriter, r *http.Request) {
 		allowed = "POST"
 		if r.Method == http.MethodPost {
 			handler = s.applyVisualVideoLoop
+		}
+	case "/visual/video/frame":
+		allowed = "POST"
+		if r.Method == http.MethodPost {
+			handler = s.previewVisualVideoFrame
 		}
 	case "/visual/video/source":
 		allowed = "POST, DELETE"

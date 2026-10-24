@@ -5,11 +5,12 @@ import vm from 'node:vm';
 
 function fixture() {
   const revoked=[];
-  const context=vm.createContext({AbortController,URL:{revokeObjectURL:url=>revoked.push(url)}});
+  const timers=new Map();
+  const context=vm.createContext({AbortController,setTimeout(callback){timers.set(callback,callback);return callback;},clearTimeout(id){timers.delete(id);},URL:{revokeObjectURL:url=>revoked.push(url)}});
   vm.runInContext(readFileSync(new URL('../static/video-trim.js',import.meta.url),'utf8'),context);
-  const visual={preview:{hidden:false},sourcePreviewStatus:{hidden:true},connected:true,state:{open:true,editorID:'editor',id:1},stopPreviewPlayback(){},retireVideo(){},discardPreview(){throw new Error('stale discard published');}};
+  const visual={preview:{hidden:false},sourcePreviewStatus:{hidden:true},connected:true,state:{open:true,editorID:'editor',id:1},queuePreview(){},stopPreviewPlayback(){},retireVideo(){},discardPreview(){throw new Error('stale discard published');}};
   const editor=vm.runInContext('new ThoughtsVideoTrim(null)',context);editor.visual=visual;editor.editorID='editor';
-  return {editor,visual,context,revoked};
+  return {editor,visual,context,revoked,timers};
 }
 
 test('End edits preview the last included source frame and retain the accepted loop',()=>{
@@ -221,7 +222,7 @@ test('source-relative cuts work with either browser timestamp origin',async()=>{
   editor.showSource(6250);
   assert.equal(video.currentTime,originSeconds+6.25);
   editor.showSource(10250);
-  assert.equal(visual.sourcePreviewStatus.hidden,originSeconds<1);
+  assert.equal(editor.sourcePreviewMode,originSeconds<1 ? 'browser' : 'native');
   editor.close();
   assert.equal(visual.sourcePreviewStatus.hidden,true);
   assert.equal(editor.sourceStartSeconds,0);
@@ -235,4 +236,40 @@ test('rejection actions use only fixed reasons rather than response text',()=>{
  assert.equal(editor.failureAction(500,'sourceCodec'),'failed');
  assert.equal(editor.failureAction(413,null),'sourceSize');
  assert.equal(editor.failureAction(503,null),'sourceTools');
+});
+
+test('native-compatible source opens even when browser decoding fails',async()=>{
+ const {editor,visual,context}=fixture();const actions=[];
+ context.URL.createObjectURL=()=> 'blob:local';
+ visual.state.maxVideoSourceBytes=8*1024**3;
+ visual.releasePreviewVideo=()=>{};visual.sendAction=action=>actions.push(action);
+ editor.makeVideo=()=>({});editor.ready=async()=>{throw new Error('unsupported browser container');};
+ editor.uploadSource=async()=>({sourceID:'verified-mkv',durationMS:3000,width:160,height:90,browserPreview:true});
+ const positions=[];editor.showSource=position=>positions.push(position);
+ await editor.selectSource({size:100},1);
+ assert.equal(editor.source.sourceID,'verified-mkv');
+ assert.equal(editor.sourceVideo,undefined);
+ assert.equal(editor.sourcePreviewMode,'native');
+ assert.equal(actions.at(-1).action,'sourceSelected');
+ assert.deepEqual(positions,[0]);
+});
+
+test('native frame requests coalesce and never overlap or publish a retired target',async()=>{
+ const {editor,visual,context,timers}=fixture();const requests=[];const revoked=[];
+ editor.localFile={};editor.source={sourceID:'source',width:160,height:90};editor.sourcePreviewMode='native';
+ context.URL.createObjectURL=blob=>`blob:${blob.position}`;context.URL.revokeObjectURL=url=>revoked.push(url);
+ context.Image=class{async decode(){}};
+ editor.request=async(path,options)=>new Promise(resolve=>requests.push({input:JSON.parse(options.body),resolve}));
+ editor.showSource(100);clearTimers();const first=editor.extractSourceFrame();
+ editor.showSource(200);editor.showSource(300);clearTimers();await editor.extractSourceFrame();
+ assert.equal(requests.length,1);
+ requests[0].resolve({blob:async()=>({position:100})});await first;
+ assert.notEqual(visual.preview.src,'blob:100');
+ clearTimers();const latest=editor.extractSourceFrame();assert.equal(requests.length,2);assert.equal(requests[1].input.positionMS,300);
+ requests[1].resolve({blob:async()=>({position:300})});await latest;
+ assert.equal(visual.preview.src,'blob:300');assert.deepEqual(revoked,['blob:100']);
+ editor.showSource(400);clearTimers();const retired=editor.extractSourceFrame();editor.close();
+ requests[2].resolve({blob:async()=>({position:400})});await retired;
+ assert.notEqual(visual.preview.src,'blob:400');assert.ok(revoked.includes('blob:300'));assert.ok(revoked.includes('blob:400'));
+ function clearTimers(){for(const timer of timers.keys())context.clearTimeout(timer);}
 });

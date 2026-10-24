@@ -139,7 +139,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 	t.Run("source validation keeps the editor closed and reports rejection before cutting", func(t *testing.T) {
-		for _, action := range []string{"sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceUnsupported", "sourceSpace", "sourceTimeout", "sourceTools", "sourceBusy"} {
+		for _, action := range []string{"sourceProtected", "sourceTracks", "sourceContainer", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceUnsupported", "sourceSpace", "sourceTimeout", "sourceTools", "sourceBusy"} {
 			t.Run(action, func(t *testing.T) {
 				m := newRootTestModel()
 				m.browserOptionsEnabled = true
