@@ -8,7 +8,7 @@ function fixture() {
   const timers=new Map();
   const context=vm.createContext({AbortController,setTimeout(callback){timers.set(callback,callback);return callback;},clearTimeout(id){timers.delete(id);},URL:{revokeObjectURL:url=>revoked.push(url)}});
   vm.runInContext(readFileSync(new URL('../static/video-trim.js',import.meta.url),'utf8'),context);
-  const visual={preview:{hidden:false},sourcePreviewStatus:{hidden:true},connected:true,state:{open:true,editorID:'editor',id:1},queuePreview(){},stopPreviewPlayback(){},retireVideo(){},discardPreview(){throw new Error('stale discard published');}};
+  const visual={preview:{hidden:false,removeAttribute(name){delete this[name];}},sourcePreviewStatus:{hidden:true},connected:true,state:{open:true,editorID:'editor',id:1},queuePreview(){},stopPreviewPlayback(){},retireVideo(){},discardPreview(){throw new Error('stale discard published');}};
   const editor=vm.runInContext('new ThoughtsVideoTrim(null)',context);editor.visual=visual;editor.editorID='editor';
   return {editor,visual,context,revoked,timers};
 }
@@ -273,4 +273,27 @@ test('native frame requests coalesce and never overlap or publish a retired targ
  requests[2].resolve({blob:async()=>({position:400})});await retired;
  assert.notEqual(visual.preview.src,'blob:400');assert.ok(revoked.includes('blob:300'));assert.ok(revoked.includes('blob:400'));
  function clearTimers(){for(const timer of timers.keys())context.clearTimeout(timer);}
+});
+
+
+test('native timeline requirement never depends on browser decoding',async()=>{
+ const {editor,visual,context}=fixture();const actions=[];
+ context.URL.createObjectURL=()=> 'blob:local';visual.state.maxVideoSourceBytes=8*1024**3;
+ visual.releasePreviewVideo=()=>{};visual.sendAction=action=>actions.push(action);
+ editor.makeVideo=()=>{throw new Error('browser track/time origin cannot be verified');};
+ editor.uploadSource=async()=>({sourceID:'verified-timeline',durationMS:3000,width:32,height:24,browserPreview:false});
+ editor.showSource=()=>{};
+ await editor.selectSource({size:100},1);
+ assert.equal(editor.sourcePreviewMode,'native');assert.equal(actions.at(-1).action,'sourceSelected');
+});
+
+
+test('first native frame never presents an unrelated saved poster as the source',()=>{
+ const {editor,visual}=fixture();editor.source={sourceID:'new',width:160,height:90};editor.sourcePreviewMode='native';
+ visual.preview.src='blob:old-wallpaper';
+ editor.showSource(0);
+ assert.equal(visual.preview.hidden,true);assert.equal(visual.preview.src,undefined);
+ assert.equal(visual.sourcePreviewStatus.hidden,false);
+ editor.sourceFrameURL='blob:last-source-frame';editor.showSource(1000);
+ assert.equal(visual.preview.hidden,false);assert.equal(visual.preview.src,'blob:last-source-frame');
 });

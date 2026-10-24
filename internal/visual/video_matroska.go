@@ -3,7 +3,11 @@ package visual
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
+	"errors"
 	"io"
+	"math"
+	"strconv"
 )
 
 type videoSourceContainer uint8
@@ -16,6 +20,9 @@ const (
 	// A four-hour 60 FPS movie can contain 864,000 blocks. Known-size clusters
 	// are skipped in one seek; this also bounds headers in streaming clusters.
 	maxMatroskaElements = 2_000_000
+	// A selected packet normally yields one picture; admit bounded codec
+	// superframes without allowing an arbitrary origin-candidate list.
+	maxVideoOriginFrames = 16
 )
 
 // Wire identifiers from the Matroska schema. Only these structural declarations
@@ -298,4 +305,86 @@ func (inspection *matroskaInspector) declarations(start, end int64, depth int) e
 		offset = item.end
 	}
 	return nil
+}
+
+// Validate technical properties before admitting cut controls. MOV sample tables
+// already provide its timing; Matroska needs a bounded selected-frame check when
+// earlier audio makes FFprobe fill unknown video timing from container values.
+func validateVideoSource(ctx context.Context, tool, path string, container videoSourceContainer) (videoProbe, error) {
+	info, err := probeVideoSource(ctx, tool, path, container)
+	if err != nil {
+		return videoProbe{}, err
+	}
+	if container == sourceMatroska {
+		// Duration may be the guessed field. All codec/color/geometry checks run
+		// first, so a timing-only failure can safely proceed to one selected frame.
+		if err := info.validate(false); err != nil && !errors.Is(err, ErrVideoDuration) {
+			return videoProbe{}, err
+		}
+		if err := probeMatroskaVideoOrigin(ctx, tool, path, &info); err != nil {
+			return videoProbe{}, err
+		}
+	}
+	if err := info.validate(false); err != nil {
+		return videoProbe{}, err
+	}
+	return info, nil
+}
+
+func probeMatroskaVideoOrigin(ctx context.Context, tool, path string, info *videoProbe) error {
+	stream, ok := info.video()
+	if !ok {
+		return ErrVideoTracks
+	}
+	ctx, cancel := context.WithTimeout(ctx, MaxVideoFrameTime)
+	defer cancel()
+	var output videoProbeBuffer
+	// #1 counts selected video packets. Drain that packet's decoder to obtain
+	// display PTS, rather than trusting a container-derived guessed start_time.
+	// No audio/subtitles are rendered, no pixels or source tags enter JSON, and
+	// the child is joined within this short owner-bound deadline.
+	args := []string{
+		"-v", "error", "-max_alloc", strconv.Itoa(maxVideoAllocation),
+		"-protocol_whitelist", "file", "-f", "matroska", "-threads", "1",
+		"-max_pixels", strconv.Itoa(MaxVideoPixels), "-max_streams", strconv.Itoa(maxVideoStreams),
+		"-probesize", strconv.Itoa(maxVideoProbeInputBytes),
+		"-analyzeduration", strconv.FormatInt(maxVideoProbeAnalyzeTime.Microseconds(), 10),
+		"-max_probe_packets", strconv.Itoa(maxVideoProbePackets),
+		"-select_streams", strconv.Itoa(stream.Index), "-read_intervals", "%+#1",
+		"-show_frames", "-show_entries", "frame=best_effort_timestamp_time:frame_side_data=",
+		"-of", "json", path,
+	}
+	if err := runVideoTool(ctx, tool, &output, args...); err != nil {
+		return err
+	}
+	var result struct {
+		Frames []struct {
+			Timestamp string `json:"best_effort_timestamp_time"`
+		} `json:"frames"`
+	}
+	if json.Unmarshal(output.Bytes(), &result) != nil || len(result.Frames) == 0 || len(result.Frames) > maxVideoOriginFrames {
+		return ErrVideoDuration
+	}
+	origin := math.Inf(1)
+	for _, frame := range result.Frames {
+		timestamp, err := strconv.ParseFloat(frame.Timestamp, 64)
+		if err != nil || math.IsNaN(timestamp) || math.IsInf(timestamp, 0) {
+			return ErrVideoDuration
+		}
+		origin = math.Min(origin, timestamp)
+	}
+	for index := range info.Streams {
+		selected := &info.Streams[index]
+		if selected.Index != stream.Index {
+			continue
+		}
+		previous, err := strconv.ParseFloat(selected.StartTime, 64)
+		if err != nil || math.Abs(previous-origin) > 0.000001 {
+			// A duration inferred from the old container origin is no longer valid.
+			selected.Duration = ""
+		}
+		selected.StartTime = strconv.FormatFloat(origin, 'f', 6, 64)
+		return nil
+	}
+	return ErrVideoTracks
 }

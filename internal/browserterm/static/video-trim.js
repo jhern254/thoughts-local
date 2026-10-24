@@ -203,7 +203,11 @@ class ThoughtsVideoTrim {
     visual.stopPreviewPlayback();
     if (visual.previewVideo) { visual.previewVideo.hidden = true; visual.previewVideo = undefined; }
     visual.previewSourceSize = {width:this.source.width,height:this.source.height};
-    visual.preview.hidden = false;
+    // A saved wallpaper or accepted-loop poster is not a source frame. Keep
+    // only the last frame from this source visible while extraction is pending.
+    visual.preview.hidden = !this.sourceFrameURL;
+    if (this.sourceFrameURL) visual.preview.src = this.sourceFrameURL;
+    else visual.preview.removeAttribute('src');
     visual.sourcePreviewStatus.textContent = 'Native source preview';
     visual.sourcePreviewStatus.hidden = false;
     this.frameTarget = positionMS;
@@ -240,6 +244,7 @@ class ThoughtsVideoTrim {
       const image = new Image(); image.src = url; await image.decode();
       if (!this.owns(generation) || controller.signal.aborted || !this.showingSource || this.source?.sourceID !== sourceID || this.sourcePositionMS !== positionMS) return;
       this.visual.preview.src = url;
+      this.visual.preview.hidden = false;
       this.visual.queuePreview();
       if (this.sourceFrameURL) URL.revokeObjectURL(this.sourceFrameURL);
       this.sourceFrameURL = url; url = undefined;

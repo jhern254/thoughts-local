@@ -175,25 +175,12 @@ func (info videoProbe) validate(prepared bool) error {
 	if len(info.Streams) > maxVideoStreams {
 		return ErrVideoContainer
 	}
-	duration, err := info.sourceDuration()
-	maxDuration := MaxVideoSourceDuration
-	if prepared {
-		maxDuration = MaxVideoDuration
-	}
-	if info.container == sourceMOV && info.Format.Duration != "" {
-		containerDuration, parseErr := strconv.ParseFloat(info.Format.Duration, 64)
-		if parseErr != nil || !finitePositive(containerDuration) || containerDuration < 1 || containerDuration > float64(maxDuration) {
-			return ErrVideoDuration
-		}
-	}
+
 	rate, rateErr := parseVideoFrameRate(stream.AvgFrameRate)
 	fps := float64(rate.Numerator) / float64(rate.Denominator)
 	sar := videoRatio(stream.SampleAspectRatio, ":")
 	if stream.SampleAspectRatio == "N/A" || stream.SampleAspectRatio == "" {
 		sar = 1
-	}
-	if err != nil || !finitePositive(duration) || duration < 1 || duration > float64(maxDuration) {
-		return ErrVideoDuration
 	}
 	if rateErr != nil || !finitePositive(fps) || fps > MaxVideoFPS {
 		return ErrVideoFrameRate
@@ -232,6 +219,21 @@ func (info videoProbe) validate(prepared bool) error {
 	if _, err := stream.displayRotation(); err != nil {
 		return err
 	}
+	duration, err := info.sourceDuration()
+	maxDuration := MaxVideoSourceDuration
+	if prepared {
+		maxDuration = MaxVideoDuration
+	}
+	if info.container == sourceMOV && info.Format.Duration != "" {
+		containerDuration, parseErr := strconv.ParseFloat(info.Format.Duration, 64)
+		if parseErr != nil || !finitePositive(containerDuration) || containerDuration < 1 || containerDuration > float64(maxDuration) {
+			return ErrVideoDuration
+		}
+	}
+	if err != nil || !finitePositive(duration) || duration < 1 || duration > float64(maxDuration) {
+		return ErrVideoDuration
+	}
+
 	if prepared {
 		limits, _ := VideoQualityMaximum.limits()
 		if len(info.Streams) != 1 || stream.PixFmt != "yuv420p" || stream.Width%2 != 0 || stream.Height%2 != 0 || stream.Width > limits.MaxDimension || stream.Height > limits.MaxDimension || stream.Width*stream.Height > limits.MaxPixels || fps > float64(limits.MaxFPS) || sar != 1 || len(stream.SideData) > 0 {
@@ -552,4 +554,21 @@ func (info videoProbe) movingVideoCount() int {
 		}
 	}
 	return count
+}
+
+// A browser's currentTime can begin at an earlier audio track. Its initial
+// position then cannot establish our selected-video-relative origin. Use native
+// frames rather than showing the wrong scene, even if the browser decodes it.
+func (info videoProbe) canPreviewBrowserTimeline() bool {
+	if info.movingVideoCount() != 1 {
+		return false
+	}
+	stream, _ := info.video()
+	videoStart, videoErr := strconv.ParseFloat(stream.StartTime, 64)
+	containerStart, containerErr := strconv.ParseFloat(info.Format.StartTime, 64)
+	if videoErr != nil || containerErr != nil || math.IsNaN(videoStart) || math.IsNaN(containerStart) || math.IsInf(videoStart, 0) || math.IsInf(containerStart, 0) {
+		return false
+	}
+	// FFprobe emits decimal timestamps to microsecond precision.
+	return videoStart >= 0 && math.Abs(videoStart-containerStart) <= 0.000001
 }

@@ -590,3 +590,37 @@ func TestMatroskaChapterTranslation(t *testing.T) {
 		}
 	})
 }
+
+func TestMatroskaVideoOriginAfterAudio(t *testing.T) {
+	requireMatroskaTools(t)
+	path := filepath.Join(t.TempDir(), "later-video.mkv")
+	args := []string{"-v", "error", "-f", "lavfi", "-i", "nullsrc=size=32x24:rate=10:duration=3,geq=lum='32+50*T':cb=128:cr=128", "-f", "lavfi", "-i", "sine=duration=8", "-filter_complex", "[0:v]setpts=PTS+5/TB[v]", "-map", "[v]", "-map", "1:a", "-fps_mode:v", "passthrough", "-c:v", "libx264", "-threads", "1", "-g", "30", "-c:a", "aac", path}
+	if output, err := exec.CommandContext(t.Context(), "ffmpeg", args...).CombinedOutput(); err != nil {
+		t.Fatalf("fixture: %v %s", err, output)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	source, err := StageVideo(t.Context(), file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if source.Info().BrowserPreview {
+		t.Fatalf("browser preview cannot infer selected video origin: format=%+v streams=%+v", source.probe.Format, source.probe.Streams)
+	}
+	body, err := source.PreviewFrame(t.Context(), 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := jpeg.Decode(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	red, _, _, _ := frame.At(16, 12).RGBA()
+	if value := red >> 8; value < 98 || value > 117 {
+		t.Fatalf("brightness=%d, want source-relative 1.5-second frame", value)
+	}
+}

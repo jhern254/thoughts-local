@@ -362,7 +362,9 @@ protected/linked sources, and leaves codec interpretation to FFmpeg. See the
 [compatibility and resource contract](../../docs/media-handling-policy.md#looping-video-backgrounds).
 
 Selection uploads once before attempting browser preview. Actual decode/seek
-failure switches to native stills without another transfer. Browser scrubbing
+failure switches to native stills without another transfer. A selected video that
+starts after an earlier audio track also uses native frames; browser currentTime
+alone cannot establish that selected-video origin. Browser scrubbing
 keeps one seek in flight; native scrubbing keeps one extraction plus one latest
 position, coalesced at 150 ms. A native frame is at most 640×360/1 MiB and has a
 10-second deadline; preroll shares the existing decoded-work budget. The prior

@@ -35,7 +35,7 @@ type VideoSourceInfo struct {
 	DurationMS int64 `json:"durationMS"`
 	Width      int   `json:"width"`
 	Height     int   `json:"height"`
-	// Browser track selection cannot be verified for a multi-video source.
+	// Native frames are required when browser track/timeline cannot be matched.
 	BrowserPreview bool `json:"browserPreview"`
 }
 
@@ -108,11 +108,8 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 	if err := errors.Join(copyErr, file.Close()); err != nil {
 		return nil, err
 	}
-	probe, err := probeVideoSource(ctx, ffprobe, path, container)
+	probe, err := validateVideoSource(ctx, ffprobe, path, container)
 	if err != nil {
-		return nil, err
-	}
-	if err := probe.validate(false); err != nil {
 		return nil, err
 	}
 	stream, _ := probe.video()
@@ -132,7 +129,7 @@ func StageVideo(ctx context.Context, input io.Reader) (*VideoSource, error) {
 		ffprobe:   ffprobe,
 		info: VideoSourceInfo{
 			DurationMS:     int64(math.Floor(duration * 1000)),
-			BrowserPreview: probe.movingVideoCount() == 1,
+			BrowserPreview: probe.canPreviewBrowserTimeline(),
 			Width:          width,
 			Height:         height,
 		},

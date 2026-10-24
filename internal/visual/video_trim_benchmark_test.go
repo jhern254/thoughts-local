@@ -65,7 +65,7 @@ func BenchmarkVideoTrim(b *testing.B) {
 			input.Close()
 			if err == nil {
 				var probe videoProbe
-				probe, err = probeVideoSource(ctx, source.ffprobe, path, container)
+				probe, err = validateVideoSource(ctx, source.ffprobe, path, container)
 				if err == nil {
 					err = probe.validate(false)
 				}

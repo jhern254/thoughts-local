@@ -261,7 +261,8 @@ class ThoughtsVisual {
     this.positionPreparation();
     this.previewContainer.hidden = true;
     const previewRect = this.state.preview;
-    if (!this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth)) return;
+    const awaitingSourceFrame = this.videoTrim?.showingSource && this.videoTrim.sourcePreviewMode === 'native';
+    if (!this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth && !awaitingSourceFrame)) return;
     if (this.state.request === 'load' || this.terminal.cols < previewRect.X + previewRect.Width + 1 || this.terminal.rows < previewRect.Y + previewRect.Height + 1) return;
     // Metadata can arrive before Bubble Tea's next paint. Verify the reserved
     // cells in xterm's public buffer before placing pixels over them. Geometry

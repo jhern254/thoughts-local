@@ -212,7 +212,8 @@ JavaScript ArrayBuffer or Go byte slice. Selection streams and validates once
 before opening the editor. A muted paused video element supplies source frames
 when actual decoding/seeking works; otherwise `/visual/video/frame` returns a
 transient JPEG from the already staged, selected track. Multiple moving-video
-tracks use native frames because browser track selection cannot be verified.
+tracks and differing audio/video timestamp origins use native frames when the
+browser track or selected-video-relative timeline cannot be verified.
 Frames use a 640×360 bounding box without upscaling, a 1 MiB JPEG limit and a
 ten-second deadline, with the unchanged decoded-frame/pixel budgets including
 keyframe preroll. The covering frame remains available at End, including EOF.

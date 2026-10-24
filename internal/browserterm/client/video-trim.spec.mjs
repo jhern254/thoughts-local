@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openVisual, clickControl, screen} from './visual-helpers.mjs';
 
-let source, longSource, offsetSource, fragmentedSource, matroskaSource;
+let source, longSource, offsetSource, fragmentedSource, matroskaSource, singleVideoMatroska;
 // The native settings outlive each browser context. Give motion assertions an
 // explicit user preference rather than inheriting the preceding test's pause.
 test.beforeEach(async({request,baseURL})=>{
@@ -21,6 +21,9 @@ test.beforeAll(() => {
     const fragmentedPath=join(directory,'fragmented.mp4');
     execFileSync('ffmpeg',['-v','error','-i',path,'-c','copy','-movflags','+frag_keyframe+empty_moov+default_base_moof+global_sidx',fragmentedPath]);
     fragmentedSource={name:'fragmented.mp4',mimeType:'video/mp4',buffer:readFileSync(fragmentedPath)};
+    const singleVideoPath=join(directory,'single-video.mkv');
+    execFileSync('ffmpeg',['-v','error','-i',path,'-map','0:v:0','-c','copy',singleVideoPath]);
+    singleVideoMatroska={name:'single-video.mkv',mimeType:'video/x-matroska',buffer:readFileSync(singleVideoPath)};
     const longPath=join(directory,'four-hours.mp4');
     execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=32x24:rate=1:duration=14400','-c:v','libx264','-threads','1','-g','60','-pix_fmt','yuv420p','-movflags','+faststart',longPath]);
     longSource={name:'four-hours.mp4',mimeType:'video/mp4',buffer:readFileSync(longPath)};
@@ -770,4 +773,26 @@ for (const forceFallback of [false,true]) test(`Matroska scene browsing and exac
  await expect(screen(page)).not.toContainText('Background darkness:');
  expect((await(await page.request.get('/visual')).json()).kind).toBe('video');
  expect(uploads).toBe(1);expect(preparations).toBe(1);expect(sockets).toBe(1);
+});
+
+
+test('browser decode failure falls back for a verified single-track Matroska source',async({page})=>{
+ let frames=0;
+ page.on('request',request=>{if(new URL(request.url()).pathname==='/visual/video/frame')frames++;});
+ await page.addInitScript(()=>{
+  const urls=new Set(),create=URL.createObjectURL,load=HTMLMediaElement.prototype.load;
+  URL.createObjectURL=function(blob){const url=create.call(this,blob);if(blob.type==='video/x-matroska')urls.add(url);return url;};
+  HTMLMediaElement.prototype.load=function(){if(urls.has(this.src)){queueMicrotask(()=>this.dispatchEvent(new Event('error')));return;}return load.call(this);};
+ });
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');await openVisual(page);
+ const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(singleVideoMatroska);
+ await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
+ await expect(page.locator('#source-preview-status')).toContainText('Native source preview');
+ await expect(page.locator('#background-preview-wrap')).toBeVisible();
+ await expect(page.locator('#background-preview')).toBeVisible();
+ await expect.poll(()=>frames).toBeGreaterThan(0);
+ await expect.poll(()=>page.locator('#background-preview').evaluate(image=>[image.naturalWidth,image.naturalHeight])).toEqual([96,64]);
+ await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ await clickControl(page,'Done — use previewed loop');await clickControl(page,'Apply');
+ await expect(screen(page)).not.toContainText('Background darkness:');
 });
