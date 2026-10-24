@@ -468,7 +468,7 @@ try {
   if (page) {
     try {
       await page.screenshot({path:output.replace('.json','-error.png')});
-      writeFileSync(output.replace('.json','-state.json'),JSON.stringify(await page.evaluate(()=>({trace:window.visualTrace,state:window.backgroundProbe?.state,connected:window.backgroundProbe?.connected,loadFailed:window.backgroundProbe?.loadFailed})),null,2));
+      writeFileSync(output.replace('.json','-state.json'),JSON.stringify(await page.evaluate(()=>({trace:window.visualTrace,state:window.backgroundProbe?.state,connected:window.backgroundProbe?.connected,loadFailed:window.backgroundProbe?.loadFailed,buffer:Array.from({length:window.backgroundProbe?.terminal.rows||0},(_,row)=>window.backgroundProbe.terminal.buffer.active.getLine(row)?.translateToString(true)).join('\n')})),null,2));
       writeFileSync(output.replace('.json','-error.txt'),(await page.locator('.xterm-rows').textContent()).slice(0,16384));
     } catch { console.error('Probe capture unavailable.'); }
   }
