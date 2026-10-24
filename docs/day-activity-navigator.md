@@ -569,3 +569,18 @@ no final loading label. This reproduced brief feedback during movement, not a
 permanently stuck label after movement stopped. The lifecycle regressions cover
 stale timers and queued pans; this single walkthrough is not a latency or CPU
 benchmark.
+
+### Pinned block while panning
+
+The first/last selected dates occupy the outermost columns of the marker gap.
+Previously a pan clamped an outside date to the border, then moved the block
+inward to its sample center when the new viewport arrived. Pinning edge dates
+keeps pending and accepted positions identical, without changing curve samples.
+For a one-day viewport, the last movement direction selects the shared edge;
+reapplying the accepted date does not reset it. Interior dates retain their
+calendar-grid positions.
+
+Deterministic tests check repeated left/right pans at 1, 40, 80 and 160 columns,
+including month and one-day zoom. Browser capture checks painted block positions
+through forty-five day changes each way, rather than only inspecting a settled
+endpoint.

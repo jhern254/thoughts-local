@@ -356,6 +356,42 @@ test('activity loading clears after rapid day panning without reconnecting', asy
   expect(connections).toBe(1);
 });
 
+test('day block stays on the border while the viewport pans', async ({page}) => {
+  await exposeMountainTerminal(page);
+  await ready(page);
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('1 Total');
+  await page.evaluate(() => {
+    const term = window.mountainTerminal;
+    window.edgeWatch = {direction: 'left', reached: false, violations: []};
+    window.edgeCapture = term.onRender(() => {
+      const rows = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(term.buffer.active.viewportY + y));
+      const event = rows.findIndex(row => /^ Events\s/.test(row?.translateToString(true) || ''));
+      if (event < 1) return;
+      const columns = Array.from({length: term.cols}, (_, x) => x).filter(x => rows[event - 1]?.getCell(x)?.getBgColor() === 62);
+      if (columns.length !== 1) return;
+      const target = window.edgeWatch.direction === 'left' ? 0 : term.cols - 1;
+      if (columns[0] === target) window.edgeWatch.reached = true;
+      else if (window.edgeWatch.reached) window.edgeWatch.violations.push({direction: window.edgeWatch.direction, column: columns[0], target});
+    });
+  });
+  const date = async () => (await screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent()).match(/^ Events\s+([A-Z][a-z]+ \d+, \d{4})/)[1];
+  const original = await date();
+  const previous = new Date(original);
+  previous.setDate(previous.getDate() - 45);
+  for (let step = 0; step < 45; step++) await page.keyboard.press('ArrowLeft');
+  await expect.poll(date).toBe(previous.toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'}));
+  await expect.poll(() => page.evaluate(() => window.edgeWatch.reached)).toBe(true);
+  expect(await page.evaluate(() => window.edgeWatch.violations)).toEqual([]);
+  await page.evaluate(() => { window.edgeWatch.direction = 'right'; window.edgeWatch.reached = false; });
+  for (let step = 0; step < 45; step++) await page.keyboard.press('ArrowRight');
+  await expect.poll(date).toBe(original);
+  await expect.poll(() => page.evaluate(() => window.edgeWatch.reached)).toBe(true);
+  expect(await page.evaluate(() => window.edgeWatch.violations)).toEqual([]);
+  await page.evaluate(() => window.edgeCapture.dispose());
+});
+
 test('metrics card cycles days without losing its focused view', async ({page}) => {
   await ready(page);
   await page.keyboard.press('End');
