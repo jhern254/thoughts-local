@@ -66,6 +66,8 @@ func transcript(m Model, recording voice.RecordingKey, revision uint64, text str
 func TestModel_VoiceDiscovery(t *testing.T) {
 	t.Run("narrative remains literal and saveable even when its prefix is an exact alias", func(t *testing.T) {
 		for _, text := range []string{
+			"My thoughts are scattered",
+			"These thoughts are useful",
 			"Yesterday I thought about Go.",
 			"Last night I thought about work.",
 			"My first thought was to practice.",
@@ -111,7 +113,7 @@ func TestModel_VoiceDiscovery(t *testing.T) {
 		m.ConfigureVoiceSubjectDiscovery(subjectdiscovery.NewService(subjects, discoveryUsage{}, ranker))
 		m, _ = m.Update(m.loadVoiceSubjects(subjects)())
 		m, recording := startDiscoveryRecording(m)
-		text := "random thought, perhaps I should learn Go."
+		text := "random thoughts, perhaps I should learn Go."
 		m = transcript(m, recording, 1, text)
 		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
 		if ranker.calls != 0 || m.subjectID != nil || m.voice.query.Value() != "random" || m.input.Value() != text {
@@ -131,7 +133,7 @@ func TestModel_VoiceDiscovery(t *testing.T) {
 		if m.subjectID == nil || *m.subjectID != 7 {
 			t.Fatal("possible exact alias did not confirm live")
 		}
-		final := "The first thought I had was interesting."
+		final := "The first thoughts I had were interesting."
 		m = transcript(m, recording, 2, final)
 		if m.subjectID != nil || m.voice.query.Value() != "" {
 			t.Fatal("body revision retained provisional command with unchanged cue")
@@ -149,7 +151,7 @@ func TestModel_VoiceDiscovery(t *testing.T) {
 		reply := m.loadVoiceSubjects(subjects)()
 		m, recording := startDiscoveryRecording(m)
 		m = transcript(m, recording, 1, "The first thought")
-		text := "The first thought I had was interesting."
+		text := "The first thoughts I had were interesting."
 		m = transcript(m, recording, 2, text)
 		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
 		m, _ = m.Update(reply)
@@ -200,9 +202,9 @@ func TestModel_VoiceDiscovery(t *testing.T) {
 			t.Fatalf("read calls=%d want 2", subjects.calls)
 		}
 		m, second := startDiscoveryRecording(m)
-		m = transcript(m, second, 1, "Fitness thought literal second recording")
+		m = transcript(m, second, 1, "Fitness thoughts literal second recording")
 		m, _ = m.Update(voice.RecordingEnded{Recording: second})
-		if *m.subjectID != 7 || !strings.HasSuffix(m.input.Value(), "\nFitness thought literal second recording") {
+		if *m.subjectID != 7 || !strings.HasSuffix(m.input.Value(), "\nFitness thoughts literal second recording") {
 			t.Fatalf("second recording altered subject/text: %q", m.input.Value())
 		}
 	})
@@ -237,7 +239,7 @@ func TestModel_VoiceDiscovery(t *testing.T) {
 		m, cmd, _ := discoveryModel(t)
 		reply := cmd()
 		m, r := startDiscoveryRecording(m)
-		m = transcript(m, r, 1, "Programming in Go thought hello")
+		m = transcript(m, r, 1, "Programming in Go thoughts hello")
 		m, _ = m.Update(voice.RecordingEnded{Recording: r})
 		m, _ = m.Update(key(tea.KeyTab))
 		m, _ = m.Update(tea.PasteMsg{Content: " custom"})

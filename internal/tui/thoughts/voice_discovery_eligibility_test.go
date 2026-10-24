@@ -14,6 +14,8 @@ func TestModel_VoiceCommandEligibility(t *testing.T) {
 			subjectID               int64
 			needsExactEvidence      bool
 		}{
+			{name: "plural single-word name", text: "Fitness thoughts: try shorter workouts", body: "Try shorter workouts", query: "Fitness", subjectID: 8},
+			{name: "plural possible title", text: "My Learning Journal thoughts, exercise afterward.", body: "Exercise afterward.", query: "My Learning Journal", subjectID: 30, needsExactEvidence: true},
 			{name: "confirmed alias", text: "Programming in Go thought, étudier les interfaces.", body: "Étudier les interfaces.", query: "Go Programming", subjectID: 7},
 			{name: "confirmed unknown", text: "Machine Learning Research thought, studied embeddings.", body: "Studied embeddings.", query: "Machine Learning Research"},
 			{name: "ordinary", text: "Yesterday I thought about programming."},
@@ -95,7 +97,7 @@ func TestModel_VoiceCommandEligibility(t *testing.T) {
 					}
 					stamp := m.draftObservedAt
 					m, recording := startDiscoveryRecording(m)
-					text := "Fitness thought I should exercise afterward."
+					text := "Fitness thoughts I should exercise afterward."
 					m = transcript(m, recording, 1, text)
 					if arrival == "during recording" {
 						m, _ = m.Update(reply)
@@ -175,7 +177,7 @@ func TestModel_VoiceCommandEligibility(t *testing.T) {
 		reply := load()
 		stamp := m.draftObservedAt
 		m, recording := startDiscoveryRecording(m)
-		const text = "Fitness Training thought, study movement."
+		const text = "Fitness Training thoughts, study movement."
 		m = transcript(m, recording, 1, text)
 		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
 		m, _ = m.Update(reply)
@@ -207,10 +209,10 @@ func TestModel_VoiceCommandEligibility(t *testing.T) {
 		// A queued read must not give the next recording the previous one's cue.
 		reply := m.loadVoiceSubjects(subjects)()
 		m, second := startDiscoveryRecording(m)
-		m = transcript(m, second, 1, "Fitness thought I should exercise afterward.")
+		m = transcript(m, second, 1, "Fitness thoughts I should exercise afterward.")
 		m, _ = m.Update(reply)
 		m, _ = m.Update(voice.RecordingEnded{Recording: second})
-		if m.subjectID == nil || *m.subjectID != 7 || m.voice.query.Value() != "Go Programming" || m.input.Value() != "Learned interfaces.\nFitness thought I should exercise afterward." || m.VoiceState().RecordingStatus != "idle" {
+		if m.subjectID == nil || *m.subjectID != 7 || m.voice.query.Value() != "Go Programming" || m.input.Value() != "Learned interfaces.\nFitness thoughts I should exercise afterward." || m.VoiceState().RecordingStatus != "idle" {
 			t.Fatalf("subject=%v query=%q text=%q, want first selection and literal second recording", m.subjectID, m.voice.query.Value(), m.input.Value())
 		}
 	})
