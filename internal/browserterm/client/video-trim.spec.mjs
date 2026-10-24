@@ -39,6 +39,14 @@ async function stageSource(page) {
 }
 
 for (const savedBackground of [false, true]) test(`source stays visible during scrubbing with saved background ${savedBackground}`, async ({page, request, baseURL}, testInfo) => {
+  let sourceUploads = 0, preparations = 0, sockets = 0;
+  page.on('websocket', () => sockets++);
+  page.on('request', request => {
+    if (request.method() !== 'POST') return;
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === '/visual/video/source') sourceUploads++;
+    if (pathname === '/visual/video/preview') preparations++;
+  });
   const headers = {Origin: new URL(baseURL).origin};
   expect((await request.delete('/visual/background', {headers})).ok()).toBe(true);
   if (savedBackground) {
@@ -59,11 +67,13 @@ for (const savedBackground of [false, true]) test(`source stays visible during s
   await expect(page.locator('#status')).toHaveText('Connected');
   await openVisual(page);
   await stageSource(page);
+  const connectedSockets = sockets;
   const sourceVideo = page.locator('#background-preview-video');
   const fallback = page.locator('#background-preview');
   await expect(sourceVideo).toBeVisible();
   await expect(fallback).toBeHidden();
   await sourceVideo.evaluate(video => {
+    window.scrubSourceVideo = video;
     window.sourceSeekVisibility = [];
     const recordVisibility = () => window.sourceSeekVisibility.push({
       sourceVisible: !video.hidden && getComputedStyle(video).display !== 'none',
@@ -75,7 +85,19 @@ for (const savedBackground of [false, true]) test(`source stays visible during s
   await page.keyboard.down('ArrowRight');
   for (let repeat = 0; repeat < 12; repeat++) await page.keyboard.down('ArrowRight');
   await page.keyboard.up('ArrowRight');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:01.300');
   await expect.poll(() => sourceVideo.evaluate(video => video.seeking ? -1 : video.currentTime)).toBeCloseTo(1.3, 3);
+  await page.keyboard.press('PageDown');
+  await page.keyboard.press('PageUp');
+  await page.keyboard.press('PageDown');
+  await page.keyboard.press('Shift+ArrowLeft');
+  await page.keyboard.press('ArrowRight');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:58.100');
+  await expect.poll(() => sourceVideo.evaluate(video => video.seeking ? -1 : video.currentTime)).toBeCloseTo(58.1, 3);
+  expect(sourceUploads).toBe(1);
+  expect(preparations).toBe(0);
+  expect(sockets).toBe(connectedSockets);
+  expect(await sourceVideo.evaluate(video => video === window.scrubSourceVideo)).toBe(true);
   const visibility = await page.evaluate(() => window.sourceSeekVisibility);
   expect(visibility.length).toBeGreaterThanOrEqual(2);
   expect(visibility.every(sample => sample.sourceVisible && sample.fallbackHidden)).toBe(true);
