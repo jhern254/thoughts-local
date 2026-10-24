@@ -131,6 +131,7 @@ class ThoughtsVideoTrim {
     visual.stopPreviewPlayback();
     if (visual.previewVideo && visual.previewVideo !== video) visual.previewVideo.remove();
     visual.previewVideo = video;
+    visual.preview.hidden = video === this.sourceVideo;
     video.id = 'background-preview-video';
     visual.previewFrameElement.append(video);
     video.hidden = false;
@@ -156,13 +157,11 @@ class ThoughtsVideoTrim {
     if (!video || video.seeking || this.seekTarget === undefined) return;
     const target = this.seekTarget;
     this.seekTarget = undefined;
-    if (Math.abs(video.currentTime-target) < 0.001) { video.hidden = false; return; }
-    video.hidden = true;
+    if (Math.abs(video.currentTime-target) < 0.001) return;
+    // Keep the browser's decoded frame visible during seeking. Hiding the
+    // source exposes an unrelated saved poster or the empty image placeholder.
     video.addEventListener('seeked', () => {
-      if (this.sourceVideo === video) {
-        if (this.seekTarget === undefined) video.hidden = false;
-        this.seekSource();
-      }
+      if (this.sourceVideo === video) this.seekSource();
     }, {once:true});
     video.currentTime = target;
   }
@@ -271,5 +270,6 @@ class ThoughtsVideoTrim {
     this.seekTarget = undefined;
     this.sourceStartSeconds = 0;
     this.visual.sourcePreviewStatus.hidden = true;
+    visual.preview.hidden = false;
   }
 }

@@ -38,6 +38,53 @@ async function stageSource(page) {
   await expect(page.locator('#background-preview-wrap')).toBeVisible();
 }
 
+for (const savedBackground of [false, true]) test(`source stays visible during scrubbing with saved background ${savedBackground}`, async ({page, request, baseURL}, testInfo) => {
+  const headers = {Origin: new URL(baseURL).origin};
+  expect((await request.delete('/visual/background', {headers})).ok()).toBe(true);
+  if (savedBackground) {
+    const image = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 16;
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#ff00ff';
+      context.fillRect(0, 0, 16, 16);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    expect((await request.post('/visual/background', {headers, multipart: {
+      image: {name:'synthetic.png', mimeType:'image/png', buffer:Buffer.from(image, 'base64')},
+      darkness:'70', framing:JSON.stringify({fit:'fill', zoom:100, positionX:5000, positionY:5000})
+    }})).ok()).toBe(true);
+  }
+  await page.goto('/');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await openVisual(page);
+  await stageSource(page);
+  const sourceVideo = page.locator('#background-preview-video');
+  const fallback = page.locator('#background-preview');
+  await expect(sourceVideo).toBeVisible();
+  await expect(fallback).toBeHidden();
+  await sourceVideo.evaluate(video => {
+    window.sourceSeekVisibility = [];
+    const recordVisibility = () => window.sourceSeekVisibility.push({
+      sourceVisible: !video.hidden && getComputedStyle(video).display !== 'none',
+      fallbackHidden: getComputedStyle(document.getElementById('background-preview')).display === 'none'
+    });
+    video.addEventListener('seeking', recordVisibility);
+    video.addEventListener('seeked', recordVisibility);
+  });
+  await page.keyboard.down('ArrowRight');
+  for (let repeat = 0; repeat < 12; repeat++) await page.keyboard.down('ArrowRight');
+  await page.keyboard.up('ArrowRight');
+  await expect.poll(() => sourceVideo.evaluate(video => video.seeking ? -1 : video.currentTime)).toBeCloseTo(1.3, 3);
+  const visibility = await page.evaluate(() => window.sourceSeekVisibility);
+  expect(visibility.length).toBeGreaterThanOrEqual(2);
+  expect(visibility.every(sample => sample.sourceVisible && sample.fallbackHidden)).toBe(true);
+  await page.screenshot({path:`/tmp/seek-visible-${testInfo.project.name}-${savedBackground}.png`});
+  await clickControl(page, 'Cancel upload');
+  await expect(screen(page)).toContainText('Background darkness:');
+  if (savedBackground) await expect(fallback).toBeVisible();
+});
+
 test('End previews backward and held arrows accelerate without uploading or preparing again', async ({page}, testInfo) => {
   let uploads = 0, preparations = 0;
   page.on('request', request => {

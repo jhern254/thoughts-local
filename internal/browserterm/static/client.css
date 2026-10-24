@@ -49,4 +49,4 @@ header { position: relative; }
 }
 
 
-#background-preview-video[hidden] { display: none; }
+#background-preview[hidden], #background-preview-video[hidden] { display: none; }

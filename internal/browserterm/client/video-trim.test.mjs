@@ -7,7 +7,7 @@ function fixture() {
   const revoked=[];
   const context=vm.createContext({AbortController,URL:{revokeObjectURL:url=>revoked.push(url)}});
   vm.runInContext(readFileSync(new URL('../static/video-trim.js',import.meta.url),'utf8'),context);
-  const visual={sourcePreviewStatus:{hidden:true},connected:true,state:{open:true,editorID:'editor',id:1},stopPreviewPlayback(){},retireVideo(){},discardPreview(){throw new Error('stale discard published');}};
+  const visual={preview:{hidden:false},sourcePreviewStatus:{hidden:true},connected:true,state:{open:true,editorID:'editor',id:1},stopPreviewPlayback(){},retireVideo(){},discardPreview(){throw new Error('stale discard published');}};
   const editor=vm.runInContext('new ThoughtsVideoTrim(null)',context);editor.visual=visual;editor.editorID='editor';
   return {editor,visual,context,revoked};
 }
@@ -35,16 +35,35 @@ test('held trim arrows preserve standard terminal repeat metadata',()=>{
  assert.equal(editor.repeatedArrowSequence(event),'');
 });
 
-test('source scrubbing coalesces seeks while a seek is in flight',()=>{
+test('source scrubbing stays visible while coalescing seeks',()=>{
   const {editor,visual}=fixture();let seeked;
-  const sourceVideo={seeking:true,currentTime:0,duration:60,addEventListener(name,callback){assert.equal(name,'seeked');seeked=callback;}};
+  const sourceVideo={hidden:false,seeking:true,currentTime:0,duration:60,addEventListener(name,callback){assert.equal(name,'seeked');seeked=callback;}};
   editor.sourceVideo=sourceVideo;visual.previewVideo=sourceVideo;
   editor.showSource(1000);editor.showSource(2500);
   assert.equal(sourceVideo.currentTime,0);
   sourceVideo.seeking=false;editor.seekSource();
   assert.equal(sourceVideo.currentTime,2.5);
+  assert.equal(sourceVideo.hidden,false);
   editor.showSource(3000);seeked();
   assert.equal(sourceVideo.currentTime,3);
+  assert.equal(sourceVideo.hidden,false);
+});
+
+test('source preview hides the unrelated still and restores it for a prepared loop or close',()=>{
+  const {editor,visual}=fixture();
+  visual.previewFrameElement={append(){}};
+  visual.queuePreview=()=>{};
+  const source={remove(){}};
+  const prepared={remove(){}};
+  editor.sourceVideo=source;
+  editor.attach(source);
+  assert.equal(source.hidden,false);
+  assert.equal(visual.preview.hidden,true);
+  editor.attach(prepared);
+  assert.equal(visual.preview.hidden,false);
+  editor.attach(source);
+  editor.close();
+  assert.equal(visual.preview.hidden,false);
 });
 
 test('late discard completion cannot clear a newer upload',async()=>{
