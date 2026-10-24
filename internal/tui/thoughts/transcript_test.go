@@ -60,7 +60,7 @@ func TestModel_TranscriptUpdate(t *testing.T) {
 		if model.input.Value() != "accepted" {
 			t.Fatal("invalid update changed draft")
 		}
-		model, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+		model, _ = model.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 		model, _ = model.Update(voice.RecordingEnded{Recording: recording})
 		model, _ = model.Update(key(tea.KeyTab))
 		model, _ = model.Update(key(tea.KeyEnter))

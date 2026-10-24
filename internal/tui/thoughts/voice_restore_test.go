@@ -125,7 +125,7 @@ func TestModel_RestoreVoicePrefix(t *testing.T) {
 				m = transcript(m, r, 1, "Literal addition.")
 				m, _ = m.Update(voice.RecordingEnded{Recording: r})
 			case "cancel":
-				m, _ = m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+				m, _ = m.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 				m, _ = m.Update(key(tea.KeyTab))
 				m, _ = m.Update(key(tea.KeyEnter))
 			case "reset":

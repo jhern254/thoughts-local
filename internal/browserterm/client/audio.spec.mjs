@@ -86,7 +86,7 @@ test('colored modes keep v and u literal until Normal enables voice commands', a
   await page.keyboard.press('i');
   await expect(page.locator('.xterm-bg-36').filter({hasText:'INSERT'})).toBeVisible();
   await page.setViewportSize({width:400,height:850});
-  await expect(screen(page)).toContainText('Ctrl+D: cancel');
+  await expect(screen(page)).toContainText('Ctrl+Q: cancel');
   if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-mode-insert-narrow.png`});
 });
 
@@ -213,10 +213,10 @@ for (const stallMilliseconds of [750, 1500]) {
   });
 }
 
-test('modal draft Escape stops recording and Ctrl D confirms discard without reconnecting', async ({page}, testInfo) => {
+test('modal draft Ctrl C stops recording and Ctrl Q confirms discard without reconnecting', async ({page}, testInfo) => {
   await prepareAudioDraft(page);
   await startCapture(page, 0);
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+c');
   await expect(page.locator('#status')).toHaveText('Connected');
   await expect(screen(page)).toContainText('NORMAL');
   await expect(screen(page)).toContainText('typed draft');
@@ -228,17 +228,17 @@ test('modal draft Escape stops recording and Ctrl D confirms discard without rec
   await page.keyboard.type(' edited');
   await expect(screen(page)).toContainText('edited');
   if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-editor-insert.png`});
-  await page.keyboard.press('Control+d');
+  await page.keyboard.press('Control+q');
   await expect(screen(page)).toContainText('Discard draft?');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Create thought');
   await page.setViewportSize({width: 400, height: 650});
   await page.keyboard.press('i');
   await expect(screen(page)).toContainText('Create thought · INSERT');
-  await expect(screen(page)).toContainText(/Ctrl\+D:\s*cancel/);
+  await expect(screen(page)).toContainText(/Ctrl\+Q:\s*cancel/);
   await expect(screen(page)).toContainText('synthetic speech edited');
   if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-editor-narrow.png`});
-  await page.keyboard.press('Control+d');
+  await page.keyboard.press('Control+q');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await expect(screen(page)).not.toContainText('Create thought');

@@ -81,7 +81,8 @@ last automatic voice-prefix cleanup. These letters remain text in Insert and
 the Subject field; while recording locks editing, v can also stop capture.
 
 Esc preserves the draft and enters Normal, stopping recording first if needed.
-Ctrl+D explicitly cancels; a nonempty draft requires confirmation with Keep
+Ctrl+C in Insert mode behaves like Esc; browser selections still copy.
+Ctrl+Q explicitly cancels; a nonempty draft requires confirmation with Keep
 editing selected initially. Dictation appends at the end, with editing locked
 until capture cleanup completes. Reserve the actual wrapped help/confirmation
 rows before sizing the textarea so narrow layouts retain visible actions and a

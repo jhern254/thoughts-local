@@ -191,6 +191,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "ctrl+c":
+			if m.thoughts.Creating() {
+				break
+			}
 			if m.canExit() {
 				m.exitPromptOpen, m.exitYes = true, false
 			}

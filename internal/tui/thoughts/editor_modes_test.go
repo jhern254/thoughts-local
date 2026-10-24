@@ -11,6 +11,15 @@ import (
 )
 
 func TestModel_EditorModes(t *testing.T) {
+	t.Run("Ctrl C leaves Insert and Ctrl D no longer cancels", func(t *testing.T) {
+		m := thoughtEditor(t)
+		m, _ = m.Update(tea.PasteMsg{Content: "keep draft"})
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+		if !m.Creating() || !m.normalMode || m.discardPrompt || m.input.Value() != "keep draft" {
+			t.Fatal("mode shortcut discarded or changed draft")
+		}
+	})
 	t.Run("mode labels use distinct padded color blocks", func(t *testing.T) {
 		m := thoughtEditor(t)
 		insert := strings.Split(m.View(), "\n")[0]
@@ -50,10 +59,10 @@ func TestModel_EditorModes(t *testing.T) {
 			t.Fatalf("got %q", m.input.Value())
 		}
 	})
-	t.Run("Ctrl D confirms nonempty draft with keep selected", func(t *testing.T) {
+	t.Run("Ctrl Q confirms nonempty draft with keep selected", func(t *testing.T) {
 		m := thoughtEditor(t)
 		m, _ = m.Update(tea.PasteMsg{Content: "keep"})
-		cancel := tea.KeyPressMsg(tea.Key{Code: 'd', Mod: tea.ModCtrl})
+		cancel := tea.KeyPressMsg(tea.Key{Code: 'q', Mod: tea.ModCtrl})
 		m, _ = m.Update(cancel)
 		if !strings.Contains(m.View(), "Discard draft?") {
 			t.Fatal("missing confirmation")
@@ -153,7 +162,7 @@ func TestModel_EditorLayout(t *testing.T) {
 			}
 			for _, confirm := range []bool{false, true} {
 				if confirm {
-					m, _ = m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+					m, _ = m.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 				}
 				view := m.View()
 				if rows := strings.Count(view, "\n") + 1; rows > 12 {

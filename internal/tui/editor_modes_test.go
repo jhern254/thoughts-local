@@ -52,7 +52,7 @@ func TestModel_ModalRecording(t *testing.T) {
 		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
 		m = runModelCommand(t, m, tea.KeyPressMsg{Code: tea.KeyF8})
 		recording := m.VoiceState().TranscriptAuthority.Recording()
-		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 		m, _ = rootUpdate(m, enterKey())
 		m, _ = rootUpdate(m, thoughts.VoiceAction{Action: "start", DraftID: recording.DraftID, RecordingID: recording.RecordingID})
 		if m.VoiceState().RecordingID != recording.RecordingID || m.VoiceState().RecordingStatus != "stopping" {
@@ -64,10 +64,11 @@ func TestModel_ModalRecording(t *testing.T) {
 		}
 	})
 
-	for _, cancel := range []bool{false, true} {
-		name := "Escape stops without discarding"
+	for _, shortcut := range []string{"Escape", "Ctrl C", "Ctrl Q"} {
+		cancel := shortcut == "Ctrl Q"
+		name := shortcut + " stops without discarding"
 		if cancel {
-			name = "Ctrl D confirms after cleanup"
+			name = "Ctrl Q confirms after cleanup"
 		}
 		t.Run(name, func(t *testing.T) {
 			m := newRootTestModel()
@@ -77,8 +78,11 @@ func TestModel_ModalRecording(t *testing.T) {
 			recording := m.VoiceState().TranscriptAuthority.Recording()
 			m, _ = rootUpdate(m, voice.TranscriptUpdate{Recording: recording, Revision: 1, Text: "preserved words"})
 			stop := tea.KeyPressMsg{Code: tea.KeyEscape}
+			if shortcut == "Ctrl C" {
+				stop = tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+			}
 			if cancel {
-				stop = tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
+				stop = tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}
 			}
 			for range 3 {
 				m, _ = rootUpdate(m, stop)
@@ -99,7 +103,7 @@ func TestModel_ModalRecording(t *testing.T) {
 				if !m.thoughts.Creating() {
 					t.Fatal("default confirmation discarded draft")
 				}
-				m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+				m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 				m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 				m, _ = rootUpdate(m, enterKey())
 				if m.screen != screenEvents || m.VoiceState().DraftID != 0 {

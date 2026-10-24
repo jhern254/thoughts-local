@@ -468,7 +468,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if m.discardPrompt {
 				return m.updateDiscardPrompt(key)
 			}
-			if key.String() == "esc" || key.String() == "ctrl+d" {
+			if key.String() == "esc" || key.String() == "ctrl+q" || (key.String() == "ctrl+c" && !m.normalMode) {
 				m.stopClipboard()
 				m.request++
 				m.normalMode = true
@@ -478,7 +478,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				if m.voiceLocked() {
 					m, _ = m.updateVoiceAction(VoiceAction{Action: "stop", DraftID: m.voice.draftID, RecordingID: m.voice.recordingID})
 				}
-				if key.String() == "ctrl+d" {
+				if key.String() == "ctrl+q" {
 					if m.input.Value() == "" && !m.voiceLocked() {
 						return m.discardDraft()
 					}

@@ -132,7 +132,7 @@ func TestModel_VoiceDraft(t *testing.T) {
 		if m.subjects.selected != original || m.screen != screenVoiceThought || !strings.Contains(view, "preserved draft 界") || !strings.Contains(view, "Voice subject") || m.VoiceState().DraftID == 0 {
 			t.Fatalf("got resumed view %s", view)
 		}
-		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		m, _ = rootUpdate(m, enterKey())
 		if m.screen != screenEvents || m.VoiceState().DraftID != 0 {

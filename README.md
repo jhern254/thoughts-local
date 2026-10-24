@@ -73,7 +73,7 @@ the original Subject.
 - In forms and filter input, Q remains text; Esc cancels or goes back. Thought
   drafts start in **Insert**: Esc switches to **Normal**, where h/j/k/l or arrows
   move and i/a/o resume insertion. In Normal mode, **v** starts/stops dictation
-  and **u** restores an automatically removed spoken prefix. **Ctrl+D** cancels a draft, confirming when it
+  and **u** restores an automatically removed spoken prefix. **Ctrl+C** also leaves Insert mode (browser selections still copy). **Ctrl+Q** cancels a draft, confirming when it
   contains text; **Ctrl+S** saves. Esc during recording stops capture and preserves
   the draft. **Options → Editor** saves current-line highlighting (off by default)
   and the speech-pause newline threshold (1.5 seconds by default, configurable or off).

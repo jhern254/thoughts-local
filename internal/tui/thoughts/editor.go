@@ -44,12 +44,12 @@ func (m Model) editorControls() string {
 		}
 		return ansi.Wrap("Discard draft?\n"+choices+"\nTab/←/→: choose · Enter: confirm · Esc: keep", width, "")
 	}
-	help := "Ctrl+S: save • Enter: newline • Esc: normal • Ctrl+D: cancel"
+	help := "Ctrl+S: save • Enter: newline • Esc/Ctrl+C: normal • Ctrl+Q: cancel"
 	if m.normalMode && !m.voice.subjectFocused {
-		help = "h/j/k/l/Arrows: move • i/a/o: insert • Ctrl+S: save • Ctrl+D: cancel"
+		help = "h/j/k/l/Arrows: move • i/a/o: insert • Ctrl+S: save • Ctrl+Q: cancel"
 	}
 	if m.voice.subjectFocused {
-		help = "↑/↓: subjects • Enter: select/create • Esc: text • Ctrl+S: save • Ctrl+D: cancel"
+		help = "↑/↓: subjects • Enter: select/create • Esc: text • Ctrl+S: save • Ctrl+Q: cancel"
 	}
 	if !m.VoiceOpen() {
 		return ansi.Wrap(help, width, "")
@@ -80,7 +80,7 @@ func (m Model) editorControls() string {
 		help += " • " + restoreHint
 	}
 	if m.voiceLocked() {
-		help = "v: Stop • Esc: stop • Ctrl+D: cancel"
+		help = "v: Stop • Esc/Ctrl+C: stop • Ctrl+Q: cancel"
 	}
 	return body + "\n" + ansi.Wrap(help, width, "")
 }

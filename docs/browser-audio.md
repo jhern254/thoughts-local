@@ -252,7 +252,8 @@ still apply.
 
 Drafts begin in Insert with a steady block cursor. Esc stops recording and enters
 Normal without clearing text; editing stays locked until native cleanup finishes.
-v also stops capture, preserving the editing mode. Ctrl+D stops capture and asks
+Ctrl+C in Insert mode behaves like Esc; browser selections still copy.
+v also stops capture, preserving the editing mode. Ctrl+Q stops capture and asks
 before discarding nonempty text; declining leaves the draft stopped and editable.
 Normal uses h/j/k/l or arrows and i/a/o to resume insertion. Ctrl+S saves from
 either mode. Dictation still appends at the end; subject-prefix detection and
