@@ -36,15 +36,37 @@ test('held trim arrows preserve standard terminal repeat metadata',()=>{
 });
 
 test('source scrubbing stays visible while coalescing seeks',()=>{
-  const {editor,visual}=fixture();let seeked;
-  const sourceVideo={hidden:false,seeking:true,currentTime:0,duration:60,addEventListener(name,callback){assert.equal(name,'seeked');seeked=callback;}};
+  const {editor,visual}=fixture();
+  const sourceVideo={hidden:false,seeking:true,currentTime:0,duration:60,};
   editor.sourceVideo=sourceVideo;visual.previewVideo=sourceVideo;
   editor.showSource(1000);editor.showSource(2500);
   assert.equal(sourceVideo.currentTime,0);
   sourceVideo.seeking=false;editor.seekSource();
   assert.equal(sourceVideo.currentTime,2.5);
   assert.equal(sourceVideo.hidden,false);
-  editor.showSource(3000);seeked();
+  editor.showSource(3000);sourceVideo.onseeked();
+  assert.equal(sourceVideo.currentTime,3);
+  assert.equal(sourceVideo.hidden,false);
+});
+
+test('a delayed seek completion cannot strand the latest scrub target',()=>{
+  const {editor,visual}=fixture();
+  const sourceVideo=Object.assign(new EventTarget(),{hidden:false,seeking:false,currentTime:0,duration:60});
+  editor.sourceVideo=sourceVideo;visual.previewVideo=sourceVideo;
+  const dispatchSeeked=()=>{
+    sourceVideo.dispatchEvent(new Event('seeked'));
+    sourceVideo.onseeked?.();
+  };
+  editor.showSource(1000);
+  // The browser clears seeking before delivering its queued seeked event.
+  // Another input can therefore start a newer seek before the old event arrives.
+  editor.showSource(2000);
+  sourceVideo.seeking=true;
+  dispatchSeeked();
+  editor.showSource(3000);
+  assert.equal(sourceVideo.currentTime,2);
+  sourceVideo.seeking=false;
+  dispatchSeeked();
   assert.equal(sourceVideo.currentTime,3);
   assert.equal(sourceVideo.hidden,false);
 });

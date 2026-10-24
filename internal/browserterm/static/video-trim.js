@@ -160,9 +160,11 @@ class ThoughtsVideoTrim {
     if (Math.abs(video.currentTime-target) < 0.001) return;
     // Keep the browser's decoded frame visible during seeking. Hiding the
     // source exposes an unrelated saved poster or the empty image placeholder.
-    video.addEventListener('seeked', () => {
+    // An older seeked event can arrive after a newer seek starts. A one-use
+    // handler could be consumed too early and strand the latest target.
+    video.onseeked = () => {
       if (this.sourceVideo === video) this.seekSource();
-    }, {once:true});
+    };
     video.currentTime = target;
   }
   repeatedArrowSequence(event) {
