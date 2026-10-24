@@ -52,7 +52,9 @@ class ThoughtsVideoTrim {
       this.source = staged;
       this.sourcePreviewMode = 'native';
       if (staged.browserPreview !== false) {
-        const video = this.makeVideo(this.sourceURL, 'auto');
+        // A paused source needs only its first frame/metadata, not playback
+        // read-ahead from a movie-sized file. Prepared loops remain preload auto.
+        const video = this.makeVideo(this.sourceURL, 'metadata');
         this.sourceVideo = video;
         try {
           await this.ready(video, controller.signal, 3000);

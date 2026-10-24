@@ -224,7 +224,7 @@ func TestMatroskaMovieLayout(t *testing.T) {
 	for range 3 {
 		args = append(args, "-map", "2:s")
 	}
-	args = append(args, "-c:v", "libx264", "-threads", "1", "-c:a", "aac", "-c:s", "srt", "-attach", attachment, "-metadata:s:t", "mimetype=application/x-truetype-font", "-metadata:s:t", "filename=../../PRIVATE.ttf", "-metadata", "title=SYNTHETIC PRIVATE TITLE", path)
+	args = append(args, "-c:v", "libx264", "-threads", "1", "-c:a:0", "aac", "-c:a:1", "ac3", "-c:a:2", "eac3", "-c:a:3", "flac", "-c:a:4", "libopus", "-c:a:5", "dca", "-strict", "-2", "-c:s:0", "srt", "-c:s:1", "ass", "-c:s:2", "ssa", "-attach", attachment, "-metadata:s:t", "mimetype=application/x-truetype-font", "-metadata:s:t", "filename=../../PRIVATE.ttf", "-metadata", "title=SYNTHETIC PRIVATE TITLE", path)
 	if output, err := exec.CommandContext(t.Context(), "ffmpeg", args...).CombinedOutput(); err != nil {
 		t.Fatalf("fixture: %v %s", err, output)
 	}
@@ -454,6 +454,9 @@ func TestMatroskaVariableCadence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer loop.Close()
+	if _, err := source.PreviewFrame(t.Context(), source.Info().DurationMS-1); err != nil {
+		t.Fatal(err)
+	}
 	if loop.Info().FrameRate != (VideoFrameRate{24, 1}) {
 		t.Fatalf("output rate=%v, want declared 24 FPS CFR", loop.Info().FrameRate)
 	}
@@ -484,4 +487,106 @@ func TestMatroskaLongGOPBudget(t *testing.T) {
 	if !errors.Is(err, ErrVideo) {
 		t.Fatalf("late cut=%v, want bounded rejection", err)
 	}
+}
+
+func TestMatroskaMain10PrimaryColors(t *testing.T) {
+	requireMatroskaTools(t)
+	for channel, color := range []string{"red", "lime", "blue"} {
+		t.Run(color, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "primary.mkv")
+			// lavfi color supplies SD-matrix YUV. Convert that matrix explicitly before
+			// declaring Rec.709, so the test checks actual color rather than tag copying.
+			args := []string{"-v", "error", "-f", "lavfi", "-i", "color=" + color + ":size=64x48:rate=24:duration=2", "-vf", "scale=in_color_matrix=bt601:out_color_matrix=bt709:out_range=tv,format=yuv420p10le", "-c:v", "libx265", "-threads", "1", "-x265-params", "pools=none:frame-threads=1:log-level=error", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv", path}
+			if output, err := exec.CommandContext(t.Context(), "ffmpeg", args...).CombinedOutput(); err != nil {
+				t.Fatalf("fixture: %v %s", err, output)
+			}
+			file, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			source, err := StageVideo(t.Context(), file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer source.Close()
+			loop, err := source.Prepare(t.Context(), VideoTrim{EndMS: 1500}, VideoQualityEfficient)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer loop.Close()
+			poster, err := loop.Open(t.Context(), true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer poster.Close()
+			image, err := jpeg.Decode(poster)
+			if err != nil {
+				t.Fatal(err)
+			}
+			red, green, blue, _ := image.At(32, 24).RGBA()
+			for index, value := range []uint32{red, green, blue} {
+				got := value >> 8
+				if index == channel {
+					if got < 245 {
+						t.Fatalf("primary channel=%d, want >=245", got)
+					}
+				} else if got > 8 {
+					t.Fatalf("other channel=%d, want <=8", got)
+				}
+			}
+		})
+	}
+}
+
+func TestMatroskaDefaultVideoTrack(t *testing.T) {
+	requireMatroskaTools(t)
+	path := filepath.Join(t.TempDir(), "two-videos.mkv")
+	args := []string{"-v", "error", "-f", "lavfi", "-i", "color=red:size=160x90:rate=24:duration=2", "-f", "lavfi", "-i", "color=blue:size=64x48:rate=24:duration=2", "-map", "0:v", "-map", "1:v", "-c:v", "libx264", "-threads", "1", "-disposition:v:0", "0", "-disposition:v:1", "default", path}
+	if output, err := exec.CommandContext(t.Context(), "ffmpeg", args...).CombinedOutput(); err != nil {
+		t.Fatalf("fixture: %v %s", err, output)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	source, err := StageVideo(t.Context(), file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if source.Info().BrowserPreview || source.Info().Width != 64 {
+		t.Fatalf("info=%+v, want verified second track and native preview", source.Info())
+	}
+	body, err := source.PreviewFrame(t.Context(), 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := jpeg.Decode(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	red, _, blue, _ := frame.At(32, 24).RGBA()
+	if blue>>8 < 240 || red>>8 > 12 {
+		t.Fatalf("selected color red=%d blue=%d, want blue main track", red>>8, blue>>8)
+	}
+	loop, err := source.Prepare(t.Context(), VideoTrim{EndMS: 1500}, VideoQualityEfficient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	if loop.Info().Width != 64 || loop.Info().Height != 48 {
+		t.Fatalf("prepared=%+v, want second-track geometry", loop.Info())
+	}
+}
+
+func TestMatroskaChapterTranslation(t *testing.T) {
+	t.Run("ignores chapter codec metadata that does not reference another segment", func(t *testing.T) {
+		body := []byte{0x69, 0x24, 0x84, 0x69, 0xbf, 0x81, 0}
+		inspection := matroskaInspector{ctx: t.Context(), input: bytes.NewReader(body)}
+		if err := inspection.declarations(0, int64(len(body)), 0); err != nil {
+			t.Fatalf("harmless chapter translation=%v, want accepted", err)
+		}
+	})
 }

@@ -276,7 +276,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if msg.Framing.Valid() {
 			m.options.framing = msg.Framing
 		}
-		m.options.status = "JPEG/PNG · MP4/MOV SDR H.264 · source ≤4h / 8 GiB · loop 1–30s"
+		m.options.status = "JPEG/PNG · SDR MP4/MOV/MKV · source ≤4h / 8 GiB · loop 1–30s"
 	case "selected":
 		if m.options.request != "choose" {
 			return m, nil
@@ -470,7 +470,7 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) activateOption() {
 	switch m.options.focus {
 	case optionsFocusChooseBackground:
-		m.options.status = "Choose a JPEG/PNG image or SDR H.264 MP4/MOV…"
+		m.options.status = "Choose JPEG/PNG or a supported SDR MP4/MOV/MKV…"
 		m.requestOptions("choose")
 	case optionsFocusQuality:
 		m.cycleVideoQuality()

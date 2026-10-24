@@ -146,7 +146,7 @@ test('file selection waits for native validation before opening the cut editor',
  visual.releasePreviewVideo=()=>{};visual.sendAction=action=>actions.push(action);
  const file={size:102900000,arrayBuffer(){throw new Error('whole file buffered');}};
  const video={currentTime:0,duration:1020,videoWidth:1920,videoHeight:1080};
- editor.makeVideo=()=>video;editor.ready=async()=>{};editor.showSource=()=>{};editor.setStage=()=>{};
+ const preloads=[];editor.makeVideo=(url,preload)=>{preloads.push(preload);return video;};editor.ready=async()=>{};editor.showSource=()=>{};editor.setStage=()=>{};
  editor.uploadSource=()=>new Promise(resolve=>{finishValidation=resolve;validationStarted();});
  const selection=editor.selectSource(file,1);
  await started;
@@ -154,6 +154,7 @@ test('file selection waits for native validation before opening the cut editor',
  assert.equal(actions.some(action=>action.action==='sourceSelected'),false);
  finishValidation({sourceID:'verified',durationMS:1019999,width:1920,height:1080});
  await selection;
+ assert.deepEqual(preloads,['metadata']);
  assert.equal(editor.localFile,file);
  assert.equal(editor.source.sourceID,'verified');
  assert.equal(actions.at(-1).action,'sourceSelected');

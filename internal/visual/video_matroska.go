@@ -38,7 +38,6 @@ const (
 	matroskaPreviousFilename    = 0x3c83ab
 	matroskaNextFilename        = 0x3e83bb
 	matroskaChapterSegment      = 0x6e67
-	matroskaChapterTranslate    = 0x6924
 	matroskaContentEncryption   = 0x5035
 	matroskaContentEncodingType = 0x5033
 	matroskaTrackEntry          = 0xae
@@ -266,7 +265,7 @@ func (inspection *matroskaInspector) declarations(start, end int64, depth int) e
 			return ErrVideoContainer
 		}
 		switch item.id {
-		case matroskaPreviousSegment, matroskaNextSegment, matroskaPreviousFilename, matroskaNextFilename, matroskaChapterSegment, matroskaChapterTranslate:
+		case matroskaPreviousSegment, matroskaNextSegment, matroskaPreviousFilename, matroskaNextFilename, matroskaChapterSegment:
 			// Segment links and chapter references must not turn one upload into a
 			// playlist requiring other local files. Values are never read or logged.
 			return ErrVideoContainer

@@ -11,6 +11,17 @@ import (
 )
 
 func TestModel_VideoTrim(t *testing.T) {
+	t.Run("selection help advertises MKV without claiming H264 is required", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.width, m.height = 80, 36
+		m.options = optionsState{open: true, request: "load", id: 5}
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: 5})
+		if !strings.Contains(ansi.Strip(m.View().Content), "MKV") {
+			t.Fatalf("format help=%q, want MKV", m.options.status)
+		}
+	})
+
 	t.Run("matching prepared loop disables Preview and skips it during navigation", func(t *testing.T) {
 		m := newRootTestModel()
 		m.browserOptionsEnabled = true
