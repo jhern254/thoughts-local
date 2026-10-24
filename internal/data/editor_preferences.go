@@ -6,4 +6,4 @@ type EditorPreferences struct {
 	SpeechPauseMS        int
 }
 
-func DefaultEditorPreferences() EditorPreferences { return EditorPreferences{SpeechPauseMS: 2000} }
+func DefaultEditorPreferences() EditorPreferences { return EditorPreferences{SpeechPauseMS: 1500} }

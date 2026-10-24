@@ -233,7 +233,7 @@ transcript updates.
 ## Speech pauses and draft editing
 
 Options → Editor stores **Newline after speech pause** per local user. The default
-is 2 seconds; choose Off or 0.5–10 seconds in 0.5-second steps. The recording
+is 1.5 seconds; choose Off or 0.5–10 seconds in 0.5-second steps. The recording
 consumer reads this preference once at recording startup. Changes affect the next
 recording, not existing text or an active transcript.
 

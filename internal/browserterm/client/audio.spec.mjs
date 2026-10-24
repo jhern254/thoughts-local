@@ -215,7 +215,7 @@ test('editor preferences persist across browser sessions', async ({page}) => {
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Tab');
   await page.keyboard.press('ArrowRight');
-  await expect(screen(page)).toContainText('2.5 seconds');
+  await expect(screen(page)).toContainText('2.0 seconds');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Saved.');
@@ -224,7 +224,7 @@ test('editor preferences persist across browser sessions', async ({page}) => {
   await page.keyboard.press('Control+,');
   await clickControl(page,'Editor');
   await expect(screen(page)).toContainText('Highlight current line: On');
-  await expect(screen(page)).toContainText('2.5 seconds');
+  await expect(screen(page)).toContainText('2.0 seconds');
   // Restore defaults for subsequent acceptance cases sharing this disposable DB.
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('Tab');

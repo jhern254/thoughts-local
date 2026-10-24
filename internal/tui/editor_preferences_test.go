@@ -38,7 +38,7 @@ func TestModel_EditorPreferences(t *testing.T) {
 			t.Fatal("native Options missing Editor")
 		}
 		m = runModelCommand(t, m, enterKey())
-		if !m.editorPreferences.open || !strings.Contains(m.View().Content, "2.0 seconds") {
+		if !m.editorPreferences.open || !strings.Contains(m.View().Content, "1.5 seconds") {
 			t.Fatal("preferences did not load")
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
@@ -46,7 +46,7 @@ func TestModel_EditorPreferences(t *testing.T) {
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		m = runModelCommand(t, m, enterKey())
-		if store.saves != 1 || !store.preferences.HighlightCurrentLine || store.preferences.SpeechPauseMS != 2500 || !strings.Contains(m.View().Content, "Saved.") {
+		if store.saves != 1 || !store.preferences.HighlightCurrentLine || store.preferences.SpeechPauseMS != 2000 || !strings.Contains(m.View().Content, "Saved.") {
 			t.Fatal("settings did not persist")
 		}
 	})

@@ -75,7 +75,7 @@ the original Subject.
   move and i/a/o resume insertion. **Ctrl+D** cancels a draft, confirming when it
   contains text; **Ctrl+S** saves. Esc during recording stops capture and preserves
   the draft. **Options → Editor** saves current-line highlighting (off by default)
-  and the speech-pause newline threshold (2 seconds by default, configurable or off).
+  and the speech-pause newline threshold (1.5 seconds by default, configurable or off).
 - At top-level Events or the focused entity selector, Esc or Ctrl+C opens an
   exit confirmation. No is selected by default. Use Left/Right or Tab to select,
   then Enter to accept; Y exits immediately, and N/Q/Esc cancels.

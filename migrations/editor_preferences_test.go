@@ -3,7 +3,7 @@ package migrations
 import "testing"
 
 func TestEditorPreferences(t *testing.T) {
-	t.Run("defaults to steady unhighlighted editing and two second pauses", func(t *testing.T) {
+	t.Run("defaults to steady unhighlighted editing and one and a half second pauses", func(t *testing.T) {
 		db := openMigratedDatabase(t)
 		insertUsers(t, db)
 		if _, err := db.Exec("INSERT INTO editor_preferences(user_id) VALUES ('user-1')"); err != nil {
@@ -13,8 +13,8 @@ func TestEditorPreferences(t *testing.T) {
 		if err := db.QueryRow("SELECT highlight_current_line,speech_pause_ms FROM editor_preferences").Scan(&highlight, &pause); err != nil {
 			t.Fatal(err)
 		}
-		if highlight != 0 || pause != 2000 {
-			t.Fatalf("got %d %d, want 0 2000", highlight, pause)
+		if highlight != 0 || pause != 1500 {
+			t.Fatalf("got %d %d, want 0 1500", highlight, pause)
 		}
 	})
 	for _, value := range []string{"-1", "1", "499", "10001", "500.5", "NULL"} {
