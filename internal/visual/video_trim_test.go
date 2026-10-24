@@ -155,9 +155,6 @@ func TestVideoSource_CutTiming(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer source.Close()
-			if got, want := source.HasZeroStartTimestamp(), offset == "0"; got != want {
-				t.Fatalf("zero-start timestamp=%v, want %v", got, want)
-			}
 			prepared, err := source.Prepare(t.Context(), VideoTrim{StartMS: 6250, EndMS: 7500}, VideoQualityEfficient)
 			if err != nil {
 				t.Fatal(err)

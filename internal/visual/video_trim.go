@@ -49,23 +49,6 @@ type VideoSource struct {
 
 func (source *VideoSource) Info() VideoSourceInfo { return source.info }
 
-// Browsers disagree about whether a nonzero MP4 start offset belongs to
-// currentTime. Browser-local scene selection requires an unambiguous zero origin;
-// native callers can still prepare source-relative cuts with nonzero timestamps.
-func (source *VideoSource) HasZeroStartTimestamp() bool {
-	stream, found := source.probe.video()
-	if !found {
-		return false
-	}
-	for _, text := range []string{stream.StartTime, source.probe.Format.StartTime} {
-		start, err := strconv.ParseFloat(text, 64)
-		if err != nil || start != 0 {
-			return false
-		}
-	}
-	return true
-}
-
 func (source *VideoSource) Close() error {
 	if source.directory == "" {
 		return nil

@@ -1059,13 +1059,13 @@ two-hour 60 FPS H.264/AAC sample had an 11,863,918-byte index. Prepared-loop ind
 retain their 8 MiB ceiling. No complete-movie decode, transcode or thumbnail index
 is needed to stage or browse a source.
 
-Browser imports require zero-start video/container timestamps. A focused offset
-fixture demonstrated why: Chromium initially reported currentTime=5 and showed
-source content around 1.25 seconds after seeking to 6.25; Firefox normalized the
-same file to zero and showed content at 6.25. Local detection/native verification
-reject this disagreement, remove native staging, and give fixed export feedback.
-Native source-relative trimming and its existing nonzero-offset regressions remain
-supported. This MVP does not remux originals to repair their timelines.
+Browser imports accept nonzero video/container timestamps. Chromium may retain
+that offset while Firefox starts the same file at zero. Local cut controls count
+from the browser's first decoded frame, and seeking adds that browser-specific
+offset back. Native preparation continues to use source-relative cuts. The
+original file is neither remuxed nor re-exported merely to change timestamps.
+For an offset source, Chromium can clip local seeking near the end; those cuts
+show a source-preview notice and remain available through native Preview loop.
 
 ### T480s observations
 

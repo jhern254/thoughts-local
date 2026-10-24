@@ -7,7 +7,7 @@ function fixture() {
   const revoked=[];
   const context=vm.createContext({AbortController,URL:{revokeObjectURL:url=>revoked.push(url)}});
   vm.runInContext(readFileSync(new URL('../static/video-trim.js',import.meta.url),'utf8'),context);
-  const visual={connected:true,state:{open:true,editorID:'editor',id:1},stopPreviewPlayback(){},retireVideo(){},discardPreview(){throw new Error('stale discard published');}};
+  const visual={sourcePreviewStatus:{hidden:true},connected:true,state:{open:true,editorID:'editor',id:1},stopPreviewPlayback(){},retireVideo(){},discardPreview(){throw new Error('stale discard published');}};
   const editor=vm.runInContext('new ThoughtsVideoTrim(null)',context);editor.visual=visual;editor.editorID='editor';
   return {editor,visual,context,revoked};
 }
@@ -89,7 +89,7 @@ test('file selection opens a local paused source without upload or processing',a
  visual.state.maxVideoSourceBytes=8*1024**3;visual.state.maxVideoSourceDurationMS=7200000;
  visual.releasePreviewVideo=()=>{};visual.sendAction=action=>actions.push(action);
  const file={size:7*1024**3,arrayBuffer(){throw new Error('whole file buffered');}};
- const video={duration:6900,videoWidth:1920,videoHeight:1080};
+ const video={currentTime:0,duration:6900,videoWidth:1920,videoHeight:1080};
  editor.makeVideo=(url,preload)=>{video.preload=preload;return video;};editor.ready=async()=>{};editor.showSource=position=>assert.equal(position,0);
  await editor.selectSource(file,1);
  assert.equal(editor.localFile,file);assert.equal(editor.source,undefined);
@@ -133,11 +133,23 @@ test('a retired upload cannot publish its source into a newer editor',async()=>{
  assert.equal(editor.source,undefined);
 });
 
-test('a browser with a nonzero local media origin rejects before staging',async()=>{
- const {editor,visual,context}=fixture();
- context.URL.createObjectURL=()=> 'blob:offset';context.fetch=()=>{throw new Error('incompatible timeline uploaded');};
- visual.releasePreviewVideo=()=>{};visual.state.maxVideoSourceBytes=8*1024**3;visual.state.maxVideoSourceDurationMS=7200000;
- editor.makeVideo=()=>({currentTime:5,duration:12,videoWidth:64,videoHeight:48});editor.ready=async()=>{};
- await assert.rejects(editor.selectSource({size:1024},1),error=>error.videoAction==='sourceTimeline');
- assert.equal(editor.localFile,undefined);assert.equal(editor.source,undefined);
+test('source-relative cuts work with either browser timestamp origin',async()=>{
+ for (const originSeconds of [5, 0, 0.083333]) {
+  const {editor,visual,context}=fixture();const actions=[];
+  context.URL.createObjectURL=()=> 'blob:offset';context.fetch=()=>{throw new Error('selection uploaded source');};
+  visual.releasePreviewVideo=()=>{};visual.sendAction=action=>actions.push(action);
+  visual.state.maxVideoSourceBytes=8*1024**3;visual.state.maxVideoSourceDurationMS=7200000;
+  const video={currentTime:originSeconds,duration:12,videoWidth:64,videoHeight:48,addEventListener(){}};
+  editor.makeVideo=()=>video;editor.ready=async()=>{};editor.attach=()=>{visual.previewVideo=video;};
+  await editor.selectSource({size:1024},1);
+  assert.equal(actions.at(-1).action,'sourceSelected');
+  assert.equal(actions.at(-1).durationMS,12000);
+  editor.showSource(6250);
+  assert.equal(video.currentTime,originSeconds+6.25);
+  editor.showSource(10250);
+  assert.equal(visual.sourcePreviewStatus.hidden,originSeconds<1);
+  editor.close();
+  assert.equal(visual.sourcePreviewStatus.hidden,true);
+  assert.equal(editor.sourceStartSeconds,0);
+ }
 });

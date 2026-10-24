@@ -22,7 +22,7 @@ test.beforeAll(() => {
     execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=32x24:rate=1:duration=14400','-c:v','libx264','-threads','1','-g','60','-pix_fmt','yuv420p','-movflags','+faststart',longPath]);
     longSource={name:'four-hours.mp4',mimeType:'video/mp4',buffer:readFileSync(longPath)};
     const offsetPath=join(directory,'offset.mp4');
-    execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','color=size=32x24:rate=24:duration=2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-output_ts_offset','5','-movflags','+faststart',offsetPath]);
+    execFileSync('ffmpeg',['-v','error','-f','lavfi','-i',"nullsrc=size=64x48:rate=24:duration=12,geq=lum='32+12*T':cb=128:cr=128",'-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-output_ts_offset','5','-movflags','+faststart',offsetPath]);
     offsetSource={name:'offset.mp4',mimeType:'video/mp4',buffer:readFileSync(offsetPath)};
   } finally {rmSync(directory,{recursive:true,force:true});}
 });
@@ -460,13 +460,40 @@ for(const phase of ['source transfer','preview acknowledgement'])test(`cancellat
 });
 
 
-test('incompatible browser timestamp origins cannot prepare a different scene',async({page})=>{
- let prepares=0;page.on('request',r=>{if(new URL(r.url()).pathname==='/visual/video/preview'&&r.method()==='POST')prepares++;});
+test('nonzero timestamp sources preview and prepare the same selected scene',async({page})=>{
+ await page.emulateMedia({reducedMotion:'reduce'});
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
- const before=await(await page.request.get('/visual')).json();await openVisual(page);
+ await openVisual(page);
  const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(offsetSource);
- await expect(screen(page)).toContainText(/Set cut points|Export a zero-start/);
- if((await screen(page).textContent()).includes('Set cut points'))await clickControl(page,'Preview loop');
- await expect(screen(page)).toContainText('Export a zero-start MP4/MOV');
- expect(prepares).toBe(0);expect(await(await page.request.get('/visual')).json()).toEqual(before);
+ await expect(screen(page)).toContainText('Source / Start: 00:00:00.000 / 00:00:12.000');
+ const sourceOrigin=await page.locator('#background-preview-video').evaluate(video=>video.currentTime);
+ await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('00:00:10.250');await page.keyboard.press('Enter');
+ await expect(screen(page)).toContainText('Source / Start: 00:00:10.250');
+ const preview=page.locator('#background-preview-video');
+ const brightness=()=>preview.evaluate(video=>{
+  if(video.seeking||video.readyState<2)return -1;
+  const canvas=document.createElement('canvas');canvas.width=1;canvas.height=1;
+  const context=canvas.getContext('2d');context.drawImage(video,0,0,1,1);
+  return context.getImageData(0,0,1,1).data[0];
+ });
+ // This synthetic source brightens each second. A five-second timestamp error
+ // changes brightness by about 70 levels, far beyond codec rounding.
+ if(sourceOrigin>0) {
+  await expect(page.locator('#source-preview-status')).toBeVisible();
+ } else {
+  await expect.poll(brightness).toBeGreaterThan(154);
+  await expect.poll(brightness).toBeLessThan(172);
+ }
+ await clickControl(page,'End: 00:00:12.000 (max 00:00:12.000)');await page.keyboard.press('Home');
+ await clickControl(page,'Preview loop');
+ await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ await expect(screen(page)).toContainText('Range: 10.25–11.25s');
+ await expect(page.locator('#source-preview-status')).toBeHidden();
+ await expect.poll(brightness).toBeGreaterThan(154);
+ await expect.poll(brightness).toBeLessThan(172);
+ await clickControl(page,'Done — use previewed loop');
+ await expect(screen(page)).toContainText('Background darkness:');
+ await clickControl(page,'Apply');
+ await expect(screen(page)).not.toContainText('Background darkness:');
+ expect((await(await page.request.get('/visual')).json()).kind).toBe('video');
 });

@@ -4,6 +4,7 @@ class ThoughtsVideoTrim {
   constructor(visual) {
     this.visual = visual;
     this.generation = 0;
+    this.sourceStartSeconds = 0;
   }
   headers() { return {'X-Visual-Editor': this.editorID}; }
   owns(generation) {
@@ -34,7 +35,9 @@ class ThoughtsVideoTrim {
       this.sourceVideo = video;
       await this.ready(video, controller.signal);
       if (!this.owns(generation) || this.visual.state.id !== operationID) return;
-      if (Math.abs(video.currentTime) > 0.001) {const error=new Error('Source timeline unavailable.');error.videoAction='sourceTimeline';throw error;}
+      // Some browsers retain a file's timestamp offset; others start at zero.
+      // Cut controls always count from the first decoded source frame.
+      this.sourceStartSeconds = video.currentTime;
       const durationMS = Math.floor(video.duration * 1000);
       if (!Number.isSafeInteger(durationMS) || durationMS < 1000 || durationMS > this.visual.state.maxVideoSourceDurationMS || !video.videoWidth || !video.videoHeight) throw new Error('Unsupported source.');
       // Browser metadata is provisional. Only native staging can validate the
@@ -74,7 +77,7 @@ class ThoughtsVideoTrim {
       upload.onload=()=>{
         if (upload.status===200 && upload.response?.sourceID) {finish(null,upload.response);return;}
         const error=new Error('Video source unavailable.');
-        error.videoAction=upload.status===507 ? 'sourceSpace' : upload.status===408 ? 'sourceTimeout' : upload.status===422 ? 'sourceTimeline' : [400,413].includes(upload.status) ? 'sourceUnsupported' : 'failed';
+        error.videoAction=upload.status===507 ? 'sourceSpace' : upload.status===408 ? 'sourceTimeout' : [400,413].includes(upload.status) ? 'sourceUnsupported' : 'failed';
         finish(error);
       };
       upload.onerror=upload.onabort=()=>finish(new Error('Video transfer unavailable.'));
@@ -109,6 +112,7 @@ class ThoughtsVideoTrim {
   }
   attach(video) {
     const visual = this.visual;
+    visual.sourcePreviewStatus.hidden = true;
     visual.stopPreviewPlayback();
     if (visual.previewVideo && visual.previewVideo !== video) visual.previewVideo.remove();
     visual.previewVideo = video;
@@ -123,7 +127,13 @@ class ThoughtsVideoTrim {
     if (this.visual.previewVideo !== this.sourceVideo) this.attach(this.sourceVideo);
     // Coalesce seek requests: one in flight and one latest target. No playback
     // timer, frame copying or FFmpeg work occurs while moving cut controls.
-    this.seekTarget = Math.min(positionMS / 1000, Math.max(0,this.sourceVideo.duration - 0.001));
+    const targetSeconds = this.sourceStartSeconds + positionMS / 1000;
+    // Chromium can retain a nonzero origin but clamp seeks to the unshifted
+    // duration. Native Preview loop can still prepare those later source cuts.
+    const unavailable = this.sourceStartSeconds > 0 && targetSeconds >= this.sourceVideo.duration;
+    this.visual.sourcePreviewStatus.hidden = !unavailable;
+    if (unavailable) { this.seekTarget = undefined; return; }
+    this.seekTarget = Math.min(targetSeconds, this.sourceVideo.duration - 0.001);
     this.seekSource();
   }
   seekSource() {
@@ -244,5 +254,7 @@ class ThoughtsVideoTrim {
     this.sourceVideo = undefined; this.acceptedVideo = undefined;
     this.sourceURL = undefined; this.acceptedVideoURL = undefined; this.acceptedPosterURL = undefined;
     this.seekTarget = undefined;
+    this.sourceStartSeconds = 0;
+    this.visual.sourcePreviewStatus.hidden = true;
   }
 }

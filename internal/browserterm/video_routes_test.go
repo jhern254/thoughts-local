@@ -392,14 +392,27 @@ func TestVideoSource_BrowserTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	response := videoEditRequest(t, s, id, "POST", "/visual/video/source", body)
-	if response.Code != 422 || !strings.Contains(response.Body.String(), "zero-start") {
+	if response.Code != http.StatusOK {
 		t.Fatalf("timeline response=%d %q", response.Code, response.Body.String())
 	}
 	files, err := os.ReadDir(staging)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 0 || s.videoEditor.source != nil {
-		t.Fatal("incompatible timeline retained a native source")
+	if len(files) != 1 || s.videoEditor.source == nil {
+		t.Fatal("nonzero timestamp prevented normal source staging")
+	}
+	if got := s.videoEditor.source.Info().DurationMS; got != 2000 {
+		t.Fatalf("source duration = %d, want 2000 independent of timestamp origin", got)
+	}
+	if err := s.videoEditor.Close(); err != nil {
+		t.Fatal(err)
+	}
+	files, err = os.ReadDir(staging)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
+		t.Fatal("closing editor retained staged source")
 	}
 }

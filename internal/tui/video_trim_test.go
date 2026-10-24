@@ -86,7 +86,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 	t.Run("failed preparation restores the accepted loop label and preserves drafts", func(t *testing.T) {
-		for _, action := range []string{"failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceTimeline"} {
+		for _, action := range []string{"failed", "sourceSpace", "sourceTimeout", "sourceUnsupported"} {
 			t.Run(action, func(t *testing.T) {
 				m := newRootTestModel()
 				m.browserOptionsEnabled = true

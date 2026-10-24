@@ -328,7 +328,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		} else {
 			m.options.status = "Saved. Some background files could not be removed."
 		}
-	case "failed", "sourceTimeline":
+	case "failed":
 		if m.options.request == "prepareLoop" && m.options.loopReady {
 			m.options.sourceFrame = false
 		}
@@ -348,9 +348,6 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			}
 		}
 		m.options.status = "Could not load or apply. Check media limits and retry."
-		if msg.Action == "sourceTimeline" {
-			m.options.status = "Export a zero-start MP4/MOV for reliable scene preview."
-		}
 	default:
 		return m, nil
 	}

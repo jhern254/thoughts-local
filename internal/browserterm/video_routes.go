@@ -157,14 +157,6 @@ func (s *server) stageVisualVideoSource(w http.ResponseWriter, r *http.Request) 
 		videoError(w, err)
 		return
 	}
-	if !source.HasZeroStartTimestamp() {
-		if err := source.Close(); err != nil {
-			videoError(w, err)
-			return
-		}
-		http.Error(w, "Export a zero-start MP4/MOV for reliable scene preview.", http.StatusUnprocessableEntity)
-		return
-	}
 	if err := ctx.Err(); err != nil {
 		source.Close()
 		return

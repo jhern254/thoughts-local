@@ -19,6 +19,7 @@ class ThoughtsVisual {
     this.documentVisible = !document.hidden;
     this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
     this.playbackStatus = document.getElementById('video-status');
+    this.sourcePreviewStatus = document.getElementById('source-preview-status');
     this.preparationStatus = document.getElementById('video-preparation');
     this.preparationWave = new ThoughtsPreparationWave(document.getElementById('video-preparation-wave'));
     this.motionQuery.addEventListener('change', () => {
@@ -356,7 +357,7 @@ class ThoughtsVisual {
       if (previewGeneration !== this.previewGeneration || this.state.id !== operationID) return;
       this.discardPreview();
       if (this.activeURL) this.preview.src = this.activeURL;
-      this.reply(error.videoAction === 'sourceTimeline' ? 'sourceTimeline' : 'failed', operationID);
+      this.reply('failed', operationID);
     } finally { this.terminal.focus(); }
   }
   async activate(settings, connectionGeneration = this.connectionGeneration) {
