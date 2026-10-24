@@ -13,6 +13,35 @@ import (
 )
 
 func TestModel_VoiceSubjectDiscovery(t *testing.T) {
+	t.Run("plural revision freezes at Stop and F9 restores the accepted prefix", func(t *testing.T) {
+		service := subject.NewService(testutils.NewFakeSubjectStore())
+		if _, err := service.Create(t.Context(), "local-user-id", "Fitness"); err != nil {
+			t.Fatal(err)
+		}
+		model := newSubjectTestModel(service)
+		model, _ = rootUpdate(model, thoughts.BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
+		model = runModelCommand(t, model, tea.KeyPressMsg{Code: tea.KeyF8})
+		recording := model.VoiceState().TranscriptAuthority.Recording()
+		model, _ = rootUpdate(model, voice.TranscriptUpdate{Recording: recording, Revision: 1, Text: "Fitness thought： étudier."})
+		finalTranscript := "Fitness thoughts： étudier."
+		model, _ = rootUpdate(model, voice.TranscriptUpdate{Recording: recording, Revision: 2, Text: finalTranscript})
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyF8})
+		model, _ = rootUpdate(model, voice.TranscriptUpdate{Recording: recording, Revision: 3, Text: "Fitness thought: rejected late revision"})
+		if view := ansi.Strip(model.View().Content); !strings.Contains(view, finalTranscript) || strings.Contains(view, "rejected late revision") {
+			t.Fatalf("stopped view = %q, want latest accepted plural transcript", view)
+		}
+		model, _ = rootUpdate(model, voice.RecordingEnded{Recording: recording})
+		model, _ = rootUpdate(model, voice.RecordingEnded{Recording: recording})
+		if view := ansi.Strip(model.View().Content); !strings.Contains(view, "Étudier.") || strings.Contains(view, "Fitness thoughts") || !strings.Contains(view, "F9: Restore prefix") {
+			t.Fatalf("ended view = %q, want cleaned body and restore action", view)
+		}
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyF9})
+		model, _ = rootUpdate(model, tea.KeyPressMsg{Code: tea.KeyF9})
+		if view := ansi.Strip(model.View().Content); strings.Count(view, finalTranscript) != 1 || strings.Contains(view, "F9: Restore prefix") {
+			t.Fatalf("restored view = %q, want original plural transcript exactly once", view)
+		}
+	})
+
 	t.Run("manual independent Subject creation keeps alias conflict confirmation", func(t *testing.T) {
 		service := subject.NewService(testutils.NewFakeSubjectStore())
 		original, err := service.Create(t.Context(), "local-user-id", "Go Programming")

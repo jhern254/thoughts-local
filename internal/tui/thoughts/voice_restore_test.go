@@ -11,7 +11,14 @@ import (
 )
 
 func TestModel_RestoreVoicePrefix(t *testing.T) {
-	for _, text := range []string{"fitness thought, exercised today.", "meditation thought — étudier 日本語.", "Programming in Go thought: practiced interfaces."} {
+	for _, text := range []string{
+		"fitness thought, exercised today.",
+		"meditation thought — étudier 日本語.",
+		"Programming in Go thought: practiced interfaces.",
+		"Fitness thoughts: try shorter workouts",
+		"meditation THOUGHTS：  étudier 日本語.",
+		"Programming in Go thoughts: practiced interfaces.",
+	} {
 		for _, focus := range []string{"text", "subject"} {
 			t.Run(text+"/"+focus, func(t *testing.T) {
 				m, load, _ := discoveryModel(t)
@@ -50,14 +57,14 @@ func TestModel_RestoreVoicePrefix(t *testing.T) {
 		m, load, _ := discoveryModel(t)
 		m, _ = m.Update(load())
 		m, recording := startDiscoveryRecording(m)
-		m = transcript(m, recording, 1, "fitness thought, exercised today.")
+		m = transcript(m, recording, 1, "fitness thoughts, exercised today.")
 		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
 		m, _ = m.Update(tea.PasteMsg{Content: " More exercise."})
 		m, _ = m.Update(key(tea.KeyTab))
 		m, _ = m.Update(key(tea.KeyDown))
 		m, _ = m.Update(key(tea.KeyEnter))
 		m, _ = m.Update(key(tea.KeyF9))
-		if m.input.Value() != "fitness thought, Exercised today. More exercise." || m.subjectID == nil || *m.subjectID != 8 {
+		if m.input.Value() != "fitness thoughts, Exercised today. More exercise." || m.subjectID == nil || *m.subjectID != 8 {
 			t.Fatalf("text=%q subject=%v", m.input.Value(), m.subjectID)
 		}
 	})

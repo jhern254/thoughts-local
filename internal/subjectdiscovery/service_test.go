@@ -105,7 +105,7 @@ func TestService_Load(t *testing.T) {
 func TestSnapshot_ConfirmsCommand(t *testing.T) {
 	snapshot := NewSnapshot([]Candidate{{
 		Subject:      data.Subject{SubjectID: 1, SubjectName: "I Ching"},
-		Aliases:      []string{"The Art of Learning", "I Want to Learn Go", "My Learning Journal", "Remember Tomorrow", "Yesterday I", "My first", "It was"},
+		Aliases:      []string{"The Art of Learning", "I Want to Learn Go", "My Learning Journal", "Remember Tomorrow", "Yesterday I", "My first", "It was", "My", "These"},
 		ThoughtCount: 1_000_000,
 		UsageKnown:   true,
 	}})
@@ -113,6 +113,11 @@ func TestSnapshot_ConfirmsCommand(t *testing.T) {
 		text string
 		want bool
 	}{
+		{"I Ching thoughts, review notes.", true},
+		{"Random thoughts…", false},
+		{"My thoughts are scattered", false},
+		{"These thoughts are useful", false},
+		{"Fitness thoughts: try shorter workouts", true},
 		{"I Ching thought, review notes.", true},
 		{"The Art of Learning thought, review notes.", true},
 		{"I Want to Learn Go thought, review notes.", true},
@@ -133,6 +138,33 @@ func TestSnapshot_ConfirmsCommand(t *testing.T) {
 			}
 		})
 	}
+	t.Run("plural uncertainty requires a unique name and collisions still veto commands", func(t *testing.T) {
+		for _, cue := range []string{"Random", "Fitness"} {
+			prefix, recognized := ParseSpokenPrefix(cue + " thoughts: try something")
+			if !recognized {
+				t.Fatalf("did not recognize plural prefix for %q", cue)
+			}
+			unique := NewSnapshot([]Candidate{{Subject: data.Subject{SubjectID: 1, SubjectName: cue}}})
+			if !unique.ConfirmsCommand(prefix) {
+				t.Fatalf("unique name did not confirm %q", cue)
+			}
+			collision := NewSnapshot([]Candidate{
+				{Subject: data.Subject{SubjectID: 1, SubjectName: cue}},
+				{Subject: data.Subject{SubjectID: 2, SubjectName: "Other"}, Aliases: []string{cue}},
+			})
+			if collision.ConfirmsCommand(prefix) {
+				t.Fatalf("collision authorized cleanup for %q", cue)
+			}
+			service := &Service{recommender: rankFunc(func(context.Context, string, []Candidate) ([]Match, error) {
+				t.Fatal("collision invoked ranking")
+				return nil, nil
+			})}
+			result, err := service.Resolve(t.Context(), prefix.Cue, collision)
+			if err != nil || result.Outcome != NameCollision || result.Subject != nil || len(result.Matches) != 0 {
+				t.Fatalf("collision resolution = %+v, %v; want no subject or candidates", result, err)
+			}
+		}
+	})
 	t.Run("absent candidate data cannot confirm an uncertain name", func(t *testing.T) {
 		prefix, _ := ParseSpokenPrefix("I Ching thought, review notes.")
 		if (Snapshot{}).ConfirmsCommand(prefix) {

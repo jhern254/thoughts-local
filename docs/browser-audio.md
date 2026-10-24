@@ -47,10 +47,11 @@ to check capture and draft ownership independently of the speech engine.
 
 ## Spoken Subject prefixes
 
-Start an empty voice draft with a name followed by “thought”, for example
-“Programming in Go thought, today I learned about interfaces.” Unique voice-name
-matches select the canonical Subject. The full transcript remains visible during
-recording. Confirmed cleanup removes the prefix once and capitalizes the body's
+Start an empty voice draft with a name followed by “thought” or “thoughts”, for
+example “Programming in Go thought, today I learned about interfaces” or
+“Fitness thoughts: try shorter workouts.” Both spellings follow the same command
+rules. Unique voice-name matches select the canonical Subject. The full
+transcript remains visible during recording. Confirmed cleanup removes the prefix once and capitalizes the body's
 first Unicode letter. Nothing is saved until Ctrl+S.
 
 The Subject label identifies provisional suggestions and fuzzy ambiguities.
@@ -66,12 +67,17 @@ denied recording attempts do not consume that initial opportunity.
 
 `internal/subjectdiscovery` separates a pure parser, candidate reads, and ranking.
 The bounded parser considers only the first standalone case-insensitive
-“thought” after at most eight words and 255 Unicode characters. Intent precedes
-identity resolution: pronouns immediately before the delimiter (including after
+“thought” or “thoughts” after at most eight words and 255 Unicode characters.
+Embedded or possessive words such as “afterthoughts” and “thought’s” are not
+delimiters. The first delimiter remains decisive; recognition never skips an
+earlier ordinary phrase to find a later command. Intent precedes identity
+resolution: pronouns immediately before the delimiter (including after
 introductory phrases), auxiliary/passive endings, pronoun/adverb constructions,
 and determiner-led noun readings such as “My first thought was ...” are ordinary
-speech even if the prefix happens to be a saved name or alias. Noun readings use
-only a bounded lookahead at the body's first word, not body classification.
+speech even if the prefix happens to be a saved name or alias. “My thoughts are
+scattered” and “These thoughts are useful” likewise remain literal; “thoughts”
+alone has no subject cue. Noun readings use only a bounded lookahead at the
+body's first word, not body classification.
 
 Voice spelling is compared with `strings.EqualFold` across preloaded canonical
 names and aliases, counting distinct canonical Subject IDs. A unique match selects
@@ -86,8 +92,9 @@ letter of the body is capitalized. An unfamiliar single word remains an optional
 Subject proposal: creating it still requires the existing explicit creation flow,
 and saving without creating or selecting a Subject saves the cleaned body as Misc.
 
-Sentence-like titles and conversational phrases such as “random thought” remain
-possible commands. A unique folded name can confirm them; fuzzy scores and usage
+Sentence-like titles and conversational phrases such as “random thought” or
+“random thoughts” remain possible commands. A unique folded name can confirm
+them; fuzzy scores and usage
 cannot establish their intent. This preserves known names such as “The Art of
 Learning”, “I Ching”, “I Want to Learn Go”, and “My Learning Journal”.
 Unconfirmed possible commands retain their text. Editing the body or recording

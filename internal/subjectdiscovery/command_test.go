@@ -7,6 +7,21 @@ import (
 
 func TestParseSpokenPrefix(t *testing.T) {
 	for _, tc := range []struct{ name, text, cue, body string }{
+		{"plural command", "Fitness thoughts: try shorter workouts", "Fitness", "try shorter workouts"},
+		{"plural unicode and case", "日本語 学習 ThOuGhTs：今日は学んだ", "日本語 学習", "今日は学んだ"},
+		{"plural punctuation", "C++ & Go thoughts—review pointers", "C++ & Go", "review pointers"},
+		{"plural at end", "Fitness THOUGHTS", "Fitness", ""},
+		{"plural possessive noun", "My thoughts are scattered", "", ""},
+		{"plural demonstrative noun", "These thoughts are useful", "", ""},
+		{"plural without cue", "thoughts", "", ""},
+		{"embedded plural", "Fitness afterthoughts: exercise", "", ""},
+		{"possessive plural", "Fitness thoughts’ meaning", "", ""},
+		{"ASCII possessive", "Fitness thought's meaning", "", ""},
+		{"first plural wins", "Fitness thoughts: Go thought exercise", "Fitness", "Go thought exercise"},
+		{"first singular wins", "Fitness thought: Go thoughts exercise", "Fitness", "Go thoughts exercise"},
+		{"ordinary first plural stops scanning", "My thoughts are scattered Fitness thought exercise", "", ""},
+		{"ordinary first singular stops scanning", "I thought Fitness thoughts exercise", "", ""},
+		{"missing first cue stops scanning", "thoughts Fitness thought exercise", "", ""},
 		{"alias", "Programming in Go thought, today I learned...", "Programming in Go", "today I learned..."},
 		{"canonical", "Go Programming thought I learned about interfaces", "Go Programming", "I learned about interfaces"},
 		{"unicode", "日本語 学習 THOUGHT：今日は学んだ", "日本語 学習", "今日は学んだ"},
@@ -64,6 +79,33 @@ func TestParseSpokenPrefix(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("both spellings preserve cue bounds and original byte offsets", func(t *testing.T) {
+		for _, delimiter := range []string{"thought", "thoughts"} {
+			for _, scenario := range []struct {
+				name, cue string
+				accepted  bool
+			}{
+				{"Unicode cue", "Études 日本語", true},
+				{"eight words", "one two three four five six seven eight", true},
+				{"nine words", "one two three four five six seven eight nine", false},
+				{"255 characters", strings.Repeat("界", 255), true},
+				{"256 characters", strings.Repeat("界", 256), false},
+			} {
+				t.Run(delimiter+"/"+scenario.name, func(t *testing.T) {
+					originalPrefix := scenario.cue + " " + delimiter + "：  "
+					text := originalPrefix + "étudier."
+					prefix, recognized := ParseSpokenPrefix(text)
+					if recognized != scenario.accepted {
+						t.Fatalf("recognized = %v, want %v", recognized, scenario.accepted)
+					}
+					if recognized && (prefix.Cue != scenario.cue || prefix.BodyStart != len(originalPrefix)) {
+						t.Fatalf("prefix = %+v, want cue %q and byte offset %d", prefix, scenario.cue, len(originalPrefix))
+					}
+				})
+			}
+		}
+	})
 }
 
 func TestSpokenPrefix_Intent(t *testing.T) {
@@ -71,6 +113,10 @@ func TestSpokenPrefix_Intent(t *testing.T) {
 		text string
 		want CommandIntent
 	}{
+		{"Fitness thoughts: try shorter workouts", ConfirmedCommand},
+		{"Random thoughts…", PossibleCommand},
+		{"My thoughts are scattered", OrdinarySpeech},
+		{"These thoughts are useful", OrdinarySpeech},
 		{"Go Programming thought, today I learned.", ConfirmedCommand},
 		{"Programming in Go thought studied goroutines.", ConfirmedCommand},
 		{"Machine Learning Research thought, studied embeddings.", ConfirmedCommand},

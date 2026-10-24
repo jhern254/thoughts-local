@@ -33,7 +33,7 @@ type SpokenPrefix struct {
 }
 
 // ParseSpokenPrefix recognizes only a short leading name before the first
-// standalone "thought". This deliberately conservative English command grammar
+// standalone "thought" or "thoughts". This conservative English command grammar
 // is independent of whether the name exists; Unicode names are retained verbatim.
 // A true result includes PossibleCommand: callers must confirm intent before
 // assigning a Subject or removing text, rather than treating a prefix as proof.
@@ -42,7 +42,7 @@ func ParseSpokenPrefix(text string) (SpokenPrefix, bool) {
 	characters := 0
 	for offset, character := range text {
 		characters++
-		if characters > maximumCueCharacters+len(" thought ") {
+		if characters > maximumCueCharacters+len(" thoughts ") {
 			return SpokenPrefix{}, false
 		}
 		if character == utf8.RuneError {
@@ -55,15 +55,19 @@ func ParseSpokenPrefix(text string) (SpokenPrefix, bool) {
 			}
 			continue
 		}
-		if wordStart >= 0 && strings.EqualFold(text[wordStart:offset], "thought") {
+		if wordStart >= 0 && isSpokenCommandDelimiter(text[wordStart:offset]) {
 			return spokenPrefix(text, wordStart, offset)
 		}
 		wordStart = -1
 	}
-	if wordStart >= 0 && strings.EqualFold(text[wordStart:], "thought") {
+	if wordStart >= 0 && isSpokenCommandDelimiter(text[wordStart:]) {
 		return spokenPrefix(text, wordStart, len(text))
 	}
 	return SpokenPrefix{}, false
+}
+
+func isSpokenCommandDelimiter(word string) bool {
+	return strings.EqualFold(word, "thought") || strings.EqualFold(word, "thoughts")
 }
 
 func spokenPrefix(text string, start, end int) (SpokenPrefix, bool) {
