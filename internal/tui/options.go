@@ -172,7 +172,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			m.options.hasBackground = false
 			m.options.framing = data.DefaultBackgroundFraming()
 			m.options.focus = optionsFocusChooseBackground
-			m.options.darkness = 70
+			m.options.darkness = data.DefaultBackgroundDarkness
 			m.options.speedPercent = 100
 			m.options.videoQuality = visual.VideoQualityEfficient
 			m.options.userPaused = false
@@ -674,7 +674,7 @@ func (m Model) updateOptionsMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.options.hasBackground = false
 		m.options.framing = data.DefaultBackgroundFraming()
 		m.options.focus = optionsFocusChooseBackground
-		m.options.darkness = 70
+		m.options.darkness = data.DefaultBackgroundDarkness
 		m.options.speedPercent = 100
 		m.options.userPaused = false
 		m.options.status = "Loading visual…"

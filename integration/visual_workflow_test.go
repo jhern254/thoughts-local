@@ -56,8 +56,8 @@ func TestVisualWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		settings, err := secondVisual.Load(t.Context())
-		if err != nil || settings.BackgroundAsset != "" {
-			t.Fatalf("second selection = %q, error = %v; want empty", settings.BackgroundAsset, err)
+		if err != nil || settings.BackgroundAsset != "" || settings.Darkness != 42 {
+			t.Fatalf("second selection = %q, darkness = %d, error = %v; want empty at 42%%", settings.BackgroundAsset, settings.Darkness, err)
 		}
 		if file, _, err := secondVisual.OpenBackground(t.Context()); !errors.Is(err, os.ErrNotExist) {
 			if file != nil {

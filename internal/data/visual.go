@@ -1,6 +1,6 @@
 package data
 
-const DefaultBackgroundDarkness = 70
+const DefaultBackgroundDarkness = 42
 const DefaultVideoQuality = "efficient"
 
 // Visual contains only native-owned browser presentation preferences.

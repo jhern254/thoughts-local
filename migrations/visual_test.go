@@ -26,8 +26,8 @@ func TestVisual(t *testing.T) {
 		if err := db.QueryRow("SELECT darkness,fit,zoom,position_x,position_y,video_quality FROM visual").Scan(&darkness, &fit, &zoom, &x, &y, &quality); err != nil {
 			t.Fatal(err)
 		}
-		if darkness != 70 || fit != "fill" || zoom != 100 || x != 5000 || y != 5000 {
-			t.Fatalf("defaults = %d %s %d %d %d, want 70 fill 100 5000 5000", darkness, fit, zoom, x, y)
+		if darkness != 42 || fit != "fill" || zoom != 100 || x != 5000 || y != 5000 {
+			t.Fatalf("defaults = %d %s %d %d %d, want 42 fill 100 5000 5000", darkness, fit, zoom, x, y)
 		}
 		if quality != "efficient" {
 			t.Fatalf("video quality = %q, want efficient", quality)
@@ -49,8 +49,8 @@ func TestVisual(t *testing.T) {
 		if err := db.QueryRow("SELECT darkness FROM visual").Scan(&darkness); err != nil {
 			t.Fatal(err)
 		}
-		if darkness != 70 {
-			t.Fatalf("darkness = %d, want 70", darkness)
+		if darkness != 42 {
+			t.Fatalf("darkness = %d, want 42", darkness)
 		}
 		if _, err := db.Exec("INSERT INTO visual(user_id) VALUES ('user-1')"); err == nil {
 			t.Fatal("duplicate user accepted")

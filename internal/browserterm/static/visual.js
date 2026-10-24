@@ -14,7 +14,7 @@ class ThoughtsVisual {
     this.file = document.getElementById('background-file');
     this.preview = document.getElementById('background-preview');
     this.previewContainer = document.getElementById('background-preview-wrap');
-    this.saved = {background: false, darkness: 70, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, videoQuality:'efficient', kind: 'image'};
+    this.saved = {background: false, darkness: 42, framing: defaultBackgroundFraming(), speedPercent: 100, userPaused: false, videoQuality:'efficient', kind: 'image'};
     this.connected = false;
     this.documentVisible = !document.hidden;
     this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
@@ -248,7 +248,7 @@ class ThoughtsVisual {
     if (pointerID !== undefined && this.previewFrameElement.hasPointerCapture(pointerID)) this.previewFrameElement.releasePointerCapture(pointerID);
   }
   updateDarkness(value) {
-    value = Number.isInteger(value) ? Math.max(0, Math.min(95, value)) : 70;
+    value = Number.isInteger(value) ? Math.max(0, Math.min(95, value)) : 42;
     this.previewContainer.style.setProperty('--darkness', value / 100);
     this.overlay.style.backgroundColor = `rgb(0 0 0 / ${value}%)`;
   }
@@ -365,7 +365,7 @@ class ThoughtsVisual {
     // Advance even for removal/settings-only saves, retiring any older decode.
     const activationGeneration = ++this.activationGeneration;
     settings = {...settings};
-    if (!Number.isInteger(settings.darkness) || settings.darkness < 0 || settings.darkness > 95) settings.darkness = 70;
+    if (!Number.isInteger(settings.darkness) || settings.darkness < 0 || settings.darkness > 95) settings.darkness = 42;
     settings.framing = safeBackgroundFraming(settings.framing);
     // Settings-only saves reuse the already decoded asset; identity changes
     // still fetch the authoritative selected image through the existing route.

@@ -122,7 +122,7 @@ Home/End select its limits.
 
 Images must be non-animated, at most **16 MiB**, **8,192 pixels per side**, and
 **24 million pixels** total. SVG, GIF, animated PNG, and remote URLs are unsupported.
-The default darkness is 70%; the range is 0–95%.
+The default darkness is 42%; the range is 0–95%.
 
 Imported copies live in `~/Documents/Thoughts/backgrounds` (under
 `%USERPROFILE%\Documents\Thoughts` on Windows), independently of the checkout
