@@ -244,6 +244,9 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		m.options.loopReady = true
 		m.options.sourceFrame = false
 		m.options.status = "Preview ready. Done uses this loop."
+		if m.options.trimFocus == trimFocusPreview {
+			m.options.trimFocus = trimFocusDone
+		}
 	case "discarded":
 		if m.options.request != "discardVideo" {
 			return m, nil

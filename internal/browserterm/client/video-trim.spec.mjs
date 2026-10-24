@@ -64,14 +64,16 @@ test('End previews backward and held arrows accelerate without uploading or prep
   await clickControl(page, 'Source / Start: 00:00:00.000 / 00:01:00.000');
   await page.keyboard.down('ArrowRight');
   await expect(screen(page)).toContainText('Source / Start: 00:00:00.100');
-  for (let repeat = 0; repeat < 24; repeat++) await page.keyboard.down('ArrowRight');
-  await expect(screen(page)).toContainText('Source / Start: 00:00:21.800');
+  for (let repeat = 0; repeat < 19; repeat++) await page.keyboard.down('ArrowRight');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:02.000');
+  for (let repeat = 19; repeat < 36; repeat++) await page.keyboard.down('ArrowRight');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:23.000');
   await page.keyboard.down('ArrowRight');
-  await expect(screen(page)).toContainText('Source / Start: 00:00:26.800');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:28.000');
   await page.keyboard.up('ArrowRight');
   await page.keyboard.press('ArrowRight');
-  await expect(screen(page)).toContainText('Source / Start: 00:00:26.900');
-  await expect.poll(() => sourceVideo.evaluate(video => video.currentTime)).toBeCloseTo(26.9, 3);
+  await expect(screen(page)).toContainText('Source / Start: 00:00:28.100');
+  await expect.poll(() => sourceVideo.evaluate(video => video.currentTime)).toBeCloseTo(28.1, 3);
   await expect(sourceVideo).toBeVisible();
   expect(uploads).toBe(1);
   expect(preparations).toBe(0);
@@ -167,6 +169,7 @@ test('preparing a loop reserves a braille wave between speed and Preview loop an
     await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
     await expect.poll(async () => (await previewControl.boundingBox())?.y).toBe(previewPending.y);
     await expect(done).not.toHaveCSS('color', 'rgb(153, 153, 153)');
+    await expect(previewControl).toHaveCSS('color', 'rgb(153, 153, 153)');
     await page.screenshot({path:`/tmp/video-trim-ready-${testInfo.project.name}.png`});
     await expect(bar).toBeHidden();
     expect(await bar.evaluate(element=>element.getAnimations({subtree:true}).length)).toBe(0);
@@ -174,6 +177,20 @@ test('preparing a loop reserves a braille wave between speed and Preview loop an
     await page.waitForTimeout(300);
     expect(await lightPosition()).toBe(retiredFrame);
     await page.unroute('**/visual/video/preview');
+
+    await clickControl(page, 'Preview loop');
+    await page.keyboard.press('Shift+Tab');
+    await expect.poll(async () => (await page.locator('.xterm-bg-62').allTextContents()).join('')).toContain('Playback speed:');
+    await page.keyboard.press('ArrowLeft');
+    await expect(screen(page)).toContainText('Playback speed: 95%');
+    await expect(previewControl).toHaveCSS('color', 'rgb(153, 153, 153)');
+    await clickControl(page, 'End: 00:00:01.000 (max 00:00:30.000)');
+    await page.keyboard.press('ArrowRight');
+    await expect(previewControl).not.toHaveCSS('color', 'rgb(153, 153, 153)');
+    await page.keyboard.press('ArrowLeft');
+    await expect(previewControl).toHaveCSS('color', 'rgb(153, 153, 153)');
+    await page.keyboard.press('ArrowRight');
+    await expect(previewControl).not.toHaveCSS('color', 'rgb(153, 153, 153)');
 
     let releaseFailure;
     const failureGate=new Promise(resolve=>{releaseFailure=resolve;});

@@ -11,6 +11,63 @@ import (
 )
 
 func TestModel_VideoTrim(t *testing.T) {
+	t.Run("matching prepared loop disables Preview and skips it during navigation", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.width, m.height = 80, 36
+		trim := visual.VideoTrim{EndMS: 30000}
+		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusPreview, sourceDurationMS: 60000, trim: trim, videoQuality: visual.VideoQualityEfficient}
+		m, _ = rootUpdate(m, enterKey())
+		requestID := m.OptionsState().ID
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", ID: requestID, Trim: trim, DurationMS: 30000, VideoQuality: visual.VideoQualityEfficient, Width: 1280, Height: 720, FrameRate: visual.VideoFrameRate{Numerator: 24, Denominator: 1}})
+		if m.options.trimFocus != trimFocusDone {
+			t.Fatal("completed preview did not move focus to Done")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		if m.options.trimFocus != trimFocusSpeed {
+			t.Fatal("reverse Tab focused an unchanged Preview")
+		}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		if m.options.trimFocus != trimFocusDone {
+			t.Fatal("Tab did not skip unchanged Preview")
+		}
+		for row, text := range strings.Split(ansi.Strip(m.View().Content), "\n") {
+			if strings.TrimSpace(text) == "Preview loop" {
+				m, _ = rootUpdate(m, tea.MouseClickMsg{X: 8, Y: row, Button: tea.MouseLeft})
+			}
+		}
+		if m.options.request != "" || m.options.id != requestID || m.options.trimFocus != trimFocusDone {
+			t.Fatal("clicking unchanged Preview changed focus or requested processing")
+		}
+	})
+	t.Run("only unprepared cut or quality changes enable Preview", func(t *testing.T) {
+		for _, scenario := range []struct {
+			name       string
+			edit       func(*optionsState)
+			canPreview bool
+		}{
+			{"same preview", func(*optionsState) {}, false},
+			{"no prepared preview", func(options *optionsState) { options.loopReady = false }, true},
+			{"changed Start", func(options *optionsState) { options.trim.StartMS = 100 }, true},
+			{"changed End", func(options *optionsState) { options.trim.EndMS = 29000 }, true},
+			{"changed quality", func(options *optionsState) { options.videoQuality = visual.VideoQualityHigh }, true},
+			{"playback speed only", func(options *optionsState) { options.speedPercent = 50 }, false},
+			{"restored cut", func(options *optionsState) { options.trim.EndMS = 29000; options.trim = options.acceptedTrim }, false},
+		} {
+			t.Run(scenario.name, func(t *testing.T) {
+				m := newRootTestModel()
+				m.browserOptionsEnabled = true
+				trim := visual.VideoTrim{EndMS: 30000}
+				m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusPreview, sourceDurationMS: 60000, trim: trim, acceptedTrim: trim, videoQuality: visual.VideoQualityEfficient, acceptedQuality: visual.VideoQualityEfficient, loopReady: true}
+				scenario.edit(&m.options)
+				m, _ = rootUpdate(m, enterKey())
+				if got := m.options.request == "prepareLoop"; got != scenario.canPreview {
+					t.Fatalf("requested preview = %t, want %t", got, scenario.canPreview)
+				}
+			})
+		}
+	})
+
 	t.Run("End adjustments preview the last included frame without preparing a loop", func(t *testing.T) {
 		m := newRootTestModel()
 		m.browserOptionsEnabled = true
@@ -40,13 +97,13 @@ func TestModel_VideoTrim(t *testing.T) {
 		if m.options.trim.StartMS != 100 {
 			t.Fatal("single tap must move 0.1 seconds")
 		}
-		for repeat := 1; repeat <= 24; repeat++ {
+		for repeat := 1; repeat <= 36; repeat++ {
 			before := m.options.trim.StartMS
 			m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight, IsRepeat: true})
 			want := int64(100)
-			if repeat >= 24 {
+			if repeat >= 36 {
 				want = 5000
-			} else if repeat >= 8 {
+			} else if repeat >= 20 {
 				want = 1000
 			}
 			if got := m.options.trim.StartMS - before; got != want {
@@ -63,7 +120,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		if got := m.options.trim.StartMS - before; got != 100 {
 			t.Fatalf("fresh tap = %d ms, want 100", got)
 		}
-		for range 24 {
+		for range 36 {
 			m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight, IsRepeat: true})
 		}
 		before = m.options.trim.StartMS

@@ -16,6 +16,11 @@ const videoPreparationRows = 7
 const compactVideoTrimHeight = 28
 
 const (
+	videoTrimAccelerationStartRepeat = 20
+	videoTrimFastStepRepeat          = videoTrimAccelerationStartRepeat + 16
+)
+
+const (
 	trimFocusSource = iota
 	trimFocusEnd
 	trimFocusQuality
@@ -47,6 +52,9 @@ func (m *Model) activateVideoTrim() {
 	case trimFocusQuality:
 		m.cycleVideoQuality()
 	case trimFocusPreview:
+		if !m.videoTrimControlEnabled(trimFocusPreview) {
+			return
+		}
 		if !m.options.trim.Valid(m.options.sourceDurationMS) {
 			m.options.status = "Choose 1–30 seconds within the source."
 			return
@@ -54,7 +62,7 @@ func (m *Model) activateVideoTrim() {
 		m.options.status = "Preparing video…"
 		m.requestOptions("prepareLoop")
 	case trimFocusDone:
-		if !m.videoTrimDoneEnabled() {
+		if !m.videoTrimControlEnabled(trimFocusDone) {
 			return
 		}
 		m.options.trimming = false
@@ -179,13 +187,23 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) videoTrimDoneEnabled() bool {
-	return m.options.loopReady && m.options.request == ""
+func (m Model) videoTrimControlEnabled(focus int) bool {
+	switch focus {
+	case trimFocusPreview:
+		if m.options.request != "" {
+			return false
+		}
+		return !m.options.loopReady || m.options.trim != m.options.acceptedTrim || m.options.videoQuality != m.options.acceptedQuality
+	case trimFocusDone:
+		return m.options.loopReady && m.options.request == ""
+	default:
+		return true
+	}
 }
 
 func (m *Model) moveVideoTrimFocus(direction int) {
 	m.options.trimFocus = (m.options.trimFocus + direction + trimFocusCount) % trimFocusCount
-	if m.options.trimFocus == trimFocusDone && !m.videoTrimDoneEnabled() {
+	for !m.videoTrimControlEnabled(m.options.trimFocus) {
 		m.options.trimFocus = (m.options.trimFocus + direction + trimFocusCount) % trimFocusCount
 	}
 }
@@ -245,7 +263,7 @@ func (m *Model) clickVideoTrim(x, y int, activate bool) {
 	if m.options.request != "" && focus != trimFocusCancel {
 		return
 	}
-	if focus == trimFocusDone && !m.videoTrimDoneEnabled() {
+	if !m.videoTrimControlEnabled(focus) {
 		return
 	}
 	m.options.trimFocus = focus
@@ -260,7 +278,7 @@ func (m Model) viewVideoTrim() tea.View {
 	plain := lipgloss.NewStyle().Padding(0, 1)
 	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("#999999"))
 	label := func(focus int, text string) string {
-		if focus == trimFocusDone && !m.videoTrimDoneEnabled() {
+		if !m.videoTrimControlEnabled(focus) {
 			return muted.Padding(0, 1).Render(text)
 		}
 		if focus == m.options.trimFocus {
@@ -350,15 +368,15 @@ func (m *Model) videoTrimArrowStep(key tea.KeyPressMsg) int64 {
 	if !key.IsRepeat || m.options.trimRepeatKey != key.String() || m.options.trimRepeatFocus != m.options.trimFocus {
 		m.options.trimRepeatCount = 0
 	} else {
-		m.options.trimRepeatCount = min(24, m.options.trimRepeatCount+1)
+		m.options.trimRepeatCount = min(videoTrimFastStepRepeat, m.options.trimRepeatCount+1)
 	}
 	m.options.trimRepeatKey = key.String()
 	m.options.trimRepeatFocus = m.options.trimFocus
 
 	stepMS := int64(100)
-	if m.options.trimRepeatCount >= 24 {
+	if m.options.trimRepeatCount >= videoTrimFastStepRepeat {
 		stepMS = 5000
-	} else if m.options.trimRepeatCount >= 8 {
+	} else if m.options.trimRepeatCount >= videoTrimAccelerationStartRepeat {
 		stepMS = 1000
 	}
 	if key.Mod.Contains(tea.ModShift) {
