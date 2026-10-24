@@ -74,6 +74,7 @@ type Model struct {
 	pending, visible, focused, dirty bool
 	showStatus                       bool
 	width, height, rows, span        int
+	markerAtRight                    bool // One-day windows share both dates; preserve the entry side.
 	highlighted                      bool
 	series                           [3]bool
 	tuning                           bool
@@ -98,16 +99,20 @@ func New(ctx context.Context, user string, reader Reader) Model {
 		ctx:    ctx,
 		user:   user,
 		reader: reader,
-		now:    time.Now,
-		owner:  new(int),
+
+		now:   time.Now,
+		owner: new(int),
+
 		dirty:  true,
 		width:  80,
 		height: 24,
 		rows:   1,
 		span:   initialMonthSpan,
-		series: [3]bool{true, true, true},
-		boost:  boostNormal,
-		size:   defaultPlotSize,
+
+		markerAtRight: true,
+		series:        [3]bool{true, true, true},
+		boost:         boostNormal,
+		size:          defaultPlotSize,
 	}
 }
 func (m *Model) Close() {
@@ -163,7 +168,11 @@ func (m Model) plotRows() int {
 	return max(1, min(maxPlotRows, m.height-23))
 }
 func (m *Model) Sync(day time.Time, visible, refresh bool) tea.Cmd {
-	m.selected = displaytime.Day(day)
+	selected := displaytime.Day(day)
+	if !m.selected.IsZero() && !selected.Equal(m.selected) {
+		m.markerAtRight = selected.After(m.selected)
+	}
+	m.selected = selected
 	if !visible {
 		if m.visible {
 			if m.pending {
@@ -513,12 +522,26 @@ func (m Model) Legend() string {
 	return strings.Join(names[:], " · ")
 }
 
-// Marker is the accepted date's column, independent of coarse bucket resolution.
+// Marker pins edge dates to the border; interior dates share the curve grid.
 func (m Model) Marker() int {
 	if m.from.IsZero() {
 		return 0
 	}
 	days := max(1, data.CalendarDays(m.from, m.until))
+	if days == 1 {
+		if m.markerAtRight {
+			return m.width - 1
+		}
+		return 0
+	}
+	// A pending pan already clamps outside dates to the border. Keep the same
+	// position after that date becomes the accepted window's first/last day.
+	if !m.selected.After(m.from) {
+		return 0
+	}
+	if !m.selected.Before(m.until.AddDate(0, 0, -1)) {
+		return m.width - 1
+	}
 	return render.DayActivityDayColumn(m.width, days, calendarDayIndex(m.from), calendarDayIndex(m.selected))
 }
 

@@ -3,6 +3,7 @@ package daynav
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -387,6 +388,46 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 			t.Fatalf("unsafe or missing error feedback: %q", got)
 		}
 	})
+}
+
+func TestModel_MarkerDuringPanning(t *testing.T) {
+	for _, width := range []int{1, 40, 80, 160} {
+		for _, days := range []int{31, 1} {
+			t.Run(fmt.Sprintf("%d columns and %d days", width, days), func(t *testing.T) {
+				m, _ := fixture(t)
+				defer m.Close()
+				m.Resize(width, 40)
+				m.span = days
+				m = m.Update(activityReply(m.load(false)))
+				for range 6 {
+					read := m.Sync(m.from.AddDate(0, 0, -1), true, false)
+					if got := m.Marker(); got != 0 {
+						t.Fatalf("pending left pan: got column %d, want 0", got)
+					}
+					m = m.Update(activityReply(read))
+					if m.Sync(m.selected, true, false) != nil {
+						t.Fatal("settled left pan queued another read")
+					}
+					if got := m.Marker(); got != 0 {
+						t.Fatalf("accepted left pan: got column %d, want 0 without a bounce", got)
+					}
+				}
+				for range 6 {
+					read := m.Sync(m.until, true, false)
+					if got, want := m.Marker(), width-1; got != want {
+						t.Fatalf("pending right pan: got column %d, want %d", got, want)
+					}
+					m = m.Update(activityReply(read))
+					if m.Sync(m.selected, true, false) != nil {
+						t.Fatal("settled right pan queued another read")
+					}
+					if got, want := m.Marker(), width-1; got != want {
+						t.Fatalf("accepted right pan: got column %d, want %d without a bounce", got, want)
+					}
+				}
+			})
+		}
+	}
 }
 
 func TestModel_MountainSizing(t *testing.T) {
