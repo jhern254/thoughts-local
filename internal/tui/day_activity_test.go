@@ -208,6 +208,12 @@ func TestModel_DayGraphWindowHeight(t *testing.T) {
 		m = runHomeData(t, m, cmd)
 		before := strings.Split(m.View().Content, "\n")
 		load := m.days.Key("r")
+		if strings.Contains(m.View().Content, "Loading activity") {
+			t.Fatal("a fast refresh flashed feedback before the delay")
+		}
+		batch := load().(tea.BatchMsg)
+		delayed := batch[1]()
+		m, _ = rootUpdate(m, delayed)
 		rows := strings.Split(m.View().Content, "\n")
 		if !strings.HasSuffix(ansi.Strip(rows[9]), "Loading activity…") {
 			t.Fatalf("loading heading: got %q", ansi.Strip(rows[9]))
@@ -215,9 +221,29 @@ func TestModel_DayGraphWindowHeight(t *testing.T) {
 		if strings.Join(rows[4:9], "\n") != strings.Join(before[4:9], "\n") {
 			t.Fatal("loading feedback replaced accepted mountain cells")
 		}
-		m, _ = rootUpdate(m, load())
+		m, _ = rootUpdate(m, batch[0]())
+		m, _ = rootUpdate(m, delayed)
 		if strings.Contains(m.View().Content, "Loading activity") {
 			t.Fatal("completed refresh retained loading feedback")
+		}
+	})
+	t.Run("new zoom clears old activity feedback through root dispatch", func(t *testing.T) {
+		m := newMindsetHome(t, 0)
+		batch := m.days.Key("r")().(tea.BatchMsg)
+		delayed := batch[1]()
+		m, _ = rootUpdate(m, delayed)
+		if !strings.Contains(m.View().Content, "Loading activity") {
+			t.Fatal("slow activity feedback did not reach the home layout")
+		}
+		m, cmd := rootUpdate(m, runeKey('+'))
+		m, _ = rootUpdate(m, delayed)
+		if strings.Contains(m.View().Content, "Loading activity") {
+			t.Fatal("a newer zoom inherited retired loading feedback")
+		}
+		m = runHomeData(t, m, cmd)
+		m, _ = rootUpdate(m, delayed)
+		if m.days.Status() != "" || strings.Contains(m.View().Content, "Loading activity") {
+			t.Fatal("settled zoom retained or restored activity feedback")
 		}
 	})
 	t.Run("style values sit on the right of Events without occupying mountain rows", func(t *testing.T) {

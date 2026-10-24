@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
@@ -29,6 +31,13 @@ func (s *readerStub) ActivityCounts(_ context.Context, _ string, b []time.Time, 
 	}
 	return out, nil
 }
+
+// Read completion is independent of the one-shot feedback timer. Applying its
+// reply cancels the timer, so data tests and benchmarks never wait for feedback.
+func activityReply(cmd tea.Cmd) tea.Msg {
+	return cmd().(tea.BatchMsg)[0]()
+}
+
 func fixture(t *testing.T) (Model, *readerStub) {
 	t.Helper()
 	day := time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)
@@ -37,7 +46,7 @@ func fixture(t *testing.T) (Model, *readerStub) {
 	m.now = func() time.Time { return day.Add(12 * time.Hour) }
 	m.Resize(80, 30)
 	cmd := m.Sync(day, true, false)
-	m = m.Update(cmd())
+	m = m.Update(activityReply(cmd))
 	return m, s
 }
 func TestModel_DayNavigation(t *testing.T) {
@@ -83,16 +92,16 @@ func TestModel_DayNavigation(t *testing.T) {
 		defer m.Close()
 		m.SetFocused(true)
 		cmd := m.Key("+")
-		old := cmd()
+		old := activityReply(cmd)
 		newer := m.Key("+")
-		m = m.Update(newer())
+		m = m.Update(activityReply(newer))
 		from, until := m.from, m.until
 		m = m.Update(old)
 		if m.from != from || m.until != until {
 			t.Fatal("stale zoom replaced range")
 		}
 		cmd = m.Key("-")
-		msg := cmd()
+		msg := activityReply(cmd)
 		m.Close()
 		m = m.Update(msg)
 		if m.from != from || m.until != until {
@@ -116,7 +125,7 @@ func TestModel_ReadFailure(t *testing.T) {
 	m, _ := fixture(t)
 	defer m.Close()
 	cmd := m.Key("r")
-	reply := cmd().(loadedMsg)
+	reply := activityReply(cmd).(loadedMsg)
 	reply.err = errors.New("read failed")
 	m.from = time.Time{}
 	m = m.Update(reply)
@@ -128,6 +137,102 @@ func TestModel_ReadFailure(t *testing.T) {
 	}
 }
 
+func TestModel_LoadingFeedback(t *testing.T) {
+	t.Run("fast reads keep the accepted plot without flashing a loading label", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		before := m.plot
+		cmd := m.Key("r")
+		if got := m.Status(); got != "" {
+			t.Fatalf("immediate status: got %q, want no loading feedback before the delay", got)
+		}
+		m = m.Update(activityReply(cmd))
+		if m.Status() != "" || m.plot != before {
+			t.Fatal("fast completion left loading feedback or changed the accepted plot")
+		}
+	})
+	t.Run("slow reads show feedback once and completion retires it", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		before := m.plot
+		batch := m.Key("r")().(tea.BatchMsg)
+		delayed := batch[1]() // Exercise the real, cancellable one-shot timer.
+		if !Owns(delayed) {
+			t.Fatal("feedback did not retain component ownership")
+		}
+		m = m.Update(delayed)
+		if m.Status() != "Loading activity…" || m.plot != before {
+			t.Fatal("slow feedback replaced the accepted plot or failed to appear")
+		}
+		m = m.Update(batch[0]())
+		m = m.Update(delayed)
+		if m.pending || m.showStatus || m.Status() != "" || batch[1]() != nil {
+			t.Fatal("completion left feedback active or allowed a late timer to restore it")
+		}
+	})
+	t.Run("superseded and foreign feedback cannot label the current read", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		old := m.Key("r")().(tea.BatchMsg)
+		delayed := loadDelayedMsg{owner: m.owner, request: m.request}
+		m = m.Update(delayed)
+		current := m.Key("+")
+		m = m.Update(delayed)
+		m = m.Update(loadDelayedMsg{owner: new(int), request: m.request})
+		if !m.pending || m.Status() != "" || old[1]() != nil {
+			t.Fatal("retired feedback labeled a newer read or kept its timer alive")
+		}
+		m = m.Update(activityReply(current))
+		if m.pending || m.Status() != "" {
+			t.Fatal("the current read did not finish cleanly")
+		}
+	})
+	t.Run("closing and failures clear feedback without discarding accepted data", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		before := m.plot
+		batch := m.Key("r")().(tea.BatchMsg)
+		delayed := loadDelayedMsg{owner: m.owner, request: m.request}
+		m = m.Update(delayed)
+		m.Sync(m.selected, false, false)
+		m = m.Update(delayed)
+		if m.pending || m.showStatus || m.Status() != "" || batch[1]() != nil || m.plot != before {
+			t.Fatal("closing left feedback/work active or discarded accepted data")
+		}
+		read := m.Sync(m.selected, true, false)
+		delayed = loadDelayedMsg{owner: m.owner, request: m.request}
+		m = m.Update(delayed)
+		result := activityReply(read).(loadedMsg)
+		result.err = errors.New("private failure details")
+		m = m.Update(result)
+		m = m.Update(delayed)
+		if m.pending || m.showStatus || m.Status() != "Activity unavailable · r retry" || m.plot != before {
+			t.Fatal("failure kept loading feedback, exposed diagnostics, or lost accepted data")
+		}
+	})
+	t.Run("a queued viewport pan starts fresh feedback and settles after movement", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		firstDay := m.from.AddDate(0, 0, -1)
+		read := m.Sync(firstDay, true, false)
+		delayed := loadDelayedMsg{owner: m.owner, request: m.request}
+		m = m.Update(delayed)
+		if m.Sync(firstDay.AddDate(0, 0, -5), true, false) != nil {
+			t.Fatal("pending navigation started a competing read")
+		}
+		m = m.Update(activityReply(read))
+		next := m.Sync(m.selected, true, false)
+		if next == nil || m.Status() != "" {
+			t.Fatal("queued pan inherited the previous read's loading label")
+		}
+		m = m.Update(delayed)
+		m = m.Update(activityReply(next))
+		if m.pending || m.Status() != "" || m.selected.Before(m.from) || !m.selected.Before(m.until) {
+			t.Fatal("settled navigation retained loading feedback or the wrong viewport")
+		}
+	})
+}
+
 func TestModel_ActivityOwnership(t *testing.T) {
 	t.Run("refresh arriving during a read reloads bounds once", func(t *testing.T) {
 		m, s := fixture(t)
@@ -135,12 +240,12 @@ func TestModel_ActivityOwnership(t *testing.T) {
 		cmd := m.Key("r")
 		s.start = s.start.AddDate(-1, 0, 0)
 		m.Invalidate()
-		m = m.Update(cmd())
+		m = m.Update(activityReply(cmd))
 		next := m.Sync(m.selected, true, false)
 		if next == nil {
 			t.Fatal("lost pending invalidation")
 		}
-		m = m.Update(next())
+		m = m.Update(activityReply(next))
 		if next := m.Sync(m.selected, true, false); next != nil {
 			t.Fatal("refresh repeated after completion")
 		}
@@ -151,7 +256,7 @@ func TestModel_ActivityOwnership(t *testing.T) {
 		before := m.plot
 		cmd := m.Key("r")
 		m.Sync(m.selected, false, false)
-		if reply := cmd(); reply != nil {
+		if reply := activityReply(cmd); reply != nil {
 			t.Fatal("canceled read published a result")
 		}
 		if m.plot != before {
@@ -175,7 +280,7 @@ func TestModel_ActivityOwnership(t *testing.T) {
 	t.Run("zoom preserves range until selection leaves it", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
-		m = m.Update(m.Key("+")())
+		m = m.Update(activityReply(m.Key("+")))
 		from, until := m.from, m.until
 		for range 3 {
 			if m.Sync(m.selected.AddDate(0, 0, -1), true, false) != nil {
@@ -189,7 +294,7 @@ func TestModel_ActivityOwnership(t *testing.T) {
 		if cmd == nil {
 			t.Fatal("outside selection did not shift range")
 		}
-		m = m.Update(cmd())
+		m = m.Update(activityReply(cmd))
 		if !m.from.Equal(from.AddDate(0, 0, -1)) || !m.until.Equal(until.AddDate(0, 0, -1)) {
 			t.Fatal("range did not shift by one day")
 		}
@@ -203,7 +308,7 @@ func TestModel_ZoomAfterInvalidation(t *testing.T) {
 		m.Key("r")
 		s.start = s.start.AddDate(-1, 0, 0)
 		m.Invalidate()
-		m = m.Update(m.Key("+")())
+		m = m.Update(activityReply(m.Key("+")))
 		if got, want := m.first, displaytime.Day(s.start); !got.Equal(want) {
 			t.Fatalf("history start: got %v, want %v", got, want)
 		}
@@ -259,10 +364,11 @@ func TestModel_UnlabeledPlot(t *testing.T) {
 		defer m.Close()
 		before := m.plot
 		cmd := m.Key("r")
+		m = m.Update(loadDelayedMsg{owner: m.owner, request: m.request})
 		if m.Status() != "Loading activity…" || m.plot != before {
 			t.Fatal("refresh lost feedback or accepted curves")
 		}
-		m = m.Update(cmd())
+		m = m.Update(activityReply(cmd))
 		if m.Status() != "" {
 			t.Fatal("completed refresh kept status text")
 		}
@@ -343,14 +449,14 @@ func TestModel_MountainSizing(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
 		m.span = 0 // Set up the coarse all-history sampling case.
-		m = m.Update(m.load(false)())
+		m = m.Update(activityReply(m.load(false)))
 		for _, scenario := range []struct{ width, buckets int }{{80, 162}, {160, 256}} {
 			m.Resize(scenario.width, 40)
 			cmd := m.Sync(m.selected, true, false)
 			if cmd == nil {
 				cmd = m.Key("r")
 			}
-			reply := cmd().(loadedMsg)
+			reply := activityReply(cmd).(loadedMsg)
 			if got := len(reply.counts); got > scenario.buckets || got-2 <= scenario.width {
 				t.Fatalf("width %d: got %d buckets, want more than one sample per cell and at most %d including context", scenario.width, got, scenario.buckets)
 			}
@@ -373,7 +479,7 @@ func TestModel_DefaultMountains(t *testing.T) {
 		if m.plot != focused {
 			t.Fatal("leaving graph focus removed component colors")
 		}
-		m = m.Update(m.Key("0")())
+		m = m.Update(activityReply(m.Key("0")))
 		if got := data.CalendarDays(m.from, m.until); got != 31 {
 			t.Fatalf("reset range: got %d days, want the default month", got)
 		}
@@ -419,7 +525,7 @@ func TestModel_ViewportContext(t *testing.T) {
 		m, reader := fixture(t)
 		defer m.Close()
 		from, until, reads := m.from, m.until, reader.reads
-		reply := m.Key("r")().(loadedMsg)
+		reply := activityReply(m.Key("r")).(loadedMsg)
 		bounds := reply.boundaries
 		if !bounds[0].Equal(from.AddDate(0, 0, -1)) || !bounds[1].Equal(from) || !bounds[len(bounds)-2].Equal(until) || !bounds[len(bounds)-1].Equal(until.AddDate(0, 0, 1)) {
 			t.Fatal("request did not include exactly one neighboring daily bucket per edge")
@@ -479,7 +585,7 @@ func TestModel_ScrollingLandscape(t *testing.T) {
 				defer m.Close()
 				m.now = func() time.Time { return today.Add(12 * time.Hour) }
 				m.Resize(93, 40) // 31 days: exactly three terminal columns per day.
-				m = m.Update(m.Sync(today, true, false)())
+				m = m.Update(activityReply(m.Sync(today, true, false)))
 				m.boost, m.outline = 4, outline
 				m.SetHighlighted(true)
 				before := strings.Split(m.plot, "\n")
@@ -487,7 +593,7 @@ func TestModel_ScrollingLandscape(t *testing.T) {
 					t.Fatal("fixture must have mountain detail above the baseline")
 				}
 				requests := len(reader.requests)
-				m = m.Update(m.Sync(m.from.AddDate(0, 0, -1), true, false)())
+				m = m.Update(activityReply(m.Sync(m.from.AddDate(0, 0, -1), true, false)))
 				after := strings.Split(m.plot, "\n")
 				for y := range before {
 					a, b := []rune(ansi.Strip(before[y])), []rune(ansi.Strip(after[y]))
@@ -509,9 +615,9 @@ func TestModel_ScrollingLandscape(t *testing.T) {
 		defer m.Close()
 		m.Resize(80, 40)
 		m.span = 400
-		before := m.Key("r")().(loadedMsg)
+		before := activityReply(m.Key("r")).(loadedMsg)
 		m = m.Update(before)
-		after := m.Sync(m.from.AddDate(0, 0, -1), true, false)().(loadedMsg)
+		after := activityReply(m.Sync(m.from.AddDate(0, 0, -1), true, false)).(loadedMsg)
 		// Compare interior bucket starts, away from either clipped boundary.
 		shared := 0
 		for _, a := range before.boundaries[2 : len(before.boundaries)-2] {
@@ -540,7 +646,7 @@ func TestModel_HistoryScale(t *testing.T) {
 		defer m.Close()
 		m.now = func() time.Time { return today.Add(12 * time.Hour) }
 		m.Resize(93, 40)
-		m = m.Update(m.Sync(today, true, false)())
+		m = m.Update(activityReply(m.Sync(today, true, false)))
 		if got, want := m.reference, 75.0; math.Abs(got-want) > 1e-12 {
 			t.Fatalf("history reference: got %v, want %v", got, want)
 		}
@@ -560,7 +666,7 @@ func TestModel_HistoryScale(t *testing.T) {
 					selected = m.until
 				}
 				reads := len(reader.requests)
-				m = m.Update(m.Sync(selected, true, false)())
+				m = m.Update(activityReply(m.Sync(selected, true, false)))
 				if m.reference != scale || len(reader.requests) != reads+1 {
 					t.Fatal("holding day navigation recomputed the scale or repeated the history read")
 				}
@@ -568,7 +674,7 @@ func TestModel_HistoryScale(t *testing.T) {
 		}
 		m.Invalidate()
 		reader.counts[reader.first] = data.ActivityCount{Thoughts: 1000}
-		m = m.Update(m.Sync(m.selected, true, false)())
+		m = m.Update(activityReply(m.Sync(m.selected, true, false)))
 		if m.reference != 300 {
 			t.Fatalf("refreshed reference: got %v, want 300", m.reference)
 		}
@@ -577,7 +683,7 @@ func TestModel_HistoryScale(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
 		plot, scale := m.plot, m.reference
-		msg := m.Key("r")().(loadedMsg)
+		msg := activityReply(m.Key("r")).(loadedMsg)
 		msg.reference = 999
 		msg.err = errors.New("synthetic failure")
 		m = m.Update(msg)
@@ -617,10 +723,10 @@ func TestModel_HistoryRefreshReplacement(t *testing.T) {
 		defer m.Close()
 		m.now = func() time.Time { return today.Add(12 * time.Hour) }
 		m.Resize(93, 40)
-		m = m.Update(m.Sync(today, true, false)())
+		m = m.Update(activityReply(m.Sync(today, true, false)))
 		reader.counts[reader.first] = data.ActivityCount{Thoughts: 1000}
 		obsolete := m.Key("r")
-		m = m.Update(m.Key("+")()) // Both spans still use daily buckets.
+		m = m.Update(activityReply(m.Key("+"))) // Both spans still use daily buckets.
 		if m.reference != 300 {
 			t.Fatalf("replacement reference: got %v, want 300 from refreshed history", m.reference)
 		}
@@ -643,11 +749,11 @@ func TestModel_ResetZoom(t *testing.T) {
 		m.Key("f")
 		m.Key("esc")
 		boost, size, outline := m.boost, m.size, m.outline
-		m = m.Update(m.Key("+")())
+		m = m.Update(activityReply(m.Key("+")))
 		if m.until.Sub(m.from) >= until.Sub(from) {
 			t.Fatal("zoom in did not narrow the range")
 		}
-		m = m.Update(m.Key("0")())
+		m = m.Update(activityReply(m.Key("0")))
 		if m.from != from || m.until != until {
 			t.Fatalf("reset range: got %v to %v, want %v to %v", m.from, m.until, from, until)
 		}
@@ -662,8 +768,8 @@ func TestModel_ResetZoom(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
 		selected := displaytime.Day(time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC))
-		m = m.Update(m.Sync(selected, true, false)())
-		m = m.Update(m.Key("0")())
+		m = m.Update(activityReply(m.Sync(selected, true, false)))
+		m = m.Update(activityReply(m.Key("0")))
 		if m.from.Format("2006-01-02") != "2026-02-28" || m.until.Format("2006-01-02") != "2026-04-01" || !m.selected.Equal(selected) {
 			t.Fatalf("historical reset: got %v to %v on %v, want February 28 through March 31 inclusive", m.from, m.until, m.selected)
 		}
@@ -671,8 +777,8 @@ func TestModel_ResetZoom(t *testing.T) {
 	t.Run("a late zoom result cannot overwrite a reset", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
-		old := m.Key("+")()
-		m = m.Update(m.Key("0")())
+		old := activityReply(m.Key("+"))
+		m = m.Update(activityReply(m.Key("0")))
 		from, until := m.from, m.until
 		m = m.Update(old)
 		if m.from != from || m.until != until {
@@ -687,7 +793,7 @@ func TestModel_ZoomOutHistory(t *testing.T) {
 		defer m.Close()
 		from, until := m.from, m.until
 		for range 20 {
-			m = m.Update(m.Key("-")())
+			m = m.Update(activityReply(m.Key("-")))
 			if m.span == 0 {
 				break
 			}
@@ -695,7 +801,7 @@ func TestModel_ZoomOutHistory(t *testing.T) {
 		if m.span != 0 || data.CalendarDays(m.from, m.until) < 365 {
 			t.Fatal("zooming out did not fit the available history")
 		}
-		m = m.Update(m.Key("0")())
+		m = m.Update(activityReply(m.Key("0")))
 		if m.from != from || m.until != until {
 			t.Fatal("zero did not reset the fitted history view to the original month")
 		}
@@ -706,9 +812,9 @@ func TestModel_ZoomImmediatelyAfterReset(t *testing.T) {
 	m, _ := fixture(t)
 	defer m.Close()
 	m.span = 0
-	m = m.Update(m.load(false)())
+	m = m.Update(activityReply(m.load(false)))
 	reset := m.Key("0")
-	m = m.Update(m.Key("+")())
+	m = m.Update(activityReply(m.Key("+")))
 	if got := data.CalendarDays(m.from, m.until); got != 24 {
 		t.Fatalf("zoom after pending month reset: got %d days, want 24", got)
 	}
@@ -723,11 +829,11 @@ func TestModel_ZoomOutShortHistory(t *testing.T) {
 	m, reader := fixture(t)
 	defer m.Close()
 	reader.start = m.selected
-	m = m.Update(m.Sync(m.selected, true, true)())
-	m = m.Update(m.Key("+")())
+	m = m.Update(activityReply(m.Sync(m.selected, true, true)))
+	m = m.Update(activityReply(m.Key("+")))
 	previous := data.CalendarDays(m.from, m.until)
 	for range 3 {
-		m = m.Update(m.Key("-")())
+		m = m.Update(activityReply(m.Key("-")))
 		days := data.CalendarDays(m.from, m.until)
 		if days < previous || days > 31 {
 			t.Fatalf("short-history zoom out: got %d days after %d, want a growing view capped at the default month", days, previous)

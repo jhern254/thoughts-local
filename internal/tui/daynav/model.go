@@ -46,7 +46,19 @@ type loadedMsg struct {
 	err                error
 }
 
-func Owns(msg tea.Msg) bool { _, ok := msg.(loadedMsg); return ok }
+type loadDelayedMsg struct {
+	owner   *int
+	request uint64
+}
+
+func Owns(msg tea.Msg) bool {
+	switch msg.(type) {
+	case loadedMsg, loadDelayedMsg:
+		return true
+	default:
+		return false
+	}
+}
 
 type Model struct {
 	ctx                          context.Context
@@ -60,6 +72,7 @@ type Model struct {
 	// The accepted range stays visible during reads. Invalidation during a read
 	// queues one refresh; request ownership rejects responses after Close/zoom.
 	pending, visible, focused, dirty bool
+	showStatus                       bool
 	width, height, rows, span        int
 	highlighted                      bool
 	series                           [3]bool
@@ -108,7 +121,7 @@ func (m *Model) Close() {
 		m.cancel = nil
 	}
 	m.request++
-	m.pending = false
+	m.pending, m.showStatus = false, false
 }
 func (m Model) Focused() bool { return m.focused }
 func (m Model) Tuning() bool  { return m.tuning }
@@ -231,7 +244,7 @@ func (m *Model) load(refreshBounds bool) tea.Cmd {
 	reference, referenceDays := m.reference, m.bucketDays
 	cutoff := m.now().Truncate(time.Second).Add(time.Second)
 	today := displaytime.Day(cutoff.Add(-time.Second))
-	return func() tea.Msg {
+	return tea.Batch(func() tea.Msg {
 		result := loadedMsg{owner: owner, request: request}
 		if first.IsZero() || refreshBounds {
 			start, err := reader.ActivityStart(ctx, user, cutoff)
@@ -274,14 +287,33 @@ func (m *Model) load(refreshBounds bool) tea.Cmd {
 			return nil
 		}
 		return result
-	}
+	}, func() tea.Msg {
+		// Match Events: delay only feedback, never the read or its publication.
+		if ctx.Err() != nil {
+			return nil
+		}
+		timer := time.NewTimer(150 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-timer.C:
+			return loadDelayedMsg{owner: owner, request: request}
+		}
+	})
 }
 func (m Model) Update(msg tea.Msg) Model {
+	if delayed, ok := msg.(loadDelayedMsg); ok {
+		if delayed.owner == m.owner && delayed.request == m.request && m.pending && m.visible {
+			m.showStatus = true
+		}
+		return m
+	}
 	result, ok := msg.(loadedMsg)
 	if !ok || result.owner != m.owner || result.request != m.request || !m.pending || !m.visible {
 		return m
 	}
-	m.pending = false
+	m.pending, m.showStatus = false, false
 	m.refreshingHistory = false
 	if m.cancel != nil {
 		m.cancel()
@@ -455,7 +487,7 @@ func (m Model) Status() string {
 	if m.err != nil {
 		return "Activity unavailable · r retry"
 	}
-	if m.pending {
+	if m.pending && m.showStatus {
 		return "Loading activity…"
 	}
 	return ""

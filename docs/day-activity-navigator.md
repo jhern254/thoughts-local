@@ -42,7 +42,10 @@ so loading replies cannot resize it between frames.
 Style values, loading feedback, and read errors appear right-aligned beside the
 Events date, with at least two separating columns. If both cannot fit, the status
 uses the existing first footer row; keyboard help remains on the second. Status
-never replaces a mountain row. Very small terminals retain the existing resize
+never replaces a mountain row. As in Events, the loading label waits 150 ms;
+reads and accepted data are never delayed. Completion, cancellation, hiding the
+graph, and replacement reset feedback. Request ownership rejects retired timers,
+so a queued pan starts a fresh delay rather than inheriting a loading label. Very small terminals retain the existing resize
 guidance. No custom key acceleration is included.
 
 The end-of-day metrics card also accepts Left/Right (h/l) to cycle calendar
@@ -508,7 +511,8 @@ revisions, not this increased plot resolution.
 ### Focused layout cost
 
 Compared the pre-layout PR head `135f9cd7047a937c6fb88f23d483a0c877812da6`
-with the Braille + gap layout using the existing `BenchmarkDayActivity` Rebuild
+with the Braille + gap layout at `25bc91e`, using the existing
+`BenchmarkDayActivity` Rebuild
 and Navigate cases. The same migrated synthetic fixture contained 721 Events and
 20,000 Thoughts, all before the accepted cutoff. Binaries were compiled first
 and run separately without competing builds/tests. Linux/amd64, Intel i5-8250U
@@ -539,3 +543,29 @@ Reset restored the exact normal plot; left/right marker movement, 40 day changes
 in each direction and card expansion kept one WebSocket. The manual harness's
 initial incomplete resize snapshots were rejected; this is not evidence that the
 previous intermittent overlap report has been fixed.
+
+### Loading-feedback follow-up
+
+The first gap-layout revision `25bc91e` displayed loading immediately for each
+viewport read. Consecutive pans could keep the label visible while moving even
+though individual reads were quick. The follow-up uses the same cancellable
+150 ms one-shot feedback pattern as Events. A slow read still reports progress;
+newer requests clear the prior label, and an accepted result or failure retires
+its timer. Neither data reads nor their application wait for that timer.
+
+Deterministic tests exercise fast/slow reads, stale component/request replies,
+cancellation, failures, a selection moving beyond an in-flight pan, and real
+root-dispatch feedback/zoom transitions. The browser regression crosses the
+month viewport with forty keys each way and checks that feedback settles without
+reconnecting. The layout timing table above belongs to `25bc91e`; this follow-up
+does not change rasterization or cached marker composition and makes no new
+performance claim.
+
+A matched Brave observation on the same synthetic activity fixture used 45 held
+Left keydowns and 45 Right keydowns. The `25bc91e` binary showed loading in three
+captured render frames (longest observed interval 17 ms); the delayed-feedback
+binary showed it in zero. Both returned to the exact date with one WebSocket and
+no final loading label. This reproduced brief feedback during movement, not a
+permanently stuck label after movement stopped. The lifecycle regressions cover
+stale timers and queued pans; this single walkthrough is not a latency or CPU
+benchmark.
