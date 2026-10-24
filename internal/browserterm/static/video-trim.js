@@ -166,9 +166,16 @@ class ThoughtsVideoTrim {
     }, {once:true});
     video.currentTime = target;
   }
+  repeatedArrowSequence(event) {
+    if (!this.visual.state?.trimming || event.type !== 'keydown' || !event.repeat || event.ctrlKey || event.altKey || event.metaKey) return '';
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return '';
+    // The terminal protocol's :2 marks held-key repeats. Go owns acceleration;
+    // ordinary taps still take xterm's normal path and reset the step size.
+    return `\x1b[1;${event.shiftKey ? 2 : 1}:2${event.key === 'ArrowLeft' ? 'D' : 'C'}`;
+  }
   sync(state, previous) {
     if (!this.localFile) return;
-    if (state.trimming && state.sourceFrame && (!previous.sourceFrame || state.trim.startMS !== previous.trim?.startMS)) this.showSource(state.trim.startMS);
+    if (state.trimming && state.sourceFrame && (!previous.sourceFrame || state.sourcePreviewMS !== previous.sourcePreviewMS)) this.showSource(state.sourcePreviewMS);
     if (!state.trimming && previous.trimming && this.acceptedVideo && this.visual.previewVideo !== this.acceptedVideo) this.showAccepted(false);
   }
   async prepare(state) {

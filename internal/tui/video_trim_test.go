@@ -11,6 +11,76 @@ import (
 )
 
 func TestModel_VideoTrim(t *testing.T) {
+	t.Run("End adjustments preview the last included frame without preparing a loop", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		accepted := visual.VideoTrim{EndMS: 30000}
+		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusEnd, id: 5, sourceDurationMS: 60000, trim: accepted, acceptedTrim: accepted, loopReady: true}
+		for _, scenario := range []struct {
+			key   rune
+			endMS int64
+		}{
+			{tea.KeyLeft, 29900}, {tea.KeyRight, 30000}, {tea.KeyHome, 1000}, {tea.KeyEnd, 30000},
+		} {
+			m, _ = rootUpdate(m, tea.KeyPressMsg{Code: scenario.key})
+			preview := m.OptionsState()
+			if preview.Trim.StartMS != 0 || preview.Trim.EndMS != scenario.endMS || !preview.SourceFrame || preview.SourcePreviewMS != scenario.endMS-1 {
+				t.Fatalf("preview = %+v, want the frame before End %d", preview, scenario.endMS)
+			}
+			if preview.Request != "" || preview.ID != 5 || m.options.acceptedTrim != accepted || !m.options.loopReady {
+				t.Fatal("scrubbing prepared or replaced the accepted loop")
+			}
+		}
+	})
+	t.Run("held arrows accelerate while fresh taps direction and focus changes stay precise", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusSource, sourceDurationMS: 7200000, trim: visual.VideoTrim{EndMS: 30000}}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
+		if m.options.trim.StartMS != 100 {
+			t.Fatal("single tap must move 0.1 seconds")
+		}
+		for repeat := 1; repeat <= 24; repeat++ {
+			before := m.options.trim.StartMS
+			m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight, IsRepeat: true})
+			want := int64(100)
+			if repeat >= 24 {
+				want = 5000
+			} else if repeat >= 8 {
+				want = 1000
+			}
+			if got := m.options.trim.StartMS - before; got != want {
+				t.Fatalf("repeat %d: step = %d ms, want %d", repeat, got, want)
+			}
+		}
+		before := m.options.trim.StartMS
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight, IsRepeat: true})
+		if got := m.options.trim.StartMS - before; got != 5000 {
+			t.Fatalf("held step = %d ms, want 5000", got)
+		}
+		before = m.options.trim.StartMS
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
+		if got := m.options.trim.StartMS - before; got != 100 {
+			t.Fatalf("fresh tap = %d ms, want 100", got)
+		}
+		for range 24 {
+			m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight, IsRepeat: true})
+		}
+		before = m.options.trim.StartMS
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyLeft, IsRepeat: true})
+		if got := before - m.options.trim.StartMS; got != 100 {
+			t.Fatalf("direction change = %d ms, want 100", got)
+		}
+		m.options.trimFocus = trimFocusEnd
+		before = m.options.trim.EndMS
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyLeft, IsRepeat: true})
+		if got := before - m.options.trim.EndMS; got != 100 {
+			t.Fatalf("focus change = %d ms, want 100", got)
+		}
+		if m.options.request != "" {
+			t.Fatal("held navigation requested processing")
+		}
+	})
 	t.Run("source validation keeps the editor closed and reports rejection before cutting", func(t *testing.T) {
 		for _, action := range []string{"sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceUnsupported", "sourceSpace", "sourceTimeout", "sourceTools", "sourceBusy"} {
 			t.Run(action, func(t *testing.T) {
@@ -155,7 +225,7 @@ func TestModel_VideoTrim(t *testing.T) {
 			})
 		}
 	})
-	t.Run("end can shorten a cut without moving the source frame", func(t *testing.T) {
+	t.Run("end can shorten a cut without moving Start", func(t *testing.T) {
 		m := newRootTestModel()
 		m.browserOptionsEnabled = true
 		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusEnd, sourceDurationMS: 7200000, trim: visual.VideoTrim{StartMS: 5050000, EndMS: 5080000}}

@@ -52,10 +52,11 @@ type BrowserOptionsState struct {
 	SpeedPercent             int                    `json:"speedPercent"`
 	UserPaused               bool                   `json:"userPaused"`
 	Preview                  PreviewRect            `json:"preview"`
-	Preparation              PreviewRect            `json:"preparation"` // Reserved cells keep controls fixed while the browser shows loading activity.
-	Trimming                 bool                   `json:"trimming"`    // Cut-selection controls are open; this does not mean encoding is running.
-	SourceFrame              bool                   `json:"sourceFrame"` // Show a paused original-source frame at Trim.StartMS instead of the prepared loop.
-	Trim                     visual.VideoTrim       `json:"trim"`        // Draft start/end times in source milliseconds; may differ from the accepted preview.
+	Preparation              PreviewRect            `json:"preparation"`     // Reserved cells keep controls fixed while the browser shows loading activity.
+	Trimming                 bool                   `json:"trimming"`        // Cut-selection controls are open; this does not mean encoding is running.
+	SourceFrame              bool                   `json:"sourceFrame"`     // Show the original-source frame instead of the prepared loop.
+	SourcePreviewMS          int64                  `json:"sourcePreviewMS"` // Source-relative position of the boundary being adjusted.
+	Trim                     visual.VideoTrim       `json:"trim"`            // Draft start/end times in source milliseconds; may differ from the accepted preview.
 }
 
 const (
@@ -101,6 +102,10 @@ type optionsState struct {
 	trimFocus           int
 	trimTimecode        textinput.Model
 	trimTimecodeEditing bool // Keyboard input is editing the Source / Start timecode.
+	trimRepeatKey       string
+	trimRepeatFocus     int
+	trimRepeatCount     int
+	sourcePreviewMS     int64
 	sourceFrame         bool
 	sourceDurationMS    int64
 	trim                visual.VideoTrim
@@ -139,6 +144,7 @@ func (m Model) OptionsState() BrowserOptionsState {
 		Preparation:              m.videoPreparationRect(),
 		Trimming:                 m.options.trimming,
 		SourceFrame:              m.options.sourceFrame,
+		SourcePreviewMS:          m.options.sourcePreviewMS,
 		Trim:                     m.options.trim,
 	}
 }
@@ -205,6 +211,8 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		m.options.hasBackground = true
 		m.options.trimming = true
 		m.options.sourceFrame = !m.options.loopReady
+		m.options.sourcePreviewMS = 0
+		m.options.trimRepeatCount = 0
 		m.options.trimFocus = trimFocusSource
 		m.options.trimTimecodeEditing = false
 		m.options.sourceDurationMS = msg.DurationMS

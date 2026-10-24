@@ -148,6 +148,12 @@
   }, true);
 
   term.attachCustomKeyEventHandler(event => {
+    const repeatedArrow = visual.videoTrim.repeatedArrowSequence(event);
+    if (repeatedArrow) {
+      event.preventDefault();
+      send('0', encoder.encode(repeatedArrow));
+      return false;
+    }
     const key = event.key.toLowerCase();
     if ((event.ctrlKey || event.metaKey) && key === ',') return false;
     // Let the browser deliver paste and copy selected text. With no selection,

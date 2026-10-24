@@ -1046,7 +1046,11 @@ File once to native staging and validates compatibility before opening the cut
 editor. Known unsupported formats receive fixed feedback at that point. Start
 seeks the paused browser-local video and proposes the next 30 seconds, with a
 one-second minimum remaining at the source boundary. End can shorten that
-proposal. Explicit previews reuse the validated source; Apply copies the
+proposal and previews just before its exclusive boundary. Held arrows increase
+from 0.1-second to 1-second and then 5-second steps; fresh taps restore precision,
+and Shift multiplies the step by ten. Both cut controls reuse the same local seek
+coalescing (one seek in flight, one latest target), without processing requests.
+Explicit previews reuse the validated source; Apply copies the
 acknowledged derivative/poster without another encode. This moves the existing
 transfer/inspection earlier; it adds no complete-movie decode or extra upload.
 

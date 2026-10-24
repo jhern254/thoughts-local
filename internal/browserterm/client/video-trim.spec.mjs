@@ -38,6 +38,48 @@ async function stageSource(page) {
   await expect(page.locator('#background-preview-wrap')).toBeVisible();
 }
 
+test('End previews backward and held arrows accelerate without uploading or preparing again', async ({page}, testInfo) => {
+  let uploads = 0, preparations = 0;
+  page.on('request', request => {
+    if (request.method() !== 'POST') return;
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === '/visual/video/source') uploads++;
+    if (pathname === '/visual/video/preview') preparations++;
+  });
+  await page.goto('/');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await openVisual(page);
+  await stageSource(page);
+  const sourceVideo = page.locator('#background-preview-video');
+  await clickControl(page, 'End: 00:00:30.000 (max 00:00:30.000)');
+  await page.keyboard.press('ArrowLeft');
+  await expect(screen(page)).toContainText('End: 00:00:29.900');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:00.000');
+  await expect.poll(() => sourceVideo.evaluate(video => video.currentTime)).toBeCloseTo(29.899, 3);
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(() => sourceVideo.evaluate(video => video.currentTime)).toBeCloseTo(28.899, 3);
+  await expect(sourceVideo).toBeVisible();
+  await page.screenshot({path: `/tmp/trim-end-${testInfo.project.name}.png`});
+
+  await clickControl(page, 'Source / Start: 00:00:00.000 / 00:01:00.000');
+  await page.keyboard.down('ArrowRight');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:00.100');
+  for (let repeat = 0; repeat < 24; repeat++) await page.keyboard.down('ArrowRight');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:21.800');
+  await page.keyboard.down('ArrowRight');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:26.800');
+  await page.keyboard.up('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(screen(page)).toContainText('Source / Start: 00:00:26.900');
+  await expect.poll(() => sourceVideo.evaluate(video => video.currentTime)).toBeCloseTo(26.9, 3);
+  await expect(sourceVideo).toBeVisible();
+  expect(uploads).toBe(1);
+  expect(preparations).toBe(0);
+  await page.setViewportSize({width:650, height:750});
+  await expect(screen(page)).toContainText('Hold: faster');
+  await page.screenshot({path: `/tmp/trim-scrub-${testInfo.project.name}-narrow.png`});
+});
+
 test('preparing a loop reserves a braille wave between speed and Preview loop and keeps keyboard cancellation available',async({page},testInfo)=>{
   let sockets=0, releasePreparation;
   page.on('websocket',()=>sockets++);
@@ -417,6 +459,9 @@ test('four-hour source validates once before cutting and reuses staging for repe
  await openVisual(page);
  const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(longSource);
  await expect(screen(page)).toContainText('Source / Start: 00:00:00.000 / 04:00:00.000');
+ // Admission can retry while the preceding test session is closing.
+ // Once the editor is active, scrubbing must keep that accepted connection.
+ const connectedSockets = sockets;
  expect(uploads).toBe(1);expect(prepares).toBe(0);
  await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('03:24:10.000');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('End: 03:24:40.000');
@@ -446,7 +491,7 @@ test('four-hour source validates once before cutting and reuses staging for repe
  await clickControl(page,'Preview loop');await reused;
  await expect(page.locator('#video-preparation')).toBeHidden();
  await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
- expect(uploads).toBe(1);expect(prepares).toBe(2);expect(sockets).toBe(1);
+ expect(uploads).toBe(1);expect(prepares).toBe(2);expect(sockets).toBe(connectedSockets);
  expect(await page.locator('#background-preview-video').evaluate(video=>video.duration)).toBe(3);
  await clickControl(page,'Cancel upload');await expect(screen(page)).toContainText('Background darkness:');
 });

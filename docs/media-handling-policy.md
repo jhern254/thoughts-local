@@ -164,7 +164,7 @@ prevent preparation. A prepared loop is usable only after output validation and
 browser acknowledgement.
 
 The browser keeps the File/object URL and one muted, paused source-video element.
-Moving Start seeks that element without another upload, native processing or
+Moving Start or End seeks that element without another upload, native processing or
 thumbnail generation. Previews reuse the validated native source. The application
 never buffers the whole movie into a JavaScript ArrayBuffer or Go byte slice.
 Nonzero timestamp origins are accepted; source-relative controls account for the

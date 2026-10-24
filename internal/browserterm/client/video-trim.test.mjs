@@ -12,13 +12,27 @@ function fixture() {
   return {editor,visual,context,revoked};
 }
 
-test('End edits retain the accepted loop without moving its source cursor',()=>{
-  const {editor}=fixture();editor.localFile={};editor.source={sourceID:'source'};
-  editor.acceptedVideo={};
-  editor.showSource=()=>{throw new Error('draft edit sought source');};
-  editor.showAccepted=()=>{throw new Error('draft edit replaced preview');};
-  const before={trimming:true,sourceFrame:false,trim:{startMS:0,endMS:30000}};
-  editor.sync({...before,trim:{startMS:0,endMS:29000}},before);
+test('End edits preview the last included source frame and retain the accepted loop',()=>{
+ const {editor}=fixture();editor.localFile={};editor.source={sourceID:'source'};
+ const accepted={};editor.acceptedVideo=accepted;const seeks=[];
+ editor.showSource=position=>seeks.push(position);
+ editor.showAccepted=()=>{throw new Error('draft edit replaced accepted loop');};
+ const before={trimming:true,sourceFrame:false,sourcePreviewMS:0,trim:{startMS:0,endMS:30000}};
+ editor.sync({...before,sourceFrame:true,sourcePreviewMS:28999,trim:{startMS:0,endMS:29000}},before);
+ assert.deepEqual(seeks,[28999]);
+ assert.equal(editor.acceptedVideo,accepted);
+});
+
+test('held trim arrows preserve standard terminal repeat metadata',()=>{
+ const {editor,visual}=fixture();visual.state.trimming=true;
+ const event={type:'keydown',key:'ArrowLeft',repeat:true};
+ assert.equal(editor.repeatedArrowSequence(event),'\x1b[1;1:2D');
+ assert.equal(editor.repeatedArrowSequence({...event,key:'ArrowRight',shiftKey:true}),'\x1b[1;2:2C');
+ for(const change of [{repeat:false},{type:'keyup'},{ctrlKey:true},{altKey:true},{metaKey:true},{key:'a'}]) {
+  assert.equal(editor.repeatedArrowSequence({...event,...change}),'');
+ }
+ visual.state.trimming=false;
+ assert.equal(editor.repeatedArrowSequence(event),'');
 });
 
 test('source scrubbing coalesces seeks while a seek is in flight',()=>{
@@ -121,8 +135,8 @@ test('rejected source never opens the cut editor and releases its local file',as
 
 test('Start updates seek the existing local source without repeating native staging',()=>{
  const {editor}=fixture();editor.localFile={};const seeks=[];editor.showSource=ms=>seeks.push(ms);
- const before={trimming:true,sourceFrame:true,trim:{startMS:0,endMS:30000}};
- editor.sync({...before,trim:{startMS:5050000,endMS:5080000}},before);
+ const before={trimming:true,sourceFrame:true,sourcePreviewMS:0,trim:{startMS:0,endMS:30000}};
+ editor.sync({...before,sourcePreviewMS:5050000,trim:{startMS:5050000,endMS:5080000}},before);
  assert.deepEqual(seeks,[5050000]);assert.equal(editor.source,undefined);
 });
 

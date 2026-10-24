@@ -142,10 +142,6 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 				lower = m.options.trim.StartMS + 1000
 				upper = m.videoTrimEndLimit()
 			}
-			step := int64(100)
-			if strings.HasPrefix(key, "shift+") {
-				step = 1000
-			}
 			switch key {
 			case "home":
 				value = lower
@@ -156,6 +152,7 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "pgdown":
 				value += 60000
 			default:
+				step := m.videoTrimArrowStep(msg)
 				if strings.HasSuffix(key, "left") {
 					value -= step
 				} else {
@@ -166,7 +163,7 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.options.trimFocus == trimFocusSource {
 				m.setTrimStart(value)
 			} else {
-				m.options.trim.EndMS = value
+				m.setTrimEnd(value)
 			}
 
 		}
@@ -320,7 +317,7 @@ func (m Model) viewVideoTrim() tea.View {
 	} else if m.options.trimTimecodeEditing {
 		lines = append(lines, muted.Render("Enter: jump · Esc: back"), muted.Render("HH:MM:SS or HH:MM:SS.mmm"))
 	} else {
-		lines = append(lines, muted.Render("←/→: 0.1s · Shift: 1s · ↑/↓: focus"), muted.Render("PgUp/Dn: 60s · Home/End · Enter: timecode"))
+		lines = append(lines, muted.Render("←/→: 0.1s · Hold: faster · Shift: ×10 · ↑/↓: focus"), muted.Render("PgUp/Dn: 60s · Home/End · Enter: timecode"))
 	}
 	if m.height < compactVideoTrimHeight {
 		lines = lines[:len(lines)-1] // Keep the primary key help; omit its second detail row.
@@ -334,13 +331,42 @@ func (m Model) viewVideoTrim() tea.View {
 	return view
 }
 
-// Start is the sole source-preview cursor. Accepted encoded loops own their
-// separate playback position and survive all unpreviewed draft edits.
+// Accepted loops own a separate playback position and survive draft cut edits.
 func (m *Model) setTrimStart(positionMS int64) {
 	m.options.trim.StartMS = max(int64(0), min(positionMS, m.options.sourceDurationMS-1000))
 	m.options.trim.EndMS = m.videoTrimEndLimit()
+	m.options.sourcePreviewMS = m.options.trim.StartMS
 	m.options.sourceFrame = true
 }
+
+func (m *Model) setTrimEnd(positionMS int64) {
+	m.options.trim.EndMS = max(m.options.trim.StartMS+1000, min(positionMS, m.videoTrimEndLimit()))
+	// End is exclusive: show the last included frame, not the following scene.
+	m.options.sourcePreviewMS = m.options.trim.EndMS - 1
+	m.options.sourceFrame = true
+}
+
+func (m *Model) videoTrimArrowStep(key tea.KeyPressMsg) int64 {
+	if !key.IsRepeat || m.options.trimRepeatKey != key.String() || m.options.trimRepeatFocus != m.options.trimFocus {
+		m.options.trimRepeatCount = 0
+	} else {
+		m.options.trimRepeatCount = min(24, m.options.trimRepeatCount+1)
+	}
+	m.options.trimRepeatKey = key.String()
+	m.options.trimRepeatFocus = m.options.trimFocus
+
+	stepMS := int64(100)
+	if m.options.trimRepeatCount >= 24 {
+		stepMS = 5000
+	} else if m.options.trimRepeatCount >= 8 {
+		stepMS = 1000
+	}
+	if key.Mod.Contains(tea.ModShift) {
+		stepMS *= 10
+	}
+	return stepMS
+}
+
 func trimTimecode(milliseconds int64) string {
 	return fmt.Sprintf("%02d:%02d:%02d.%03d", milliseconds/3600000, (milliseconds/60000)%60, (milliseconds/1000)%60, milliseconds%1000)
 }
