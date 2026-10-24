@@ -48,5 +48,21 @@ SELECT 'demo', CASE WHEN n%5<>0 THEN n%4+1 END,
       ELSE 'Tomorrow: fewer wrappers, clearer errors, and zero meetings with a mutex.' END,
     observed, observed, observed
 FROM observations;
+-- Three distinct daily mindsets reuse the existing thoughts. Close historical
+-- periods at local midnight so they do not accumulate in today's Mindset panel.
+WITH daily_thoughts AS (
+    SELECT thought_id, observed_at,
+        row_number() OVER (
+            PARTITION BY date(observed_at, 'unixepoch', 'localtime')
+            ORDER BY observed_at, thought_id
+        ) AS daily_rank
+    FROM thoughts WHERE user_id = 'demo'
+)
+INSERT INTO thought_mindset_periods (thought_id, started_at, ended_at)
+SELECT thought_id, observed_at,
+    CASE WHEN date(observed_at, 'unixepoch', 'localtime') <> date(at, 'unixepoch', 'localtime')
+        THEN unixepoch(observed_at, 'unixepoch', 'localtime', 'start of day', '+1 day', 'utc') END
+FROM daily_thoughts CROSS JOIN demo_clock
+WHERE daily_rank <= 3;
 DROP TABLE demo_clock;
 COMMIT;
