@@ -231,6 +231,8 @@ func (m Model) Day() time.Time        { return m.day }
 func (m Model) DayReady() bool        { return m.active && !m.load.entriesPending }
 func (m Model) FormOpen() bool        { return m.form.open }
 
+func (m Model) TuningDistributions() bool { return m.distributions.open }
+
 // AtTopLevel excludes the nested views and controls owned by Events.
 func (m Model) AtTopLevel() bool {
 	return m.CanLeave() && m.expanded.IsZero() && !m.distributions.open && m.position.target != targetSubjectTime

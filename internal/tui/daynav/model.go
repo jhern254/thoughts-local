@@ -373,21 +373,29 @@ func (m *Model) Key(key string) tea.Cmd {
 		if m.first.IsZero() {
 			return nil
 		}
+		today := displaytime.Day(m.now())
 		days := data.CalendarDays(m.from, m.until)
-		if m.pending && m.span > 0 {
-			days = m.span
+		if m.pending {
+			// Repeated keys continue from the requested range, including a reset
+			// whose month has not yet replaced the accepted viewport.
+			from, until := window(m.first, m.selected, today, m.from, m.until, m.span)
+			days = data.CalendarDays(from, until)
 		}
-		all := data.CalendarDays(minDate(m.first, m.selected), displaytime.Day(m.now()).AddDate(0, 0, 1))
+		all := data.CalendarDays(minDate(m.first, m.selected), today.AddDate(0, 0, 1))
 		switch key {
 		case "+", "=":
 			m.span = max(1, min(days-1, days*4/5))
 		case "-":
-			m.span = max(days+1, (days*5+3)/4)
-			if m.span >= all {
+			// The default month may include empty days. Zooming out must not
+			// collapse it to a shorter history range.
+			from, until := window(m.first, m.selected, today, m.from, m.until, initialMonthSpan)
+			monthDays := data.CalendarDays(from, until)
+			m.span = min(max(all, monthDays), max(days+1, (days*5+3)/4))
+			if all >= monthDays && m.span >= all {
 				m.span = 0
 			}
 		case "0":
-			m.span = 0
+			m.span = initialMonthSpan
 		}
 		return m.load(false)
 	case "r":
@@ -478,9 +486,9 @@ func (m Model) Help() string {
 		return "←/→ boost · ↑/↓ size · f mode · 0 reset · Esc done"
 	}
 	if m.width < 60 {
-		return "←/→ day · ↓ back · +/- zoom · d style"
+		return "←/→ day · ↓ back · +/- zoom · 0 reset · d style"
 	}
-	return "←/→ day · +/- zoom · 0 all · d style · r refresh · ↓/Esc events"
+	return "←/→ day · +/- zoom · 0 reset zoom · d style · r refresh · ↓/Esc events"
 }
 func (m Model) Legend() string {
 	names := [...]string{"1 Total", "2 Events", "3 Thoughts"}

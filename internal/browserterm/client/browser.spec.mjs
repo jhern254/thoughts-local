@@ -431,12 +431,70 @@ test('day graph keeps the same normal profile in medium and fullscreen windows',
   const baseline = await plot();
   for (const height of [700, 1080, 850]) {
     await page.setViewportSize({width: 1200, height});
-    await expect.poll(() => page.evaluate(() => {
-      const term = window.mountainTerminal;
-      const rows = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString(true) || '');
-      const footer = rows.findLastIndex(row => /^─+$/.test(row));
-      return footer === term.rows - 4 && rows[footer].length === term.cols && /^ Events\s/.test(rows[8]);
-    })).toBe(true);
-    expect(await plot()).toEqual(baseline);
+    let frame;
+    await expect.poll(async () => {
+      frame = await page.evaluate(() => {
+        const term = window.mountainTerminal;
+        const rows = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
+        const footer = rows.findLastIndex(row => /^─+$/.test(row.trimEnd()));
+        return {
+          ready: footer === term.rows - 4 && rows[footer].trimEnd().length === term.cols && /^ Events\s/.test(rows[8]),
+          plot: rows.slice(5, 7),
+        };
+      });
+      return frame.ready;
+    }).toBe(true);
+    // Keep readiness and geometry in one snapshot: a resize can repaint again
+    // between separate evaluations. An incorrect coherent profile still fails.
+    expect(frame.plot).toEqual(baseline);
   }
+});
+
+test('Events focus supports zoom and month reset without consuming form or style keys', async ({page}) => {
+  await exposeMountainTerminal(page);
+  let connections = 0;
+  page.on('websocket', () => connections++);
+  await ready(page);
+  await expect(screen(page)).not.toContainText('Loading activity');
+  await expect(screen(page)).toContainText('0: reset zoom');
+  const plot = () => page.evaluate(() => {
+    const term = window.mountainTerminal;
+    return [5, 6].map(y => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
+  });
+  const date = () => screen(page).locator('div').filter({hasText: /^ Events\s+[A-Z]/}).first().textContent();
+  const originalDate = await date();
+  const original = await plot();
+  await page.keyboard.press('+');
+  await expect.poll(plot).not.toEqual(original);
+  await expect(screen(page)).not.toContainText('1 Total');
+  expect(await date()).toBe(originalDate);
+  await page.keyboard.press('-');
+  await expect(screen(page)).not.toContainText('Loading activity');
+  await page.keyboard.press('0');
+  await expect.poll(plot).toEqual(original);
+  expect(await date()).toBe(originalDate);
+  await expect(screen(page)).not.toContainText('1 Total');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('←: collapse');
+  await page.keyboard.press('+');
+  await expect.poll(plot).not.toEqual(original);
+  await page.keyboard.press('0');
+  await expect.poll(plot).toEqual(original);
+  await expect(screen(page)).toContainText('←: collapse');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('105%');
+  await page.keyboard.press('0');
+  await expect(screen(page)).toContainText('normal boost');
+  await expect(screen(page)).toContainText('100%');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('n');
+  await page.keyboard.type('0+-');
+  await expect(screen(page)).toContainText('0+-');
+  await page.keyboard.press('Escape');
+  await expect(screen(page)).toContainText('Events');
+  expect(connections).toBe(1);
 });

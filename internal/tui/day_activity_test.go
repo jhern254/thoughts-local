@@ -1,17 +1,19 @@
 package tui
 
 import (
-	"github.com/jhern254/go-thoughts/internal/data"
-	"github.com/jhern254/go-thoughts/internal/logging"
-	"github.com/jhern254/go-thoughts/internal/testutils"
-	"github.com/jhern254/go-thoughts/internal/thought"
-	"github.com/jhern254/go-thoughts/internal/timeline"
+	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/testutils"
+	"github.com/jhern254/go-thoughts/internal/thought"
+	"github.com/jhern254/go-thoughts/internal/timeline"
 )
 
 func TestModel_DayActivityNavigation(t *testing.T) {
@@ -199,6 +201,107 @@ func TestModel_DayGraphWindowHeight(t *testing.T) {
 			if m.days.Height() != 3 {
 				t.Fatalf("terminal %d rows: got graph band %d, want two plot rows plus quiet space", height, m.days.Height())
 			}
+		}
+	})
+}
+
+type dayZoomMetrics struct {
+	metricsStub
+	first    time.Time
+	requests [][]time.Time
+}
+
+func (s *dayZoomMetrics) ActivityStart(context.Context, string, time.Time) (time.Time, error) {
+	return s.first, nil
+}
+func (s *dayZoomMetrics) ActivityCounts(_ context.Context, _ string, bounds []time.Time, _ time.Time) ([]data.ActivityCount, error) {
+	s.requests = append(s.requests, append([]time.Time(nil), bounds...))
+	return make([]data.ActivityCount, len(bounds)-1), nil
+}
+
+func TestModel_EventsActivityZoom(t *testing.T) {
+	newHome := func(t *testing.T) (Model, *dayZoomMetrics) {
+		t.Helper()
+		metrics := &dayZoomMetrics{first: time.Now().AddDate(-1, 0, 0)}
+		m := NewModel(
+			t.Context(), &data.User{UserID: "u"}, &subjectServiceStub{},
+			thought.NewService(testutils.NewFakeThoughtStore()), metrics,
+			&homeEventStub{}, &homeTimelineStub{}, logging.Nop(),
+		)
+		m.focusHome(homePanelMindset)
+		m, cmd := rootUpdate(m, m.Init()())
+		m = startHomeData(t, m, cmd)
+		m.focusHome(homePanelEvents)
+		return m, metrics
+	}
+	t.Run("zoom keys work from Events and preserve the timeline and focus", func(t *testing.T) {
+		m, metrics := newHome(t)
+		day, view := m.events.Day(), m.events.View()
+		initial := append([]time.Time(nil), metrics.requests[len(metrics.requests)-1]...)
+		for _, key := range []rune{'+', '-', '0'} {
+			before := len(metrics.requests)
+			var cmd tea.Cmd
+			m, cmd = rootUpdate(m, runeKey(key))
+			if cmd == nil {
+				t.Fatalf("Events zoom key %q returned no command", key)
+			}
+			m = runHomeData(t, m, cmd)
+			if len(metrics.requests) == before {
+				t.Fatalf("Events zoom key %q did not load its range", key)
+			}
+			bounds := metrics.requests[len(metrics.requests)-1]
+			if key == '+' && len(bounds) >= len(initial) {
+				t.Fatal("zoom in did not narrow the graph")
+			}
+			if key == '0' && !slices.Equal(bounds, initial) {
+				t.Fatalf("reset range: got %v to %v, want original month", bounds[0], bounds[len(bounds)-1])
+			}
+			if m.homeFocus() != homePanelEvents || !m.events.Day().Equal(day) || m.events.View() != view {
+				t.Fatalf("zoom key %q changed Events selection or focus", key)
+			}
+		}
+	})
+	t.Run("zero inside Event distribution controls still resets style", func(t *testing.T) {
+		m, metrics := newHome(t)
+		for _, key := range []tea.KeyPressMsg{runeKey('d'), {Code: tea.KeyRight}, {Code: tea.KeyUp}} {
+			m, _ = rootUpdate(m, key)
+		}
+		before := len(metrics.requests)
+		var cmd tea.Cmd
+		m, cmd = rootUpdate(m, runeKey('0'))
+		if cmd != nil || len(metrics.requests) != before {
+			t.Fatal("Event style reset was intercepted as graph zoom")
+		}
+		if !strings.Contains(ansi.Strip(m.events.View()), "normal boost") || !strings.Contains(ansi.Strip(m.events.View()), "100%") {
+			t.Fatal("Event style reset did not restore normal/100%")
+		}
+	})
+	t.Run("zoom keeps the metrics card focused", func(t *testing.T) {
+		m, _ := newHome(t)
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEnd})
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyDown})
+		before := m.events.View()
+		m, cmd := rootUpdate(m, runeKey('+'))
+		if cmd == nil {
+			t.Fatal("metrics focus did not forward zoom")
+		}
+		m = runHomeData(t, m, cmd)
+		if m.events.AtTopLevel() || m.homeFocus() != homePanelEvents || m.events.View() != before {
+			t.Fatal("zoom changed the metrics selection or focus")
+		}
+	})
+	t.Run("event form input is not consumed by graph zoom", func(t *testing.T) {
+		m, metrics := newHome(t)
+		m, _ = rootUpdate(m, runeKey('n'))
+		before := len(metrics.requests)
+		for _, key := range []rune{'0', '+', '-'} {
+			m, _ = rootUpdate(m, runeKey(key))
+		}
+		if !strings.Contains(ansi.Strip(m.events.View()), "0+-") {
+			t.Fatal("zoom keys were not delivered as Event form text")
+		}
+		if !m.events.FormOpen() || len(metrics.requests) != before {
+			t.Fatal("editing an Event triggered day-graph zoom")
 		}
 	})
 }
