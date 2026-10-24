@@ -118,14 +118,33 @@ go test -tags=integration ./integration -run 'TestThoughtCountWorkflow_SQLite'
 ```
 
 Add `-count=1` when you need a fresh execution rather than Go's test cache.
-Run the complete checks at the usual boundaries:
 
-- `make quick` before committing (also run by the pre-commit hook).
-- `make check` before pushing (also run by the pre-push hook).
-- `make ci` for complete verification, including the race detector.
+**Default to a fast local feedback loop.** After each small adjustment, run the
+focused tests for the affected behavior, rebuild/restart the disposable demo when
+needed, and make it available for user feedback immediately. Do not wait for a
+full suite, a push, or hosted CI before showing a locally working change. Keep
+accepting feedback while longer verification runs in the background.
+
+- During iteration, use relevant unit tests and targeted browser/TUI acceptance.
+  Run focused SQLite integration tests early for persistence, migration,
+  ownership, or transactional changes. Do not repeat unrelated suites or costly
+  performance measurements for every visual, wording, or documentation tweak.
+- Batch feedback into coherent commits and pushes rather than pushing every
+  adjustment. Preserve separate commits when the user explicitly requests them.
+- Run `make quick` before committing and pushing; the pre-commit and pre-push
+  hooks enforce it. Keep hooks enabled rather than bypassing them.
+- At the final review checkpoint, require `make ci` and the applicable browser
+  acceptance checks to pass on the current head. Hosted CI may supply this
+  evidence; do not also run the same full suite locally without a concrete need.
+  `make check` remains available for deliberate full local verification, not as
+  the default per-push gate.
+- Clearly distinguish **ready for local feedback** from **verified for review**.
+  Report pending checks and failures. Do not claim review/merge readiness until
+  required checks pass, and never weaken or skip tests to obtain a green result.
 
 `make ci` already includes `make check`; running both consecutively repeats the
-fresh unit tests, integration tests, and build. Keep the required hooks enabled.
+fresh unit tests, integration tests, and build. Broaden or repeat verification
+when changes, failures, or unresolved risks justify it, rather than by default.
 For timing comparisons, run tests without other test/build processes competing
 for resources, and measure compilation separately from test execution.
 
@@ -314,8 +333,10 @@ git worktree add ../thoughts-<feature> -b feature/<feature>
 ```bash
 git fetch origin
 git rebase origin/main
-make check
 ```
+
+Require current-head `make ci` and applicable browser acceptance to pass, locally
+or in hosted CI, before requesting review.
 
 7. Resolve any conflicts on the feature branch.
 
@@ -350,9 +371,12 @@ Follow this workflow:
 ```
 Before committing, run `make quick`.
 
-Before pushing or requesting review, run `make check`.
+Before pushing, run `make quick`.
 
-Do not claim that a task is complete unless the required checks pass.
+Before requesting review, require current-head `make ci` and applicable browser acceptance to pass locally or in hosted CI.
+
+Share locally working changes after focused tests; report longer checks as pending.
+Do not claim review/merge readiness unless the required checks pass.
 Do not weaken, skip, or delete tests merely to make the branch pass.
 CI is authoritative and must run `make ci`.
 ```

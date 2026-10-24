@@ -15,7 +15,7 @@ help:
 	@echo "  make test-cover   Generate a coverage report"
 	@echo "  make build        Build all packages"
 	@echo "  make quick        Fast checks before committing"
-	@echo "  make check        Checks before pushing"
+	@echo "  make check        Full fresh tests, integration, and build"
 	@echo "  make ci           Complete CI verification"
 	@echo "  make hooks        Enable repository Git hooks"
 	@echo "  make run          Start the API without applying migrations"
