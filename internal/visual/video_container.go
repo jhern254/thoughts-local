@@ -7,8 +7,8 @@ import (
 
 // MOV/MP4 data references can name other files even with networking disabled.
 // Inspect data references and supported display declarations before the MOV demuxer;
-// accept self-contained url entries, never locations, compressed/fragmented
-// movies or QuickTime reference movies. This is not a filesystem sandbox.
+// accept self-contained url entries, never locations, compressed movies
+// or QuickTime reference movies. This is not a filesystem sandbox.
 func validateVideoContainer(input io.ReaderAt, size int64) error {
 	return inspectVideoContainer(input, size, false)
 }
@@ -20,6 +20,7 @@ func inspectVideoContainer(input io.ReaderAt, size int64, prepared bool) error {
 	if prepared {
 		indexLimit = 8 << 20
 	}
+	indexBytes := int64(0)
 	boxes := 0
 	tracks := 0
 	var movie, media, fileType bool
@@ -66,7 +67,7 @@ func inspectVideoContainer(input io.ReaderAt, size int64, prepared bool) error {
 					return ErrVideo
 				}
 				media = depth == 0
-			case "moov", "trak", "mdia", "minf", "dinf", "stbl":
+			case "moov", "trak", "mdia", "minf", "dinf", "stbl", "traf":
 				if kind == "trak" {
 					tracks++
 					if tracks > maxVideoStreams {
@@ -74,10 +75,22 @@ func inspectVideoContainer(input io.ReaderAt, size int64, prepared bool) error {
 					}
 				}
 				if kind == "moov" {
-					if depth != 0 || movie || length > indexLimit {
+					indexBytes += length
+					if depth != 0 || movie || indexBytes > indexLimit {
 						return ErrVideo
 					}
 					movie = true
+				}
+				if err := inspect(payload, limit, depth+1); err != nil {
+					return err
+				}
+			case "moof":
+				// Fragmented MP4 keeps packet indexes beside each media fragment.
+				// FFmpeg reads them directly; count their combined metadata with the
+				// initial movie index instead of remuxing the whole source first.
+				indexBytes += length
+				if prepared || depth != 0 || !movie || indexBytes > indexLimit {
+					return ErrVideo
 				}
 				if err := inspect(payload, limit, depth+1); err != nil {
 					return err
@@ -149,7 +162,7 @@ func inspectVideoContainer(input io.ReaderAt, size int64, prepared bool) error {
 						return ErrVideo
 					}
 				}
-			case "cmov", "rmra", "rmda", "moof", "sinf", "encv", "clap":
+			case "cmov", "rmra", "rmda", "sinf", "encv", "clap":
 				return ErrVideo
 			}
 			offset = limit

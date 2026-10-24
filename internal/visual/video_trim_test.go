@@ -253,3 +253,51 @@ func TestVideoProbe_ValidateLoop(t *testing.T) {
 		}
 	})
 }
+
+func TestVideoSource_FragmentedMP4(t *testing.T) {
+	t.Run("prepares a late cut from self contained fragmented H264", func(t *testing.T) {
+		ffmpeg, err := exec.LookPath("ffmpeg")
+		if err != nil {
+			t.Skip("requires FFmpeg")
+		}
+		if _, err := exec.LookPath("ffprobe"); err != nil {
+			t.Skip("requires ffprobe")
+		}
+		sourcePath := filepath.Join(t.TempDir(), "fragmented.mp4")
+		command := exec.CommandContext(t.Context(), ffmpeg, "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=96x64:rate=30000/1001:duration=32", "-c:v", "libx264", "-threads", "1", "-g", "60", "-pix_fmt", "yuv420p", "-movflags", "+frag_keyframe+empty_moov+default_base_moof+global_sidx", sourcePath)
+		if err := command.Run(); err != nil {
+			t.Fatal(err)
+		}
+		input, err := os.Open(sourcePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer input.Close()
+		source, err := StageVideo(t.Context(), input)
+		if err != nil {
+			t.Fatalf("stage fragmented MP4: %v", err)
+		}
+		defer source.Close()
+		trim := VideoTrim{StartMS: 10000, EndMS: 26000}
+		prepared, err := source.Prepare(t.Context(), trim, VideoQualityHigh)
+		if err != nil {
+			t.Fatalf("prepare sixteen-second cut: %v", err)
+		}
+		defer prepared.Close()
+		if prepared.Info().Trim != trim || math.Abs(float64(prepared.Info().DurationMS)-16000) > 34 {
+			t.Fatalf("prepared interval = %+v, want sixteen seconds at the requested cut", prepared.Info())
+		}
+		output, err := prepared.Open(t.Context(), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer output.Close()
+		stat, err := output.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := inspectVideoContainer(output, stat.Size(), true); err != nil {
+			t.Fatalf("prepared output must retain its independent nonfragmented contract: %v", err)
+		}
+	})
+}

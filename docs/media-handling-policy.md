@@ -112,7 +112,7 @@ bounds, following the H.264 Annex A limits also used by
 Visible even dimensions alone do not establish level compatibility.
 Re-encoding is lossy. Untagged SDR
 is interpreted as Rec.709; explicit incompatible primaries/transfer, ICC video
-profiles, HDR/HEVC, encrypted/fragmented/reference movies, arbitrary display
+profiles, HDR/HEVC, encrypted/reference movies, arbitrary display
 transforms and unsupported encodings are rejected rather than silently relabeled.
 
 Native processing stages private application-named files, uses explicit argument
@@ -132,6 +132,11 @@ frequent keyframes. Transfer has a finite 20-minute total limit and a 30-second 
 limit. Native container/probe validation receives a fresh two-minute deadline
 after transfer; each preparation retains its separate two-minute deadline.
 Increasing source duration does not increase the decoded-frame or pixel budgets.
+Self-contained fragmented MP4 is accepted directly: its packet indexes are
+spread across fragments rather than stored in one initial movie index. FFmpeg
+reads that layout without a preliminary whole-file remux. Initial movie and
+fragment metadata share the 32 MiB source-index budget; prepared output remains
+nonfragmented. External file references and encrypted movies remain rejected.
 Source movie indexes are bounded to 32 MiB; prepared-loop indexes remain bounded
 to 8 MiB. Four-stream, nesting, box-count and processor-allocation limits remain.
 

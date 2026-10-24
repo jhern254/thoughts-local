@@ -20,6 +20,41 @@ func mp4Box(kind string, payload []byte) []byte {
 }
 
 func TestVideoContainer(t *testing.T) {
+	t.Run("source fragments retain metadata bounds and cannot become prepared output", func(t *testing.T) {
+		fileType := mp4Box("ftyp", []byte("isom0000isom"))
+		movie := mp4Box("moov", nil)
+		fragment := mp4Box("moof", mp4Box("traf", nil))
+		media := mp4Box("mdat", []byte{1})
+		source := bytes.Join([][]byte{fileType, movie, fragment, media}, nil)
+		if err := validateVideoContainer(bytes.NewReader(source), int64(len(source))); err != nil {
+			t.Fatalf("fragmented source: %v", err)
+		}
+		if err := inspectVideoContainer(bytes.NewReader(source), int64(len(source)), true); !errors.Is(err, ErrVideo) {
+			t.Fatalf("prepared fragments: got %v, want ErrVideo", err)
+		}
+		externalReference := mp4Box("dref", append([]byte{0, 0, 0, 0, 0, 0, 0, 1}, mp4Box("url ", []byte{0, 0, 0, 0})...))
+		for _, invalid := range [][]byte{
+			bytes.Join([][]byte{fileType, movie, mp4Box("moof", mp4Box("traf", externalReference)), media}, nil),
+			bytes.Join([][]byte{fileType, fragment, movie, media}, nil),
+			bytes.Join([][]byte{fileType, mp4Box("moov", fragment), media}, nil),
+		} {
+			if err := validateVideoContainer(bytes.NewReader(invalid), int64(len(invalid))); !errors.Is(err, ErrVideo) {
+				t.Fatalf("unsafe or misplaced fragment: got %v, want ErrVideo", err)
+			}
+		}
+		// Large metadata is virtual; the validator must bound it without reading payloads.
+		fragmentSize := int64(32 << 20)
+		header := make([]byte, 8)
+		binary.BigEndian.PutUint32(header, uint32(fragmentSize))
+		copy(header[4:], "moof")
+		offset := int64(len(fileType) + len(movie))
+		large := videoContainerHeaders{size: offset + fragmentSize + int64(len(media)), headers: map[int64][]byte{
+			0: fileType, int64(len(fileType)): movie, offset: header, offset + fragmentSize: media,
+		}}
+		if err := validateVideoContainer(large, large.size); !errors.Is(err, ErrVideo) {
+			t.Fatalf("combined movie and fragment metadata: got %v, want ErrVideo", err)
+		}
+	})
 	t.Run("accepts only self contained data references", func(t *testing.T) {
 		entry := mp4Box("url ", []byte{0, 0, 0, 1})
 		dref := append([]byte{0, 0, 0, 0, 0, 0, 0, 1}, entry...)

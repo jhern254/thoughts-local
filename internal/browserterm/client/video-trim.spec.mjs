@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openVisual, clickControl, screen} from './visual-helpers.mjs';
 
-let source, longSource, offsetSource;
+let source, longSource, offsetSource, fragmentedSource;
 // The native settings outlive each browser context. Give motion assertions an
 // explicit user preference rather than inheriting the preceding test's pause.
 test.beforeEach(async({request,baseURL})=>{
@@ -18,6 +18,9 @@ test.beforeAll(() => {
     const path = join(directory,'source.mp4');
     execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=96x64:rate=24:duration=60','-c:v','libx264','-threads','1','-g','120','-pix_fmt','yuv420p','-movflags','+faststart',path]);
     source = {name:'synthetic-minute.mp4',mimeType:'video/mp4',buffer:readFileSync(path)};
+    const fragmentedPath=join(directory,'fragmented.mp4');
+    execFileSync('ffmpeg',['-v','error','-i',path,'-c','copy','-movflags','+frag_keyframe+empty_moov+default_base_moof+global_sidx',fragmentedPath]);
+    fragmentedSource={name:'fragmented.mp4',mimeType:'video/mp4',buffer:readFileSync(fragmentedPath)};
     const longPath=join(directory,'four-hours.mp4');
     execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','testsrc2=size=32x24:rate=1:duration=14400','-c:v','libx264','-threads','1','-g','60','-pix_fmt','yuv420p','-movflags','+faststart',longPath]);
     longSource={name:'four-hours.mp4',mimeType:'video/mp4',buffer:readFileSync(longPath)};
@@ -545,6 +548,27 @@ test('nonzero timestamp sources preview and prepare the same selected scene',asy
  await expect.poll(brightness).toBeLessThan(172);
  await clickControl(page,'Done — use previewed loop');
  await expect(screen(page)).toContainText('Background darkness:');
+ await clickControl(page,'Apply');
+ await expect(screen(page)).not.toContainText('Background darkness:');
+ expect((await(await page.request.get('/visual')).json()).kind).toBe('video');
+});
+
+
+test('fragmented MP4 validates up front and prepares a sixteen-second background',async({page})=>{
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await openVisual(page);
+ const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(fragmentedSource);
+ await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
+ await clickControl(page,'Source / Start: 00:00:00.000 / 00:01:00.000');
+ await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('00:00:10.000');await page.keyboard.press('Enter');
+ await clickControl(page,'End: 00:00:40.000 (max 00:00:40.000)');
+ await page.keyboard.press('Home');
+ for(let second=0;second<15;second++)await page.keyboard.press('Shift+ArrowRight');
+ await expect(screen(page)).toContainText('Selected: 16.0 seconds');
+ await clickControl(page,'Preview loop');
+ await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ await expect(screen(page)).toContainText('Range: 10.00–26.00s');
+ await clickControl(page,'Done — use previewed loop');
  await clickControl(page,'Apply');
  await expect(screen(page)).not.toContainText('Background darkness:');
  expect((await(await page.request.get('/visual')).json()).kind).toBe('video');

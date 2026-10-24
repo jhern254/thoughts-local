@@ -1069,6 +1069,11 @@ original file is neither remuxed nor re-exported merely to change timestamps.
 For an offset source, Chromium can clip local seeking near the end; those cuts
 show a source-preview notice and remain available through native Preview loop.
 
+Self-contained fragmented MP4 sources are also accepted directly. Their initial
+movie and fragment indexes share the existing metadata budget; they need no
+whole-source remux. The output remains a validated, nonfragmented background.
+This addresses a reported compatible H.264 file rejected solely for its layout.
+
 ### T480s observations
 
 These measurements predate moving transfer/validation to file selection; the
