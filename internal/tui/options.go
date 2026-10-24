@@ -210,32 +210,17 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		m.options.sourceDurationMS = msg.DurationMS
 		m.options.trim = visual.VideoTrim{StartMS: 0, EndMS: min(visual.MaxVideoDuration*1000, msg.DurationMS)}
 		m.options.status = "Set cut points, then Preview loop."
-	case "sourceVerified":
-		if m.options.request != "prepareLoop" || msg.DurationMS < 1000 || msg.DurationMS > visual.MaxVideoSourceDuration*1000 {
+	case "sourceChecking":
+		if m.options.request != "choose" {
 			return m, nil
 		}
-		m.options.sourceDurationMS = msg.DurationMS
+		m.options.status = "Checking video compatibility… Esc: cancel"
 		return m, nil
 	case "sourceBounds":
 		if m.options.request != "prepareLoop" {
 			return m, nil
 		}
 		m.options.status = "Verified source bounds differ. Adjust Start/End and preview again."
-	case "sourceSpace", "sourceTimeout", "sourceUnsupported":
-		if m.options.request != "prepareLoop" {
-			return m, nil
-		}
-		if m.options.loopReady {
-			m.options.sourceFrame = false
-		}
-		switch msg.Action {
-		case "sourceSpace":
-			m.options.status = "Not enough temporary disk space for the video source."
-		case "sourceTimeout":
-			m.options.status = "Video operation timed out. Retry with a smaller source or shorter cut."
-		case "sourceUnsupported":
-			m.options.status = "Choose a self-contained SDR H.264 MP4/MOV, 1s–4h, up to 8 GiB."
-		}
 	case "loopReady":
 		if m.options.request != "prepareLoop" || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
 			return m, nil
@@ -328,7 +313,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		} else {
 			m.options.status = "Saved. Some background files could not be removed."
 		}
-	case "failed":
+	case "failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
 		if m.options.request == "prepareLoop" && m.options.loopReady {
 			m.options.sourceFrame = false
 		}
@@ -348,6 +333,34 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			}
 		}
 		m.options.status = "Could not load or apply. Check media limits and retry."
+		if m.options.request == "prepareLoop" {
+			m.options.status = "Could not prepare this loop. Retry or choose another cut."
+		}
+		switch msg.Action {
+		case "sourceCodec":
+			m.options.status = "Unsupported video codec. H.264 is required."
+		case "sourceColor":
+			m.options.status = "Unsupported video color. Use 8-bit SDR Rec.709."
+		case "sourceDimensions":
+			m.options.status = "Video exceeds 4096 pixels per side or 9 million pixels."
+		case "sourceRate":
+			m.options.status = "Unsupported frame rate. Videos must be at most 60 FPS."
+		case "sourceDuration":
+			m.options.status = "Unsupported duration. Videos must be 1 second–4 hours."
+		case "sourceSize":
+			m.options.status = "Video exceeds the 8 GiB upload limit."
+		case "sourceTools":
+			m.options.status = "Video processing unavailable. Install FFmpeg and ffprobe."
+		case "sourceBusy":
+			m.options.status = "Another visual operation is running. Try again shortly."
+		case "sourceSpace":
+			m.options.status = "Not enough temporary disk space for the video source."
+		case "sourceTimeout":
+			m.options.status = "Video operation timed out. Try again or use a shorter cut."
+		case "sourceUnsupported":
+			m.options.status = "Could not validate this video. Use an intact H.264 MP4/MOV."
+		}
+
 	default:
 		return m, nil
 	}

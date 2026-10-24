@@ -40,6 +40,11 @@ const (
 )
 
 var ErrVideo = errors.New("choose a self-contained SDR H.264 MP4 or MOV within the video limits")
+var ErrVideoCodec = fmt.Errorf("%w: unsupported codec", ErrVideo)
+var ErrVideoColor = fmt.Errorf("%w: unsupported color format", ErrVideo)
+var ErrVideoDimensions = fmt.Errorf("%w: unsupported resolution", ErrVideo)
+var ErrVideoFrameRate = fmt.Errorf("%w: unsupported frame rate", ErrVideo)
+var ErrVideoDuration = fmt.Errorf("%w: unsupported duration", ErrVideo)
 var ErrVideoSourceSize = errors.New("video source exceeds 8 GiB")
 var ErrVideoTools = errors.New("video backgrounds require FFmpeg and ffprobe")
 var ErrPlayback = errors.New("video speed must be between 25 and 100 percent")
@@ -119,7 +124,7 @@ func (info videoProbe) validate(prepared bool) error {
 	if info.Format.Duration != "" {
 		containerDuration, parseErr := strconv.ParseFloat(info.Format.Duration, 64)
 		if parseErr != nil || !finitePositive(containerDuration) || containerDuration < 1 || containerDuration > float64(maxDuration) {
-			return ErrVideo
+			return ErrVideoDuration
 		}
 	}
 	rate, rateErr := parseVideoFrameRate(stream.AvgFrameRate)
@@ -128,18 +133,30 @@ func (info videoProbe) validate(prepared bool) error {
 	if stream.SampleAspectRatio == "N/A" || stream.SampleAspectRatio == "" {
 		sar = 1
 	}
-	if err != nil || rateErr != nil || !finitePositive(duration) || duration < 1 || duration > float64(maxDuration) || !finitePositive(fps) || fps > MaxVideoFPS || !finitePositive(sar) || sar < .25 || sar > 4 {
+	if err != nil || !finitePositive(duration) || duration < 1 || duration > float64(maxDuration) {
+		return ErrVideoDuration
+	}
+	if rateErr != nil || !finitePositive(fps) || fps > MaxVideoFPS {
+		return ErrVideoFrameRate
+	}
+	if !finitePositive(sar) || sar < .25 || sar > 4 {
 		return ErrVideo
 	}
-	if stream.CodecName != "h264" || (stream.PixFmt != "yuv420p" && stream.PixFmt != "yuvj420p") || stream.Width < 2 || stream.Height < 2 || stream.Width > MaxVideoDimension || stream.Height > MaxVideoDimension || int64(stream.Width)*int64(stream.Height) > MaxVideoPixels {
-		return ErrVideo
+	if stream.CodecName != "h264" {
+		return ErrVideoCodec
+	}
+	if stream.PixFmt != "yuv420p" && stream.PixFmt != "yuvj420p" {
+		return ErrVideoColor
+	}
+	if stream.Width < 2 || stream.Height < 2 || stream.Width > MaxVideoDimension || stream.Height > MaxVideoDimension || int64(stream.Width)*int64(stream.Height) > MaxVideoPixels {
+		return ErrVideoDimensions
 	}
 	// The first supported path is SDR Rec.709. Unknown signaling is treated as
 	// ordinary SDR Rec.709; explicitly different primaries/transfer are rejected,
 	// never relabeled as Rec.709 without a reviewed conversion.
 	for _, value := range []string{stream.ColorSpace, stream.ColorTransfer, stream.ColorPrimaries} {
 		if value != "" && value != "unknown" && value != "bt709" {
-			return ErrVideo
+			return ErrVideoColor
 		}
 	}
 	if _, err := stream.displayRotation(); err != nil {

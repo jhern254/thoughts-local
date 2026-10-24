@@ -14,11 +14,24 @@ class ThoughtsVideoTrim {
     const response = await fetch(path, {...options, headers: {...this.headers(), ...options.headers}, signal});
     if (!response.ok) {
       const error=new Error('Video operation unavailable.');
-      if(response.status===507) error.videoAction='sourceSpace';
-      if(response.status===408) error.videoAction='sourceTimeout';
+      error.videoAction=response.status===400 ? 'failed' : this.failureAction(response.status,null);
       throw error;
     }
     return response;
+  }
+  failureAction(status, rejection) {
+    // Only fixed control actions may cross back into the terminal connection.
+    const reasons = ['sourceCodec','sourceColor','sourceDimensions','sourceRate','sourceDuration'];
+    if (status === 400 && reasons.includes(rejection)) return rejection;
+    switch (status) {
+      case 400: return 'sourceUnsupported';
+      case 413: return 'sourceSize';
+      case 408: return 'sourceTimeout';
+      case 409: return 'sourceBusy';
+      case 503: return 'sourceTools';
+      case 507: return 'sourceSpace';
+      default: return 'failed';
+    }
   }
   async selectSource(file, operationID) {
     this.close();
@@ -28,7 +41,8 @@ class ThoughtsVideoTrim {
     const controller = new AbortController();
     this.controller = controller;
     try {
-      if (file.size > this.visual.state.maxVideoSourceBytes) throw new Error('Video source exceeds the limit.');
+      this.visual.sendAction({action:'sourceChecking',id:operationID});
+      if (file.size > this.visual.state.maxVideoSourceBytes) throw Object.assign(new Error('Video source exceeds the limit.'),{videoAction:'sourceSize'});
       this.localFile = file;
       this.sourceURL = URL.createObjectURL(file);
       const video = this.makeVideo(this.sourceURL, 'metadata');
@@ -39,13 +53,16 @@ class ThoughtsVideoTrim {
       // Cut controls always count from the first decoded source frame.
       this.sourceStartSeconds = video.currentTime;
       const durationMS = Math.floor(video.duration * 1000);
-      if (!Number.isSafeInteger(durationMS) || durationMS < 1000 || durationMS > this.visual.state.maxVideoSourceDurationMS || !video.videoWidth || !video.videoHeight) throw new Error('Unsupported source.');
-      // Browser metadata is provisional. Only native staging can validate the
-      // container, streams, duration and supported display interpretation.
+      if (!Number.isSafeInteger(durationMS) || durationMS < 1000 || durationMS > this.visual.state.maxVideoSourceDurationMS || !video.videoWidth || !video.videoHeight) throw Object.assign(new Error('Unsupported source.'),{videoAction:'sourceUnsupported'});
+      // Browser playback alone does not establish background compatibility.
+      // Validate once before offering cut controls; previews reuse this source.
+      const staged = await this.uploadSource(controller.signal);
+      if (!this.owns(generation) || controller.signal.aborted || this.visual.state.id !== operationID) return;
+      this.source = staged;
       this.visual.candidateKind = 'video';
-      this.visual.previewSourceSize = {width:video.videoWidth, height:video.videoHeight};
+      this.visual.previewSourceSize = {width:staged.width, height:staged.height};
       this.showSource(0);
-      this.visual.sendAction({action:'sourceSelected', id:operationID, kind:'video', durationMS});
+      this.visual.sendAction({action:'sourceSelected', id:operationID, kind:'video', durationMS:staged.durationMS});
     } catch (error) {
       if (this.owns(generation)) {this.close(); throw error;}
     } finally {
@@ -57,15 +74,14 @@ class ThoughtsVideoTrim {
     const status = document.getElementById('video-preparation-label');
     if (status) status.textContent = label;
   }
-  uploadSource(signal, operationID) {
-    // XHR supplies an upload-complete event without buffering the File in JS.
-    // Completion only changes status: the response still owns native validation.
+  uploadSource(signal) {
+    // Send the File directly without an ArrayBuffer copy. XHR supplies a bounded
+    // transfer timeout and cancellation while the native side validates it.
     return new Promise((resolve,reject) => {
       const upload = new XMLHttpRequest();
       const finish = (error,source) => {
         signal.removeEventListener('abort',abort);
         upload.onload=upload.onerror=upload.onabort=upload.ontimeout=null;
-        upload.upload.onload=null;
         error ? reject(error) : resolve(source);
       };
       const abort = () => upload.abort();
@@ -73,11 +89,10 @@ class ThoughtsVideoTrim {
       upload.setRequestHeader('X-Visual-Editor',this.editorID);
       upload.responseType='json';
       upload.timeout=22*60*1000;
-      upload.upload.onload=()=>{if (!signal.aborted) this.setStage('Validating source…',operationID);};
       upload.onload=()=>{
         if (upload.status===200 && upload.response?.sourceID) {finish(null,upload.response);return;}
         const error=new Error('Video source unavailable.');
-        error.videoAction=upload.status===507 ? 'sourceSpace' : upload.status===408 ? 'sourceTimeout' : [400,413].includes(upload.status) ? 'sourceUnsupported' : 'failed';
+        error.videoAction=this.failureAction(upload.status,upload.getResponseHeader('X-Video-Rejection'));
         finish(error);
       };
       upload.onerror=upload.onabort=()=>finish(new Error('Video transfer unavailable.'));
@@ -165,13 +180,6 @@ class ThoughtsVideoTrim {
     this.controller = controller;
     let candidate, videoURL, posterURL;
     try {
-      if (!this.source) {
-        this.setStage('Transferring selected source…', operationID);
-        const staged = await this.uploadSource(controller.signal, operationID);
-        if (!this.owns(generation) || controller.signal.aborted || visual.state.id !== operationID) return;
-        this.source = staged;
-        visual.sendAction({action:'sourceVerified',id:operationID,durationMS:this.source.durationMS});
-      }
       const {startMS,endMS}=state.trim;
       if (startMS < 0 || endMS > this.source.durationMS || endMS-startMS < 1000 || endMS-startMS > 30000) {
         visual.sendAction({action:'sourceBounds',id:operationID});

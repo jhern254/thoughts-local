@@ -208,6 +208,29 @@ func TestVideoEditor_Routes(t *testing.T) {
 }
 
 func TestVideoSource_Admission(t *testing.T) {
+	t.Run("source rejections expose only fixed reasons", func(t *testing.T) {
+		for _, scenario := range []struct {
+			err    error
+			reason string
+		}{
+			{visual.ErrVideoCodec, "sourceCodec"},
+			{visual.ErrVideoColor, "sourceColor"},
+			{visual.ErrVideoDimensions, "sourceDimensions"},
+			{visual.ErrVideoFrameRate, "sourceRate"},
+			{visual.ErrVideoDuration, "sourceDuration"},
+		} {
+			t.Run(scenario.reason, func(t *testing.T) {
+				response := httptest.NewRecorder()
+				videoSourceError(response, errors.Join(scenario.err, errors.New("PRIVATE decoder path")))
+				if response.Code != http.StatusBadRequest || response.Header().Get("X-Video-Rejection") != scenario.reason {
+					t.Fatalf("got %d %q, want 400 %q", response.Code, response.Header().Get("X-Video-Rejection"), scenario.reason)
+				}
+				if strings.Contains(response.Body.String(), "PRIVATE") || strings.Contains(response.Header().Get("X-Video-Rejection"), "PRIVATE") {
+					t.Fatal("rejection exposed decoder text")
+				}
+			})
+		}
+	})
 	t.Run("transfer does not consume the preparation deadline", func(t *testing.T) {
 		s := &server{videoEditor: newVideoEditor(t.Context())}
 		id, _ := s.videoEditor.setOpen(true)

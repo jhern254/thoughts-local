@@ -137,7 +137,7 @@ func (s *server) stageVisualVideoSource(w http.ResponseWriter, r *http.Request) 
 	defer finish()
 	r.Body = http.MaxBytesReader(w, r.Body, visual.MaxVideoSourceBytes)
 	if r.ContentLength > visual.MaxVideoSourceBytes {
-		videoError(w, visual.ErrVideoSourceSize)
+		videoSourceError(w, visual.ErrVideoSourceSize)
 		return
 	}
 	// A new source POST replaces the browser File selection. Retire the old
@@ -145,7 +145,7 @@ func (s *server) stageVisualVideoSource(w http.ResponseWriter, r *http.Request) 
 	// space for two originals. Accepted derivative bytes remain independently owned.
 	if editor.source != nil {
 		if err := editor.source.Close(); err != nil {
-			videoError(w, err)
+			videoSourceError(w, err)
 			return
 		}
 		editor.source = nil
@@ -154,7 +154,7 @@ func (s *server) stageVisualVideoSource(w http.ResponseWriter, r *http.Request) 
 	reader := &videoTransferReader{ctx: ctx, input: r.Body, controller: http.NewResponseController(w), deadline: time.Now().Add(visual.MaxVideoTransferTime)}
 	source, err := visual.StageVideo(ctx, reader)
 	if err != nil {
-		videoError(w, err)
+		videoSourceError(w, err)
 		return
 	}
 	if err := ctx.Err(); err != nil {
@@ -163,7 +163,7 @@ func (s *server) stageVisualVideoSource(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := editor.discardFiles(); err != nil {
 		source.Close()
-		videoError(w, err)
+		videoSourceError(w, err)
 		return
 	}
 	editor.filesOwner = r.Header.Get("X-Visual-Editor")
@@ -384,6 +384,22 @@ func (reader *videoTransferReader) Read(body []byte) (int, error) {
 
 // Video-only feedback keeps transfer failures useful without exposing OS text
 // or changing the image importer's presentation contract.
+func videoSourceError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, visual.ErrVideoCodec):
+		w.Header().Set("X-Video-Rejection", "sourceCodec")
+	case errors.Is(err, visual.ErrVideoColor):
+		w.Header().Set("X-Video-Rejection", "sourceColor")
+	case errors.Is(err, visual.ErrVideoDimensions):
+		w.Header().Set("X-Video-Rejection", "sourceDimensions")
+	case errors.Is(err, visual.ErrVideoFrameRate):
+		w.Header().Set("X-Video-Rejection", "sourceRate")
+	case errors.Is(err, visual.ErrVideoDuration):
+		w.Header().Set("X-Video-Rejection", "sourceDuration")
+	}
+	videoError(w, err)
+}
+
 func videoError(w http.ResponseWriter, err error) {
 	var networkError net.Error
 	diskFull := errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT)

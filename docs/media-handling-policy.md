@@ -147,22 +147,24 @@ preview exclusivity and playback failure are browser lifecycle conditions, never
 saved pause preferences. A stable poster covers loading, buffering, pause and
 failure. No frames travel through the terminal or WebSocket. Local video/poster
 assets and staging files are not encrypted; crashes can leave unselected files.
-Future vault work must include these assets. New-upload selection initially keeps a browser File/object URL and one muted,
-paused source-video element with metadata preloading. Browser metadata is
-provisional. Moving Start seeks that element and proposes at most 30 seconds;
-it does not upload, invoke native processing, or build thumbnails. Browser
-seeking may read/decode the frames its native media implementation requires.
+Future vault work must include these assets.
 
-The first explicit Preview loop streams the complete local File through HTTP
-to one private native source file; this is not zero-copy or native-path access.
-The application does not buffer the movie into a JavaScript ArrayBuffer or Go
-byte slice. Actual received bytes, container references and probed streams are
-validated before preparation. Verified bounds never silently move a chosen scene.
-Browser imports require both video and container start timestamps to be zero: a
-nonzero origin can make Chromium and Firefox show different frames for the same
-position. Such sources are rejected with fixed feedback and native staging is
-removed, rather than silently changing the chosen scene.
-A successful staging is reused for further previews in the same editor.
+Choosing a video streams it once into private native staging and checks its
+container and technical properties before opening the cut editor. Known
+unsupported codecs, color formats, dimensions, frame rates and durations receive
+fixed rejection messages at selection. This inspection does not encode or decode
+the complete movie. It is not a guarantee that every later cut will succeed:
+damaged frames, processing budgets, disk failures and cancellation can still
+prevent preparation. A prepared loop is usable only after output validation and
+browser acknowledgement.
+
+The browser keeps the File/object URL and one muted, paused source-video element.
+Moving Start seeks that element without another upload, native processing or
+thumbnail generation. Previews reuse the validated native source. The application
+never buffers the whole movie into a JavaScript ArrayBuffer or Go byte slice.
+Nonzero timestamp origins are accepted; source-relative controls account for the
+browser's origin. Where Chromium cannot seek a late source frame, a fixed notice
+directs the user to native Preview loop instead.
 New-upload trimming temporarily retains that source while Visual is open; Apply, Cancel, closing
 Visual, disconnect and orderly shutdown remove it after joining processing.
 It is not an archive; saved clips have no retained source or re-trim metadata.

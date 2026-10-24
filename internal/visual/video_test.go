@@ -45,6 +45,29 @@ func TestVideoContainer(t *testing.T) {
 }
 
 func TestVideoLimits(t *testing.T) {
+	t.Run("source rejections identify the unsupported property without decoder text", func(t *testing.T) {
+		for _, scenario := range []struct {
+			name   string
+			change func(*videoStream)
+			want   error
+		}{
+			{"codec", func(stream *videoStream) { stream.CodecName = "hevc" }, ErrVideoCodec},
+			{"pixel format", func(stream *videoStream) { stream.PixFmt = "yuv420p10le" }, ErrVideoColor},
+			{"HDR", func(stream *videoStream) { stream.ColorTransfer = "smpte2084" }, ErrVideoColor},
+			{"resolution", func(stream *videoStream) { stream.Width = 7680 }, ErrVideoDimensions},
+			{"frame rate", func(stream *videoStream) { stream.AvgFrameRate = "120/1" }, ErrVideoFrameRate},
+			{"duration", func(stream *videoStream) { stream.Duration = "14401" }, ErrVideoDuration},
+		} {
+			t.Run(scenario.name, func(t *testing.T) {
+				stream := videoStream{CodecName: "h264", CodecType: "video", Width: 1920, Height: 1080, PixFmt: "yuv420p", AvgFrameRate: "30/1", Duration: "1020"}
+				scenario.change(&stream)
+				err := (videoProbe{Streams: []videoStream{stream}}).validate(false)
+				if !errors.Is(err, scenario.want) || !errors.Is(err, ErrVideo) {
+					t.Fatalf("got %v, want %v and ErrVideo", err, scenario.want)
+				}
+			})
+		}
+	})
 	t.Run("validates supported source and independent prepared output", func(t *testing.T) {
 		stream := videoStream{CodecName: "h264", CodecType: "video", Profile: "Constrained Baseline", Level: 32, Width: 1280, Height: 720, PixFmt: "yuv420p", AvgFrameRate: "24/1", SampleAspectRatio: "1:1", Duration: "8.0", ColorSpace: "bt709", ColorTransfer: "bt709", ColorPrimaries: "bt709", ColorRange: "tv"}
 		info := videoProbe{Streams: []videoStream{stream}}

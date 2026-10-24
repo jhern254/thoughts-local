@@ -75,8 +75,11 @@ test('preparing a loop reserves a braille wave between speed and Preview loop an
         const wave=document.getElementById('video-preparation-wave').getBoundingClientRect();
         const preview=document.getElementById('background-preview-wrap').getBoundingClientRect();
         const rows=[...document.querySelectorAll('.xterm-rows > div')];
-        const speed=rows.find(row=>row.textContent.includes('Playback speed:')).getBoundingClientRect();
-        const action=rows.find(row=>row.textContent.trim()==='Preview loop').getBoundingClientRect();
+        const speedRow=rows.find(row=>row.textContent.includes('Playback speed:'));
+        const previewRow=rows.find(row=>row.textContent.trim()==='Preview loop');
+        if(!speedRow || !previewRow)return false;
+        const speed=speedRow.getBoundingClientRect();
+        const action=previewRow.getBoundingClientRect();
         const aligned=!preview.width || (Math.abs(wave.left-preview.left)<1 && Math.abs(wave.width-preview.width)<1);
         return Math.abs(indicator.height-expectedHeight)<1 && wave.top>=speed.bottom && wave.bottom<=action.top+1 && aligned;
       })).toBe(true);
@@ -139,7 +142,7 @@ test('preparing a loop reserves a braille wave between speed and Preview loop an
       await clickControl(page,'Preview loop');
       await expect(bar).toBeVisible();
       releaseFailure();
-      await expect(screen(page)).toContainText('Could not load or apply.');
+      await expect(screen(page)).toContainText('Could not prepare this loop.');
       await expect(bar).toBeHidden();
       await expect(screen(page)).toContainText('Range: 0.00–1.00s');
     } finally { releaseFailure(); }
@@ -274,11 +277,11 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
     if(route.request().method()==='POST')await route.fulfill({status:500,body:'Could not prepare loop.'});else await route.continue();
   });
   await clickControl(page,'Preview loop');
-  await expect(screen(page)).toContainText('Could not load or apply.');
+  await expect(screen(page)).toContainText('Could not prepare this loop.');
   await expect(screen(page)).toContainText('Range: 57.00–60.00s');
   expect(await page.locator('#background-preview-video').evaluate(video=>video.duration)).toBe(3);
   await page.unroute('**/visual/video/preview');
-  await page.setViewportSize({width:650,height:600});
+  await page.setViewportSize({width:650,height:750});
   await expect(screen(page)).toContainText('Done — use previewed loop');
   // The old view already contains Done. Wait for the resized native frame and
   // browser preview to agree before using terminal mouse coordinates.
@@ -403,7 +406,7 @@ test('a decoded loop stays applicable with reduced motion or rejected preview pl
 });
 
 
-test('four-hour source stays local while Start seeks and uploads once for repeated previews',async({page},testInfo)=>{
+test('four-hour source validates once before cutting and reuses staging for repeated previews',async({page},testInfo)=>{
  let uploads=0,prepares=0,sockets=0;
  page.on('websocket',()=>sockets++);
  page.on('request',request=>{const url=new URL(request.url());if(request.method()==='POST'&&url.pathname==='/visual/video/source')uploads++;if(request.method()==='POST'&&url.pathname==='/visual/video/preview')prepares++;});
@@ -411,20 +414,25 @@ test('four-hour source stays local while Start seeks and uploads once for repeat
  await openVisual(page);
  const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(longSource);
  await expect(screen(page)).toContainText('Source / Start: 00:00:00.000 / 04:00:00.000');
- expect(uploads).toBe(0);expect(prepares).toBe(0);
+ expect(uploads).toBe(1);expect(prepares).toBe(0);
  await page.keyboard.press('Enter');await page.keyboard.press('Control+u');await page.keyboard.insertText('03:24:10.000');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('End: 03:24:40.000');
  await expect.poll(()=>page.locator('#background-preview-video').evaluate(v=>v.currentTime)).toBe(12250);
  await expect(page.locator('#background-preview-video')).toBeVisible();
  await page.screenshot({path:`/tmp/long-source-${testInfo.project.name}-paused.png`});
  await page.setViewportSize({width:650,height:600});
+ await expect(screen(page)).toContainText('Cancel upload');
+ await expect(page.locator('#background-preview-wrap')).toBeHidden();
+ // The restored loading-wave space leaves no source-preview rows here.
+ // A taller narrow viewport restores the scene without changing the cut.
+ await page.setViewportSize({width:650,height:750});
  await expect(screen(page)).toContainText('Source / Start: 03:24:10.000');
  await expect.poll(()=>page.locator('#background-preview-wrap').evaluate(element=>{const rect=element.getBoundingClientRect();return !element.hidden&&rect.left>=0&&rect.right<=innerWidth;})).toBe(true);
  await page.screenshot({path:`/tmp/long-source-${testInfo.project.name}-narrow.png`});
  await page.keyboard.press('PageDown');await expect(screen(page)).toContainText('Source / Start: 03:25:10.000');
  await page.keyboard.press('End');await expect(screen(page)).toContainText('Source / Start: 03:59:59.000');
  await expect.poll(()=>page.locator('#background-preview-video').evaluate(v=>v.currentTime)).toBe(14399);
- expect(uploads).toBe(0);expect(prepares).toBe(0);
+ expect(uploads).toBe(1);expect(prepares).toBe(0);
  await page.keyboard.press('Shift+ArrowLeft');
  await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
  expect(uploads).toBe(1);expect(prepares).toBe(1);
@@ -440,11 +448,48 @@ test('four-hour source stays local while Start seeks and uploads once for repeat
  await clickControl(page,'Cancel upload');await expect(screen(page)).toContainText('Background darkness:');
 });
 
+test('source rejection is visible before cutting and a valid upload can retry',async({page},testInfo)=>{
+ let finishValidation, validationRequested;
+ const validationGate=new Promise(resolve=>{finishValidation=resolve;});
+ const requested=new Promise(resolve=>{validationRequested=resolve;});
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await openVisual(page);
+ await page.route('**/visual/video/source',async route=>{
+  if(route.request().method()==='POST') {
+   validationRequested();await validationGate;
+   await route.fulfill({status:400,headers:{'X-Video-Rejection':'sourceColor'},body:'Private decoder text must not be displayed.'});
+  } else await route.continue();
+ });
+ try {
+  const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(source);
+  await requested;
+  await expect(screen(page)).toContainText('Checking video compatibility… Esc: cancel');
+  await expect(screen(page)).not.toContainText('Preview loop');
+  finishValidation();
+  await expect(screen(page)).toContainText('Unsupported video color. Use 8-bit SDR Rec.709.');
+  await expect(screen(page)).not.toContainText('Private decoder text');
+  await expect(screen(page)).not.toContainText('Done — use previewed loop');
+  await page.setViewportSize({width:650,height:600});
+  await expect(screen(page)).toContainText('Unsupported video color. Use 8-bit SDR Rec.709.');
+  await page.screenshot({path:`/tmp/video-rejection-${testInfo.project.name}.png`});
+ } finally {finishValidation();await page.unrouteAll({behavior:'wait'});}
+ await page.setViewportSize({width:1200,height:850});
+ await stageSource(page);
+ await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
+ await clickControl(page,'Preview loop');
+ await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ await clickControl(page,'Done — use previewed loop');
+ await expect(screen(page)).toContainText('Background darkness:');
+});
+
 for(const phase of ['source transfer','preview acknowledgement'])test(`cancellation during ${phase} retires the candidate without changing the background`,async({page})=>{
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
  const before=await(await page.request.get('/visual')).json();
- await openVisual(page);await stageSource(page);
- await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
+ await openVisual(page);
+ if(phase==='preview acknowledgement') {
+  await stageSource(page);
+  await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
+ }
  let release,entered;
  const gate=new Promise(done=>{release=done;}),arrival=new Promise(done=>{entered=done;});
  const path=phase==='source transfer'?'**/visual/video/source':'**/visual/video/preview';
@@ -454,14 +499,18 @@ for(const phase of ['source transfer','preview acknowledgement'])test(`cancellat
   await route.continue();
  });
  try {
-  await clickControl(page,'Preview loop');await arrival;
-  await page.keyboard.press('Escape');await page.keyboard.press('Escape');
-  await expect(screen(page)).toContainText('Background darkness:');
+  if(phase==='source transfer') {
+   const chooser=page.waitForEvent('filechooser');await clickControl(page,'Choose image or video');await(await chooser).setFiles(source);
+  } else await clickControl(page,'Preview loop');
+  await arrival;
+  await page.keyboard.press('Escape');
+  if(phase==='preview acknowledgement') {
+   await expect(screen(page)).toContainText('Background darkness:');
+  } else await expect(screen(page)).not.toContainText('Checking video compatibility');
   expect(await(await page.request.get('/visual')).json()).toEqual(before);
   await expect(page.locator('#background-preview-video')).toHaveCount(0);
  }finally{release();await page.unrouteAll({behavior:'wait'});}
 });
-
 
 test('nonzero timestamp sources preview and prepare the same selected scene',async({page})=>{
  await page.emulateMedia({reducedMotion:'reduce'});

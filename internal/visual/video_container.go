@@ -109,19 +109,19 @@ func inspectVideoContainer(input io.ReaderAt, size int64, prepared bool) error {
 				// nclx/nclc declare primaries, transfer and YCbCr matrix. ICC-based
 				// video profiles are outside this first SDR path, never silently stripped.
 				if limit-payload != 10 && limit-payload != 11 {
-					return ErrVideo
+					return ErrVideoColor
 				}
 				var color [11]byte
 				if _, err := input.ReadAt(color[:limit-payload], payload); err != nil {
-					return ErrVideo
+					return ErrVideoColor
 				}
 				kind := string(color[:4])
 				if (kind != "nclx" || limit-payload != 11) && (kind != "nclc" || limit-payload != 10) {
-					return ErrVideo
+					return ErrVideoColor
 				}
 				for offset := 4; offset < 10; offset += 2 {
 					if binary.BigEndian.Uint16(color[offset:offset+2]) != 1 {
-						return ErrVideo
+						return ErrVideoColor
 					}
 				}
 			case "dref":

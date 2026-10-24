@@ -82,54 +82,72 @@ test('unpreviewed quality edits preserve the acknowledged loop and never prepare
  assert.equal(request.speedPercent,50);
 });
 
-test('file selection opens a local paused source without upload or processing',async()=>{
- const {editor,visual,context}=fixture();const actions=[];
+test('file selection waits for native validation before opening the cut editor',async()=>{
+ const {editor,visual,context}=fixture();const actions=[];let finishValidation, validationStarted;
+ const started=new Promise(resolve=>{validationStarted=resolve;});
  context.URL.createObjectURL=()=> 'blob:local';
- context.fetch=()=>{throw new Error('selection uploaded source');};
- visual.state.maxVideoSourceBytes=8*1024**3;visual.state.maxVideoSourceDurationMS=7200000;
+ visual.state.maxVideoSourceBytes=8*1024**3;visual.state.maxVideoSourceDurationMS=14400000;
  visual.releasePreviewVideo=()=>{};visual.sendAction=action=>actions.push(action);
- const file={size:7*1024**3,arrayBuffer(){throw new Error('whole file buffered');}};
- const video={currentTime:0,duration:6900,videoWidth:1920,videoHeight:1080};
- editor.makeVideo=(url,preload)=>{video.preload=preload;return video;};editor.ready=async()=>{};editor.showSource=position=>assert.equal(position,0);
- await editor.selectSource(file,1);
- assert.equal(editor.localFile,file);assert.equal(editor.source,undefined);
- assert.equal(video.preload,'metadata');
- assert.equal(actions[0].action,'sourceSelected');assert.equal(actions[0].durationMS,6900000);
+ const file={size:102900000,arrayBuffer(){throw new Error('whole file buffered');}};
+ const video={currentTime:0,duration:1020,videoWidth:1920,videoHeight:1080};
+ editor.makeVideo=()=>video;editor.ready=async()=>{};editor.showSource=()=>{};editor.setStage=()=>{};
+ editor.uploadSource=()=>new Promise(resolve=>{finishValidation=resolve;validationStarted();});
+ const selection=editor.selectSource(file,1);
+ await started;
+ assert.equal(actions.at(-1)?.action,'sourceChecking');
+ assert.equal(actions.some(action=>action.action==='sourceSelected'),false);
+ finishValidation({sourceID:'verified',durationMS:1019999,width:1920,height:1080});
+ await selection;
+ assert.equal(editor.localFile,file);
+ assert.equal(editor.source.sourceID,'verified');
+ assert.equal(actions.at(-1).action,'sourceSelected');
+ assert.equal(actions.at(-1).durationMS,1019999);
 });
 
-test('Start updates seek the existing local source before native staging',()=>{
+test('rejected source never opens the cut editor and releases its local file',async()=>{
+ const {editor,visual,context,revoked}=fixture();const actions=[];
+ context.URL.createObjectURL=()=> 'blob:rejected';
+ visual.state.maxVideoSourceBytes=8*1024**3;visual.state.maxVideoSourceDurationMS=14400000;
+ visual.releasePreviewVideo=()=>{};visual.sendAction=action=>actions.push(action);
+ editor.makeVideo=()=>({currentTime:0,duration:1020,videoWidth:1920,videoHeight:1080});
+ editor.ready=async()=>{};editor.showSource=()=>{};editor.setStage=()=>{};
+ const rejection=Object.assign(new Error('fixed rejection'),{videoAction:'sourceCodec'});
+ editor.uploadSource=async()=>{throw rejection;};
+ await assert.rejects(editor.selectSource({size:102900000},1),error=>error===rejection);
+ assert.equal(actions.some(action=>action.action==='sourceSelected'),false);
+ assert.equal(editor.localFile,undefined);
+ assert.deepEqual(revoked,['blob:rejected']);
+});
+
+test('Start updates seek the existing local source without repeating native staging',()=>{
  const {editor}=fixture();editor.localFile={};const seeks=[];editor.showSource=ms=>seeks.push(ms);
  const before={trimming:true,sourceFrame:true,trim:{startMS:0,endMS:30000}};
  editor.sync({...before,trim:{startMS:5050000,endMS:5080000}},before);
  assert.deepEqual(seeks,[5050000]);assert.equal(editor.source,undefined);
 });
 
-test('explicit previews stage once and reuse the verified source',async()=>{
- const {editor,visual}=fixture();let uploads=0,prepares=0;const actions=[];
+test('explicit previews reuse the source validated at selection',async()=>{
+ const {editor,visual}=fixture();let prepares=0;const actions=[];
  visual.state.trim={startMS:1000,endMS:4000};visual.sendAction=action=>actions.push(action);
- editor.localFile={};editor.setStage=()=>{};editor.showAccepted=()=>{};
- editor.uploadSource=async()=>{uploads++;return {sourceID:'verified',durationMS:60000};};
+ editor.source={sourceID:'verified',durationMS:60000};editor.localFile={};editor.setStage=()=>{};editor.showAccepted=()=>{};
+ editor.uploadSource=()=>{throw new Error('source uploaded twice');};
  editor.accepted={previewID:'accepted',trim:visual.state.trim,durationMS:3000};editor.acceptedVideo={};
  editor.request=async()=>{prepares++;return {json:async()=>editor.accepted};};
  await editor.prepare(visual.state);await editor.prepare(visual.state);
- assert.equal(uploads,1);assert.equal(prepares,2);assert.equal(actions.filter(a=>a.action==='sourceVerified').length,1);
+ assert.equal(prepares,2);
+ assert.equal(actions.filter(action=>action.action==='loopReady').length,2);
 });
 
-test('verified shorter duration rejects the cut without moving the requested scene',async()=>{
- const {editor,visual}=fixture();const actions=[];
- const trim={startMS:59000,endMS:60000};visual.state.trim=trim;visual.sendAction=action=>actions.push(action);
- editor.localFile={};editor.setStage=()=>{};
- editor.uploadSource=async()=>({sourceID:'verified',durationMS:59000});
- editor.request=async()=>{throw new Error('invalid cut reached native preparation');};
- await editor.prepare(visual.state);
- assert.deepEqual(visual.state.trim,trim);assert.equal(actions.at(-1).action,'sourceBounds');assert.equal(editor.source.sourceID,'verified');
-});
-
-test('a retired upload cannot publish its source into a newer editor',async()=>{
- const {editor,visual}=fixture();let resolve;editor.setStage=()=>{};editor.localFile={};visual.state.trim={startMS:0,endMS:1000};
- editor.uploadSource=()=>new Promise(done=>{resolve=done;});
- const pending=editor.prepare(visual.state);editor.close();
- resolve({sourceID:'retired',durationMS:60000});await pending;
+test('a retired selection cannot publish its source into a newer editor',async()=>{
+ const {editor,visual,context}=fixture();let finishValidation, validationStarted;
+ const started=new Promise(resolve=>{validationStarted=resolve;});
+ context.URL.createObjectURL=()=> 'blob:retired';
+ visual.releasePreviewVideo=()=>{};visual.sendAction=action=>{assert.notEqual(action.action,'sourceSelected');};
+ editor.makeVideo=()=>({currentTime:0,duration:60,videoWidth:64,videoHeight:48});
+ editor.ready=async()=>{};editor.setStage=()=>{};
+ editor.uploadSource=()=>new Promise(resolve=>{finishValidation=resolve;validationStarted();});
+ const selection=editor.selectSource({size:1024},1);await started;editor.close();
+ finishValidation({sourceID:'retired',durationMS:60000});await selection;
  assert.equal(editor.source,undefined);
 });
 
@@ -140,6 +158,7 @@ test('source-relative cuts work with either browser timestamp origin',async()=>{
   visual.releasePreviewVideo=()=>{};visual.sendAction=action=>actions.push(action);
   visual.state.maxVideoSourceBytes=8*1024**3;visual.state.maxVideoSourceDurationMS=7200000;
   const video={currentTime:originSeconds,duration:12,videoWidth:64,videoHeight:48,addEventListener(){}};
+  editor.uploadSource=async()=>({sourceID:'verified',durationMS:12000,width:64,height:48});editor.setStage=()=>{};
   editor.makeVideo=()=>video;editor.ready=async()=>{};editor.attach=()=>{visual.previewVideo=video;};
   await editor.selectSource({size:1024},1);
   assert.equal(actions.at(-1).action,'sourceSelected');
@@ -152,4 +171,13 @@ test('source-relative cuts work with either browser timestamp origin',async()=>{
   assert.equal(visual.sourcePreviewStatus.hidden,true);
   assert.equal(editor.sourceStartSeconds,0);
  }
+});
+
+test('rejection actions use only fixed reasons rather than response text',()=>{
+ const {editor}=fixture();
+ assert.equal(editor.failureAction(400,'sourceCodec'),'sourceCodec');
+ assert.equal(editor.failureAction(400,'PRIVATE decoder path'),'sourceUnsupported');
+ assert.equal(editor.failureAction(500,'sourceCodec'),'failed');
+ assert.equal(editor.failureAction(413,null),'sourceSize');
+ assert.equal(editor.failureAction(503,null),'sourceTools');
 });

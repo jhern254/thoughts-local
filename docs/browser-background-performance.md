@@ -1041,12 +1041,14 @@ review artifacts, not required runtime assets or a new performance framework.
 
 The long-source editor accepts compatible local MP4/MOV sources from one second
 to four hours, up to **8 GiB**. Prepared backgrounds remain **1–30 seconds** at the
-existing Efficient, High quality and Maximum ceilings. Selection opens a paused
-browser-local File/object URL; Start is its sole source cursor. Moving Start
-proposes the next 30 seconds, with a one-second minimum remaining at the source
-boundary. End can shorten that proposal. The first explicit Preview loop streams
-the entire File once to native staging; later previews reuse that staged input.
-Apply copies the acknowledged derivative/poster, without another encode.
+existing Efficient, High quality and Maximum ceilings. Selection now streams the
+File once to native staging and validates compatibility before opening the cut
+editor. Known unsupported formats receive fixed feedback at that point. Start
+seeks the paused browser-local video and proposes the next 30 seconds, with a
+one-second minimum remaining at the source boundary. End can shorten that
+proposal. Explicit previews reuse the validated source; Apply copies the
+acknowledged derivative/poster without another encode. This moves the existing
+transfer/inspection earlier; it adds no complete-movie decode or extra upload.
 
 A transfer has a 20-minute total limit and 30-second idle-read limit. Source
 container/probe validation starts its own two-minute deadline after transfer;
@@ -1068,6 +1070,9 @@ For an offset source, Chromium can clip local seeking near the end; those cuts
 show a source-preview notice and remain available through native Preview loop.
 
 ### T480s observations
+
+These measurements predate moving transfer/validation to file selection; the
+recorded phase timings describe the earlier Preview-triggered transfer.
 
 Measured on 2026-10-21–22 with the reference i5-8250U/UHD 620 ThinkPad T480s, Linux,
 Go 1.25.14 and Brave/Chromium 148.0.7778.217. The headful browser reported a

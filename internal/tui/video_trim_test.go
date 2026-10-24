@@ -11,6 +11,27 @@ import (
 )
 
 func TestModel_VideoTrim(t *testing.T) {
+	t.Run("source validation keeps the editor closed and reports rejection before cutting", func(t *testing.T) {
+		for _, action := range []string{"sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceUnsupported", "sourceSpace", "sourceTimeout", "sourceTools", "sourceBusy"} {
+			t.Run(action, func(t *testing.T) {
+				m := newRootTestModel()
+				m.browserOptionsEnabled = true
+				m.width, m.height = 80, 36
+				m.options = optionsState{open: true, request: "choose", id: 5}
+				m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "sourceChecking", ID: 5})
+				if m.options.trimming || m.options.request != "choose" || m.options.status != "Checking video compatibility… Esc: cancel" {
+					t.Fatal("checking source did not preserve a visible cancellable selection")
+				}
+				m, _ = rootUpdate(m, BrowserOptionsMsg{Action: action, ID: 5})
+				if m.options.trimming || m.options.request != "" || m.options.status == "" || m.options.status == "Checking video compatibility… Esc: cancel" {
+					t.Fatal("rejected source did not leave selection with an error")
+				}
+				if !strings.Contains(ansi.Strip(m.View().Content), m.options.status) {
+					t.Fatalf("rejection was not visible: %q", m.options.status)
+				}
+			})
+		}
+	})
 	t.Run("preparation space and action rows remain fixed", func(t *testing.T) {
 		for _, size := range [][2]int{{80, 36}, {60, 24}} {
 			m := newRootTestModel()
@@ -166,26 +187,6 @@ func TestModel_VideoTrim(t *testing.T) {
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEscape})
 		if !m.options.trimming || m.options.request != "" || m.options.trimTimecodeEditing {
 			t.Fatal("Escape cancelled the editor instead of timecode entry")
-		}
-	})
-	t.Run("verified shorter bounds preserve the draft scene and remain safe to render", func(t *testing.T) {
-		m := newRootTestModel()
-		m.browserOptionsEnabled = true
-		m.width, m.height = 60, 24
-		trim := visual.VideoTrim{StartMS: 7199000, EndMS: 7200000}
-		m.options = optionsState{open: true, trimming: true, request: "prepareLoop", id: 5, sourceDurationMS: 7200000, trim: trim}
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "sourceVerified", ID: 5, DurationMS: 60000})
-		if m.options.request != "prepareLoop" || m.options.trim != trim {
-			t.Fatal("native verification moved the chosen scene")
-		}
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "sourceBounds", ID: 5})
-		if m.options.request != "" || m.options.trim != trim {
-			t.Fatal("invalid bounds did not finish with the draft intact")
-		}
-		_ = m.View()
-		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyHome})
-		if !m.options.trim.Valid(60000) {
-			t.Fatalf("corrected trim = %+v", m.options.trim)
 		}
 	})
 	t.Run("unpreviewed cut edits preserve the accepted loop used by Done and Apply", func(t *testing.T) {

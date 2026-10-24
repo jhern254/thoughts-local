@@ -357,7 +357,7 @@ class ThoughtsVisual {
       if (previewGeneration !== this.previewGeneration || this.state.id !== operationID) return;
       this.discardPreview();
       if (this.activeURL) this.preview.src = this.activeURL;
-      this.reply('failed', operationID);
+      this.reply(error.videoAction || 'failed', operationID);
     } finally { this.terminal.focus(); }
   }
   async activate(settings, connectionGeneration = this.connectionGeneration) {
