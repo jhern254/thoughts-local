@@ -10,11 +10,18 @@ import (
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
+// Behavior fixtures use a full editor; resize/scrolling cases set their own dimensions.
+func newVideoTrimTestModel() Model {
+	model := newRootTestModel()
+	model.width, model.height = 100, 50
+	return model
+}
+
 func TestModel_VideoTrim(t *testing.T) {
 	t.Run("selection help advertises MKV without claiming H264 is required", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
-		m.width, m.height = 80, 36
+		m.width, m.height = 80, 50
 		m.options = optionsState{open: true, request: "load", id: 5}
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: 5})
 		if !strings.Contains(ansi.Strip(m.View().Content), "MKV") {
@@ -23,9 +30,9 @@ func TestModel_VideoTrim(t *testing.T) {
 	})
 
 	t.Run("matching prepared loop disables Preview and skips it during navigation", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
-		m.width, m.height = 80, 36
+		m.width, m.height = 80, 50
 		trim := visual.VideoTrim{EndMS: 30000}
 		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusPreview, sourceDurationMS: 60000, trim: trim, videoQuality: visual.VideoQualityEfficient}
 		m, _ = rootUpdate(m, enterKey())
@@ -66,7 +73,7 @@ func TestModel_VideoTrim(t *testing.T) {
 			{"restored cut", func(options *optionsState) { options.trim.EndMS = 29000; options.trim = options.acceptedTrim }, false},
 		} {
 			t.Run(scenario.name, func(t *testing.T) {
-				m := newRootTestModel()
+				m := newVideoTrimTestModel()
 				m.browserOptionsEnabled = true
 				trim := visual.VideoTrim{EndMS: 30000}
 				m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusPreview, sourceDurationMS: 60000, trim: trim, acceptedTrim: trim, videoQuality: visual.VideoQualityEfficient, acceptedQuality: visual.VideoQualityEfficient, loopReady: true}
@@ -80,7 +87,7 @@ func TestModel_VideoTrim(t *testing.T) {
 	})
 
 	t.Run("End adjustments preview the last included frame without preparing a loop", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
 		accepted := visual.VideoTrim{EndMS: 30000}
 		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusEnd, id: 5, sourceDurationMS: 60000, trim: accepted, acceptedTrim: accepted, loopReady: true}
@@ -101,7 +108,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 	t.Run("held arrows accelerate while fresh taps direction and focus changes stay precise", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
 		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusSource, sourceDurationMS: 7200000, trim: visual.VideoTrim{EndMS: 30000}}
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyRight})
@@ -152,12 +159,12 @@ func TestModel_VideoTrim(t *testing.T) {
 	t.Run("source validation keeps the editor closed and reports rejection before cutting", func(t *testing.T) {
 		for _, action := range []string{"sourceProtected", "sourceTracks", "sourceContainer", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceUnsupported", "sourceSpace", "sourceTimeout", "sourceTools", "sourceBusy"} {
 			t.Run(action, func(t *testing.T) {
-				m := newRootTestModel()
+				m := newVideoTrimTestModel()
 				m.browserOptionsEnabled = true
-				m.width, m.height = 80, 36
+				m.width, m.height = 80, 50
 				m.options = optionsState{open: true, request: "choose", id: 5}
 				m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "sourceChecking", ID: 5})
-				if got := m.OptionsState().Preparation; got.Height != videoPreparationRows || got.Width == 0 {
+				if got := m.OptionsState().Preparation; got.Height <= 0 || got.Height > videoPreparationRows || got.Width == 0 {
 					t.Fatalf("validation activity area: got %+v, want reserved rendering-wave space", got)
 				}
 				if m.options.trimming || m.options.request != "choose" || m.options.status != "Checking video compatibility… Esc: cancel" {
@@ -174,8 +181,8 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 	t.Run("preparation space and action rows remain fixed", func(t *testing.T) {
-		for _, size := range [][2]int{{80, 36}, {60, 24}} {
-			m := newRootTestModel()
+		for _, size := range [][2]int{{80, 50}, {60, 50}} {
+			m := newVideoTrimTestModel()
 			m.width, m.height = size[0], size[1]
 			m.options = optionsState{open: true, trimming: true, sourceDurationMS: 60000, trim: visual.VideoTrim{EndMS: 30000}}
 			before := strings.Split(ansi.Strip(m.View().Content), "\n")
@@ -207,8 +214,8 @@ func TestModel_VideoTrim(t *testing.T) {
 					if got := findRow(rows, "Stop rendering"); got != previewRow {
 						t.Fatalf("Stop row=%d, want Preview row %d", got, previewRow)
 					}
-					if strings.Contains(strings.Join(rows, "\n"), "Done —") {
-						t.Fatal("Done remained available during rendering")
+					if got := findRow(rows, "Done — use previewed loop"); got != previewRow+1 || m.videoTrimControlEnabled(trimFocusDone) {
+						t.Fatal("Done must retain its row and remain disabled during rendering")
 					}
 				} else if got := findRow(rows, "Preview loop"); got != previewRow {
 					t.Fatal("Preview action moved after rendering")
@@ -231,9 +238,9 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 	t.Run("Done cannot receive focus or clicks until a preview is ready", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
-		m.width, m.height = 80, 36
+		m.width, m.height = 80, 50
 		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusPreview, sourceDurationMS: 60000, trim: visual.VideoTrim{EndMS: 30000}}
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		if m.options.trimFocus != trimFocusCancel {
@@ -264,7 +271,7 @@ func TestModel_VideoTrim(t *testing.T) {
 	t.Run("failed preparation restores the accepted loop label and preserves drafts", func(t *testing.T) {
 		for _, action := range []string{"failed", "sourceSpace", "sourceTimeout", "sourceUnsupported"} {
 			t.Run(action, func(t *testing.T) {
-				m := newRootTestModel()
+				m := newVideoTrimTestModel()
 				m.browserOptionsEnabled = true
 				accepted := visual.VideoTrim{EndMS: 10000}
 				draft := visual.VideoTrim{StartMS: 60000, EndMS: 90000}
@@ -290,9 +297,9 @@ func TestModel_VideoTrim(t *testing.T) {
 			{"final scene", tea.KeyPressMsg{Code: tea.KeyEnd}, 7199000},
 		} {
 			t.Run(test.name, func(t *testing.T) {
-				m := newRootTestModel()
+				m := newVideoTrimTestModel()
 				m.browserOptionsEnabled = true
-				m.width, m.height = 80, 36
+				m.width, m.height = 80, 50
 				accepted := visual.VideoTrim{EndMS: 30000}
 				m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusSource, sourceDurationMS: 7200000, trim: visual.VideoTrim{StartMS: 5050000, EndMS: 5055000}, loopReady: true, acceptedTrim: accepted}
 				m, _ = rootUpdate(m, test.key)
@@ -307,7 +314,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 	t.Run("end can shorten a cut without moving Start", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
 		m.options = optionsState{open: true, trimming: true, trimFocus: trimFocusEnd, sourceDurationMS: 7200000, trim: visual.VideoTrim{StartMS: 5050000, EndMS: 5080000}}
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyLeft})
@@ -320,7 +327,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 	t.Run("inline timecode entry confirms or cancels without closing the editor", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
 		m.options = optionsState{open: true, trimming: true, sourceDurationMS: 14400000, trim: visual.VideoTrim{EndMS: 30000}}
 		m, _ = rootUpdate(m, enterKey())
@@ -341,7 +348,7 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 	t.Run("unpreviewed cut edits preserve the accepted loop used by Done and Apply", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 36})
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
@@ -384,8 +391,8 @@ func TestModel_VideoTrim(t *testing.T) {
 		}
 	})
 	t.Run("preview cells and separate controls fit normal and narrow terminals", func(t *testing.T) {
-		for _, size := range [][2]int{{80, 36}, {60, 24}} {
-			m := newRootTestModel()
+		for _, size := range [][2]int{{80, 50}, {60, 50}} {
+			m := newVideoTrimTestModel()
 			m.width, m.height = size[0], size[1]
 			m.options = optionsState{
 				open:             true,
@@ -403,7 +410,7 @@ func TestModel_VideoTrim(t *testing.T) {
 				t.Fatalf("%v: %d rows exceeds body", size, len(rows))
 			}
 			_, rect := m.optionsLayout()
-			if size[1] == 36 && (!strings.Contains(rows[4], "╭") || !strings.Contains(rows[5], "│"+strings.Repeat(" ", rect.Width)+"│")) {
+			if size[1] == 50 && (!strings.Contains(rows[4], "╭") || !strings.Contains(rows[5], "│"+strings.Repeat(" ", rect.Width)+"│")) {
 				t.Fatalf("%v: preview is not below heading", size)
 			}
 			for _, label := range []string{"Preview loop", "Done — use previewed loop", "Cancel upload"} {
@@ -424,9 +431,9 @@ func TestModel_VideoTrim(t *testing.T) {
 	})
 
 	t.Run("preparation keeps Stop and Cancel keyboard accessible while cut controls stay locked", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
-		m.width, m.height = 80, 36
+		m.width, m.height = 80, 50
 		trim := visual.VideoTrim{EndMS: 30000}
 		m.options = optionsState{
 			open:             true,
@@ -461,9 +468,9 @@ func TestModel_VideoTrim(t *testing.T) {
 	})
 
 	t.Run("Cancel remains clickable during preparation and retires its result", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
-		m.width, m.height = 80, 36
+		m.width, m.height = 80, 50
 		m.options = optionsState{
 			open:             true,
 			id:               5,
@@ -472,7 +479,7 @@ func TestModel_VideoTrim(t *testing.T) {
 			trimming:         true,
 			sourceDurationMS: 60000,
 		}
-		m, _ = rootUpdate(m, tea.MouseClickMsg{X: 8, Y: 25, Button: tea.MouseLeft})
+		m, _ = rootUpdate(m, tea.MouseClickMsg{X: 8, Y: 35, Button: tea.MouseLeft})
 		if m.OptionsState().Request != "discardVideo" {
 			t.Fatalf("cancel request = %q", m.OptionsState().Request)
 		}
@@ -484,7 +491,7 @@ func TestModel_VideoTrim(t *testing.T) {
 
 	t.Run("failed replacement choice and committed warning retire new-upload controls", func(t *testing.T) {
 		for _, action := range []string{"failed", "warning"} {
-			m := newRootTestModel()
+			m := newVideoTrimTestModel()
 			m.browserOptionsEnabled = true
 			m.options = optionsState{
 				open:      true,
@@ -508,7 +515,7 @@ func TestModel_VideoTrim(t *testing.T) {
 	})
 
 	t.Run("invalid draft does not encode and stale prepared reply cannot publish", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.options = optionsState{
 			open:             true,
 			video:            true,
@@ -530,7 +537,7 @@ func TestModel_VideoTrim(t *testing.T) {
 }
 
 func TestModel_VideoTrimCancellation(t *testing.T) {
-	cancelClick := tea.MouseClickMsg{X: 8, Y: 25, Button: tea.MouseLeft}
+	cancelClick := tea.MouseClickMsg{X: 8, Y: 35, Button: tea.MouseLeft}
 	for _, request := range []string{"", "prepareLoop"} {
 		for _, action := range []struct {
 			name     string
@@ -549,9 +556,9 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 				name = request
 			}
 			t.Run(name+" cancels once with "+action.name, func(t *testing.T) {
-				m := newRootTestModel()
+				m := newVideoTrimTestModel()
 				m.browserOptionsEnabled = true
-				m.width, m.height = 80, 36
+				m.width, m.height = 80, 50
 				m.options = optionsState{
 					open:             true,
 					id:               5,
@@ -625,9 +632,9 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 				{"Video quality", trimFocusQuality},
 			} {
 				t.Run(request+" locks "+control.name, func(t *testing.T) {
-					m := newRootTestModel()
+					m := newVideoTrimTestModel()
 					m.browserOptionsEnabled = true
-					m.width, m.height = 80, 36
+					m.width, m.height = 80, 50
 					trim := visual.VideoTrim{StartMS: 1000, EndMS: 30000}
 					m.options = optionsState{
 						open:             true,
@@ -666,7 +673,7 @@ func TestModel_VideoTrimCancellation(t *testing.T) {
 
 func TestModel_StopVideoRendering(t *testing.T) {
 	t.Run("explicit Cancel remains available while rendering joins", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
 		m.options = optionsState{open: true, id: 6, request: "stopPreview", trimming: true, trimFocus: trimFocusPreview}
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
@@ -676,9 +683,9 @@ func TestModel_StopVideoRendering(t *testing.T) {
 		}
 	})
 	t.Run("Escape stops rendering and retains source cut and accepted loop", func(t *testing.T) {
-		m := newRootTestModel()
+		m := newVideoTrimTestModel()
 		m.browserOptionsEnabled = true
-		m.width, m.height = 80, 36
+		m.width, m.height = 80, 50
 		trim := visual.VideoTrim{StartMS: 1000, EndMS: 5000}
 		m.options = optionsState{open: true, id: 5, request: "prepareLoop", trimming: true, newVideo: true, loopReady: true, trim: trim, acceptedTrim: trim, sourceDurationMS: 60000, trimFocus: trimFocusPreview}
 		view := strings.Split(ansi.Strip(m.View().Content), "\n")
@@ -728,7 +735,7 @@ func TestModel_AcceptedVideoRangeLabel(t *testing.T) {
 		{"slower playback", 10000, 26000, 50, "Range: 00:00:10 - 00:00:26 · plays 32.00s"},
 	} {
 		t.Run(scenario.description, func(t *testing.T) {
-			model := newRootTestModel()
+			model := newVideoTrimTestModel()
 			model.options.acceptedTrim = visual.VideoTrim{StartMS: scenario.startMS, EndMS: scenario.endMS}
 			model.options.loopDurationMS = scenario.endMS - scenario.startMS
 			model.options.speedPercent = scenario.speedPercent

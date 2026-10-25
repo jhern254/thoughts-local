@@ -13,7 +13,10 @@ import (
 )
 
 const videoPreparationRows = 7
-const compactVideoTrimHeight = 29
+const videoTrimPreviewRows = 12
+const videoTrimFooterRows = 7
+const videoTrimMinimumWidth = 48
+const videoTrimMinimumHeight = 30
 
 const (
 	videoTrimAccelerationStartRepeat = 20
@@ -72,6 +75,28 @@ func (m *Model) activateVideoTrim() {
 }
 
 func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
+	if !m.videoTrimFits() {
+		switch msg := message.(type) {
+		case tea.KeyPressMsg:
+			switch msg.String() {
+			case "esc", "q":
+				m.options.trimFocus = trimFocusCancel
+				if m.options.request == "prepareLoop" {
+					m.options.trimFocus = trimFocusPreview
+				}
+				m.activateVideoTrim()
+			case "enter":
+				m.options.trimFocus = trimFocusCancel
+				m.activateVideoTrim()
+			}
+		case tea.MouseClickMsg:
+			if msg.Button == tea.MouseLeft && msg.Y == 5 {
+				m.options.trimFocus = trimFocusCancel
+				m.activateVideoTrim()
+			}
+		}
+		return m, nil
+	}
 	if m.options.trimTimecodeEditing && m.options.request == "" {
 		if key, ok := message.(tea.KeyPressMsg); ok {
 			switch key.String() {
@@ -190,6 +215,16 @@ func (m Model) updateVideoTrimInput(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		}
+	case tea.MouseWheelMsg:
+		_, preview := m.optionsLayout()
+		if msg.Y >= m.videoTrimControlsTop(preview) {
+			switch msg.Button {
+			case tea.MouseWheelUp:
+				return m.updateVideoTrimInput(tea.KeyPressMsg{Code: tea.KeyUp})
+			case tea.MouseWheelDown:
+				return m.updateVideoTrimInput(tea.KeyPressMsg{Code: tea.KeyDown})
+			}
+		}
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
 			m.clickVideoTrim(msg.X, msg.Y, true)
@@ -229,22 +264,51 @@ func (m *Model) moveVideoTrimFocus(direction int) {
 	}
 }
 
+func (m Model) videoTrimFits() bool {
+	return m.width >= videoTrimMinimumWidth && m.height >= videoTrimMinimumHeight
+}
+
 func (m Model) videoTrimControlsTop(preview PreviewRect) int {
-	if preview.Height > 0 {
-		return preview.Y + preview.Height + 2
+	return preview.Y + preview.Height + 2
+}
+
+// Focus determines the visible control rows, so resize and async replies cannot
+// leave a selected action offscreen or create a second scroll owner.
+func (m Model) videoTrimControlWindow() (offset, height int) {
+	_, preview := m.optionsLayout()
+	height = max(1, m.height-m.videoTrimControlsTop(preview)-videoTrimFooterRows)
+	row := 0
+	switch m.options.trimFocus {
+	case trimFocusEnd:
+		row = 2
+	case trimFocusQuality:
+		row = 4
+	case trimFocusSpeed:
+		row = 5
+	case trimFocusPreview:
+		// Keep Done's reserved row visible too, so completion does not move actions.
+		row = 7 + videoPreparationRows
+	case trimFocusDone:
+		row = 7 + videoPreparationRows
+	case trimFocusCancel:
+		// Retain the blank separator between Cancel and the pinned footer.
+		row = 10 + videoPreparationRows
 	}
-	if m.height < compactVideoTrimHeight {
-		return 1
-	}
-	return 4
+	return max(0, row-height+1), height
 }
 
 func (m Model) videoPreparationRect() PreviewRect {
-	if !m.options.trimming && !m.options.sourceChecking {
+	if (!m.options.trimming && !m.options.sourceChecking) || !m.videoTrimFits() {
 		return PreviewRect{}
 	}
 	_, preview := m.optionsLayout()
-	return PreviewRect{X: preview.X, Y: m.videoTrimControlsTop(preview) + 6, Width: preview.Width, Height: videoPreparationRows}
+	offset, height := m.videoTrimControlWindow()
+	first, last := max(6, offset), min(6+videoPreparationRows, offset+height)
+	// A label and visible curve need at least two rows.
+	if last-first < 2 {
+		return PreviewRect{}
+	}
+	return PreviewRect{X: preview.X, Y: m.videoTrimControlsTop(preview) + first - offset, Width: preview.Width, Height: max(0, last-first)}
 }
 
 func (m *Model) clickVideoTrim(x, y int, activate bool) {
@@ -253,7 +317,11 @@ func (m *Model) clickVideoTrim(x, y int, activate bool) {
 	if x < left || x >= left+width {
 		return
 	}
-	row := y - m.videoTrimControlsTop(rect)
+	offset, height := m.videoTrimControlWindow()
+	if y < m.videoTrimControlsTop(rect) || y >= m.videoTrimControlsTop(rect)+height {
+		return
+	}
+	row := y - m.videoTrimControlsTop(rect) + offset
 	if row == 1 && m.options.request == "" {
 		m.options.trimFocus = trimFocusSource
 		m.setTrimStart(int64(max(0, min(width-1, x-left))) * m.options.sourceDurationMS / int64(max(1, width-1)))
@@ -291,6 +359,9 @@ func (m *Model) clickVideoTrim(x, y int, activate bool) {
 }
 
 func (m Model) viewVideoTrim() tea.View {
+	if !m.videoTrimFits() {
+		return m.viewVideoTrimResize()
+	}
 	width, rect := m.optionsLayout()
 	selected := m.subjects.list.Styles.Title
 	plain := lipgloss.NewStyle().Padding(0, 1)
@@ -312,9 +383,6 @@ func (m Model) viewVideoTrim() tea.View {
 		heading = "Visual · Video upload"
 	}
 	lines := []string{selected.Render("Options"), "", heading, ""}
-	if m.height < compactVideoTrimHeight {
-		lines = []string{selected.Render("Options") + " · " + heading}
-	}
 	if rect.Height > 0 {
 		lines = append(lines, muted.Render("╭"+strings.Repeat("─", rect.Width)+"╮"))
 		for range rect.Height {
@@ -323,9 +391,9 @@ func (m Model) viewVideoTrim() tea.View {
 		lines = append(lines, muted.Render("╰"+strings.Repeat("─", rect.Width)+"╯"), "")
 	}
 	if m.options.sourceChecking {
-		// Match the verified cut controls' rows without inventing source bounds.
-		lines = append(lines, muted.Render("Source: uploading and checking compatibility"), "",
-			muted.Render("Cut controls become available after validation."), "",
+		// Keep the verified controls' rows without inventing source bounds.
+		lines = append(lines, label(trimFocusSource, "Source / Start: — / —"), "",
+			label(trimFocusEnd, "End: — (available after validation)"), muted.Render("Selected: —"),
 			muted.Render("Video quality: "+m.options.videoQuality.Description()),
 			muted.Render(fmt.Sprintf("Playback speed: %d%%", m.options.speedPercent)))
 	} else {
@@ -343,20 +411,16 @@ func (m Model) viewVideoTrim() tea.View {
 	}
 	previewAction, doneAction := label(trimFocusPreview, "Preview loop"), label(trimFocusDone, "Done — use previewed loop")
 	if m.options.request == "prepareLoop" || m.options.request == "stopPreview" {
-		// Keep Done's row empty so Cancel never moves underneath a click.
-		previewAction, doneAction = label(trimFocusPreview, "Stop rendering"), ""
-	}
-	if m.options.sourceChecking {
-		previewAction, doneAction = "", ""
+		// Disabled Done stays on its own row so Cancel never moves underneath a click.
+		previewAction = label(trimFocusPreview, "Stop rendering")
 	}
 	lines = append(lines, previewAction, doneAction, "", label(trimFocusCancel, "Cancel upload"), "")
+	controlsEnd := len(lines)
 	if m.options.loopReady && !m.options.sourceChecking {
 		lines = append(lines, m.acceptedVideoLabel(), m.acceptedVideoRangeLabel())
-		if m.height >= compactVideoTrimHeight {
-			lines = append(lines, m.draftVideoQualityLabel())
-		}
+		lines = append(lines, m.draftVideoQualityLabel())
 	} else {
-		lines = append(lines, "No prepared loop yet.")
+		lines = append(lines, "No prepared loop yet.", "", "")
 	}
 	if m.options.trimTimecodeEditing {
 		for i, line := range lines {
@@ -368,7 +432,7 @@ func (m Model) viewVideoTrim() tea.View {
 	}
 	lines = append(lines, "", muted.Render(m.options.status))
 	if m.options.sourceChecking {
-		lines = append(lines, muted.Render("Enter/Esc: cancel upload"))
+		lines = append(lines, muted.Render("Enter/Esc: cancel upload"), "")
 	} else if m.options.request == "prepareLoop" || m.options.request == "stopPreview" {
 		lines = append(lines, muted.Render("Tab/↑/↓: focus · Enter: activate"), muted.Render("Esc: stop rendering"))
 	} else if m.options.trimTimecodeEditing {
@@ -376,13 +440,43 @@ func (m Model) viewVideoTrim() tea.View {
 	} else {
 		lines = append(lines, muted.Render("←/→: 0.1s · Hold: faster · Shift: ×10 · ↑/↓: focus"), muted.Render("PgUp/Dn: 60s · Home/End · Enter: timecode"))
 	}
-	if m.height < compactVideoTrimHeight {
-		lines = lines[:len(lines)-1] // Keep the primary key help; omit its second detail row.
+	controlsTop := m.videoTrimControlsTop(rect)
+	offset, height := m.videoTrimControlWindow()
+	controls := lines[controlsTop:controlsEnd]
+	if height < len(controls) && !m.options.sourceChecking {
+		lines[2] += " · ↕ controls"
 	}
+	visible := append([]string(nil), lines[:controlsTop]...)
+	for row := offset; row < offset+height; row++ {
+		if row < len(controls) {
+			visible = append(visible, controls[row])
+		} else {
+			visible = append(visible, "")
+		}
+	}
+	lines = append(visible, lines[controlsEnd:]...)
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")
 	}
 	view := tea.NewView(strings.Join(lines, "\n"))
+	view.AltScreen = true
+	view.MouseMode = tea.MouseModeCellMotion
+	return view
+}
+
+func (m Model) viewVideoTrimResize() tea.View {
+	selected := m.subjects.list.Styles.Title
+	help := "Esc: cancel upload"
+	if m.options.request == "prepareLoop" || m.options.request == "stopPreview" {
+		help = "Esc: stop rendering"
+	}
+	lines := []string{selected.Render("Resize window"),
+		fmt.Sprintf("Video editor needs %d columns × %d rows.", videoTrimMinimumWidth, videoTrimMinimumHeight),
+		"Source and cut are preserved.", m.options.status, help, selected.Render("Cancel upload"), "Enter: cancel upload"}
+	for i := range lines {
+		lines[i] = ansi.Truncate(lines[i], max(1, m.width), "…")
+	}
+	view := tea.NewView(strings.Join(lines[:min(len(lines), max(1, m.height))], "\n"))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	return view

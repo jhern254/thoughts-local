@@ -136,7 +136,7 @@ class ThoughtsVisual {
   updatePreparationStatus() {
     // The current request owns the indicator through encoding, validation and
     // preview acknowledgement. Retired async completions cannot hide a new one.
-    const active = !!(this.connected && this.state.open && (
+    const active = !!(this.connected && this.state.open && this.state.preparation?.Height !== 0 && (
       (this.state.trimming && this.state.request === 'prepareLoop') ||
       (this.state.sourceChecking && this.state.request === 'choose')
     ));
@@ -153,7 +153,8 @@ class ThoughtsVisual {
     const width = reserved.Width * cellWidth;
     Object.assign(this.preparationStatus.style, {
       left: `${screen.left + reserved.X * cellWidth}px`, width: `${width}px`,
-      top: `${screen.top + reserved.Y * cellHeight}px`
+      top: `${screen.top + reserved.Y * cellHeight}px`,
+      height: `min(calc(var(--video-preparation-height) - 8px), ${reserved.Height * cellHeight}px)`
     });
     const wave = document.getElementById('video-preparation-wave');
     const layer = this.preparationWave.trace;

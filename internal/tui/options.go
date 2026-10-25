@@ -544,11 +544,15 @@ func (m *Model) activateOption() {
 	}
 }
 
-// The preview shrinks before the controls. Very short terminals omit it entirely.
+// Movie previews keep their height; controls scroll below them. Other Visual
+// forms retain their existing responsive preview layout.
 func (m Model) optionsLayout() (int, PreviewRect) {
 	if m.options.trimming || m.options.sourceChecking {
 		width := max(10, min(80, m.width-4))
-		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-34))}
+		if !m.videoTrimFits() {
+			return width, PreviewRect{}
+		}
+		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: videoTrimPreviewRows}
 	}
 	if m.options.editing {
 		width := max(10, min(80, m.width-4))

@@ -272,11 +272,14 @@ test('braille activity wave completes two cycles with both endpoints on the cent
 
 test('upload validation activity requires the current owned selection and stops on cancel or disconnect',()=>{
  const {visual}=activationFixture(),playback=[];
+ visual.positionPreparation=()=>{};
  Object.assign(visual,{connected:true,state:{open:true,request:'choose'},preparationStatus:{hidden:true},
   preparationWave:{setPlayback(...state){playback.push(state);}},documentVisible:true,motionQuery:{matches:false}});
  visual.updatePreparationStatus();assert.equal(visual.preparationStatus.hidden,true);
  visual.state.sourceChecking=true;visual.updatePreparationStatus();
  assert.equal(visual.preparationStatus.hidden,false);assert.deepEqual(playback.at(-1),[true,true,false]);
+ visual.state.preparation={Height:0};visual.updatePreparationStatus();assert.equal(visual.preparationStatus.hidden,true);
+ visual.state.preparation={Height:2};visual.updatePreparationStatus();assert.equal(visual.preparationStatus.hidden,false);
  visual.motionQuery.matches=true;visual.updatePreparationStatus();assert.deepEqual(playback.at(-1),[true,true,true]);
  visual.state.request='discardVideo';visual.updatePreparationStatus();assert.equal(visual.preparationStatus.hidden,true);
  visual.state.request='choose';visual.connected=false;visual.updatePreparationStatus();assert.equal(visual.preparationStatus.hidden,true);
