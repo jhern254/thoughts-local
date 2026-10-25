@@ -1,4 +1,5 @@
 .PHONY: help fmt fmt-check vet test test-fresh test-integration test-race test-cover build quick check ci clean hooks run dev dev/seed tui tui/demo tui/demo/seeded tui/build migrate/build migrate/new migrate/up migrate/down migrate/version
+.PHONY: tui/browser/demo/spider-man
 .PHONY: tui/demo/stress
 .PHONY: tui/browser tui/browser/demo tui/browser/demo/seeded tui/browser/demo/stress
 .PHONY: speech/setup speech/ensure tui/package
@@ -31,6 +32,7 @@ help:
 	@echo "  make tui/package Build a browser app bundle with its speech engine"
 	@echo "  make tui/browser/demo Serve a disposable seeded browser demo"
 	@echo "  make tui/browser/demo/seeded Serve sample events and thoughts in the browser"
+	@echo "  make tui/browser/demo/spider-man Start a persistent Peter Parker diary with browser voice"
 	@echo "  make tui/browser/demo/stress Serve 721 events and 20,000 thoughts in the browser"
 	@echo "  make migrate/new  Create a migration (name=<description>)"
 	@echo "  make migrate/up   Apply all pending migrations"
@@ -85,6 +87,7 @@ clean:
 	rm -f coverage.out "$(TUI_BIN)" "$(MIGRATE_BIN)"
 
 DB_PATH ?= ./data/thoughts.db
+SPIDER_DEMO_DB ?= $(HOME)/Documents/Thoughts/demos/spider-man/thoughts.db
 MIGRATE_DSN ?= sqlite://$(DB_PATH)
 APP_DSN ?= file:$(DB_PATH)
 TUI_BIN ?= ./bin/thoughts-tui
@@ -166,3 +169,14 @@ tui/demo: tui/build $(MIGRATE_BIN)
 	"$(MIGRATE_BIN)" -path=./migrations -database="sqlite://$$demo_db" up; \
 	if [ -n "$(DEMO_SEED)" ]; then sqlite3 -bail "$$demo_db" < "$(DEMO_SEED)"; fi; \
 	"$(TUI_BIN)" --db-dsn "file:$$demo_db" $(TUI_ARGS)
+
+# Unlike disposable demos, seed once and retain the diary outside the checkout.
+tui/browser/demo/spider-man: $(MIGRATE_BIN) speech/ensure
+	@set -eu; umask 077; \
+	mkdir -p "$$(dirname -- "$(SPIDER_DEMO_DB)")" "$(dir $(TUI_BIN))"; \
+	"$(MIGRATE_BIN)" -path=./migrations -database="sqlite://file:$(SPIDER_DEMO_DB)" up; \
+	sqlite3 -bail "$(SPIDER_DEMO_DB)" < ./scripts/demo_spider_man.sql; \
+	echo "Starting persistent Spider-Man diary: $(SPIDER_DEMO_DB)"; \
+	echo "Existing diary entries are retained; seed content is added only to an empty database."; \
+	bash ./scripts/moonshine-dev.sh exec go build -o "$(TUI_BIN)" ./cmd/thoughts-tui; \
+	bash ./scripts/moonshine-dev.sh exec "$(TUI_BIN)" --browser --db-dsn "file:$(SPIDER_DEMO_DB)" $(TUI_ARGS)
