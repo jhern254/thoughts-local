@@ -46,7 +46,7 @@ func (m Model) editorControls() string {
 	}
 	help := "Ctrl+S: save • Enter: newline • Esc/Ctrl+C: normal • Ctrl+Q: cancel"
 	if m.normalMode && !m.voice.subjectFocused {
-		help = "h/j/k/l/Arrows: move • i/a/o: insert • Ctrl+S: save • Ctrl+Q: cancel"
+		help = "h/j/k/l/Arrows: move • i/a/o: insert • Enter/Ctrl+S: save • Ctrl+Q: cancel"
 	}
 	if m.voice.subjectFocused {
 		help = "↑/↓: subjects • Enter: select/create • Esc: text • Ctrl+S: save • Ctrl+Q: cancel"

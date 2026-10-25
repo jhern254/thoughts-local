@@ -40,7 +40,7 @@ func TestModel_Voice(t *testing.T) {
 		if state.RecordingStatus != "requesting" || state.RecordingID != 1 {
 			t.Fatalf("got %+v, want requesting recording 1", state)
 		}
-		for _, msg := range []tea.Msg{tea.PasteMsg{Content: "PRIVATE"}, tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}), key(tea.KeyTab), tea.KeyPressMsg(tea.Key{Code: 'x', Text: "x"})} {
+		for _, msg := range []tea.Msg{key(tea.KeyEnter), tea.PasteMsg{Content: "PRIVATE"}, tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}), key(tea.KeyTab), tea.KeyPressMsg(tea.Key{Code: 'x', Text: "x"})} {
 			var cmd tea.Cmd
 			m, cmd = m.Update(msg)
 			if cmd != nil || m.input.Value() != "preserved 界" || m.loading {
