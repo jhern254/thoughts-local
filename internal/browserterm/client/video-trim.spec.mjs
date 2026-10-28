@@ -456,6 +456,10 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   // already selected video without another session or persistent pause change.
   await openVisual(page);await stageSource(page);
   await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
+  // At the narrow viewport Cancel can be below the control window. Move back
+  // from Source to reveal it, as a keyboard user would, before measuring a click.
+  await page.keyboard.press('Shift+Tab');
+  await expect(screen(page).getByText('Cancel upload',{exact:true})).toBeVisible();
   await clickControl(page,'Cancel upload');
   await expect(screen(page)).toContainText('Background darkness:');
   await clickControl(page,'Back');
