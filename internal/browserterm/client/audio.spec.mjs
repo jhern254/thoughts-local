@@ -83,6 +83,14 @@ test('colored modes keep v and u literal until Normal enables voice commands', a
   await expect(page.locator('#status')).toHaveText('Connected');
   await expect(screen(page)).toContainText('typed draftvu');
   expect(await page.evaluate(() => window.audioProbe.terminalConnections)).toBe(1);
+  await expect(page.locator('.xterm-bg-62').filter({hasText:'NORMAL'})).toBeVisible();
+  await page.keyboard.press('v');
+  await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(2);
+  await page.evaluate(() => window.voiceProbe.grant(1));
+  await expect(page.locator('#status')).toHaveText('Transcribing…');
+  await page.keyboard.press('v');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await expect(page.locator('.xterm-bg-62').filter({hasText:'NORMAL'})).toBeVisible();
   await page.keyboard.press('i');
   await expect(page.locator('.xterm-bg-36').filter({hasText:'INSERT'})).toBeVisible();
   await page.setViewportSize({width:400,height:850});
@@ -110,6 +118,8 @@ test('real worklet PCM uses dedicated ingestion and fake text preserves the draf
   await expect(screen(page)).toContainText('v: Record');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(1);
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+  await expect(page.locator('.xterm-bg-62').filter({hasText:'NORMAL'})).toBeVisible();
+  await page.keyboard.press('i');
   await page.keyboard.type(' edited');
   await expect(screen(page)).toContainText('edited');
   if (process.env.THOUGHTS_BROWSER_ARTIFACTS) await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-stopped.png`});
@@ -119,6 +129,7 @@ test('real worklet PCM uses dedicated ingestion and fake text preserves the draf
 test('restart owns a fresh audio connection and reload releases both recording identities', async ({page}) => {
   await prepareAudioDraft(page); await startCapture(page, 0);
   await page.keyboard.press('F8'); await expect(screen(page)).toContainText('v: Record');
+  await page.keyboard.press('i');
   await page.keyboard.type(' between recordings');
   await startCapture(page, 1);
   expect(await page.evaluate(() => window.audioProbe.audioConnections)).toBe(2);

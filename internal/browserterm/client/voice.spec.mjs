@@ -41,6 +41,7 @@ test('voice capture locks editing and save; Stop and restart preserve edited dra
   await page.keyboard.press('F8');
   await expect(screen(page)).toContainText('v: Record');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+  await page.keyboard.press('i');
   await paste(page, ' edited'); await expect(screen(page)).toContainText('edited');
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(2);
@@ -71,6 +72,7 @@ test('twenty-minute deadline stops capture without counting chunks', async ({pag
   await page.clock.fastForward(17 * 60 * 1000);
   await expect(screen(page)).toContainText('v: Record');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(1);
+  await page.keyboard.press('i');
   await paste(page, 'after deadline');
   await expect(screen(page)).toContainText('after deadline');
 });

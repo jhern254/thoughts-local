@@ -49,6 +49,27 @@ Resizing uses the existing terminal layout and transport. Animation frames remai
 updates. See the [measurement notes](browser-background-performance.md#video-preparation-activity-wave)
 for the cost of the integrated indicator.
 
+## Movie workflow layout
+
+Validation, cut selection, rendering and prepared-loop review share preview,
+control and footer positions. Use placeholders for unverified source bounds;
+keep unavailable actions visible but disabled. Reserve the same loading-wave
+space when idle. Keep Cancel upload on its own row after a blank separator and
+leave a blank row between prepared-loop details and the Preview ready status.
+
+## Small-window movie editing
+
+Keep the movie preview at its normal 12-terminal-row height. Scroll the controls
+beneath it as keyboard or wheel focus moves, while keeping accepted-loop details,
+status, and help visible. Resizing must preserve source position, cut points,
+accepted bytes, and editor/session ownership. Clip the loading indicator to its
+visible reserved control rows; it must never cover the preview or footer.
+
+Below 48 columns or 30 rows, show a resize notice instead of a clipped editor.
+Preserve the staged source and cut, block hidden edits, and retain explicit
+cancellation (including Stop rendering while preparation is active). Restore the
+same editor when the window becomes usable again.
+
 ## Motion, ownership, and verification
 
 Keep animation local to the renderer that owns the display, following

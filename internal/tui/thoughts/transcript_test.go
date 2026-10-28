@@ -31,6 +31,7 @@ func TestModel_TranscriptUpdate(t *testing.T) {
 			t.Fatal("browser acknowledgement bypassed server cleanup")
 		}
 		model, _ = model.Update(voice.RecordingEnded{Recording: recording})
+		model, _ = model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 		model, _ = model.Update(tea.PasteMsg{Content: " edited"})
 		model, _ = model.Update(VoiceAction{Action: "start", DraftID: 1, RecordingID: 1})
 		model, _ = model.Update(voice.TranscriptUpdate{Recording: recording, Revision: 4, Text: "A arrived after B"})

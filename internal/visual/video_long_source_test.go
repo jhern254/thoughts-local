@@ -81,7 +81,7 @@ func TestVideoSource_LongTrim(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer source.Close()
-	for _, name := range []string{source.directory, filepath.Join(source.directory, "source.mp4")} {
+	for _, name := range []string{source.directory, filepath.Join(source.directory, "source")} {
 		stat, err := os.Stat(name)
 		if err != nil {
 			t.Fatal(err)

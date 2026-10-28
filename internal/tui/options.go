@@ -52,7 +52,8 @@ type BrowserOptionsState struct {
 	SpeedPercent             int                    `json:"speedPercent"`
 	UserPaused               bool                   `json:"userPaused"`
 	Preview                  PreviewRect            `json:"preview"`
-	Preparation              PreviewRect            `json:"preparation"`     // Reserved cells keep controls fixed while the browser shows loading activity.
+	Preparation              PreviewRect            `json:"preparation"` // Reserved cells keep controls fixed while the browser shows loading activity.
+	SourceChecking           bool                   `json:"sourceChecking"`
 	Trimming                 bool                   `json:"trimming"`        // Cut-selection controls are open; this does not mean encoding is running.
 	SourceFrame              bool                   `json:"sourceFrame"`     // Show the original-source frame instead of the prepared loop.
 	SourcePreviewMS          int64                  `json:"sourcePreviewMS"` // Source-relative position of the boundary being adjusted.
@@ -81,6 +82,7 @@ type optionsState struct {
 	menuFocus         int
 	id                uint64
 	request           string
+	sourceChecking    bool // Upload/validation owns the progress view before cut controls are available.
 	darkness          int
 	focus             int
 	status            string
@@ -119,6 +121,10 @@ type optionsState struct {
 }
 
 func (m *Model) requestOptions(action string) {
+	// Keep the upload view while cancellation joins and removes staged files.
+	if action != "discardVideo" {
+		m.options.sourceChecking = false
+	}
 	m.options.id++
 	m.options.request = action
 }
@@ -142,6 +148,7 @@ func (m Model) OptionsState() BrowserOptionsState {
 		UserPaused:               m.options.userPaused,
 		Preview:                  rect,
 		Preparation:              m.videoPreparationRect(),
+		SourceChecking:           m.options.sourceChecking,
 		Trimming:                 m.options.trimming,
 		SourceFrame:              m.options.sourceFrame,
 		SourcePreviewMS:          m.options.sourcePreviewMS,
@@ -222,6 +229,8 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if m.options.request != "choose" {
 			return m, nil
 		}
+		m.options.sourceChecking = true
+		m.options.trimFocus = trimFocusCancel
 		m.options.status = "Checking video compatibility… Esc: cancel"
 		return m, nil
 	case "sourceBounds":
@@ -229,8 +238,22 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			return m, nil
 		}
 		m.options.status = "Verified source bounds differ. Adjust Start/End and preview again."
+	case "previewStopped":
+		if m.options.request != "stopPreview" {
+			return m, nil
+		}
+		m.options.sourceFrame = !m.options.loopReady
+		m.options.trimFocus = trimFocusPreview
+		m.options.status = "Rendering stopped. Adjust the cut or preview again."
+		if msg.DurationMS == 0 || (m.options.loopReady && msg.Trim == m.options.acceptedTrim && msg.VideoQuality == m.options.acceptedQuality) {
+			break
+		}
+		fallthrough // A loop acknowledged before Stop remains the usable preview.
 	case "loopReady":
-		if m.options.request != "prepareLoop" || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
+		if msg.Action == "loopReady" && m.options.request != "prepareLoop" {
+			return m, nil
+		}
+		if (m.options.request != "prepareLoop" && m.options.request != "stopPreview") || !msg.Trim.Valid(m.options.sourceDurationMS) || msg.DurationMS < 1000 || msg.DurationMS > 30000 {
 			return m, nil
 		}
 		if !msg.VideoQuality.Valid() || !msg.FrameRate.Valid() || msg.Width < 2 || msg.Width > 1920 || msg.Height < 2 || msg.Height > 1920 || msg.Width*msg.Height > 1920*1080 {
@@ -276,7 +299,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		if msg.Framing.Valid() {
 			m.options.framing = msg.Framing
 		}
-		m.options.status = "JPEG/PNG · MP4/MOV SDR H.264 · source ≤4h / 8 GiB · loop 1–30s"
+		m.options.status = "JPEG/PNG · SDR MP4/MOV/MKV · source ≤4h / 8 GiB · loop 1–30s"
 	case "selected":
 		if m.options.request != "choose" {
 			return m, nil
@@ -324,7 +347,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		} else {
 			m.options.status = "Saved. Some background files could not be removed."
 		}
-	case "failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
+	case "failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceProtected", "sourceTracks", "sourceContainer", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
 		if m.options.request == "prepareLoop" && m.options.loopReady {
 			m.options.sourceFrame = false
 		}
@@ -348,10 +371,16 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			m.options.status = "Could not prepare this loop. Retry or choose another cut."
 		}
 		switch msg.Action {
+		case "sourceProtected":
+			m.options.status = "Protected movies cannot be imported."
+		case "sourceTracks":
+			m.options.status = "Multiple video tracks: no unambiguous main track."
+		case "sourceContainer":
+			m.options.status = "Could not validate a self-contained MP4, MOV or MKV."
 		case "sourceCodec":
-			m.options.status = "Unsupported video codec. H.264 is required."
+			m.options.status = "Unsupported video encoding or unavailable decoder."
 		case "sourceColor":
-			m.options.status = "Unsupported video color. Use 8-bit SDR Rec.709."
+			m.options.status = "Unsupported HDR/color format. Use supported SDR Rec.709."
 		case "sourceDimensions":
 			m.options.status = "Video exceeds 4096 pixels per side or 9 million pixels."
 		case "sourceRate":
@@ -369,12 +398,13 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		case "sourceTimeout":
 			m.options.status = "Video operation timed out. Try again or use a shorter cut."
 		case "sourceUnsupported":
-			m.options.status = "Could not validate this video. Use an intact H.264 MP4/MOV."
+			m.options.status = "Could not validate this MP4, MOV or MKV."
 		}
 
 	default:
 		return m, nil
 	}
+	m.options.sourceChecking = false
 	m.options.request = ""
 	return m, nil
 }
@@ -386,7 +416,7 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.options.menu {
 		return m.updateOptionsMenu(message)
 	}
-	if m.options.trimming {
+	if m.options.trimming || m.options.sourceChecking {
 		return m.updateVideoTrimInput(message)
 	}
 	if m.options.editing {
@@ -464,7 +494,7 @@ func (m Model) updateOptionsInput(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) activateOption() {
 	switch m.options.focus {
 	case optionsFocusChooseBackground:
-		m.options.status = "Choose a JPEG/PNG image or SDR H.264 MP4/MOV…"
+		m.options.status = "Choose JPEG/PNG or a supported SDR MP4/MOV/MKV…"
 		m.requestOptions("choose")
 	case optionsFocusQuality:
 		m.cycleVideoQuality()
@@ -514,11 +544,15 @@ func (m *Model) activateOption() {
 	}
 }
 
-// The preview shrinks before the controls. Very short terminals omit it entirely.
+// Movie previews keep their height; controls scroll below them. Other Visual
+// forms retain their existing responsive preview layout.
 func (m Model) optionsLayout() (int, PreviewRect) {
-	if m.options.trimming {
+	if m.options.trimming || m.options.sourceChecking {
 		width := max(10, min(80, m.width-4))
-		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: max(0, min(12, m.height-33))}
+		if !m.videoTrimFits() {
+			return width, PreviewRect{}
+		}
+		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: videoTrimPreviewRows}
 	}
 	if m.options.editing {
 		width := max(10, min(80, m.width-4))
@@ -586,7 +620,7 @@ func (m Model) viewOptions() tea.View {
 	if m.options.menu {
 		return m.viewOptionsMenu()
 	}
-	if m.options.trimming {
+	if m.options.trimming || m.options.sourceChecking {
 		return m.viewVideoTrim()
 	}
 	if m.options.editing {

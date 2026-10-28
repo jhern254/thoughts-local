@@ -119,6 +119,8 @@ class ThoughtsVisual {
         break;
       case 'prepareLoop':
         await this.videoTrim.prepare(state); break;
+      case 'stopPreview':
+        await this.videoTrim.stopRendering(operationID); break;
       case 'discardVideo':
         await this.videoTrim.discard(operationID); break;
       case 'play':
@@ -134,7 +136,10 @@ class ThoughtsVisual {
   updatePreparationStatus() {
     // The current request owns the indicator through encoding, validation and
     // preview acknowledgement. Retired async completions cannot hide a new one.
-    const active = !!(this.connected && this.state.open && this.state.trimming && this.state.request === 'prepareLoop');
+    const active = !!(this.connected && this.state.open && this.state.preparation?.Height !== 0 && (
+      (this.state.trimming && this.state.request === 'prepareLoop') ||
+      (this.state.sourceChecking && this.state.request === 'choose')
+    ));
     this.preparationStatus.hidden = !active;
     this.preparationWave.setPlayback(active, this.documentVisible, this.motionQuery.matches);
     if (active) this.positionPreparation();
@@ -148,7 +153,8 @@ class ThoughtsVisual {
     const width = reserved.Width * cellWidth;
     Object.assign(this.preparationStatus.style, {
       left: `${screen.left + reserved.X * cellWidth}px`, width: `${width}px`,
-      top: `${screen.top + reserved.Y * cellHeight}px`
+      top: `${screen.top + reserved.Y * cellHeight}px`,
+      height: `min(calc(var(--video-preparation-height) - 8px), ${reserved.Height * cellHeight}px)`
     });
     const wave = document.getElementById('video-preparation-wave');
     const layer = this.preparationWave.trace;
@@ -261,7 +267,8 @@ class ThoughtsVisual {
     this.positionPreparation();
     this.previewContainer.hidden = true;
     const previewRect = this.state.preview;
-    if (!this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth)) return;
+    const awaitingSourceFrame = this.videoTrim?.showingSource && this.videoTrim.sourcePreviewMode === 'native';
+    if (this.state.sourceChecking || !this.state.open || !previewRect || !previewRect.Height || (!this.preview.getAttribute('src') && !this.previewVideo?.videoWidth && !awaitingSourceFrame)) return;
     if (this.state.request === 'load' || this.terminal.cols < previewRect.X + previewRect.Width + 1 || this.terminal.rows < previewRect.Y + previewRect.Height + 1) return;
     // Metadata can arrive before Bubble Tea's next paint. Verify the reserved
     // cells in xterm's public buffer before placing pixels over them. Geometry
@@ -281,15 +288,20 @@ class ThoughtsVisual {
     });
     const availableWidth = previewRect.Width * cellWidth;
     const availableHeight = previewRect.Height * cellHeight;
-    const scale = Math.min(availableWidth / window.innerWidth, availableHeight / window.innerHeight);
-    const width = window.innerWidth * scale;
-    const height = window.innerHeight * scale;
+    // Scene selection shows the complete movie; wallpaper framing still previews
+    // the browser viewport crop outside the trimmer.
+    const aspect = this.state.trimming && this.previewSourceSize
+      ? this.previewSourceSize : {width: window.innerWidth, height: window.innerHeight};
+    const scale = Math.min(availableWidth / aspect.width, availableHeight / aspect.height);
+    const width = aspect.width * scale;
+    const height = aspect.height * scale;
     Object.assign(this.previewFrameElement.style, {
       left: `${(availableWidth-width)/2}px`, top: `${(availableHeight-height)/2}px`, width: `${width}px`, height: `${height}px`
     });
     this.previewFrameElement.dataset.editing = String(!!this.state.editing);
-    this.placeImage(this.preview, width, height, this.state.framing, this.previewSourceSize);
-    if (this.previewVideo) this.placeImage(this.previewVideo, width, height, this.state.framing, this.previewSourceSize);
+    const framing = this.state.trimming ? {...defaultBackgroundFraming(), fit: 'fit'} : this.state.framing;
+    this.placeImage(this.preview, width, height, framing, this.previewSourceSize);
+    if (this.previewVideo) this.placeImage(this.previewVideo, width, height, framing, this.previewSourceSize);
     this.previewContainer.hidden = false;
   }
   discardPreview() {
@@ -315,7 +327,8 @@ class ThoughtsVisual {
     if (!file) {this.reply('cancelled', operationID); return;}
     try {
       const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-      if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp') {
+      if (String.fromCharCode(...signature.slice(4, 8)) === 'ftyp' ||
+          (signature[0] === 0x1a && signature[1] === 0x45 && signature[2] === 0xdf && signature[3] === 0xa3)) {
         await this.videoTrim.selectSource(file, operationID); return;
       }
       if (file.size > 16 * 1024 * 1024) throw new Error();

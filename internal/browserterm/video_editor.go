@@ -20,6 +20,10 @@ type videoEditor struct {
 	cancelView context.CancelFunc
 	id         string
 	gate       chan struct{}
+	// Rendering permission ends independently of the staged source/accepted loop.
+	previewCtx     context.Context
+	cancelPreview  context.CancelFunc
+	previewRequest uint64
 
 	cleanupErr error
 	filesOwner string // Editor ID owning staged files; delayed cleanup must not remove a newer editor's files.
@@ -44,6 +48,7 @@ func (editor *videoEditor) setOpen(open bool) (string, func() error) {
 		if editor.viewCtx == nil {
 			editor.viewCtx, editor.cancelView = context.WithCancel(editor.ctx)
 			editor.id = rand.Text()
+			editor.previewCtx, editor.cancelPreview, editor.previewRequest = nil, nil, 0
 		}
 		return editor.id, nil
 	}
@@ -66,6 +71,31 @@ func (editor *videoEditor) setOpen(open bool) (string, func() error) {
 		return nil
 	}
 }
+
+// Retain the revoked request identity until another render starts: late HTTP
+// requests must not restart it, and Stop still needs to join its cleanup.
+func (editor *videoEditor) setPreviewOperation(request uint64, preparing bool) {
+	editor.mu.Lock()
+	defer editor.mu.Unlock()
+	if editor.viewCtx == nil || (preparing && request == editor.previewRequest && editor.previewCtx != nil) {
+		return
+	}
+	if editor.cancelPreview != nil {
+		editor.cancelPreview()
+	}
+	if preparing {
+		editor.previewCtx, editor.cancelPreview = context.WithCancel(editor.viewCtx)
+		editor.previewRequest = request
+	}
+}
+
+func (editor *videoEditor) previewContext(id string, request uint64) (context.Context, bool) {
+	editor.mu.Lock()
+	defer editor.mu.Unlock()
+	valid := id != "" && id == editor.id && editor.viewCtx != nil && editor.viewCtx.Err() == nil && request != 0 && request == editor.previewRequest && editor.previewCtx != nil
+	return editor.previewCtx, valid
+}
+
 func (editor *videoEditor) context(id string) (context.Context, bool) {
 	editor.mu.Lock()
 	defer editor.mu.Unlock()

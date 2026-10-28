@@ -8,9 +8,56 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/voice"
 )
 
 func TestModel_EditorModes(t *testing.T) {
+	t.Run("Enter saves Normal drafts through the existing save action", func(t *testing.T) {
+		for _, voiceDraft := range []bool{false, true} {
+			t.Run(fmt.Sprintf("voice=%v", voiceDraft), func(t *testing.T) {
+				m := thoughtEditor(t)
+				if voiceDraft {
+					m = voiceModel(t)
+				}
+				stamp := m.draftObservedAt
+				m, _ = m.Update(tea.PasteMsg{Content: "Save this thought 界."})
+				m, _ = m.Update(key(tea.KeyEscape))
+				m, cmd := m.Update(key(tea.KeyEnter))
+				if cmd == nil || !m.loading {
+					t.Fatal("Normal Enter did not request save")
+				}
+				if !strings.Contains(m.editorControls(), "Enter/Ctrl+S: save") {
+					t.Fatal("Normal help omits Enter save")
+				}
+				m, _ = m.Update(cmd())
+				if m.err != nil || m.selected == nil || m.selected.Thought != "Save this thought 界." || !m.selected.ObservedAt.Equal(stamp) {
+					t.Fatal("Normal Enter failed to save the original draft and opening timestamp")
+				}
+			})
+		}
+	})
+	t.Run("Enter in Insert inserts a newline without saving", func(t *testing.T) {
+		m := thoughtEditor(t)
+		m, _ = m.Update(tea.PasteMsg{Content: "first"})
+		m, _ = m.Update(key(tea.KeyEnter))
+		if m.loading || m.input.Value() != "first\n" {
+			t.Fatalf("Insert Enter: loading=%v text=%q", m.loading, m.input.Value())
+		}
+	})
+	t.Run("Enter on Subject still requests explicit Subject creation", func(t *testing.T) {
+		m := voiceModel(t)
+		m, _ = m.Update(tea.PasteMsg{Content: "Keep draft"})
+		m, _ = m.Update(key(tea.KeyEscape))
+		m, _ = m.Update(key(tea.KeyTab))
+		m, cmd := m.Update(key(tea.KeyEnter))
+		if cmd == nil || m.loading || m.input.Value() != "Keep draft" {
+			t.Fatal("Subject Enter saved or changed draft")
+		}
+		if _, ok := cmd().(VoiceSubjectRequest); !ok {
+			t.Fatal("Subject Enter did not request Subject creation")
+		}
+	})
+
 	t.Run("Ctrl C leaves Insert and Ctrl D no longer cancels", func(t *testing.T) {
 		m := thoughtEditor(t)
 		m, _ = m.Update(tea.PasteMsg{Content: "keep draft"})
@@ -96,6 +143,30 @@ func TestModel_ModalVoiceKeys(t *testing.T) {
 		}
 		if m.voice.query.Value() != "vu" || m.VoiceState().RecordingID != 0 || m.VoiceState().CanUseVoiceKey {
 			t.Fatalf("Subject text=%q state=%+v", m.voice.query.Value(), m.VoiceState())
+		}
+	})
+	t.Run("ending voice returns to Normal and permits another v without typing", func(t *testing.T) {
+		m := voiceModel(t)
+		m, _ = m.Update(BrowserVoiceSessionMsg{SessionID: "session", SpeechRecognitionAvailable: true})
+		stamp := m.draftObservedAt
+		m, recording := startDiscoveryRecording(m)
+		m = transcript(m, recording, 1, "Keep this recording.")
+		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		if !m.normalMode || !m.VoiceState().CanUseVoiceKey || m.input.Value() != "Keep this recording." || m.draftObservedAt != stamp {
+			t.Fatalf("ended voice: normal=%v state=%+v text=%q", m.normalMode, m.VoiceState(), m.input.Value())
+		}
+		m, _ = m.Update(tea.PasteMsg{Content: "ignored"})
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+		if m.VoiceState().RecordingStatus != "requesting" || m.input.Value() != "Keep this recording." {
+			t.Fatalf("repeat voice: state=%+v text=%q", m.VoiceState(), m.input.Value())
+		}
+		next := m.VoiceState().TranscriptAuthority.Recording()
+		m, _ = m.Update(voice.RecordingEnded{Recording: next})
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+		m, _ = m.Update(voice.RecordingEnded{Recording: recording})
+		m, _ = m.Update(tea.PasteMsg{Content: " Edited."})
+		if m.normalMode || m.input.Value() != "Keep this recording. Edited." {
+			t.Fatalf("explicit Insert after stale end: normal=%v text=%q", m.normalMode, m.input.Value())
 		}
 	})
 	t.Run("Normal v starts and stops without inserting text", func(t *testing.T) {

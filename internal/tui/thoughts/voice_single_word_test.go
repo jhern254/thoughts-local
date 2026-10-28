@@ -129,6 +129,7 @@ func TestModel_SingleWordVoiceSubjects(t *testing.T) {
 				text += "\nMore literal text."
 			case "create", "cancel creation", "edit body":
 				if action == "edit body" {
+					m, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 					m, _ = m.Update(tea.PasteMsg{Content: " Added manually."})
 					text += " Added manually."
 				}

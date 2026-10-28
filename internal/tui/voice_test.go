@@ -37,6 +37,7 @@ func TestModel_ThoughtCaptureTime(t *testing.T) {
 			state := m.VoiceState()
 			if state.RecordingID != 0 {
 				m, _ = rootUpdate(m, thoughts.VoiceAction{Action: "stopped", DraftID: state.DraftID, RecordingID: state.RecordingID})
+				m, _ = rootUpdate(m, tea.KeyPressMsg{Code: 'i', Text: "i"})
 			}
 			m, _ = rootUpdate(m, tea.PasteMsg{Content: "capture time regression"})
 			m = runModelCommand(t, m, tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
@@ -58,6 +59,25 @@ func TestModel_ThoughtCaptureTime(t *testing.T) {
 }
 
 func TestModel_VoiceDraft(t *testing.T) {
+	t.Run("Normal Enter saves through root dispatch", func(t *testing.T) {
+		m := newRootTestModel()
+		service := thought.NewService(testutils.NewFakeThoughtStore())
+		m.thoughts = thoughts.New(t.Context(), m.user.UserID, service, logging.Nop())
+		m.subjects.service = &subjectServiceStub{list: func(context.Context, string) ([]data.Subject, error) { return nil, nil }}
+		m, _ = rootUpdate(m, thoughts.BrowserVoiceSessionMsg{})
+		m = runModelCommand(t, m, tea.KeyPressMsg{Code: 't', Text: "t"})
+		m, _ = rootUpdate(m, tea.PasteMsg{Content: "Normal Enter save"})
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+		m = runModelCommand(t, m, enterKey())
+		items, err := service.ListUnassigned(t.Context(), m.user.UserID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(items) != 1 || items[0].Thought != "Normal Enter save" || !m.thoughts.ShowingDetail() {
+			t.Fatal("Normal Enter did not save and open Thought detail")
+		}
+	})
+
 	t.Run("native mode refuses browser voice entry", func(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, thoughts.VoiceAction{Action: "open"})

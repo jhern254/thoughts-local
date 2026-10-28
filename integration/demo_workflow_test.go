@@ -117,6 +117,60 @@ GROUP BY e.activity_type, s.subject_name`)
 		}
 	})
 
+	t.Run("stress diary supplies three mindsets per populated day without accumulating active history", func(t *testing.T) {
+		db, _ := openMigratedSQLite(t)
+		const anchor = 1789151820
+		if _, err := db.Exec(`CREATE TEMP TABLE demo_clock AS SELECT ? AS at`, anchor); err != nil {
+			t.Fatal(err)
+		}
+		seed, err := os.ReadFile("../scripts/demo_stress.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.ExecContext(t.Context(), string(seed)); err != nil {
+			t.Fatal(err)
+		}
+		rows, err := db.QueryContext(t.Context(), `SELECT DISTINCT
+			unixepoch(observed_at, 'unixepoch', 'localtime', 'start of day', 'utc')
+			FROM thoughts ORDER BY 1`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var days []int64
+		for rows.Next() {
+			var start int64
+			if err := rows.Scan(&start); err != nil {
+				t.Fatal(err)
+			}
+			days = append(days, start)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if len(days) < 28 {
+			t.Fatalf("populated days: got %d, want at least 28", len(days))
+		}
+		store := data.NewSQLiteThoughtStore(db)
+		for _, start := range days {
+			from := time.Unix(start, 0).In(time.Local)
+			items, err := store.ListMindsetsInRange(t.Context(), "demo", from, from.AddDate(0, 0, 1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(items), 3; got != want {
+				t.Fatalf("mindsets on %s: got %d, want %d", from.Format(time.DateOnly), got, want)
+			}
+			for _, item := range items {
+				if got, want := item.IsMindset, from.YearDay() == time.Unix(anchor, 0).In(time.Local).YearDay(); got != want {
+					t.Fatalf("active mindset on %s: got %v, want %v", from.Format(time.DateOnly), got, want)
+				}
+			}
+		}
+	})
+
 	t.Run("seeds a local user with subjects thoughts and a current event", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seed, err := os.ReadFile("../scripts/demo.sql")

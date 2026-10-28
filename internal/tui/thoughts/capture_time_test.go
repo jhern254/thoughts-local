@@ -72,6 +72,7 @@ func TestModel_CaptureTime(t *testing.T) {
 			now = now.Add(time.Minute)
 			m, _ = m.Update(VoiceAction{Action: "stopped", DraftID: 1, RecordingID: recordingID + 1})
 		}
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 		m, _ = m.Update(tea.PasteMsg{Content: "voice draft"})
 		m, _ = m.Update(key(tea.KeyTab))
 		m, cmd := m.Update(key(tea.KeyEnter))

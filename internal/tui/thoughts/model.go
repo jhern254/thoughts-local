@@ -515,8 +515,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.voice.query.Blur()
 				return m, m.input.Focus()
 			}
-			switch key.String() {
-			case "ctrl+s":
+			if key.String() == "ctrl+s" || (key.String() == "enter" && m.normalMode && !m.voice.subjectFocused) {
 				if m.VoiceOpen() && m.voice.query.Value() != "" && m.subjectID == nil && !m.unconfirmedVoiceProposal() {
 					m.voice.message = "Select a subject, create one, or clear the optional field."
 					m.voice.subjectFocused = true
