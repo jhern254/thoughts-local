@@ -106,10 +106,10 @@ the original Subject.
 
 Open **Options → Accessibility** for independent readability controls:
 
-- **Border weight:** Normal, Heavy, or Extra heavy across cards, panel dividers,
+- **Border weight:** Normal or Heavy across cards, panel dividers,
   dialogs, and media-preview frames.
 - **Heavier text:** a stronger monospace weight without changing text size.
-- **Text size:** Standard, Larger, or Largest.
+- **Text size:** Standard or Larger.
 - **High contrast:** stronger text contrast and darker backgrounds, keeping your
   wallpaper or video visible. Turning it off restores your saved Visual darkness.
 
