@@ -664,3 +664,21 @@ Reproduce with `go test ./internal/render ./internal/tui/daynav -run '^$'
 The intermittent mountain-over-Event report remains unresolved; passing pure
 render/layout tests does not establish a compositor fix. Current browser
 qualification and reviewed captures must be reported separately.
+
+
+Visual qualification for this experiment reviewed actual Go Braille output at
+40×2, 80×4/6/8, and 120×6/8 using all seven fixtures. A temporary monotone cubic
+shoulder comparison was similarly broad but rounder at the summit; the cosine
+shoulder plus small pointed cap was retained. Four rows show the range clearly,
+six separate crests and component layers better, and eight add slope detail
+without changing the counts. At one-day zoom a daily measurement and its broad
+neighboring shoulders can look almost flat: eight rows are not intraday data.
+
+Fourteen focused Chromium/Firefox checks passed, including the per-render
+mountain-over-Event guard during six/eight-row zoom transitions, tuning, resize,
+and return to an expanded Event. The real two-year activity demo was reviewed at
+1200×850 and 480×480, including one-day zoom, panning, outline, and Event expansion.
+No mountain-over-card overlap was observed; the historical intermittent issue
+is not claimed fixed. Temporary comparisons, captures, benchmark output and
+review scripts are under `/tmp/pr92-mountains/`; these are disposable evidence,
+not required application files or a permanent preview service.

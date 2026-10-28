@@ -33,7 +33,17 @@ func mountainFixtures() map[string][]DayActivity {
 }
 
 func mountainOptions() DayActivityOptions {
-	return DayActivityOptions{FirstDay: 20000, Days: 31, SampleFirstDay: 19994, SampleDays: 1, Reference: 75, Total: true, Events: true, Thoughts: true, Baseline: true}
+	return DayActivityOptions{
+		FirstDay:       20000,
+		Days:           31,
+		SampleFirstDay: 19994,
+		SampleDays:     1,
+		Reference:      75,
+		Total:          true,
+		Events:         true,
+		Thoughts:       true,
+		Baseline:       true,
+	}
 }
 
 func BenchmarkDayMountainRender(b *testing.B) {
@@ -92,7 +102,7 @@ func TestDayActivity_Terrain(t *testing.T) {
 			}
 		}
 	})
-	t.Run("all requested canvases remain bounded with useful distinct peaks", func(t *testing.T) {
+	t.Run("all requested canvases remain bounded", func(t *testing.T) {
 		for _, size := range [][2]int{{40, 2}, {80, 4}, {80, 6}, {80, 8}, {120, 6}, {120, 8}} {
 			cells := RenderDayActivity(size[0], size[1], mountainFixtures()["twins"], mountainOptions())
 			if len(cells) != size[1] {
@@ -102,6 +112,42 @@ func TestDayActivity_Terrain(t *testing.T) {
 				if len(row) != size[0] {
 					t.Fatal("wrong column count")
 				}
+			}
+		}
+	})
+	t.Run("neighboring activity retains two summits and a distinct valley", func(t *testing.T) {
+		cells := RenderDayActivity(124, 8, mountainFixtures()["twins"], mountainOptions())
+		skyline := func(column int) int {
+			for y, row := range cells {
+				if row[column].Glyph != ' ' {
+					return y
+				}
+			}
+			return len(cells)
+		}
+		left, right, valley := skyline(46), skyline(78), skyline(62)
+		if valley < max(left, right)+2 {
+			t.Fatalf("summits at rows %d/%d and valley at %d, want two-row separation", left, right, valley)
+		}
+	})
+	t.Run("each channel can be shown alone without leaking another channel's color", func(t *testing.T) {
+		for _, series := range []DayActivitySeries{DayTotal, DayEvents, DayThoughts} {
+			options := mountainOptions()
+			options.Total, options.Events, options.Thoughts = series == DayTotal, series == DayEvents, series == DayThoughts
+			options.Baseline = false
+			visible := false
+			for _, row := range RenderDayActivity(80, 8, mountainFixtures()["channels"], options) {
+				for _, cell := range row {
+					if cell.Glyph != ' ' {
+						visible = true
+						if cell.Series != series {
+							t.Fatalf("only channel %d enabled, got color %d", series, cell.Series)
+						}
+					}
+				}
+			}
+			if !visible {
+				t.Fatalf("enabled channel %d vanished", series)
 			}
 		}
 	})
