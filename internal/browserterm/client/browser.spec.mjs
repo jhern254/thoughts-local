@@ -298,12 +298,12 @@ test('mountain status stays beside the Events date or in the narrow footer above
     const markerColumns = Array.from({length: term.cols}, (_, x) => x).filter(x => markerLine?.getCell(x)?.getBgColor() === 62);
     return {rows, cols: term.cols, eventRow, markerColumns};
   });
-  await expect.poll(async () => (await snapshot()).rows[9]).toMatch(/normal boost · 100% · filled$/);
+  await expect.poll(async () => (await snapshot()).rows[11]).toMatch(/normal boost · 100% · filled$/);
   let frame = await snapshot();
-  expect(frame.rows[9].length).toBe(frame.cols);
-  expect(frame.rows.slice(4, 8).join('')).not.toMatch(/boost|Loading/);
-  expect([...frame.rows[7]].every(glyph => (glyph.codePointAt(0) - 0x2800 & 0xc0) === 0xc0)).toBe(true);
-  expect(frame.rows[8].trim()).toBe('');
+  expect(frame.rows[11].length).toBe(frame.cols);
+  expect(frame.rows.slice(4, 10).join('')).not.toMatch(/boost|Loading/);
+  expect([...frame.rows[9]].every(glyph => (glyph.codePointAt(0) - 0x2800 & 0xc0) === 0xc0)).toBe(true);
+  expect(frame.rows[10].trim()).toBe('');
   expect(frame.markerColumns).toHaveLength(1);
   const firstMarker = frame.markerColumns[0];
   await page.keyboard.press('Escape');
@@ -319,9 +319,9 @@ test('mountain status stays beside the Events date or in the narrow footer above
     const footer = frame.rows.findLastIndex(row => /^─+$/.test(row));
     return frame.cols < 50 && footer === frame.rows.length - 4 && frame.rows.slice(footer + 1).some(row => row.includes('normal boost · 100% · filled'));
   }).toBe(true);
-  // Four mountain rows plus the indicator gap are capped at five rows.
+  // Normal zoom has at most six mountain rows plus a separate marker.
   // Short terminals return plot rows to the timeline before hiding cards.
-  const expectedRow = frame.rows.length >= 27 ? 9 : frame.rows.length === 26 ? 8 : frame.rows.length === 25 ? 7 : 6;
+  const expectedRow = 5 + Math.max(1, Math.min(6, frame.rows.length - 23));
   expect(frame.eventRow).toBe(expectedRow);
   expect(frame.rows[frame.eventRow]).not.toContain('boost');
   expect(frame.rows[frame.eventRow - 1].trim()).toBe('');
@@ -544,6 +544,12 @@ test('mountain redraws stay above Event cards during tuning and resize', async (
   await page.keyboard.press('f');
   await page.keyboard.press('Escape');
   const eventRow = () => screen(page).locator('div').evaluateAll(rows => rows.findIndex(row => /^ Events\s+[A-Z]/.test(row.textContent)));
+  // Reach one-day zoom and leave it: Events must resize in the same frame.
+  for (let step = 0; step < 16; step++) await page.keyboard.press('+');
+  await expect.poll(eventRow).toBe(13);
+  await page.screenshot({path:'/tmp/pr92-mountains/app-maximum-'+test.info().project.name+'.png'});
+  await page.keyboard.press('-');
+  await expect.poll(eventRow).toBe(11);
   for (const viewport of [{width:480, height:480}, {width:800, height:550}, {width:1200, height:850}]) {
     await page.evaluate(size => { window.mountainPhase = `resize ${size.width}x${size.height}`; }, viewport);
     await page.setViewportSize(viewport);
@@ -577,7 +583,7 @@ test('day graph keeps the same normal profile in medium and fullscreen windows',
   await expect(screen(page)).not.toContainText('Loading activity');
   const plot = () => page.evaluate(() => {
     const term = window.mountainTerminal;
-    return [4, 5, 6, 7].map(y => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
+    return [4, 5, 6, 7, 8, 9].map(y => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
   });
   const baseline = await plot();
   for (const height of [700, 1080, 850]) {
@@ -589,8 +595,8 @@ test('day graph keeps the same normal profile in medium and fullscreen windows',
         const rows = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(term.buffer.active.viewportY + y)?.translateToString() || '');
         const footer = rows.findLastIndex(row => /^─+$/.test(row.trimEnd()));
         return {
-          ready: footer === term.rows - 4 && rows[footer].trimEnd().length === term.cols && /^ Events\s/.test(rows[9]),
-          plot: rows.slice(4, 8),
+          ready: footer === term.rows - 4 && rows[footer].trimEnd().length === term.cols && /^ Events\s/.test(rows[11]),
+          plot: rows.slice(4, 10),
         };
       });
       return frame.ready;

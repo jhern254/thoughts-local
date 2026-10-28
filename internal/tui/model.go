@@ -219,6 +219,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if daynav.Owns(message) {
 		m.days = m.days.Update(message)
+		m.resizeHome()
 		return m, nil
 	}
 	if mindset.Owns(message) {

@@ -48,9 +48,9 @@ func TestDayActivity_Geometry(t *testing.T) {
 	t.Run("baseline shares the bottom dots with filled and outline mountains", func(t *testing.T) {
 		for _, outline := range []bool{false, true} {
 			cells := RenderDayActivity(1, 3, []DayActivity{{Events: 1}}, DayActivityOptions{Total: true, Outline: outline, Baseline: true})
-			want := []rune{'⣿', '⣿', '⣿'}
+			want := []rune{'⣾', '⣿', '⣿'}
 			if outline {
-				want = []rune{'⠉', ' ', '⣀'}
+				want = []rune{'⠞', ' ', '⣀'}
 			}
 			for y, glyph := range want {
 				if got := cells[y][0].Glyph; got != glyph {
@@ -68,16 +68,24 @@ func TestDayActivity_Geometry(t *testing.T) {
 		}
 	})
 	t.Run("equal counts give Events greater per-record weight on the shared scale", func(t *testing.T) {
-		cells := RenderDayActivity(4, 3, []DayActivity{{Events: 1}, {Thoughts: 1}}, DayActivityOptions{Total: true, Exponent: 1, Size: 1})
-		for y, want := range [][2]rune{{'⣿', ' '}, {'⣿', '⣤'}, {'⣿', '⣿'}} {
-			if cells[y][0].Glyph != want[0] || cells[y][3].Glyph != want[1] {
-				t.Fatalf("row %d endpoints: got %q/%q, want %q/%q", y, cells[y][0].Glyph, cells[y][3].Glyph, want[0], want[1])
+		values := make([]DayActivity, 22)
+		values[5], values[16] = DayActivity{Events: 1}, DayActivity{Thoughts: 1}
+		cells := RenderDayActivity(44, 12, values, DayActivityOptions{Total: true, Exponent: 1, Size: 1})
+		firstRow := func(column int) int {
+			for y, row := range cells {
+				if row[column].Glyph != ' ' {
+					return y
+				}
 			}
+			return len(cells)
+		}
+		if got, want := firstRow(11), firstRow(33); got >= want {
+			t.Fatalf("Event summit row=%d, want higher than Thought summit row=%d", got, want)
 		}
 	})
 	t.Run("outline leaves the interior blank", func(t *testing.T) {
 		cells := RenderDayActivity(1, 3, []DayActivity{{Events: 1, Thoughts: 1}}, DayActivityOptions{Total: true, Outline: true, Exponent: 1, Size: 1})
-		for row, want := range []rune{'⠉', ' ', ' '} {
+		for row, want := range []rune{'⠞', ' ', ' '} {
 			if got := cells[row][0].Glyph; got != want {
 				t.Fatalf("row %d: got %q, want %q", row, got, want)
 			}
@@ -150,7 +158,12 @@ func TestDayActivity_SharedScale(t *testing.T) {
 
 func TestDayActivity_SolidLayers(t *testing.T) {
 	t.Run("a one-row graph retains component colors instead of a grey overpaint", func(t *testing.T) {
-		cells := RenderDayActivity(20, 1, []DayActivity{{Thoughts: 100}, {Events: 100}}, DayActivityOptions{Total: true, Events: true, Thoughts: true, Size: 3})
+		cells := RenderDayActivity(20, 1, func() []DayActivity {
+			values := make([]DayActivity, 24)
+			values[5].Thoughts = 100
+			values[18].Events = 100
+			return values
+		}(), DayActivityOptions{Total: true, Events: true, Thoughts: true, Size: 3})
 		thoughts, events := false, false
 		for _, cell := range cells[0] {
 			thoughts = thoughts || cell.Glyph != ' ' && cell.Series == DayThoughts
@@ -352,8 +365,8 @@ func TestDayActivity_RelativeSize(t *testing.T) {
 	t.Run("normal reaches the old full summit while smaller sizes shrink it", func(t *testing.T) {
 		values := []DayActivity{{Events: 1}}
 		normal := RenderDayActivity(1, 3, values, DayActivityOptions{Total: true, Outline: true, Size: 1})
-		if normal[0][0].Glyph != '⠉' {
-			t.Fatalf("normal summit: got %q, want ⠉ at the top of the compact canvas", normal[0][0].Glyph)
+		if normal[0][0].Glyph != '⠞' {
+			t.Fatalf("normal summit: got %q, want a pointed contour at the top of the compact canvas", normal[0][0].Glyph)
 		}
 		smaller := RenderDayActivity(1, 3, values, DayActivityOptions{Total: true, Outline: true, Size: .5})
 		if smaller[0][0].Glyph != ' ' {
@@ -361,14 +374,15 @@ func TestDayActivity_RelativeSize(t *testing.T) {
 		}
 	})
 	t.Run("above normal raises lower mountains without flattening the reference peak", func(t *testing.T) {
-		values := []DayActivity{{Thoughts: 10}, {Thoughts: 40}, {Thoughts: 100}}
-		normal := RenderDayActivity(24, 3, values, DayActivityOptions{Total: true, Outline: true, Size: 1, Exponent: 1})
-		larger := RenderDayActivity(24, 3, values, DayActivityOptions{Total: true, Outline: true, Size: 3, Exponent: 1})
-		if normal[0][4].Glyph == larger[0][4].Glyph && normal[1][4].Glyph == larger[1][4].Glyph && normal[2][4].Glyph == larger[2][4].Glyph {
+		values := make([]DayActivity, 31)
+		values[5].Thoughts, values[22].Thoughts = 10, 100
+		normal := RenderDayActivity(31, 3, values, DayActivityOptions{Total: true, Outline: true, Size: 1, Exponent: 1})
+		larger := RenderDayActivity(31, 3, values, DayActivityOptions{Total: true, Outline: true, Size: 3, Exponent: 1})
+		if normal[0][5].Glyph == larger[0][5].Glyph && normal[1][5].Glyph == larger[1][5].Glyph && normal[2][5].Glyph == larger[2][5].Glyph {
 			t.Fatal("increasing size above the baseline did not change the lower mountain")
 		}
-		if larger[0][20].Glyph != '⠉' {
-			t.Fatalf("reference summit: got %q, want its original top-row contour", larger[0][20].Glyph)
+		if larger[0][22].Glyph == ' ' || larger[0][22].Glyph != normal[0][22].Glyph {
+			t.Fatal("size adjustment moved or flattened the reference summit")
 		}
 	})
 }

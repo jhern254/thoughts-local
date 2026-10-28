@@ -88,7 +88,7 @@ func TestModel_MindsetHome(t *testing.T) {
 				rows := strings.Split(m.View().Content, "\n")
 				// The accepted-date gap cell is accented in every focus;
 				// only the lower entity divider follows entity keyboard focus.
-				if !strings.Contains(rows[8], "48;5;62") {
+				if !strings.Contains(rows[10], "48;5;62") {
 					t.Fatal("missing accepted-date block in the gap")
 				}
 				entityDividers := 0
@@ -120,11 +120,11 @@ func TestModel_MindsetHome(t *testing.T) {
 		if rows[3] != "" {
 			t.Fatalf("row after Mindset: got %q, want blank", rows[3])
 		}
-		if got, want := rows[7], strings.Repeat("⣀", 80); got != want {
+		if got, want := rows[9], strings.Repeat("⣀", 80); got != want {
 			t.Fatalf("panel separator: got %q, want %q", got, want)
 		}
-		if !strings.HasPrefix(rows[9], " Events ") {
-			t.Fatalf("row below separator: got %q, want Events header", rows[9])
+		if !strings.HasPrefix(rows[11], " Events ") {
+			t.Fatalf("row below separator: got %q, want Events header", rows[11])
 		}
 	})
 	t.Run("expansion makes room in the graph and returning from detail restores selection", func(t *testing.T) {
@@ -144,8 +144,9 @@ func TestModel_MindsetHome(t *testing.T) {
 			}
 			return -1
 		}
-		// Six one-line reminders replace the single collapsed reminder row.
-		if got, want := row(expanded, "Events")-row(before, "Events"), 5; got != want {
+		// The larger graph leaves room for four reminder rows while preserving
+		// fourteen Events rows at this terminal height.
+		if got, want := row(expanded, "Events")-row(before, "Events"), 3; got != want {
 			t.Fatalf("Events displacement: got %d, want %d", got, want)
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd}))
@@ -277,7 +278,7 @@ func TestModel_MindsetReadingLayout(t *testing.T) {
 						break
 					}
 				}
-				graphRows := 5
+				graphRows := 7
 				if size[1] == 24 {
 					graphRows = 2
 				}

@@ -6,11 +6,11 @@ import (
 )
 
 // DayActivity contains average daily counts for one calendar bucket. It is not
-// a probability density: interpolation connects samples without adding peaks.
+// a probability density: terrain interprets bounded shoulders around real counts.
 type DayActivity struct{ Events, Thoughts float64 }
 
 // DayActivityDefaultExponent retains quieter slopes while preserving the measured
-// ordering of the samples; it does not add decorative peaks or smoothing.
+// ordering of the samples before the bounded terrain envelope is applied.
 const DayActivityDefaultExponent = .8
 
 type DayActivityLevel struct{ Total, Events, Thoughts float64 }
@@ -36,8 +36,8 @@ type DayActivityOptions struct {
 	// Reference is the weighted historical peak at this bucket resolution. Zero
 	// derives it from the supplied samples; panning callers supply a stable peak.
 	Reference float64
-	// Adjacent buckets continue slopes beyond the viewport. Nil keeps the
-	// endpoint flat when a caller has no neighboring data.
+	// Optional single-bucket context for standalone callers. The navigator
+	// supplies all six neighboring buckets in Samples using SampleFirstDay.
 	Before, After           *DayActivity
 	Total, Events, Thoughts bool
 	Outline                 bool
@@ -47,6 +47,10 @@ type DayActivityOptions struct {
 	// Size is relative to normal (1 = 100%), bounded to [0.5, 3].
 	Size float64
 }
+
+// DayActivityContextBuckets covers the widest mountain shoulder. Callers load
+// this many whole buckets beyond each edge, within their existing query limit.
+const DayActivityContextBuckets = 6
 
 const (
 	dayEventWeight   = .7
@@ -162,14 +166,7 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	if days <= 0 {
 		days = len(values)
 	}
-	points := make([]int, len(samples))
-	for i := range points {
-		day := float64(options.FirstDay) + (float64(i-padding)+.5)*float64(days)/float64(len(values))
-		if options.SampleDays > 0 {
-			day = float64(options.SampleFirstDay) + (float64(i-padding)+.5)*float64(options.SampleDays)
-		}
-		points[i] = dayActivityPixel(width, days, options.FirstDay, day)
-	}
+	terrain := dayActivityTerrain(width, days, padding, len(values), levels, options)
 
 	// Normal is the former full mountain profile, now at relative size 1.
 	maximum := float64(height*brailleRows-1) * (1 - math.Exp(-1.6*dayActivityBaselineGain))
@@ -184,18 +181,19 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 		masks[(y/brailleRows)*width+x/brailleColumns][series] |= uint8(bit)
 	}
 	draw := func(series DayActivitySeries, filled bool) {
-		previous, index := -1, 0
+		previous := -1
 		for x := 0; x < width*brailleColumns; x++ {
-			for index+1 < len(points) && x >= points[index+1] {
-				index++
+			level := terrain[x+1]
+			value := [...]float64{level.Total, level.Events, level.Thoughts}[series]
+			if x == 0 && options.Outline {
+				// Continue the contour from the preceding absolute dot, including at
+				// viewport edges. Restarting here changes a clipped outline on pan.
+				prior := terrain[0]
+				if v := ([...]float64{prior.Total, prior.Events, prior.Thoughts})[series]; v > 0 {
+					previous = height*brailleRows - 1 - int(math.Round(v*maximum))
+				}
 			}
-			a, b := levels[index], levels[min(index+1, len(levels)-1)]
-			left := [...]float64{a.Total, a.Events, a.Thoughts}[series]
-			right := [...]float64{b.Total, b.Events, b.Thoughts}[series]
-			value := left
-			if x > points[index] && index+1 < len(points) && points[index+1] > points[index] {
-				value += (right - left) * float64(x-points[index]) / float64(points[index+1]-points[index])
-			}
+
 			if value <= 0 {
 				previous = -1
 				continue
@@ -244,6 +242,77 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	}
 
 	return rows
+}
+
+// dayActivityTerrain takes the maximum of finite asymmetric raised-cosine
+// envelopes, not their sum: nearby samples form shoulders without inflating the
+// historical reference or inventing measurements on otherwise empty days.
+// The extra first value is the preceding dot, needed for clipped outlines.
+func dayActivityTerrain(width, days, padding, visibleSamples int, levels []DayActivityLevel, options DayActivityOptions) []DayActivityLevel {
+	type mountain struct {
+		center                 int
+		left, right, roughness float64
+		level                  DayActivityLevel
+	}
+	bucketDays := float64(days) / float64(visibleSamples)
+	if options.SampleDays > 0 {
+		bucketDays = float64(options.SampleDays)
+	}
+	pixelsPerBucket := bucketDays * float64(width*brailleColumns) / float64(days)
+	mountains := make([]mountain, 0, len(levels))
+	for i, level := range levels {
+		if level.Total == 0 {
+			continue
+		}
+		day := float64(options.FirstDay) + (float64(i-padding)+.5)*bucketDays
+		if options.SampleDays > 0 {
+			day = float64(options.SampleFirstDay) + (float64(i-padding)+.5)*bucketDays
+		}
+		// A stable integer mix varies shoulders by calendar bucket, never by screen
+		// position. This is visual interpretation, not random or intraday activity.
+		seed := uint64(int64(math.Floor(day)))
+		seed ^= seed >> 16
+		seed *= 0x45d9f3b
+		seed ^= seed >> 16
+		fraction := float64(seed&0xffff) / 65535
+		mountains = append(mountains, mountain{
+			center:    dayActivityPixel(width, days, options.FirstDay, day),
+			left:      4 + 2*fraction,
+			right:     3 + float64((seed>>16)&0xffff)/65535,
+			roughness: .02 + .02*fraction,
+			level:     level,
+		})
+	}
+	terrain := make([]DayActivityLevel, width*brailleColumns+1)
+	for column := range terrain {
+		x := column - 1
+		for _, peak := range mountains {
+			distance := float64(x-peak.center) / pixelsPerBucket
+			radius := peak.right
+			if distance < 0 {
+				radius = peak.left
+			}
+			if math.Abs(distance) >= radius {
+				continue
+			}
+			// Cosine shoulders supply most of the width; a small linear cap
+			// gives the summit a visible point rather than a rounded bell.
+			slope := math.Abs(distance) / radius
+			kernel := .85*(1+math.Cos(math.Pi*slope))/2 + .15*(1-slope)
+			current := &terrain[column]
+			if kernel*peak.level.Total <= current.Total && kernel*peak.level.Events <= current.Events && kernel*peak.level.Thoughts <= current.Thoughts {
+				continue
+			}
+			// Restrained multiscale erosion only lowers this envelope (2–4% maximum).
+			// Both scales vanish at the measured summit and stay calendar-anchored.
+			coarse, fine := math.Sin(math.Pi*distance/1.6), math.Sin(math.Pi*distance/.65)
+			kernel *= 1 - peak.roughness*(.65*coarse*coarse+.35*fine*fine)
+			current.Total = max(current.Total, kernel*peak.level.Total)
+			current.Events = max(current.Events, kernel*peak.level.Events)
+			current.Thoughts = max(current.Thoughts, kernel*peak.level.Thoughts)
+		}
+	}
+	return terrain
 }
 
 // Round vertices on an absolute calendar grid, then subtract a whole-cell

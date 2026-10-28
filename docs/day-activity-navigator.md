@@ -30,14 +30,14 @@ the graph is an arrow-accessed part of Events. While the graph has focus:
 When focus is outside the Events timeline, all vertical Event curves are highlighted too;
 card selection and borders keep their own focus rules.
 
-The plot has no title or date-range heading. Its complete band is capped at five
-rows: four mountain rows and a one-row gap for the accepted-day block. That gap
-separates the baseline from the Events heading. Short terminals reduce mountain
-rows before taking the timeline below fourteen rows: a 26-row terminal uses
-three plot rows, 25 uses two, and 24 or fewer uses one. Tuning and zoom never grow
-the band. One blank row still separates Mindset from the graph. The graph budget
-is reserved before Mindset content arrives,
-so loading replies cannot resize it between frames.
+The plot has no title or date-range heading. Normal and intermediate zoom use
+at most six mountain rows; only an accepted one-day viewport permits eight.
+The purple marker has its own row beneath that budget. Short terminals reduce
+mountain rows before taking Events below fourteen rows when space permits:
+26 terminal rows use three mountain rows, 25 use two, and 24 or fewer use one.
+Size/boost tuning never grows this canvas. Zoom completion and resize update the
+Events allocation in the same root-model transition. One blank row separates
+Mindset from the graph; asynchronous reminders do not change its height budget.
 
 Style values, loading feedback, and read errors appear right-aligned beside the
 Events date, with at least two separating columns. If both cannot fit, the status
@@ -104,14 +104,29 @@ smaller ridges rise toward the reference summit without clipping it flat:
 same gain, retaining their count ratios and Total headroom. At 100%, the gain is
 one. Higher settings change the picture, not the panel height.
 
-The canvas stays fixed while tuning and zooming, including its bottom-dot
-baseline. Mindset retains its reading space; the layout reserves fourteen Events
-rows when the window permits. Four mountain rows and the marker gap use five
-rows in normal windows; compact windows reduce the plot inside this cap.
-These are relative activity shapes, not
-probabilities or raw-count axes. Piecewise linear interpolation connects actual
-samples without invented peaks. A one-day view has one measured sample with
-slopes continued from adjacent days; it does not add intra-day measurements.
+The canvas stays fixed while tuning. Normal zoom allows six mountain rows;
+one-day zoom allows eight, with the marker separate in both cases. Eight rows
+increase Braille rendering resolution but cannot reveal real intraday peaks:
+counts are still daily averages at their bucket resolution.
+
+The renderer takes the maximum of asymmetric finite-support mountain envelopes
+rather than adding their heights. Shoulders blend 85% raised cosine with a 15%
+linear summit contribution, retaining broad bases without a rounded bell top.
+Calendar-anchored supports range from 4–6 buckets left and 3–4 right. Two small
+ridge scales (1.6 and 0.65 buckets) lower the envelope by at most 2–4%, vanishing
+at its measured summit. These are visual interpretations around actual activity,
+not invented intraday measurements or unrelated decorative peaks. No activity
+means only the optional baseline. Broad interpretation can hide small nearby
+peaks and round sparse days into neighboring empty days, within finite support.
+
+The navigator reads six whole context buckets on each side, reducing the visible
+bucket budget as needed to keep each query at 256 or fewer buckets. Existing
+history-scale refresh, cancellation, calendar alignment and stale-reply checks
+remain authoritative. Panning translates the same absolute Braille grid;
+outline continuity includes the preceding dot. Selecting a date within the
+loaded window changes only the marker and reuses the cached mountain string.
+Daily counts and terrain geometry remain separate concrete values; future
+activity channels can extend that boundary without changing stored counts now.
 
 Filled mode uses opaque silhouettes: grey Total behind amber Thoughts behind
 teal Events, each filled to the baseline. Each shared Braille cell takes the color with the largest exposed dot area
@@ -612,3 +627,40 @@ Now view kept one latest card plus metrics across dates, Mindset arrows preserve
 focus and Enter opened a real synthetic pinned Thought. The temporary pin was
 removed through the UI. Reviewed captures and results are under
 `/tmp/thoughts-daynav-evidence`; one WebSocket served the whole walkthrough.
+
+
+## Broad-terrain experiment after `bd99d2f`
+
+Synthetic comparison fixtures cover a dominant summit, two separated peaks,
+sustained activity, an isolated day, Thought/Event-heavy periods, empty data,
+and irregular history. `BenchmarkDayMountainRender` fixes the same 43 daily
+samples (31 visible plus context), reference, channels, width, and canvas height
+for both versions. `BenchmarkDayMountainCachedNavigation` loads once, then
+moves ten dates inside the month without reads. Measurements are five-run
+medians, 300 ms per run, with fixture generation and compilation outside timing;
+no competing build/test process ran. CPU/hardware metadata is retained in the
+benchmark output. These are native render/marker costs, not end-to-end browser
+latency or a claim about GPU composition.
+
+| Braille canvas | Linear render, µs | Broad terrain, µs | Go bytes before → after |
+| --- | ---: | ---: | ---: |
+| 40×2 | 12.1 | 44.1 | 2,432 → 6,816 |
+| 80×4 | 30.5 | 103.7 | 5,184 → 11,616 |
+| 80×6 | 38.5 | 112.5 | 7,024 → 13,456 |
+| 80×8 | 46.9 | 127.2 | 8,864 → 15,296 |
+| 120×6 | 55.4 | 176.6 | 10,096 → 18,576 |
+| 120×8 | 76.8 | 192.5 | 12,960 → 21,440 |
+
+The terrain mathematics cost roughly 2.5–3.6 times the linear renderer in this
+fixture, adding under 0.12 ms per rebuild. Increasing the new 80-column canvas
+from four to six rows adds about 9 µs, and six to eight adds about 15 µs. Cached
+navigation at a matched four-row canvas remains about 4.0 µs with eight
+allocations; normal six-row navigation is about 4.2–4.4 µs. Taller cached strings
+increase bytes per navigation from roughly 1.5 to 1.9 KiB. No rendering speedup
+is claimed, and ordinary marker movement does not pay the terrain rebuild cost.
+
+Reproduce with `go test ./internal/render ./internal/tui/daynav -run '^$'
+-bench '^BenchmarkDayMountain' -benchmem -count=5 -benchtime=300ms`.
+The intermittent mountain-over-Event report remains unresolved; passing pure
+render/layout tests does not establish a compositor fix. Current browser
+qualification and reviewed captures must be reported separately.

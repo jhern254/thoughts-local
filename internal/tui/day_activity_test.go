@@ -208,7 +208,7 @@ func TestModel_DayMountainHeightDuringMindsetLoad(t *testing.T) {
 func TestModel_DayGraphWindowHeight(t *testing.T) {
 	t.Run("short terminals keep the gap and fourteen Events rows", func(t *testing.T) {
 		m := newMindsetHome(t, 0)
-		for _, scenario := range []struct{ height, eventRow, band int }{{24, 6, 2}, {25, 7, 3}, {26, 8, 4}, {27, 9, 5}, {60, 9, 5}} {
+		for _, scenario := range []struct{ height, eventRow, band int }{{24, 6, 2}, {25, 7, 3}, {26, 8, 4}, {27, 9, 5}, {29, 11, 7}, {60, 11, 7}} {
 			resized, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: scenario.height})
 			m = runHomeData(t, resized, cmd)
 			rows := strings.Split(ansi.Strip(m.View().Content), "\n")
@@ -233,10 +233,10 @@ func TestModel_DayGraphWindowHeight(t *testing.T) {
 		delayed := batch[1]()
 		m, _ = rootUpdate(m, delayed)
 		rows := strings.Split(m.View().Content, "\n")
-		if !strings.HasSuffix(ansi.Strip(rows[9]), "Loading activity…") {
-			t.Fatalf("loading heading: got %q", ansi.Strip(rows[9]))
+		if !strings.HasSuffix(ansi.Strip(rows[11]), "Loading activity…") {
+			t.Fatalf("loading heading: got %q", ansi.Strip(rows[11]))
 		}
-		if strings.Join(rows[4:9], "\n") != strings.Join(before[4:9], "\n") {
+		if strings.Join(rows[4:11], "\n") != strings.Join(before[4:11], "\n") {
 			t.Fatal("loading feedback replaced accepted mountain cells")
 		}
 		m, _ = rootUpdate(m, batch[0]())
@@ -272,20 +272,20 @@ func TestModel_DayGraphWindowHeight(t *testing.T) {
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
 		m, _ = rootUpdate(m, runeKey('d'))
 		rows := strings.Split(ansi.Strip(m.View().Content), "\n")
-		if !strings.HasPrefix(rows[9], " Events ") || !strings.HasSuffix(rows[9], "normal boost · 100% · filled") || ansi.StringWidth(rows[9]) != 100 {
-			t.Fatalf("Events heading: got %q, want date and right-aligned settings on row 9", rows[9])
+		if !strings.HasPrefix(rows[11], " Events ") || !strings.HasSuffix(rows[11], "normal boost · 100% · filled") || ansi.StringWidth(rows[11]) != 100 {
+			t.Fatalf("Events heading: got %q, want date and right-aligned settings on row 11", rows[11])
 		}
-		for i := 4; i <= 7; i++ {
+		for i := 4; i <= 9; i++ {
 			if strings.Contains(rows[i], "boost") || strings.Contains(rows[i], "Loading") {
 				t.Fatalf("mountain row %d contains status: %q", i, rows[i])
 			}
 		}
-		if rows[8] != strings.Repeat(" ", 100) {
-			t.Fatalf("indicator gap: got %q, want blank text with one highlight block", rows[8])
+		if rows[10] != strings.Repeat(" ", 100) {
+			t.Fatalf("indicator gap: got %q, want blank text with one highlight block", rows[10])
 		}
-		for _, glyph := range rows[7] {
+		for _, glyph := range rows[9] {
 			if glyph < 0x2800 || glyph > 0x28ff || (glyph-0x2800)&0xc0 != 0xc0 {
-				t.Fatalf("shared baseline: got %q, want both bottom Braille dots in every cell", rows[7])
+				t.Fatalf("shared baseline: got %q, want both bottom Braille dots in every cell", rows[9])
 			}
 		}
 		m, cmd = rootUpdate(m, tea.WindowSizeMsg{Width: 40, Height: 24})
@@ -300,16 +300,16 @@ func TestModel_DayGraphWindowHeight(t *testing.T) {
 	})
 	t.Run("medium and fullscreen windows keep the same compact graph band", func(t *testing.T) {
 		m := newMindsetHome(t, 0)
-		for _, height := range []int{27, 32, 40, 60, 27} {
+		for _, height := range []int{29, 32, 40, 60, 29} {
 			var cmd tea.Cmd
 			m, cmd = rootUpdate(m, tea.WindowSizeMsg{Width: 120, Height: height})
 			m = runHomeData(t, m, cmd)
 			rows := strings.Split(ansi.Strip(m.View().Content), "\n")
-			if !strings.HasPrefix(rows[9], " Events ") {
-				t.Fatalf("terminal %d rows: got row 9 %q, want Events below the same four-row graph band", height, rows[9])
+			if !strings.HasPrefix(rows[11], " Events ") {
+				t.Fatalf("terminal %d rows: got row 11 %q, want Events below the same six-row graph band", height, rows[11])
 			}
-			if m.days.Height() != 5 {
-				t.Fatalf("terminal %d rows: got graph band %d, want four mountain rows and a marker gap", height, m.days.Height())
+			if m.days.Height() != 7 {
+				t.Fatalf("terminal %d rows: got graph band %d, want six mountain rows and a marker gap", height, m.days.Height())
 			}
 		}
 	})
@@ -414,4 +414,48 @@ func TestModel_EventsActivityZoom(t *testing.T) {
 			t.Fatal("editing an Event triggered day-graph zoom")
 		}
 	})
+}
+
+func TestModel_DayMountainAdaptiveLayout(t *testing.T) {
+	m := newMindsetHome(t, 0)
+	resized, cmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 40})
+	m = runHomeData(t, resized, cmd)
+	assertLayout := func(m Model, mountainRows, terminalRows int) {
+		t.Helper()
+		rows := strings.Split(m.View().Content, "\n")
+		eventRow := 5 + mountainRows // Mindset ends at row 2, separator at 3; marker is separate.
+		if m.days.Height() != mountainRows+1 || m.homeEventsHeight < 14 || len(rows) > terminalRows {
+			t.Fatalf("band=%d Events=%d rendered=%d, want %d/at least 14/at most %d", m.days.Height(), m.homeEventsHeight, len(rows), mountainRows+1, terminalRows)
+		}
+		if !strings.HasPrefix(ansi.Strip(rows[eventRow]), " Events ") || !strings.Contains(rows[eventRow-1], "48;5;62") {
+			t.Fatalf("Events or marker missing at the separate rows %d/%d", eventRow, eventRow-1)
+		}
+		if ansi.Strip(rows[eventRow-2]) != strings.Repeat("⣀", m.width) {
+			t.Fatal("empty mountain baseline did not stop above marker and Events")
+		}
+	}
+	assertLayout(m, 6, 40)
+	for range 16 {
+		moved, command := rootUpdate(m, runeKey('+'))
+		m = runHomeData(t, moved, command)
+		if m.days.Height() == 9 {
+			break
+		}
+	}
+	assertLayout(m, 8, 40)
+	for _, size := range [][2]int{{40, 24}, {80, 28}, {120, 50}, {80, 40}} {
+		resized, command := rootUpdate(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		m = runHomeData(t, resized, command)
+		want := 8
+		if size[1] == 24 {
+			want = 1
+		}
+		if size[1] == 28 {
+			want = 5
+		}
+		assertLayout(m, want, size[1])
+	}
+	moved, command := rootUpdate(m, runeKey('-'))
+	m = runHomeData(t, moved, command)
+	assertLayout(m, 6, 40)
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/render"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
@@ -431,22 +432,22 @@ func TestModel_MarkerDuringPanning(t *testing.T) {
 }
 
 func TestModel_MountainSizing(t *testing.T) {
-	t.Run("keeps the earlier compact height even in a fullscreen terminal", func(t *testing.T) {
+	t.Run("caps normal mountains at six rows and reduces them in compact terminals", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
-		for _, scenario := range []struct{ terminalRows, plotHeight int }{{24, 2}, {25, 3}, {26, 4}, {27, 5}, {30, 5}, {32, 5}, {40, 5}, {80, 5}} {
+		for _, scenario := range []struct{ terminalRows, plotHeight int }{{24, 2}, {25, 3}, {26, 4}, {27, 5}, {30, 7}, {32, 7}, {40, 7}, {80, 7}} {
 			m.Resize(80, scenario.terminalRows)
 			if got := m.Height(); got != scenario.plotHeight {
 				t.Fatalf("terminal %d rows: got plot height %d, want %d including the date-marker gap", scenario.terminalRows, got, scenario.plotHeight)
 			}
 		}
 	})
-	t.Run("uses normal boost and 100 percent as the baseline in the same four-row canvas in small and fullscreen windows", func(t *testing.T) {
+	t.Run("uses normal boost and 100 percent as the baseline in the same six-row canvas in small and fullscreen windows", func(t *testing.T) {
 		m, s := fixture(t)
 		defer m.Close()
 		m.Resize(80, 40)
 		m.SetFocused(true)
-		if got, want := m.Height(), 5; got != want {
+		if got, want := m.Height(), 7; got != want {
 			t.Fatalf("default height: got %d, want %d", got, want)
 		}
 		_, exponent := m.boostPreset()
@@ -459,7 +460,7 @@ func TestModel_MountainSizing(t *testing.T) {
 		for range 40 {
 			m.Key("down")
 		}
-		if m.size != 50 || m.Height() != 5 {
+		if m.size != 50 || m.Height() != 7 {
 			t.Fatal("reducing fill changed the compact canvas")
 		}
 		for range 60 {
@@ -467,8 +468,8 @@ func TestModel_MountainSizing(t *testing.T) {
 				t.Fatal("size adjustment requested data")
 			}
 		}
-		if m.size != 300 || m.Height() != 5 {
-			t.Fatalf("dramatic size/height: got %d/%d, want 300/5", m.size, m.Height())
+		if m.size != 300 || m.Height() != 7 {
+			t.Fatalf("dramatic size/height: got %d/%d, want 300/7", m.size, m.Height())
 		}
 		if s.reads != reads {
 			t.Fatal("style adjustment queried history")
@@ -482,7 +483,7 @@ func TestModel_MountainSizing(t *testing.T) {
 		if m.plot != initial {
 			t.Fatal("reset changed the baseline mountain shape")
 		}
-		if m.size != 100 || m.Height() != 5 || m.outline {
+		if m.size != 100 || m.Height() != 7 || m.outline {
 			t.Fatal("reset did not restore the filled mountain default")
 		}
 	})
@@ -491,7 +492,7 @@ func TestModel_MountainSizing(t *testing.T) {
 		defer m.Close()
 		m.span = 0 // Set up the coarse all-history sampling case.
 		m = m.Update(activityReply(m.load(false)))
-		for _, scenario := range []struct{ width, buckets int }{{80, 162}, {160, 256}} {
+		for _, scenario := range []struct{ width, buckets int }{{80, 172}, {160, 256}} {
 			m.Resize(scenario.width, 40)
 			cmd := m.Sync(m.selected, true, false)
 			if cmd == nil {
@@ -531,6 +532,11 @@ func TestModel_MountainFocusPalette(t *testing.T) {
 	t.Run("Events uses grey while other home focus keeps colors even on one row", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
+		m.values = make([]render.DayActivity, 43)
+		m.values[15].Thoughts = 100
+		m.values[28].Events = 100
+		m.reference = 70
+		m.rebuild()
 		for _, height := range []int{40, 20} {
 			m.Resize(80, height)
 			m.SetHighlighted(false)
@@ -568,15 +574,15 @@ func TestModel_ViewportContext(t *testing.T) {
 		from, until, reads := m.from, m.until, reader.reads
 		reply := activityReply(m.Key("r")).(loadedMsg)
 		bounds := reply.boundaries
-		if !bounds[0].Equal(from.AddDate(0, 0, -1)) || !bounds[1].Equal(from) || !bounds[len(bounds)-2].Equal(until) || !bounds[len(bounds)-1].Equal(until.AddDate(0, 0, 1)) {
-			t.Fatal("request did not include exactly one neighboring daily bucket per edge")
+		if !bounds[0].Equal(from.AddDate(0, 0, -6)) || !bounds[6].Equal(from) || !bounds[len(bounds)-7].Equal(until) || !bounds[len(bounds)-1].Equal(until.AddDate(0, 0, 6)) {
+			t.Fatal("request did not include six neighboring daily buckets per edge")
 		}
 		m = m.Update(reply)
-		if m.from != from || m.until != until || len(m.values) != 31 {
+		if m.from != from || m.until != until || len(m.values) != 43 {
 			t.Fatal("neighboring context stretched the visible month")
 		}
-		if m.before == nil || m.after == nil || m.before.Thoughts != 0 || m.after.Thoughts != 4 {
-			t.Fatalf("neighboring samples: got before=%v after=%v, want supplied edge counts", m.before, m.after)
+		if m.firstBucketDay != calendarDayIndex(bounds[0]) || m.values[0].Thoughts != 0 || m.values[len(m.values)-1].Thoughts != 0 {
+			t.Fatalf("context projection: got first=%d values=%v, want full calendar-anchored context", m.firstBucketDay, m.values)
 		}
 		// This yearly fixture needs two bounded daily history batches on refresh,
 		// followed by one viewport read. Panning does not repeat those batches.
@@ -884,4 +890,37 @@ func TestModel_ZoomOutShortHistory(t *testing.T) {
 	if previous != 31 {
 		t.Fatalf("zoom-out limit: got %d days, want 31", previous)
 	}
+}
+
+func TestModel_AdaptiveTerrainHeight(t *testing.T) {
+	t.Run("six rows normally and eight only after a one-day viewport is accepted", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		m.Resize(80, 50)
+		if got := m.Height(); got != 7 {
+			t.Fatalf("normal band got %d, want six mountains plus marker", got)
+		}
+		for data.CalendarDays(m.from, m.until) > 1 {
+			m = m.Update(activityReply(m.Key("+")))
+		}
+		if got := m.Height(); got != 9 {
+			t.Fatalf("maximum zoom band got %d, want eight mountains plus marker", got)
+		}
+		plot := m.plot
+		if cmd := m.Sync(m.selected, true, false); cmd != nil || m.plot != plot {
+			t.Fatal("unchanged day rerasterized terrain")
+		}
+		m.Resize(80, 28)
+		if got := m.Height(); got != 6 {
+			t.Fatalf("compact maximum band got %d, want five mountains plus marker", got)
+		}
+		m.Resize(80, 50)
+		if got := m.Height(); got != 9 {
+			t.Fatalf("resized maximum band got %d, want nine", got)
+		}
+		m = m.Update(activityReply(m.Key("-")))
+		if got := m.Height(); got != 7 {
+			t.Fatalf("zoom-out band got %d, want seven", got)
+		}
+	})
 }

@@ -16,8 +16,9 @@ import (
 
 const (
 	initialMonthSpan = -1 // Resolve once at the accepted date, then keep the window stable.
-	maxPlotRows      = 4
-	edgeBuckets      = 2 // One adjacent bucket on each side of the viewport.
+	maxPlotRows      = 6
+	maximumZoomRows  = 8
+	edgeBuckets      = 2 * render.DayActivityContextBuckets
 	defaultPlotSize  = 100
 	minPlotSize      = 50
 	maxPlotSize      = 300
@@ -84,8 +85,6 @@ type Model struct {
 	boost, size                      int
 	outline                          bool
 	values                           []render.DayActivity
-	// Neighboring buckets keep clipped mountain flanks stable during a pan.
-	before, after *render.DayActivity
 	// Scale belongs to the historical snapshot and bucket resolution, not the
 	// moving viewport. Only refresh/invalidation or a new resolution replaces it.
 	reference                  float64
@@ -162,10 +161,13 @@ func (m *Model) Resize(width, height int) {
 }
 
 func (m Model) plotRows() int {
-	// Keep four mountain rows plus the date-marker gap at normal sizes. Short
-	// terminals give rows back to Events: 6 header/footer rows, one Mindset row,
-	// its separator, one marker row, and 14 readable timeline rows take 23 rows.
-	return max(1, min(maxPlotRows, m.height-23))
+	// The marker is separate. Reserve 6 header/footer rows, a Mindset row,
+	// its separator, the marker, and 14 Events rows before growing mountains.
+	limit := maxPlotRows
+	if data.CalendarDays(m.from, m.until) == 1 {
+		limit = maximumZoomRows
+	}
+	return max(1, min(limit, m.height-23))
 }
 func (m *Model) Sync(day time.Time, visible, refresh bool) tea.Cmd {
 	selected := displaytime.Day(day)
@@ -285,11 +287,11 @@ func (m *Model) load(refreshBounds bool) tea.Cmd {
 		from := alignedBucketStart(result.from, result.bucketDays)
 		until := alignedBucketStart(result.until.AddDate(0, 0, -1), result.bucketDays).AddDate(0, 0, result.bucketDays)
 		// Whole buckets stay anchored to civil dates across pans, including the
-		// two neighboring samples that continue each edge's slope.
+		// neighboring samples that continue each finite mountain shoulder.
 		count := data.CalendarDays(from, until) / result.bucketDays
 		result.boundaries = make([]time.Time, count+edgeBuckets+1)
 		for i := range result.boundaries {
-			result.boundaries[i] = from.AddDate(0, 0, (i-1)*result.bucketDays)
+			result.boundaries[i] = from.AddDate(0, 0, (i-render.DayActivityContextBuckets)*result.bucketDays)
 		}
 		result.counts, result.err = reader.ActivityCounts(ctx, user, result.boundaries, cutoff)
 		if ctx.Err() != nil {
@@ -332,7 +334,7 @@ func (m Model) Update(msg tea.Msg) Model {
 	if result.err != nil {
 		return m
 	}
-	if len(result.counts) < 3 || len(result.counts)+1 != len(result.boundaries) {
+	if len(result.counts) < edgeBuckets+1 || len(result.counts)+1 != len(result.boundaries) {
 		m.err = fmt.Errorf("invalid activity result")
 		return m
 	}
@@ -346,10 +348,10 @@ func (m Model) Update(msg tea.Msg) Model {
 		days := float64(data.CalendarDays(result.boundaries[i], result.boundaries[i+1]))
 		projected[i] = render.DayActivity{Events: float64(count.EventDays) / days, Thoughts: float64(count.Thoughts) / days}
 	}
-	m.before, m.after = &projected[0], &projected[len(projected)-1]
-	m.values = projected[1 : len(projected)-1]
+	m.values = projected
 	m.reference, m.bucketDays = result.reference, result.bucketDays
-	m.firstBucketDay = calendarDayIndex(result.boundaries[1])
+	m.firstBucketDay = calendarDayIndex(result.boundaries[0])
+	m.rows = m.plotRows()
 	m.rebuild()
 	return m
 }
@@ -439,8 +441,6 @@ func (m *Model) rebuild() {
 		SampleFirstDay: m.firstBucketDay,
 		SampleDays:     m.bucketDays,
 		Reference:      m.reference,
-		Before:         m.before,
-		After:          m.after,
 		Total:          visible[0],
 		Events:         visible[1],
 		Thoughts:       visible[2],
