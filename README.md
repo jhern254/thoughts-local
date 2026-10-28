@@ -104,10 +104,17 @@ the original Subject.
 
 ### Browser accessibility
 
-Open **Options → Accessibility** to independently enable thicker card borders or
-heavier text. Preview the changes, choose **Apply** to save, or **Back** to cancel.
-Thicker borders use square corners; text size stays unchanged. Preferences survive
-browser reloads and do not change the native terminal.
+Open **Options → Accessibility** for independent readability controls:
+
+- **Border weight:** Normal, Heavy, or Extra heavy across cards, panel dividers,
+  dialogs, and media-preview frames.
+- **Heavier text:** a stronger monospace weight without changing text size.
+- **Text size:** Standard, Larger, or Largest.
+- **High contrast:** stronger text contrast and darker backgrounds, keeping your
+  wallpaper or video visible. Turning it off restores your saved Visual darkness.
+
+Preview changes, choose **Apply** to save, or **Back** to cancel. Preferences
+survive browser reloads and do not change the native terminal.
 
 ### Browser background
 
