@@ -118,6 +118,40 @@ Synthetic microphone capture raised browser CPU to roughly 40–58%; this
 **excludes speech inference**. Quarter-speed playback in the earlier 24 FPS
 study reduced CPU but visibly stepped motion; it adds no interpolated frames.
 
+The following retained detail separates motion complexity from quality settings.
+Playback CPU/PSS values are medians of three eight-second headed-browser samples;
+native preparation is the median of three one-iteration runs. Navigation used
+1200×850, with a separate 650×600 walkthrough; these are not full-HD viewport
+composition measurements.
+
+| Fixture / tier | Prepare, s | FFmpeg peak RSS, MiB | Full-speed browser CPU | Browser PSS, MiB | Native app CPU |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Motion / Efficient | 21.04 | 128.18 | 23.8% | 291.8 | 2.0% |
+| Motion / High quality | 28.27 | 187.90 | 26.9% | 379.2 | 2.2% |
+| Motion / Maximum | 43.12 | 190.70 | 41.6% | 344.4 | 1.9% |
+| Ambient / Efficient | 24.81 | 130.80 | 26.2% | 359.0 | 2.1% |
+| Ambient / High quality | 36.38 | 190.54 | 28.8% | 391.5 | 2.1% |
+| Ambient / Maximum | 49.58 | 193.11 | 51.3% | 348.9 | 2.1% |
+
+Native app CPU excludes FFmpeg. Peak FFmpeg RSS is sampled across sequential
+phases, not combined app/child memory or a hard ceiling. PSS includes browser
+cache/state differences; it does not establish a memory ranking among tiers.
+Normal-speed steady samples reported zero dropped frames; playing-navigation
+counters recorded 3–16 drops over roughly 3,000–6,000 frames, including startup
+and settling. Passing playback does not mean perfect frame delivery.
+
+| Playing navigation, motion fixture | Efficient median/p95, ms | Maximum median/p95, ms |
+| --- | ---: | ---: |
+| Event selection | 15.0 / 30.1 | 19.9 / 30.7 |
+| Expand/collapse | 18.6 / 34.4 | 23.2 / 32.9 |
+| Traverse 200 Thoughts | 17.5 / 31.2 | 22.7 / 30.5 |
+| Day changes | 166.8 / 185.5 | 174.3 / 195.8 |
+| Typing | 14.0 / 14.8 | 16.1 / 30.1 |
+
+Each latency column is the median of per-run medians/p95s, not a pooled percentile.
+The workload traverses the day's Events in both directions and all 200 Thoughts
+in its ongoing Event; typing uses three eleven-character sequences.
+
 The initial target of less than 10% additional playback CPU was **not met**.
 Maximum-quality day-navigation p95 reached 196–211 ms versus about 174–175 ms
 for its static controls, also exceeding the initial +10 ms target in that study.
@@ -161,6 +195,44 @@ one Main10 seek took 1.89 seconds. Final short/two-hour MKV series uploaded once
 issued five fallback requests, and left staging empty after Apply. Native stills
 run only during source browsing, not recurring background playback.
 
+#### Matroska end-to-end comparison
+
+The short fixture is 60 seconds of 1920×1080 H.264/30 FPS, 23,627,561 bytes;
+MKV remuxes the same packets. The two-hour MKV is 2,835,940,293 bytes with
+two-second keyframes. Main10 is a 30-second 1080p24 Rec.709 HEVC source.
+Native short-source studies used five samples; large/Main10 used three.
+
+The browser series used three successful repetitions at 1920×1080. Each
+repetition includes selection/upload, three direct-timecode seeks, twenty rapid
+arrows, a ten-second late cut, acknowledgement, and Apply. All values below are
+median milliseconds; native fallback includes dispatch, 150 ms coalescing,
+HTTP, and JPEG decode.
+
+| Revision / source / preview path | Selection | Three seeks | Twenty arrows | Prepare | Acknowledge | Apply |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| `4a329a3` / short MP4 / browser | 269 | 124 / 130 / 125 | 401 | 5,265 | 95 | 345 |
+| `f2f3b9b` / short MP4 / browser | 267 | 129 / 127 / 377 | 331 | 5,226 | 90 | 402 |
+| `9eca7b7` / short MKV / native | 363 | 904 / 896 / 907 | 612 | 5,940 | 190 | 385 |
+| `6e1e092` / Main10 MKV / native | 192 | 888 / 1,889 / 882 | 1,112 | 7,240 | 87 | 359 |
+| `4a329a3` / two-hour MP4 / browser | 13,651 | 131 / 120 / 120 | 338 | 5,201 | 119 | 423 |
+| `9eca7b7` / two-hour MKV / native | 15,397 | 881 / 897 / 377 | 600 | 5,097 | 204 | 399 |
+
+These rows retain their original revisions: they do not all measure the later
+selected-video-origin check. Container and preview-path differences prevent
+interpreting the long-source rows as a matched encoding speedup.
+
+| MKV workflow | Browser / Go / processor CPU, seconds | Browser peak PSS, MiB | Go / processor peak RSS, MiB |
+| --- | --- | ---: | --- |
+| Short, `9eca7b7` | 3.04 / 1.58 / 6.55 | 392 | 50 / 112 |
+| Main10, `6e1e092` | 2.58 / 1.34 / 9.16 | 411 | 44 / 155 |
+| Two hours, `9eca7b7` | 13.49 / 8.37 / 5.34 | 382 | 49 / 113 |
+
+These are one-time workflow costs, not recurring playback. The final two-hour
+series transferred in 14.88 seconds, then took 460 ms for validation/response.
+Peak staging was 2,838,083,552 bytes, roughly source plus loop, and emptied on
+Apply. Earlier intermittent stale-display runs were excluded from successful
+medians and remain an unresolved observation.
+
 ### Video preparation activity wave
 
 The loading wave renders fixed braille text and animates clipped layers with
@@ -198,6 +270,23 @@ The browser probe supports interaction/quality studies and forced native-frame
 fallback; its configuration lives alongside the harness. Record revision,
 fixture, browser, viewport, sample count, CPU, memory, and latency together.
 Compile Go benchmarks separately when collecting process/child CPU and RSS.
+For example, the quality study can be repeated with:
+
+```sh
+sh scripts/video-quality-fixtures.sh /tmp/quality-fixtures
+go test -c -o /tmp/visual-bench ./internal/visual
+THOUGHTS_VIDEO_BENCH_FIXTURE=/tmp/quality-fixtures/motion60.mp4 \
+THOUGHTS_VIDEO_BENCH_QUALITY=maximum \
+  /usr/bin/time -v /tmp/visual-bench -test.run '^$' \
+  -test.bench '^BenchmarkPrepareVideo$' -test.benchmem -test.count=3 -test.benchtime=1x
+```
+
+For browser quality comparisons, use `THOUGHTS_PERF_INTERACTIONS=1`,
+`THOUGHTS_PERF_QUALITY_STUDY=1`, `THOUGHTS_PERF_VIDEO_QUALITY=maximum`, and
+`THOUGHTS_PERF_SAMPLES=3` with the browser command above. Repeat each tier and
+fixture. `THOUGHTS_PERF_NATIVE_FRAMES=1` forces the native still-preview path for
+its separate comparison. Keep JSON records and fixture hashes with each revision
+rather than relabeling old measurements as evidence for new code.
 
 ## Remaining limitations
 
