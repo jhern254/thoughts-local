@@ -131,12 +131,12 @@ type optionsState struct {
 	loopDurationMS      int64
 	loopReady           bool
 
-	accessibility       bool
-	borderWeight        data.BorderWeight
-	heavierText         bool
-	textSize            data.TextSize
-	highContrast        bool
-	accessibilityOffset int
+	accessibility                    bool
+	borderWeight                     data.BorderWeight
+	heavierText                      bool
+	textSize                         data.TextSize
+	highContrast                     bool
+	firstVisibleAccessibilityControl int
 }
 
 func (m *Model) requestOptions(action string) {
@@ -204,7 +204,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 	if m.options.accessibility {
-		return m.acceptAccessibility(msg)
+		return m.updateAccessibilityFromReply(msg)
 	}
 	if msg.Action == "playback" {
 		if m.options.open && msg.ID == m.options.id {

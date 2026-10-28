@@ -383,8 +383,8 @@ test('readability previews resize once and restore saved contrast and darkness w
 test('removed development appearance choices restore supported defaults',()=>{
  const {visual}=activationFixture();
  visual.applyReadability({borderWeight:'extra-heavy',textSize:'largest',heavierText:true});
- assert.equal(visual.readability.borderWeight,'normal');
- assert.equal(visual.readability.textSize,'standard');
+ assert.equal(visual.displayedReadability.borderWeight,'normal');
+ assert.equal(visual.displayedReadability.textSize,'standard');
  assert.equal(visual.terminal.options.fontSize,14);
  assert.equal(visual.terminal.options.fontWeight,600);
 });

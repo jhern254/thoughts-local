@@ -180,8 +180,8 @@ func TestModel_AccessibilityScrolling(t *testing.T) {
 func TestModel_AccessibilityMouseAfterResize(t *testing.T) {
 	m := newRootTestModel()
 	m.options.open, m.options.accessibility = true, true
-	m.options.focus = 5
-	m.options.accessibilityOffset = 0
+	m.options.focus = accessibilityFocusBack
+	m.options.firstVisibleAccessibilityControl = 0
 	m.width, m.height = 28, 8
 	if !strings.Contains(ansi.Strip(m.View().Content), "Back") {
 		t.Fatal("selected Back is not visible")

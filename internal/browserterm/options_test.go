@@ -9,8 +9,8 @@ import (
 )
 
 type appearanceReceiver struct {
-	enabled      bool
-	borderWeight data.BorderWeight
+	browserOptionsEnabled bool
+	borderWeight          data.BorderWeight
 }
 
 func (m appearanceReceiver) Init() tea.Cmd  { return nil }
@@ -18,9 +18,9 @@ func (m appearanceReceiver) View() tea.View { return tea.NewView("") }
 func (m appearanceReceiver) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case tui.BrowserOptionsEnabledMsg:
-		m.enabled = true
+		m.browserOptionsEnabled = true
 	case tui.BrowserOptionsMsg:
-		if m.enabled && msg.Action == "appearance" {
+		if m.browserOptionsEnabled && msg.Action == "appearance" {
 			m.borderWeight = msg.BorderWeight
 		}
 	}

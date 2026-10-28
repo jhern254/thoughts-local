@@ -10,7 +10,15 @@ import (
 	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 )
 
-const accessibilityControlCount = 6
+const (
+	accessibilityFocusBorderWeight = iota
+	accessibilityFocusHeavierText
+	accessibilityFocusTextSize
+	accessibilityFocusHighContrast
+	accessibilityFocusApply
+	accessibilityFocusBack
+	accessibilityControlCount
+)
 
 func (m *Model) setBorderWeight(weight data.BorderWeight) {
 	if !weight.Valid() {
@@ -19,7 +27,7 @@ func (m *Model) setBorderWeight(weight data.BorderWeight) {
 	m.borderWeight = weight
 	m.events.SetBorderWeight(weight)
 }
-func (m Model) acceptAccessibility(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateAccessibilityFromReply(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) {
 	if !m.options.open || msg.ID != m.options.id || m.options.request == "" {
 		return m, nil
 	}
@@ -48,22 +56,22 @@ func (m Model) acceptAccessibility(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) {
 }
 func (m *Model) adjustAccessibility(direction int) {
 	switch m.options.focus {
-	case 0:
+	case accessibilityFocusBorderWeight:
 		m.options.borderWeight = m.options.borderWeight.Step(direction)
-	case 1:
+	case accessibilityFocusHeavierText:
 		m.options.heavierText = !m.options.heavierText
-	case 2:
+	case accessibilityFocusTextSize:
 		m.options.textSize = m.options.textSize.Step(direction)
-	case 3:
+	case accessibilityFocusHighContrast:
 		m.options.highContrast = !m.options.highContrast
 	}
 }
 func (m *Model) activateAccessibility() {
 	switch m.options.focus {
-	case 4:
+	case accessibilityFocusApply:
 		m.options.status = "Saving…"
 		m.requestOptions("applyAccessibility")
-	case 5:
+	case accessibilityFocusBack:
 		m.closeAccessibility()
 	default:
 		m.adjustAccessibility(1)
@@ -74,21 +82,21 @@ func (m *Model) closeAccessibility() {
 	m.options.menu = true
 	m.requestOptions("")
 }
-func (m Model) accessibilityVisibleControls() int {
+func (m Model) visibleAccessibilityControlCount() int {
 	return max(1, min(accessibilityControlCount, m.height-6))
 }
-func (m *Model) revealAccessibilityControl() {
-	visible := m.accessibilityVisibleControls()
-	if m.options.focus < m.options.accessibilityOffset {
-		m.options.accessibilityOffset = m.options.focus
+func (m *Model) revealFocusedAccessibilityControl() {
+	visible := m.visibleAccessibilityControlCount()
+	if m.options.focus < m.options.firstVisibleAccessibilityControl {
+		m.options.firstVisibleAccessibilityControl = m.options.focus
 	}
-	if m.options.focus >= m.options.accessibilityOffset+visible {
-		m.options.accessibilityOffset = m.options.focus - visible + 1
+	if m.options.focus >= m.options.firstVisibleAccessibilityControl+visible {
+		m.options.firstVisibleAccessibilityControl = m.options.focus - visible + 1
 	}
-	m.options.accessibilityOffset = min(m.options.accessibilityOffset, accessibilityControlCount-visible)
+	m.options.firstVisibleAccessibilityControl = min(m.options.firstVisibleAccessibilityControl, accessibilityControlCount-visible)
 }
 func (m Model) updateAccessibilityInput(message tea.Msg) (tea.Model, tea.Cmd) {
-	m.revealAccessibilityControl()
+	m.revealFocusedAccessibilityControl()
 	busy := m.options.request != ""
 	switch key := message.(type) {
 	case tea.KeyPressMsg:
@@ -102,7 +110,7 @@ func (m Model) updateAccessibilityInput(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "shift+tab":
 			m.options.focus = (m.options.focus + accessibilityControlCount - 1) % accessibilityControlCount
 		case "left", "right":
-			if !busy && m.options.focus < 4 {
+			if !busy && m.options.focus < accessibilityFocusApply {
 				direction := 1
 				if key.String() == "left" {
 					direction = -1
@@ -115,16 +123,16 @@ func (m Model) updateAccessibilityInput(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case tea.MouseClickMsg:
-		if !busy && key.Button == tea.MouseLeft && key.Y >= 2 && key.Y < 2+m.accessibilityVisibleControls() {
-			m.options.focus = key.Y - 2 + m.options.accessibilityOffset
+		if !busy && key.Button == tea.MouseLeft && key.Y >= 2 && key.Y < 2+m.visibleAccessibilityControlCount() {
+			m.options.focus = key.Y - 2 + m.options.firstVisibleAccessibilityControl
 			m.activateAccessibility()
 		}
 	}
-	m.revealAccessibilityControl()
+	m.revealFocusedAccessibilityControl()
 	return m, nil
 }
 func (m Model) viewAccessibility() tea.View {
-	m.revealAccessibilityControl()
+	m.revealFocusedAccessibilityControl()
 	onOff := func(enabled bool) string {
 		if enabled {
 			return "On"
@@ -133,7 +141,7 @@ func (m Model) viewAccessibility() tea.View {
 	}
 	labels := []string{"Border weight: " + m.options.borderWeight.Label(), "Heavier text: " + onOff(m.options.heavierText), "Text size: " + m.options.textSize.Label(), "High contrast: " + onOff(m.options.highContrast), "Apply", "Back"}
 	rows := []string{m.subjects.list.Styles.Title.Render("Accessibility"), ""}
-	for i := m.options.accessibilityOffset; i < min(len(labels), m.options.accessibilityOffset+m.accessibilityVisibleControls()); i++ {
+	for i := m.options.firstVisibleAccessibilityControl; i < min(len(labels), m.options.firstVisibleAccessibilityControl+m.visibleAccessibilityControlCount()); i++ {
 		label := labels[i]
 		if i == m.options.focus {
 			label = m.subjects.list.Styles.Title.Render(label)
