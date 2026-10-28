@@ -16,8 +16,7 @@ import (
 
 const (
 	initialMonthSpan = -1 // Resolve once at the accepted date, then keep the window stable.
-	maxPlotRows      = 6
-	maximumZoomRows  = 8
+	maxPlotRows      = 4
 	edgeBuckets      = 2 * render.DayActivityContextBuckets
 	defaultPlotSize  = 100
 	minPlotSize      = 50
@@ -163,11 +162,7 @@ func (m *Model) Resize(width, height int) {
 func (m Model) plotRows() int {
 	// The marker is separate. Reserve 6 header/footer rows, a Mindset row,
 	// its separator, the marker, and 14 Events rows before growing mountains.
-	limit := maxPlotRows
-	if data.CalendarDays(m.from, m.until) == 1 {
-		limit = maximumZoomRows
-	}
-	return max(1, min(limit, m.height-23))
+	return max(1, min(maxPlotRows, m.height-23))
 }
 func (m *Model) Sync(day time.Time, visible, refresh bool) tea.Cmd {
 	selected := displaytime.Day(day)

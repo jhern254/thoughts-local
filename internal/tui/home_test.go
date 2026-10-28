@@ -336,7 +336,7 @@ func TestModel_EventsHome(t *testing.T) {
 	t.Run("distribution survives focus resize and Thought detail return", func(t *testing.T) {
 		m, _ := newHome(t)
 		{
-			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 34})
+			resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 30})
 			m = runHomeData(t, resized, resizeCmd)
 		}
 		hasCurve := func(view string) bool {
@@ -356,7 +356,7 @@ func TestModel_EventsHome(t *testing.T) {
 		}
 		for _, width := range []int{59, 60, 40, 80} {
 			{
-				resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 34})
+				resized, resizeCmd := rootUpdate(m, tea.WindowSizeMsg{Width: width, Height: 30})
 				m = runHomeData(t, resized, resizeCmd)
 			}
 			if hasCurve(m.events.View()) != (width >= 60) {

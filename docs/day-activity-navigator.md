@@ -30,13 +30,12 @@ the graph is an arrow-accessed part of Events. While the graph has focus:
 When focus is outside the Events timeline, all vertical Event curves are highlighted too;
 card selection and borders keep their own focus rules.
 
-The plot has no title or date-range heading. Normal and intermediate zoom use
-at most six mountain rows; only an accepted one-day viewport permits eight.
+The plot has no title or date-range heading. All zoom levels use at most four mountain rows.
 The purple marker has its own row beneath that budget. Short terminals reduce
 mountain rows before taking Events below fourteen rows when space permits:
 26 terminal rows use three mountain rows, 25 use two, and 24 or fewer use one.
-Size/boost tuning never grows this canvas. Zoom completion and resize update the
-Events allocation in the same root-model transition. One blank row separates
+Size/boost tuning never grows this canvas. Resize updates the Events allocation in the same root-model transition. Zoom
+never enlarges the graph. One blank row separates
 Mindset from the graph; asynchronous reminders do not change its height budget.
 
 Style values, loading feedback, and read errors appear right-aligned beside the
@@ -104,10 +103,12 @@ smaller ridges rise toward the reference summit without clipping it flat:
 same gain, retaining their count ratios and Total headroom. At 100%, the gain is
 one. Higher settings change the picture, not the panel height.
 
-The canvas stays fixed while tuning. Normal zoom allows six mountain rows;
-one-day zoom allows eight, with the marker separate in both cases. Eight rows
-increase Braille rendering resolution but cannot reveal real intraday peaks:
-counts are still daily averages at their bucket resolution.
+The four-row canvas stays fixed while tuning and zooming, including one-day
+zoom. Normal and quarter-size windows keep the same height at 27 terminal rows
+or more. Shorter terminals give rows back to Events: 26 rows use three mountain
+rows, 25 use two, and 24 or fewer use one. This protects fourteen Events rows
+where space permits; it is not scaling with browser width. Counts remain daily
+averages, so zoom cannot reveal real intraday peaks.
 
 The renderer takes the maximum of asymmetric finite-support mountain envelopes
 rather than adding their heights. Shoulders blend 85% raised cosine with a 15%
@@ -629,7 +630,11 @@ removed through the UI. Reviewed captures and results are under
 `/tmp/thoughts-daynav-evidence`; one WebSocket served the whole walkthrough.
 
 
-## Broad-terrain experiment after `bd99d2f`
+## Broad-terrain experiment at `acf5eaf` (height superseded)
+
+The six/eight-row application height tested here was subsequently reverted to
+four rows at all zoom levels. The terrain and fixed-canvas measurements remain
+valid; taller benchmark canvases do not describe the current application layout.
 
 Synthetic comparison fixtures cover a dominant summit, two separated peaks,
 sustained activity, an isolated day, Thought/Event-heavy periods, empty data,

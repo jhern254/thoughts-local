@@ -310,8 +310,8 @@ func TestPreview_DramaticDayActivity(t *testing.T) {
 		}
 		for _, view := range []string{normal, dramatic} {
 			rows := strings.Split(view, "\n")
-			if !strings.HasPrefix(rows[9], " Events ") {
-				t.Fatalf("preview row 9: got %q, want Events below the unchanged graph band", rows[9])
+			if !strings.HasPrefix(rows[7], " Events ") {
+				t.Fatalf("preview row 7: got %q, want Events below the unchanged graph band", rows[7])
 			}
 		}
 	})
@@ -323,14 +323,12 @@ func TestPreview_DayActivityNormalBaseline(t *testing.T) {
 	if defaultView != explicitNormal {
 		t.Fatal("default must be the normal 100 percent baseline")
 	}
-	// Reviewed six-row profile with broad shoulders and a pointed summit.
+	// Reviewed compact four-row profile, retaining the broad contours.
 	want := []string{
-		"      ⢀⣠⣴⣾⣷⣦                    ",
-		"    ⣠⣶⣿⣿⣿⣿⣿⣿⣷⡀      ⣀⣠⣀         ",
-		"  ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄  ⣠⣴⣿⣿⣿⣿⣷⣄       ",
-		"⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⣷⡀     ",
-		"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣤⡀  ",
-		"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦",
+		"     ⢀⣤⣤⣶⣾⣿⣦⣄                   ",
+		"  ⣀⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⣷⡄  ⣀⣤⣶⣶⣿⣷⣦⣄       ",
+		"⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⣀    ",
+		"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⣤",
 	}
 	rows := strings.Split(defaultView, "\n")
 	for i, row := range want {
