@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/modelassets"
 	"github.com/jhern254/go-thoughts/internal/speech"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
@@ -367,7 +368,7 @@ func (m Model) speechSetupPopupLayout() (string, int, int, []int) {
 	for index, row := range rows {
 		rows[index] = ansi.Truncate(row, innerWidth, "…")
 	}
-	popup := lipgloss.NewStyle().Width(width).Padding(0, 1).Border(lipgloss.RoundedBorder()).Background(lipgloss.Color("#202020")).Render(strings.Join(rows, "\n"))
+	popup := lipgloss.NewStyle().Width(width).Padding(0, 1).Border(appearance.Border(m.borderWeight)).Background(lipgloss.Color("#202020")).Render(strings.Join(rows, "\n"))
 	return popup, max(0, (m.width-width)/2), max(0, (m.height-lipgloss.Height(popup))/2), buttonRows
 }
 func (m Model) overlaySpeechSetupPopup(view tea.View) tea.View {

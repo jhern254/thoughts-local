@@ -9,6 +9,10 @@ CREATE TABLE visual (
     speed_percent INTEGER NOT NULL DEFAULT 100 CHECK (typeof(speed_percent) = 'integer' AND speed_percent BETWEEN 25 AND 100),
     user_paused INTEGER NOT NULL DEFAULT 0 CHECK (typeof(user_paused) = 'integer' AND user_paused IN (0, 1)),
     video_quality TEXT NOT NULL DEFAULT 'efficient' CHECK (video_quality IN ('efficient', 'high', 'maximum')),
+    border_weight TEXT NOT NULL DEFAULT 'normal' CHECK (border_weight IN ('normal', 'heavy')),
+    heavier_text INTEGER NOT NULL DEFAULT 0 CHECK (typeof(heavier_text) = 'integer' AND heavier_text IN (0, 1)),
+    text_size TEXT NOT NULL DEFAULT 'standard' CHECK (text_size IN ('standard', 'larger')),
+    high_contrast INTEGER NOT NULL DEFAULT 0 CHECK (typeof(high_contrast) = 'integer' AND high_contrast IN (0, 1)),
     CHECK (background_asset IS NULL OR (
         length(background_asset) = 36
         AND substr(background_asset, 1, 32) NOT GLOB '*[^0-9a-f]*'

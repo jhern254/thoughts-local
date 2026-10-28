@@ -9,37 +9,45 @@ import (
 
 type optionsBridgeModel struct {
 	tea.Model
-	writer      *terminalWriter
-	lastOptions tui.BrowserOptionsState
-	videoEditor *videoEditor
+	writer                *terminalWriter
+	lastOptionsState      tui.BrowserOptionsState
+	videoEditor           *videoEditor
+	browserOptionsEnabled bool
 }
 
 func (m optionsBridgeModel) Init() tea.Cmd {
-	return tea.Batch(m.Model.Init(), func() tea.Msg { return tui.BrowserOptionsEnabledMsg{} })
+	return m.Model.Init()
 }
 func (m optionsBridgeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var enableBrowserOptionsCmd tea.Cmd
+	// Startup settings can arrive before commands returned by Init complete.
+	if !m.browserOptionsEnabled {
+		m.browserOptionsEnabled = true
+		m.Model, enableBrowserOptionsCmd = m.Model.Update(tui.BrowserOptionsEnabledMsg{})
+	}
 	var cmd tea.Cmd
 	m.Model, cmd = m.Model.Update(msg)
-	if model, ok := m.Model.(interface {
+	cmd = tea.Batch(enableBrowserOptionsCmd, cmd)
+	if optionsModel, ok := m.Model.(interface {
 		OptionsState() tui.BrowserOptionsState
 	}); ok {
-		state := model.OptionsState()
-		if state != m.lastOptions {
-			m.lastOptions = state
+		optionsState := optionsModel.OptionsState()
+		if optionsState != m.lastOptionsState {
+			m.lastOptionsState = optionsState
 			editorID := ""
 			if m.videoEditor != nil {
-				var cleanup func() error
-				editorID, cleanup = m.videoEditor.setOpen(state.Open)
-				m.videoEditor.setPreviewOperation(state.ID, state.Request == "prepareLoop")
-				if cleanup != nil {
-					cmd = tea.Batch(cmd, func() tea.Msg { _ = cleanup(); return nil })
+				var cleanupRetiredVideoEditor func() error
+				editorID, cleanupRetiredVideoEditor = m.videoEditor.setOpen(optionsState.Open && !optionsState.Accessibility)
+				m.videoEditor.setPreviewOperation(optionsState.ID, optionsState.Request == "prepareLoop")
+				if cleanupRetiredVideoEditor != nil {
+					cmd = tea.Batch(cmd, func() tea.Msg { _ = cleanupRetiredVideoEditor(); return nil })
 				}
 			}
-			data, _ := json.Marshal(struct {
+			optionsJSON, _ := json.Marshal(struct {
 				tui.BrowserOptionsState
 				EditorID string `json:"editorID"`
-			}{state, editorID})
-			_ = m.writer.writeFrame(append([]byte{'o'}, data...))
+			}{optionsState, editorID})
+			_ = m.writer.writeFrame(append([]byte{'o'}, optionsJSON...))
 		}
 	}
 	return m, cmd

@@ -126,6 +126,8 @@ test('visual preserves recording and terminal focus ownership', async ({page}) =
   await openVisual(page);
   expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(0);
   await clickControl(page, 'Back');
+  await expect(screen(page)).toContainText('Accessibility');
+  await page.keyboard.press('Escape');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await page.keyboard.press('F8');
   await expect.poll(() => page.evaluate(() => window.voiceProbe.requests)).toBe(1);
@@ -136,6 +138,17 @@ test('visual preserves recording and terminal focus ownership', async ({page}) =
   await expect(screen(page)).not.toContainText('Loading visual');
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   const activeSockets = sockets;
+  await clickControl(page,'Back');
+  await clickControl(page,'Accessibility');
+  await expect(screen(page)).not.toContainText('Loading accessibility');
+  await clickControl(page,'Text size: Standard');
+  await clickControl(page,'High contrast: Off');
+  await clickControl(page,'Apply');
+  await expect(screen(page)).toContainText('visual voice draft');
+  expect(await page.evaluate(() => window.voiceProbe.requests)).toBe(1);
+  expect(await page.evaluate(() => window.voiceProbe.tracksStopped)).toBe(0);
+  expect(sockets).toBe(activeSockets);
+  await openVisual(page);
   // Six megapixels exceeds the 4MP stored budget: resize/activation must also
   // preserve recording ownership, rather than only testing a small-image save.
   const encoded = await page.evaluate(() => {
@@ -162,4 +175,8 @@ test('visual preserves recording and terminal focus ownership', async ({page}) =
   await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   await page.keyboard.press('F8');
   await expect(screen(page)).toContainText('v: Record');
+  await page.evaluate(async()=>{
+    const response=await fetch('/visual/accessibility',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({borderWeight:'normal',heavierText:false,textSize:'standard',highContrast:false})});
+    if(!response.ok) throw new Error('could not reset synthetic readability preferences');
+  });
 });

@@ -108,3 +108,50 @@ editing selected initially. Dictation appends at the end, with editing locked
 until capture cleanup completes. Reserve the actual wrapped help/confirmation
 rows before sizing the textarea so narrow layouts retain visible actions and a
 visible cursor. Browser enhancements do not own this editing workflow.
+
+### Browser readability
+
+| Capability | Coverage |
+| --- | --- |
+| Structural outlines and panel dividers | Normal, Heavy |
+| Text weight | Independent Heavier text toggle |
+| Text size | Standard, Larger |
+| Contrast over wallpaper/video | Optional stronger text contrast and effective darkness |
+| Visible keyboard focus | Existing highlighting retained; browser contrast mode strengthens focus outlines |
+| Preview, cancel, save, reload | Supported for all readability preferences |
+| Reduced motion | Existing OS preference handling retained |
+| Screen readers | No new verified support; requires separate work |
+
+Options → Accessibility offers independent border weight, text weight, text size,
+and contrast preferences. Defaults are Normal borders, ordinary text weight,
+Standard size (14px), and High contrast off. Larger uses 16px;
+retain monospace typography and the existing line spacing.
+
+Structural borders share a single Go glyph mapping: rounded Normal and square
+Heavy. Each edge stays one terminal cell wide. Apply the same weight to card outlines, section dividers, dialogs, and reserved media frames.
+Timeline rails, distribution curves, sliders, and activity waves encode other
+information and keep their existing graphics. Browser media placement must check
+the matching frame glyphs before publishing a preview over terminal cells.
+
+Text-size previews refit the existing terminal and use its normal resize channel;
+wait for matching terminal geometry before showing media overlays. Settings must
+remain keyboard accessible at narrow widths and short heights, scrolling controls
+to keep Apply and Back reachable. Back/Esc restores saved presentation, and failed
+saves retain the draft for retry.
+
+High contrast uses xterm's minimum contrast adjustment with a target of 7 and an
+effective background darkness of at least 85%, without overwriting saved Visual
+darkness or pausing the visible video. Browser status and focus outlines remain
+visible. This is a readability aid, not a claim of verified WCAG conformance over
+arbitrary images, video, or all terminal color combinations. Screen-reader support
+requires a separately tested design; these controls do not establish it.
+
+Larger is capped at 16px. At a 960×450 browser-content viewport on a 1920×1080
+display, Chromium and Firefox checks cover Events navigation, multiline thought
+creation, and Options controls without resizing. The short timeline keeps a
+scrolling body of at least six rows rather than hiding it behind a resize notice.
+The movie editor also fits this reference viewport: below 30 terminal rows it
+compacts the heading and footer, retaining the full 12-row media preview and
+scrolling controls. The minimum is 48 columns by 20 rows. Full-size layouts retain
+their existing presentation. During preparation, essential status and Stop/Cancel
+remain available even when there is no room for the optional activity wave.

@@ -33,6 +33,7 @@ func TestModel_Options(t *testing.T) {
 			t.Fatal("Back did not restore the Options menu")
 		}
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyDown})
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyDown})
 		m, _ = rootUpdate(m, enterKey())
 		if !m.speechSetup.open {
 			t.Fatal("Models no longer opens from Options")
@@ -42,7 +43,7 @@ func TestModel_Options(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		if got := m.OptionsState().Darkness; got != 42 {
 			t.Fatalf("initial darkness = %d, want 42", got)
 		}
@@ -67,7 +68,7 @@ func TestModel_Options(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		before := m.View().Content
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		id := m.OptionsState().ID
 		if !strings.Contains(m.View().Content, "Background darkness") {
 			t.Fatal("missing TUI visual controls")
@@ -81,10 +82,11 @@ func TestModel_Options(t *testing.T) {
 			t.Fatalf("darkness = %d, want 69", got)
 		}
 		m, _ = rootUpdate(m, runeKey('q'))
+		m, _ = rootUpdate(m, runeKey('q'))
 		if m.View().Content != before || m.exitPromptOpen {
 			t.Fatal("Options changed underlying screen")
 		}
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "saved", ID: id, Darkness: 10})
 		if !m.OptionsState().Open || m.OptionsState().Request != "load" {
 			t.Fatal("stale save affected new page")
@@ -94,7 +96,7 @@ func TestModel_Options(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Darkness: 70})
 		rows := strings.Split(ansi.Strip(m.View().Content), "\n")
 		if !strings.Contains(rows[7], "╭"+strings.Repeat("─", 58)+"╮") {
@@ -107,7 +109,7 @@ func TestModel_Options(t *testing.T) {
 	t.Run("busy save blocks duplicate actions and escape until its result", func(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Darkness: 70})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
@@ -133,7 +135,7 @@ func TestModel_Options(t *testing.T) {
 	t.Run("narrow layout retains every action and short layout omits preview", func(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		for _, size := range []tea.WindowSizeMsg{{Width: 40, Height: 30}, {Width: 60, Height: 18}} {
 			m, _ = rootUpdate(m, size)
 			content := ansi.Strip(m.View().Content)
@@ -169,7 +171,7 @@ func TestModel_VideoOptions(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 32})
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Background: true, Kind: "video", SpeedPercent: 100, Darkness: 70})
 		rows := strings.Split(ansi.Strip(m.View().Content), "\n")
 		for index, text := range []string{"Playback speed: 100%", "Pause video", "Play / pause preview", "", "Apply", "Remove background", "Back"} {
@@ -201,11 +203,12 @@ func TestModel_VideoImportCancellation(t *testing.T) {
 		m := newRootTestModel()
 		m, _ = rootUpdate(m, BrowserOptionsEnabledMsg{})
 		before := m.View().Content
-		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "open"})
+		m, _ = openVisualOptions(m)
 		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loaded", ID: m.OptionsState().ID, Kind: "video", Background: true, Darkness: 70, SpeedPercent: 100})
 		m.options.focus = optionsFocusApply
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEnter})
 		id := m.OptionsState().ID
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEscape})
 		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyEscape})
 		if m.OptionsState().Open || m.View().Content != before {
 			t.Fatal("cancel changed the underlying screen")

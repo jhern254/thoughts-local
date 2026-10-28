@@ -2,7 +2,7 @@ import {expect} from '@playwright/test';
 export const screen = page => page.locator('.xterm-rows');
 export async function openVisual(page) {
   await page.keyboard.press('Control+,');
-  await expect(screen(page)).toContainText(/Background darkness:|Models/);
+  await expect(screen(page)).toContainText(/Background darkness:|Accessibility/);
   if (!(await screen(page).textContent()).includes('Background darkness:')) await clickControl(page,'Visual');
   await expect(screen(page)).toContainText('Background darkness:');
   await expect(screen(page)).not.toContainText('Loading visual');

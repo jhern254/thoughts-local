@@ -28,6 +28,11 @@ type visualResponse struct {
 	UserPaused     bool                   `json:"userPaused"`
 	Kind           string                 `json:"kind"`
 	CleanupWarning bool                   `json:"cleanupWarning,omitempty"`
+
+	BorderWeight data.BorderWeight `json:"borderWeight"`
+	HeavierText  bool              `json:"heavierText"`
+	TextSize     data.TextSize     `json:"textSize"`
+	HighContrast bool              `json:"highContrast"`
 }
 
 func writeVisual(w http.ResponseWriter, settings data.Visual, warning bool) {
@@ -40,6 +45,11 @@ func writeVisual(w http.ResponseWriter, settings data.Visual, warning bool) {
 		Darkness:       settings.Darkness,
 		CleanupWarning: warning,
 		SpeedPercent:   settings.SpeedPercent, UserPaused: settings.UserPaused, Kind: backgroundKind(settings.BackgroundAsset),
+
+		BorderWeight: settings.BorderWeight,
+		HeavierText:  settings.HeavierText,
+		TextSize:     settings.TextSize,
+		HighContrast: settings.HighContrast,
 	})
 }
 
@@ -144,6 +154,11 @@ func (s *server) serveVisual(w http.ResponseWriter, r *http.Request) {
 		allowed = "GET"
 		if r.Method == http.MethodGet {
 			handler = s.serveVisualPoster
+		}
+	case "/visual/accessibility":
+		allowed = "PUT"
+		if r.Method == http.MethodPut {
+			handler = s.updateAccessibility
 		}
 	case "/visual/settings":
 		allowed = "PUT"
@@ -311,4 +326,35 @@ func (s *server) importVisualBackground(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeVisual(w, settings, warning)
+}
+
+func (s *server) updateAccessibility(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxVisualSettingsBytes)
+	var input struct {
+		BorderWeight *data.BorderWeight `json:"borderWeight"`
+		HeavierText  *bool              `json:"heavierText"`
+		TextSize     *data.TextSize     `json:"textSize"`
+		HighContrast *bool              `json:"highContrast"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || input.BorderWeight == nil || input.HeavierText == nil || input.TextSize == nil || input.HighContrast == nil || decoder.Decode(new(any)) != io.EOF {
+		http.Error(w, "Invalid accessibility settings.", http.StatusBadRequest)
+		return
+	}
+	settings, err := s.visual.UpdateAccessibility(r.Context(), data.AccessibilityPreferences{
+		BorderWeight: *input.BorderWeight,
+		HeavierText:  *input.HeavierText,
+		TextSize:     *input.TextSize,
+		HighContrast: *input.HighContrast,
+	})
+	if errors.Is(err, visual.ErrAccessibility) {
+		http.Error(w, "Invalid accessibility settings.", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		visualError(w, err)
+		return
+	}
+	writeVisual(w, settings, false)
 }

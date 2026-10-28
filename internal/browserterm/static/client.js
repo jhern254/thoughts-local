@@ -74,7 +74,7 @@
   term.loadAddon(new UnicodeGraphemesAddon.UnicodeGraphemesAddon());
   term.unicode.activeVersion = '15-graphemes';
   term.open(container);
-  const visual = new ThoughtsVisual(term, action => send('o', encoder.encode(JSON.stringify(action))));
+  const visual = new ThoughtsVisual(term, action => send('o', encoder.encode(JSON.stringify(action))), resize);
   // No programmatic clipboard writes or reads from terminal escape sequences.
   term.parser.registerOscHandler(52, () => true);
 

@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
@@ -16,7 +17,8 @@ const videoPreparationRows = 7
 const videoTrimPreviewRows = 12
 const videoTrimFooterRows = 7
 const videoTrimMinimumWidth = 48
-const videoTrimMinimumHeight = 30
+const videoTrimMinimumHeight = 20
+const videoTrimFullLayoutHeight = 30
 
 const (
 	videoTrimAccelerationStartRepeat = 20
@@ -268,7 +270,19 @@ func (m Model) videoTrimFits() bool {
 	return m.width >= videoTrimMinimumWidth && m.height >= videoTrimMinimumHeight
 }
 
+func (m Model) compactVideoTrim() bool { return m.height < videoTrimFullLayoutHeight }
+
+func (m Model) videoTrimFooterHeight() int {
+	if m.compactVideoTrim() {
+		return 3
+	}
+	return videoTrimFooterRows
+}
+
 func (m Model) videoTrimControlsTop(preview PreviewRect) int {
+	if m.compactVideoTrim() {
+		return preview.Y + preview.Height + 1
+	}
 	return preview.Y + preview.Height + 2
 }
 
@@ -276,7 +290,7 @@ func (m Model) videoTrimControlsTop(preview PreviewRect) int {
 // leave a selected action offscreen or create a second scroll owner.
 func (m Model) videoTrimControlWindow() (offset, height int) {
 	_, preview := m.optionsLayout()
-	height = max(1, m.height-m.videoTrimControlsTop(preview)-videoTrimFooterRows)
+	height = max(1, m.height-m.videoTrimControlsTop(preview)-m.videoTrimFooterHeight())
 	row := 0
 	switch m.options.trimFocus {
 	case trimFocusEnd:
@@ -383,12 +397,21 @@ func (m Model) viewVideoTrim() tea.View {
 		heading = "Visual · Video upload"
 	}
 	lines := []string{selected.Render("Options"), "", heading, ""}
+	headingRow := 2
+	if m.compactVideoTrim() {
+		lines = []string{selected.Render("Options") + " · " + heading}
+		headingRow = 0
+	}
 	if rect.Height > 0 {
-		lines = append(lines, muted.Render("╭"+strings.Repeat("─", rect.Width)+"╮"))
+		border := appearance.Border(m.borderWeight)
+		lines = append(lines, muted.Render(border.TopLeft+strings.Repeat(border.Top, rect.Width)+border.TopRight))
 		for range rect.Height {
-			lines = append(lines, muted.Render("│")+strings.Repeat(" ", rect.Width)+muted.Render("│"))
+			lines = append(lines, muted.Render(border.Left)+strings.Repeat(" ", rect.Width)+muted.Render(border.Right))
 		}
-		lines = append(lines, muted.Render("╰"+strings.Repeat("─", rect.Width)+"╯"), "")
+		lines = append(lines, muted.Render(border.BottomLeft+strings.Repeat(border.Bottom, rect.Width)+border.BottomRight))
+		if !m.compactVideoTrim() {
+			lines = append(lines, "")
+		}
 	}
 	if m.options.sourceChecking {
 		// Keep the verified controls' rows without inventing source bounds.
@@ -444,7 +467,7 @@ func (m Model) viewVideoTrim() tea.View {
 	offset, height := m.videoTrimControlWindow()
 	controls := lines[controlsTop:controlsEnd]
 	if height < len(controls) && !m.options.sourceChecking {
-		lines[2] += " · ↕ controls"
+		lines[headingRow] += " · ↕ controls"
 	}
 	visible := append([]string(nil), lines[:controlsTop]...)
 	for row := offset; row < offset+height; row++ {
@@ -454,7 +477,11 @@ func (m Model) viewVideoTrim() tea.View {
 			visible = append(visible, "")
 		}
 	}
-	lines = append(visible, lines[controlsEnd:]...)
+	footer := lines[controlsEnd:]
+	if m.compactVideoTrim() {
+		footer = m.compactVideoTrimFooter()
+	}
+	lines = append(visible, footer...)
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")
 	}
@@ -552,4 +579,21 @@ func parseTrimTimecode(value string) (int64, bool) {
 	ms, _ := strconv.ParseInt(fraction, 10, 64)
 	position := hours*3600000 + minutes*60000 + secs*1000 + ms
 	return position, minutes < 60 && secs < 60 && position <= visual.MaxVideoSourceDuration*1000
+}
+
+func (m Model) compactVideoTrimFooter() []string {
+	summary := "No prepared loop yet."
+	if m.options.loopReady && !m.options.sourceChecking {
+		summary = m.acceptedVideoRangeLabel()
+	}
+	help := "Tab/↑/↓: focus · ←/→: adjust · Enter: activate · Esc: cancel"
+	switch {
+	case m.options.sourceChecking:
+		help = "Enter/Esc: cancel upload"
+	case m.options.request == "prepareLoop" || m.options.request == "stopPreview":
+		help = "Tab: Stop/Cancel · Enter: activate · Esc: stop rendering"
+	case m.options.trimTimecodeEditing:
+		help = "HH:MM:SS[.mmm] · Enter: jump · Esc: back"
+	}
+	return []string{summary, m.options.status, help}
 }

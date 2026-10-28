@@ -377,6 +377,10 @@ Table visual {
   position_y integer [not null, default: 5000, note: 'Normalized overflow position, 0 through 10000']
   speed_percent integer [not null, default: 100, note: 'Integer playback percentage, 25 through 100']
   user_paused integer [not null, default: 0, note: 'Deliberate user pause only; integer 0 or 1']
+  border_weight text [not null, default: 'normal', note: 'normal, heavy']
+  heavier_text integer [not null, default: 0, note: 'Browser accessibility preference; integer 0 or 1']
+  text_size text [not null, default: 'standard', note: 'standard, larger']
+  high_contrast integer [not null, default: 0, note: 'Boolean 0 or 1']
 }
 
 Table editor_preferences {

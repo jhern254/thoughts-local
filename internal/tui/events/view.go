@@ -14,6 +14,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/render"
 	"github.com/jhern254/go-thoughts/internal/timeline"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 )
 
@@ -191,7 +192,8 @@ func (m *Model) expandedThoughtsRow() int {
 }
 
 func (m *Model) paintCard(content []string, selected bool) []string {
-	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(m.cardWidth() + cardBorderColumns)
+	border := appearance.Border(m.borderWeight)
+	style := lipgloss.NewStyle().Border(border).Width(m.cardWidth() + cardBorderColumns)
 	if selected && !m.blurred {
 		style = style.BorderForeground(lipgloss.Color(selectedEntryColor))
 	}
@@ -479,7 +481,8 @@ func (m *Model) timelineBody() string {
 func (m Model) View() string {
 	styles := list.DefaultStyles(true)
 	heading := styles.Title.Render("Events") + " " + displaytime.Format(m.day, "January 2, 2006")
-	if m.width < 24 || m.height < 14 {
+	// Six body rows keep one compact card visible below the heading and above help.
+	if m.width < 24 || m.height < 10 {
 		return heading + "\nResize terminal to view timeline."
 	}
 	if m.form.open {

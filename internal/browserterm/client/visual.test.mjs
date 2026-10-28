@@ -21,7 +21,7 @@ function activationFixture() {
   vm.runInContext(readFileSync(new URL('../static/visual.js', import.meta.url), 'utf8'), context);
   const visual = vm.runInContext('Object.create(ThoughtsVisual.prototype)', context);
   Object.assign(visual, {
-    connectionGeneration: 0, activationGeneration: 0,
+    connectionGeneration: 0, activationGeneration: 0, ready:Promise.resolve(), sendAction() {},
     saved: {background: false}, image: new context.Image(),
     surface: {}, overlay: {style: {}}, terminal: {options: {theme: {}}}
   });
@@ -198,7 +198,7 @@ test('preparation indicator follows the current editor through replacement, comp
     documentVisible: true,
     motionQuery: {matches: false},
     previewContainer: {},
-    terminal: {focus() {}},
+    terminal: {options:{theme:{}}, focus() {}},
     videoTrim: {
       sync() {},
       prepare() { return new Promise(resolve => preparations.push(resolve)); },
@@ -283,4 +283,108 @@ test('upload validation activity requires the current owned selection and stops 
  visual.motionQuery.matches=true;visual.updatePreparationStatus();assert.deepEqual(playback.at(-1),[true,true,true]);
  visual.state.request='discardVideo';visual.updatePreparationStatus();assert.equal(visual.preparationStatus.hidden,true);
  visual.state.request='choose';visual.connected=false;visual.updatePreparationStatus();assert.equal(visual.preparationStatus.hidden,true);
+});
+
+test('saved accessibility changes weight without fetching or decoding background media', async () => {
+  const f=activationFixture();
+  const sent=[];
+  f.visual.connected=true;
+  f.visual.sendAction=message=>sent.push(message);
+  await f.visual.activate({background:false,borderWeight:'heavy',heavierText:true});
+  assert.equal(f.visual.terminal.options.fontWeight,600);
+  assert.equal(f.visual.terminal.options.fontWeightBold,700);
+  assert.equal(f.fetches(),0);
+  assert.equal(sent.at(-1).action,'appearance');
+  assert.equal(sent.at(-1).borderWeight,'heavy');
+  await f.visual.activate({background:false,borderWeight:'normal',heavierText:false});
+  assert.equal(f.visual.terminal.options.fontWeight,400);
+});
+
+test('accessibility preview restores saved text weight on cancel', async()=>{
+ const {visual}=activationFixture();
+ Object.assign(visual,{
+  state:{open:false},previewContainer:{},
+  cancelFramingDrag(){},updatePreparationStatus(){},discardPreview(){},updatePlayback(){},
+ });
+ visual.terminal.focus=()=>{};
+ await visual.receive({open:true,accessibility:true,id:1,request:'',heavierText:true});
+ assert.equal(visual.terminal.options.fontWeight,600);
+ assert.equal(visual.saved.heavierText,undefined);
+ await visual.receive({open:false});
+ assert.equal(visual.terminal.options.fontWeight,400);
+});
+
+test('late accessibility save cannot publish into a replacement connection',async()=>{
+ const f=activationFixture();
+ let complete;
+ f.context.AbortController=AbortController;
+ f.context.fetch=()=>new Promise(resolve=>complete=resolve);
+ f.visual.state={open:true,id:4};
+ const pending=f.visual.saveAccessibility({borderWeight:'heavy',heavierText:true},4,0);
+ f.visual.connectionGeneration++;
+ complete({ok:true,json:async()=>({background:false,borderWeight:'heavy',heavierText:true})});
+ await pending;
+ assert.equal(f.visual.saved.heavierText,undefined);
+ assert.equal(f.visual.terminal.options.fontWeight,undefined);
+});
+
+test('accessibility drafts never override saved video pause or speed',()=>{
+ const {visual}=activationFixture();
+ Object.assign(visual,{video:{},connected:true,documentVisible:true,motionQuery:{matches:false},
+  state:{open:true,accessibility:true,request:'',speedPercent:100,userPaused:false},
+  saved:{background:true,kind:'video',speedPercent:50,userPaused:true}});
+ assert.equal(visual.shouldPlayBackground(),false);
+ assert.equal(visual.playbackSpeed(),.5);
+});
+
+test('accessibility save publishes only preferences without fetching background media',async()=>{
+ const f=activationFixture();
+ const requests=[],sent=[];
+ f.context.AbortController=AbortController;
+ f.context.fetch=async path=>{
+  requests.push(path);
+  return {ok:true,json:async()=>({background:true,backgroundID:'unavailable',borderWeight:'heavy',heavierText:true})};
+ };
+ f.visual.state={open:true,id:4};
+ f.visual.connected=true;
+ f.visual.sendAction=message=>sent.push(message);
+ await f.visual.saveAccessibility({borderWeight:'heavy',heavierText:true},4,0);
+ assert.deepEqual(requests,['/visual/accessibility']);
+ assert.equal(f.visual.saved.background,false);
+ assert.equal(f.visual.saved.borderWeight,'heavy');
+ assert.equal(f.visual.terminal.options.fontWeight,600);
+ assert.equal(sent.at(-1).action,'saved');
+});
+
+test('readability previews resize once and restore saved contrast and darkness without media work',async()=>{
+ const f=activationFixture(),sizes=[];
+ const v=f.visual;
+ v.resizeTerminal=()=>sizes.push(v.terminal.options.fontSize);
+ v.previewContainer={style:{setProperty(){}},hidden:false};
+ v.updateDarkness=Object.getPrototypeOf(v).updateDarkness.bind(v);
+ Object.assign(v,{state:{open:false},saved:{darkness:20,borderWeight:'normal',textSize:'standard',heavierText:false,highContrast:false},
+ cancelFramingDrag(){},updatePreparationStatus(){},discardPreview(){},updatePlayback(){}});
+ v.terminal.focus=()=>{};
+ await v.receive({open:true,accessibility:true,id:1,request:'',textSize:'larger',borderWeight:'heavy',highContrast:true,heavierText:true});
+ assert.equal(v.terminal.options.fontSize,16);
+ assert.equal(v.terminal.options.minimumContrastRatio,7);
+ assert.equal(v.overlay.style.backgroundColor,'rgb(0 0 0 / 85%)');
+ await v.receive({open:true,accessibility:true,id:1,request:'',textSize:'larger',highContrast:true});
+ assert.deepEqual(sizes,[16]);
+ await v.receive({open:false});
+ assert.equal(v.terminal.options.fontSize,14);
+ assert.equal(v.terminal.options.minimumContrastRatio,1);
+ assert.equal(v.overlay.style.backgroundColor,'rgb(0 0 0 / 20%)');
+ assert.equal(v.saved.darkness,20);
+ assert.deepEqual(sizes,[16,14]);
+ assert.equal(f.fetches(),0);
+});
+
+test('removed development appearance choices restore supported defaults',()=>{
+ const {visual}=activationFixture();
+ visual.applyReadability({borderWeight:'extra-heavy',textSize:'largest',heavierText:true});
+ assert.equal(visual.displayedReadability.borderWeight,'normal');
+ assert.equal(visual.displayedReadability.textSize,'standard');
+ assert.equal(visual.terminal.options.fontSize,14);
+ assert.equal(visual.terminal.options.fontWeight,600);
 });

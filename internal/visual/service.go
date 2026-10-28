@@ -232,6 +232,27 @@ func removeAsset(root *os.Root, name string) bool {
 	return warning
 }
 
+var ErrAccessibility = errors.New("invalid accessibility preferences")
+
+func (s *Service) UpdateAccessibility(ctx context.Context, preferences data.AccessibilityPreferences) (data.Visual, error) {
+	if !preferences.Valid() {
+		return data.Visual{}, ErrAccessibility
+	}
+	if !s.tryAcquire() {
+		return data.Visual{}, ErrBusy
+	}
+	defer s.release()
+	settings, err := s.load(ctx)
+	if err != nil {
+		return settings, err
+	}
+	settings.BorderWeight = preferences.BorderWeight
+	settings.HeavierText = preferences.HeavierText
+	settings.TextSize = preferences.TextSize
+	settings.HighContrast = preferences.HighContrast
+	return settings, s.store.Save(ctx, s.userID, settings)
+}
+
 func (s *Service) UpdateSettings(ctx context.Context, darkness int, framing data.BackgroundFraming, speedPercent int, userPaused bool, quality VideoQuality) (data.Visual, error) {
 	if !s.tryAcquire() {
 		return data.Visual{}, ErrBusy

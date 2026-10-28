@@ -102,6 +102,20 @@ the original Subject.
   shortcuts such as Ctrl+L and Ctrl+W remain browser actions. Click the terminal
   to return focus. Microphone, attachments, and mobile packaging are deferred.
 
+### Browser accessibility
+
+Open **Options → Accessibility** for independent readability controls:
+
+- **Border weight:** Normal or Heavy across cards, panel dividers,
+  dialogs, and media-preview frames.
+- **Heavier text:** a stronger monospace weight without changing text size.
+- **Text size:** Standard or Larger.
+- **High contrast:** stronger text contrast and darker backgrounds, keeping your
+  wallpaper or video visible. Turning it off restores your saved Visual darkness.
+
+Preview changes, choose **Apply** to save, or **Back** to cancel. Preferences
+survive browser reloads and do not change the native terminal.
+
 ### Browser background
 
 Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use

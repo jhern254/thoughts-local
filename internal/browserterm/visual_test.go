@@ -253,7 +253,7 @@ func TestVisual_Shutdown(t *testing.T) {
 
 func TestVisual_MutationOrigins(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
-		{"POST", "/visual/background"}, {"DELETE", "/visual/background"}, {"PUT", "/visual/settings"},
+		{"POST", "/visual/background"}, {"DELETE", "/visual/background"}, {"PUT", "/visual/settings"}, {"PUT", "/visual/accessibility"},
 	} {
 		for _, origin := range []string{"", "null", "http://localhost:7777", "http://127.0.0.1:7778"} {
 			t.Run(route.method+" rejects "+origin, func(t *testing.T) {

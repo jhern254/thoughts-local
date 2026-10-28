@@ -50,3 +50,6 @@ header { position: relative; }
 
 
 #background-preview[hidden], #background-preview-video[hidden] { display: none; }
+
+body.high-contrast header { background: #171717; color: #fff; }
+body.high-contrast button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
