@@ -9,6 +9,8 @@ func TestService_Readability(t *testing.T) {
 	t.Run("rejects invalid preferences before saving", func(t *testing.T) {
 		for _, settings := range []data.AccessibilityPreferences{
 			{BorderWeight: "unknown", TextSize: data.TextStandard},
+			{BorderWeight: "extra-heavy", TextSize: data.TextStandard},
+			{BorderWeight: data.BorderNormal, TextSize: "largest"},
 			{BorderWeight: data.BorderNormal, TextSize: "huge"},
 		} {
 			store := &memoryStore{}
@@ -21,8 +23,8 @@ func TestService_Readability(t *testing.T) {
 	t.Run("saves every supported border and text size without changing media", func(t *testing.T) {
 		store := &memoryStore{settings: data.Visual{Darkness: 42, SpeedPercent: 50, VideoQuality: data.DefaultVideoQuality, Framing: data.DefaultBackgroundFraming()}}
 		service := NewService(store, "u", t.TempDir())
-		for _, border := range []data.BorderWeight{data.BorderNormal, data.BorderHeavy, data.BorderExtraHeavy} {
-			for _, size := range []data.TextSize{data.TextStandard, data.TextLarger, data.TextLargest} {
+		for _, border := range []data.BorderWeight{data.BorderNormal, data.BorderHeavy} {
+			for _, size := range []data.TextSize{data.TextStandard, data.TextLarger} {
 				got, err := service.UpdateAccessibility(t.Context(), data.AccessibilityPreferences{BorderWeight: border, TextSize: size, HeavierText: true, HighContrast: true})
 				if err != nil {
 					t.Fatal(err)

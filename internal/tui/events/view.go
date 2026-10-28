@@ -481,7 +481,8 @@ func (m *Model) timelineBody() string {
 func (m Model) View() string {
 	styles := list.DefaultStyles(true)
 	heading := styles.Title.Render("Events") + " " + displaytime.Format(m.day, "January 2, 2006")
-	if m.width < 24 || m.height < 14 {
+	// Six body rows keep one compact card visible below the heading and above help.
+	if m.width < 24 || m.height < 10 {
 		return heading + "\nResize terminal to view timeline."
 	}
 	if m.form.open {

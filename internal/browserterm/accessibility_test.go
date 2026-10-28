@@ -23,6 +23,8 @@ func TestVisual_Accessibility(t *testing.T) {
 		{name: "rejects unsupported border", body: `{"borderWeight":"wide","heavierText":false,"textSize":"standard","highContrast":false}`, status: 400},
 		{name: "rejects unsupported text size", body: `{"borderWeight":"heavy","heavierText":false,"textSize":"huge","highContrast":false}`, status: 400},
 		{name: "requires contrast", body: `{"borderWeight":"heavy","heavierText":false,"textSize":"standard"}`, status: 400},
+		{name: "rejects removed border weight", body: `{"borderWeight":"extra-heavy","heavierText":false,"textSize":"standard","highContrast":false}`, status: 400},
+		{name: "rejects removed text size", body: `{"borderWeight":"heavy","heavierText":false,"textSize":"largest","highContrast":false}`, status: 400},
 		{name: "save failure", body: `{"borderWeight":"heavy","heavierText":true,"textSize":"standard","highContrast":false}`, fail: true, status: 500},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {

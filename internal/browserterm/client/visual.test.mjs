@@ -365,17 +365,26 @@ test('readability previews resize once and restore saved contrast and darkness w
  Object.assign(v,{state:{open:false},saved:{darkness:20,borderWeight:'normal',textSize:'standard',heavierText:false,highContrast:false},
  cancelFramingDrag(){},updatePreparationStatus(){},discardPreview(){},updatePlayback(){}});
  v.terminal.focus=()=>{};
- await v.receive({open:true,accessibility:true,id:1,request:'',textSize:'largest',borderWeight:'extra-heavy',highContrast:true,heavierText:true});
- assert.equal(v.terminal.options.fontSize,18);
+ await v.receive({open:true,accessibility:true,id:1,request:'',textSize:'larger',borderWeight:'heavy',highContrast:true,heavierText:true});
+ assert.equal(v.terminal.options.fontSize,16);
  assert.equal(v.terminal.options.minimumContrastRatio,7);
  assert.equal(v.overlay.style.backgroundColor,'rgb(0 0 0 / 85%)');
- await v.receive({open:true,accessibility:true,id:1,request:'',textSize:'largest',highContrast:true});
- assert.deepEqual(sizes,[18]);
+ await v.receive({open:true,accessibility:true,id:1,request:'',textSize:'larger',highContrast:true});
+ assert.deepEqual(sizes,[16]);
  await v.receive({open:false});
  assert.equal(v.terminal.options.fontSize,14);
  assert.equal(v.terminal.options.minimumContrastRatio,1);
  assert.equal(v.overlay.style.backgroundColor,'rgb(0 0 0 / 20%)');
  assert.equal(v.saved.darkness,20);
- assert.deepEqual(sizes,[18,14]);
+ assert.deepEqual(sizes,[16,14]);
  assert.equal(f.fetches(),0);
+});
+
+test('removed development appearance choices restore supported defaults',()=>{
+ const {visual}=activationFixture();
+ visual.applyReadability({borderWeight:'extra-heavy',textSize:'largest',heavierText:true});
+ assert.equal(visual.readability.borderWeight,'normal');
+ assert.equal(visual.readability.textSize,'standard');
+ assert.equal(visual.terminal.options.fontSize,14);
+ assert.equal(visual.terminal.options.fontWeight,600);
 });

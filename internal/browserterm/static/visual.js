@@ -88,7 +88,7 @@ class ThoughtsVisual {
   applyReadability(settings) {
     this.readability = readabilitySettings(settings);
     this.updateTextWeight(this.readability.heavierText);
-    const fontSize = {standard:14, larger:16, largest:18}[this.readability.textSize];
+    const fontSize = {standard:14, larger:16}[this.readability.textSize];
     if (this.terminal.options.fontSize !== fontSize) {
       this.terminal.options.fontSize = fontSize;
       if (this.previewContainer) this.previewContainer.hidden = true;
@@ -96,7 +96,7 @@ class ThoughtsVisual {
     }
     const contrast = this.readability.highContrast ? 7 : 1;
     if (this.terminal.options.minimumContrastRatio !== contrast) this.terminal.options.minimumContrastRatio = contrast;
-    if (this.previewFrameElement) this.previewFrameElement.style.outlineWidth = {normal:'1px',heavy:'2px','extra-heavy':'3px'}[this.readability.borderWeight];
+    if (this.previewFrameElement) this.previewFrameElement.style.outlineWidth = {normal:'1px',heavy:'2px'}[this.readability.borderWeight];
     const foreground = this.readability.highContrast ? '#ffffff' : '#eeeeee';
     if (this.terminal.options.theme.foreground !== foreground) this.terminal.options.theme = {...this.terminal.options.theme, foreground};
     this.terminal.element?.ownerDocument?.body?.classList.toggle('high-contrast',this.readability.highContrast);
@@ -674,9 +674,9 @@ class ThoughtsVisual {
 
 function readabilitySettings(settings) {
   return {
-    borderWeight:['normal','heavy','extra-heavy'].includes(settings.borderWeight) ? settings.borderWeight : 'normal',
+    borderWeight:['normal','heavy'].includes(settings.borderWeight) ? settings.borderWeight : 'normal',
     heavierText:!!settings.heavierText,
-    textSize:['standard','larger','largest'].includes(settings.textSize) ? settings.textSize : 'standard',
+    textSize:['standard','larger'].includes(settings.textSize) ? settings.textSize : 'standard',
     highContrast:!!settings.highContrast
   };
 }
@@ -684,6 +684,5 @@ function readabilitySettings(settings) {
 // verification below still fences publication against stale terminal paints.
 function previewBorder(weight) {
   if (weight === 'heavy') return ['┏','━','┓','┗','┛','┃'];
-  if (weight === 'extra-heavy') return ['█','█','█','█','█','█'];
   return ['╭','─','╮','╰','╯','│'];
 }

@@ -925,7 +925,7 @@ test('short movie editor scrolls controls without shrinking preview or losing ac
  if(process.env.THOUGHTS_BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-scroll-controls.png`});
  await clickControl(page,'Preview loop');await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
  await page.locator('#background-preview-video').evaluate(video=>{window.acceptedBeforeResize=video;});
- await page.setViewportSize({width:400,height:400});
+ await page.setViewportSize({width:400,height:300});
  await expect(screen(page)).toContainText('Resize window');await expect(preview).toBeHidden();
  if(process.env.THOUGHTS_BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-resize-notice.png`});
  await page.keyboard.press('ArrowRight');

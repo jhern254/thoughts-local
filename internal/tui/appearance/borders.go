@@ -10,8 +10,6 @@ func Border(weight data.BorderWeight) lipgloss.Border {
 	switch weight {
 	case data.BorderHeavy:
 		return lipgloss.ThickBorder()
-	case data.BorderExtraHeavy:
-		return lipgloss.BlockBorder()
 	}
 	return lipgloss.RoundedBorder()
 }

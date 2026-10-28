@@ -125,16 +125,13 @@ test('readability sizes contrast and structural dividers preview save and restor
  const originalDarkness=(await (await page.request.get('/visual')).json()).darkness;
  await openAccessibility(page);
  await page.keyboard.press('ArrowLeft');
- await expect(screen(page)).toContainText('Border weight: Extra heavy');
- await expect(screen(page)).toContainText('█');
+ await expect(screen(page)).toContainText('Border weight: Heavy');
+ await expect(screen(page)).toContainText('┏');
  await page.keyboard.press('ArrowDown');
  await page.keyboard.press('ArrowDown');
  await page.keyboard.press('ArrowRight');
  await expect(screen(page)).toContainText('Text size: Larger');
  await expect.poll(()=>screen(page).locator('span').first().evaluate(e=>getComputedStyle(e).fontSize)).toBe('16px');
- await page.keyboard.press('ArrowRight');
- await expect(screen(page)).toContainText('Text size: Largest');
- await expect.poll(()=>screen(page).locator('span').first().evaluate(e=>getComputedStyle(e).fontSize)).toBe('18px');
  await page.keyboard.press('ArrowDown');
  await page.keyboard.press('ArrowRight');
  await expect(screen(page)).toContainText('High contrast: On');
@@ -147,23 +144,21 @@ test('readability sizes contrast and structural dividers preview save and restor
  await expect(screen(page)).toContainText('Events');
  await openAccessibility(page);
  await clickControl(page,'Border weight: Normal');
- await clickControl(page,'Border weight: Heavy');
  await clickControl(page,'Text size: Standard');
- await clickControl(page,'Text size: Larger');
  await clickControl(page,'High contrast: Off');
  await clickControl(page,'Apply');
  await expect(screen(page)).toContainText('Events');
  // Section dividers span the terminal; cards alone must not satisfy this.
- await expect(screen(page)).toContainText(/█{20}/);
+ await expect(screen(page)).toContainText(/━{20}/);
  const stored=await (await page.request.get('/visual')).json();
- expect(stored.borderWeight).toBe('extra-heavy');
- expect(stored.textSize).toBe('largest');
+ expect(stored.borderWeight).toBe('heavy');
+ expect(stored.textSize).toBe('larger');
  expect(stored.highContrast).toBe(true);
  expect(stored.darkness).toBe(originalDarkness);
  await ready(page);
- await expect(screen(page)).toContainText(/█{20}/);
- await expect.poll(()=>screen(page).locator('span').first().evaluate(e=>getComputedStyle(e).fontSize)).toBe('18px');
- await page.screenshot({path:testInfo.outputPath('largest-extra-heavy.png')});
+ await expect(screen(page)).toContainText(/━{20}/);
+ await expect.poll(()=>screen(page).locator('span').first().evaluate(e=>getComputedStyle(e).fontSize)).toBe('16px');
+ await page.screenshot({path:testInfo.outputPath('larger-heavy.png')});
  // A short viewport forces the controls to scroll without losing Back/Apply.
  await page.setViewportSize({width:420,height:240});
  await openAccessibility(page);
@@ -176,14 +171,14 @@ test('readability sizes contrast and structural dividers preview save and restor
  await page.keyboard.press('Escape');
  await openVisual(page);
  await expect(page.locator('#background-preview-wrap')).toBeHidden();
- // Apply/Back and source geometry still work at the saved largest size.
+ // Apply/Back and source geometry still work at the saved Larger size.
  await expect(screen(page)).toContainText('Choose image or video');
  const chooser=page.waitForEvent('filechooser');
  await clickControl(page,'Choose image or video');
  await(await chooser).setFiles(fileURLToPath(new URL('fixtures/visual-video-colors.mp4',import.meta.url)));
  await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
  await expect(page.locator('#background-preview-wrap')).toBeVisible();
- await page.screenshot({path:testInfo.outputPath('extra-heavy-source-frame.png')});
+ await page.screenshot({path:testInfo.outputPath('heavy-source-frame.png')});
  // The trimmer scrolls focused controls into view at the larger font size.
  for(let i=0;i<4;i++) await page.keyboard.press('Tab');
  await clickControl(page,'Preview loop');
@@ -191,6 +186,78 @@ test('readability sizes contrast and structural dividers preview save and restor
  await page.keyboard.press('Tab');
  await clickControl(page,'Done — use previewed loop');
  await expect(page.locator('#background-preview-wrap')).toBeVisible();
- await page.screenshot({path:testInfo.outputPath('extra-heavy-media-frame.png')});
+ await page.screenshot({path:testInfo.outputPath('heavy-media-frame.png')});
  await page.keyboard.press('Escape');
+});
+
+
+test('quarter-window Larger text keeps Events Thoughts and Options usable without resizing',async({page},testInfo)=>{
+ let sockets=0;
+ page.on('websocket',()=>sockets++);
+ await page.setViewportSize({width:960,height:450});
+ await reset(page);
+ await openAccessibility(page);
+ await clickControl(page,'Text size: Standard');
+ await expect(screen(page)).toContainText('Text size: Larger');
+ await expect(screen(page)).not.toContainText('Largest');
+ await clickControl(page,'Apply');
+ await expect(screen(page)).toContainText('Now ·');
+ await expect(screen(page)).not.toContainText('Resize terminal');
+ await expect.poll(()=>screen(page).locator('span').first().evaluate(e=>getComputedStyle(e).fontSize)).toBe('16px');
+ await page.screenshot({path:testInfo.outputPath('quarter-events-larger.png')});
+ const activeSockets=sockets;
+ await page.keyboard.press('ArrowUp');
+ await expect(screen(page)).not.toContainText('Resize terminal');
+ await page.keyboard.press('End');
+ await page.keyboard.press('t');
+ await expect(screen(page)).toContainText('Create thought');
+ await page.keyboard.type('Quarter-window thought');
+ await page.keyboard.press('Enter');
+ await page.keyboard.type('Second line stays visible');
+ await expect(screen(page)).toContainText('Quarter-window thought');
+ await expect(screen(page)).toContainText('Second line stays visible');
+ await expect(screen(page)).toContainText('Ctrl+S');
+ await page.screenshot({path:testInfo.outputPath('quarter-thought-larger.png')});
+ await page.keyboard.press('Control+q');
+ await expect(screen(page)).toContainText('Discard draft?');
+ await page.keyboard.press('Tab');await page.keyboard.press('Enter');
+ await expect(screen(page)).toContainText('Events');
+ await openAccessibility(page);
+ await expect(screen(page)).toContainText('Apply');
+ await expect(screen(page)).toContainText('Back');
+ const screenBottom=await page.locator('.xterm-screen').evaluate(e=>e.getBoundingClientRect().bottom);
+ for(const label of ['Apply','Back']){
+  const bounds=await screen(page).getByText(label,{exact:true}).boundingBox();
+  expect(bounds.y+bounds.height).toBeLessThanOrEqual(screenBottom+1);
+ }
+ await page.screenshot({path:testInfo.outputPath('quarter-options-larger.png')});
+ await clickControl(page,'Back');
+ await clickControl(page,'Visual');
+ await expect(screen(page)).toContainText('Choose image or video');
+ await expect(screen(page)).toContainText('Apply');
+ await expect(screen(page)).toContainText('Back');
+ await page.screenshot({path:testInfo.outputPath('quarter-visual-larger.png')});
+ const chooser=page.waitForEvent('filechooser');
+ await clickControl(page,'Choose image or video');
+ await(await chooser).setFiles(fileURLToPath(new URL('fixtures/visual-video-colors.mp4',import.meta.url)));
+ await expect(screen(page)).toContainText('Set cut points, then Preview loop.');
+ await expect(screen(page)).not.toContainText('Resize window');
+ const preview=page.locator('#background-preview-wrap');
+ await expect(preview).toBeVisible();
+ const quarterPreview=await preview.boundingBox();
+ await page.screenshot({path:testInfo.outputPath('quarter-trimmer-larger.png')});
+ for(let i=0;i<4;i++) await page.keyboard.press('Tab');
+ await clickControl(page,'Preview loop');
+ await expect(screen(page)).toContainText('Preview ready. Done uses this loop.');
+ await expect(screen(page)).toContainText('Range:');
+ await expect.poll(async()=>(await preview.boundingBox())?.height).toBe(quarterPreview.height);
+ await page.setViewportSize({width:1200,height:850});
+ await expect.poll(async()=>(await preview.boundingBox())?.height).toBe(quarterPreview.height);
+ await page.setViewportSize({width:960,height:450});
+ await expect(preview).toBeVisible();
+ await expect(screen(page)).toContainText('Done — use previewed loop');
+ await page.screenshot({path:testInfo.outputPath('quarter-trimmer-ready.png')});
+ await clickControl(page,'Done — use previewed loop');
+ await expect(screen(page)).toContainText('Background darkness:');
+ expect(sockets).toBe(activeSockets);
 });

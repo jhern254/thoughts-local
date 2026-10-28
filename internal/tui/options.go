@@ -573,7 +573,11 @@ func (m Model) optionsLayout() (int, PreviewRect) {
 		if !m.videoTrimFits() {
 			return width, PreviewRect{}
 		}
-		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: 5, Width: width - 2, Height: videoTrimPreviewRows}
+		previewY := 5
+		if m.compactVideoTrim() {
+			previewY = 2
+		}
+		return width, PreviewRect{X: max(0, (m.width-width)/2) + 1, Y: previewY, Width: width - 2, Height: videoTrimPreviewRows}
 	}
 	if m.options.editing {
 		width := max(10, min(80, m.width-4))

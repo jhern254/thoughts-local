@@ -26,8 +26,8 @@ func TestAccessibilityWorkflow_SQLite(t *testing.T) {
 		if settings.BorderWeight != data.BorderNormal || settings.HeavierText || settings.TextSize != data.TextStandard || settings.HighContrast {
 			t.Fatalf("got %+v, want accessibility defaults off", settings)
 		}
-		settings.BorderWeight, settings.HeavierText = data.BorderExtraHeavy, true
-		settings.TextSize, settings.HighContrast = data.TextLargest, true
+		settings.BorderWeight, settings.HeavierText = data.BorderHeavy, true
+		settings.TextSize, settings.HighContrast = data.TextLarger, true
 		if err := store.Save(t.Context(), "u", settings); err != nil {
 			t.Fatal(err)
 		}
@@ -80,7 +80,7 @@ func TestAccessibilityWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got %+v, want retained accessibility and no background", got)
 		}
 	})
-	for _, assignment := range []string{"border_weight=2", "border_weight=NULL", "border_weight='wide'", "text_size='huge'", "text_size=NULL", "high_contrast=2", "high_contrast=0.5", "border_weight=-1", "border_weight=0.5", "heavier_text=2", "heavier_text=NULL", "heavier_text=0.5"} {
+	for _, assignment := range []string{"border_weight=2", "border_weight='extra-heavy'", "text_size='largest'", "border_weight=NULL", "border_weight='wide'", "text_size='huge'", "text_size=NULL", "high_contrast=2", "high_contrast=0.5", "border_weight=-1", "border_weight=0.5", "heavier_text=2", "heavier_text=NULL", "heavier_text=0.5"} {
 		t.Run("rejects "+assignment, func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			if _, err := db.ExecContext(t.Context(), "INSERT INTO users(user_id) VALUES ('u'); INSERT INTO visual(user_id) VALUES ('u')"); err != nil {

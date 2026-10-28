@@ -184,3 +184,62 @@ func TestModel_VideoTrimStageLayout(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_VideoTrimQuarterWindow(t *testing.T) {
+	t.Run("keeps full preview and accepted loop while controls scroll in twenty rows", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.width, m.height = 98, 20
+		cut := visual.VideoTrim{EndMS: 2000}
+		m.options = optionsState{open: true, trimming: true, id: 5, sourceDurationMS: 60000, trim: cut, videoQuality: visual.VideoQualityEfficient, trimFocus: trimFocusSource}
+		if got := m.OptionsState().Preview.Height; got != 12 {
+			t.Fatalf("preview height=%d, want 12", got)
+		}
+		for range 4 {
+			m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		}
+		before := strings.Split(ansi.Strip(m.View().Content), "\n")
+		if len(before) > 20 || !strings.Contains(strings.Join(before, "\n"), "Done — use previewed loop") {
+			t.Fatalf("actions do not fit: %q", before)
+		}
+		m, _ = rootUpdate(m, enterKey())
+		request := m.OptionsState()
+		if request.Request != "prepareLoop" {
+			t.Fatalf("got request %q, want preparation", request.Request)
+		}
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "loopReady", ID: request.ID, Trim: cut, DurationMS: 2000, VideoQuality: visual.VideoQualityEfficient, Width: 96, Height: 64, FrameRate: visual.VideoFrameRate{Numerator: 24, Denominator: 1}})
+		view := ansi.Strip(m.View().Content)
+		if len(strings.Split(view, "\n")) > 20 || !strings.Contains(view, "Range:") || !strings.Contains(view, "Done — use previewed loop") {
+			t.Fatalf("accepted preview does not fit: %q", view)
+		}
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 100, Height: 50})
+		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 98, Height: 20})
+		if !m.options.loopReady || m.options.acceptedTrim != cut || m.OptionsState().Preview.Height != 12 {
+			t.Fatal("resizing lost accepted cut or full preview")
+		}
+		m, _ = rootUpdate(m, enterKey())
+		if m.options.trimming || !m.options.loopReady {
+			t.Fatal("Done did not retain acknowledged preview")
+		}
+	})
+	t.Run("Cancel remains visible and clickable beneath preview", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.width, m.height = 98, 20
+		m.options = optionsState{open: true, trimming: true, id: 5, sourceDurationMS: 60000, trim: visual.VideoTrim{EndMS: 2000}}
+		m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		row := -1
+		for i, line := range strings.Split(ansi.Strip(m.View().Content), "\n") {
+			if strings.TrimSpace(line) == "Cancel upload" {
+				row = i
+			}
+		}
+		if row < 14 || row >= 20 {
+			t.Fatalf("Cancel row=%d, want visible below preview", row)
+		}
+		m, _ = rootUpdate(m, tea.MouseClickMsg{X: 12, Y: row, Button: tea.MouseLeft})
+		if m.options.request != "discardVideo" || m.options.id != 6 {
+			t.Fatal("compact Cancel click lost operation ownership")
+		}
+	})
+}

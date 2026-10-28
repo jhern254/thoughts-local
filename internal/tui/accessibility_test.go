@@ -121,7 +121,7 @@ func TestModel_StructuralBorders(t *testing.T) {
 		weight       data.BorderWeight
 		corner, line string
 	}{
-		{data.BorderNormal, "╭", "─"}, {data.BorderHeavy, "┏", "━"}, {data.BorderExtraHeavy, "█", "█"},
+		{data.BorderNormal, "╭", "─"}, {data.BorderHeavy, "┏", "━"},
 	} {
 		t.Run(scenario.weight.Label(), func(t *testing.T) {
 			m := newMindsetHome(t, 0)
@@ -189,5 +189,21 @@ func TestModel_AccessibilityMouseAfterResize(t *testing.T) {
 	m, _ = rootUpdate(m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 2, Y: 3})
 	if !m.options.menu {
 		t.Fatal("clicking visible Back after resize did not close Accessibility")
+	}
+}
+
+func TestModel_QuarterWindowTimeline(t *testing.T) {
+	m := newMindsetHome(t, 0)
+	m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 98, Height: 20})
+	view := ansi.Strip(m.View().Content)
+	if strings.Contains(view, "Resize terminal") || !strings.Contains(view, "Now ·") || !strings.Contains(view, "Thoughts") {
+		t.Fatalf("quarter-window timeline is not usable: %q", view)
+	}
+	if got := len(strings.Split(view, "\n")); got > 20 {
+		t.Fatalf("got %d rows, want at most 20", got)
+	}
+	m, _ = rootUpdate(m, tea.KeyPressMsg{Code: tea.KeyUp})
+	if strings.Contains(m.View().Content, "Resize terminal") {
+		t.Fatal("selection required resizing")
 	}
 }
