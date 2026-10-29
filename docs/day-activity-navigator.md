@@ -111,9 +111,9 @@ where space permits; it is not scaling with browser width. Counts remain daily
 averages, so zoom cannot reveal real intraday peaks.
 
 The renderer takes the maximum of asymmetric finite-support mountain envelopes
-rather than adding their heights. Shoulders blend 85% raised cosine with a 15%
-linear summit contribution, retaining broad bases without a rounded bell top.
-Calendar-anchored supports range from 4–6 buckets left and 3–4 right. Two small
+rather than adding their heights. The selected B contour blends 50% raised cosine with a 50%
+linear summit contribution, separating nearby crests without removing shoulders.
+Calendar-anchored supports range from 1.8–2.7 buckets left and 1.2–1.8 right. Two small
 ridge scales (1.6 and 0.65 buckets) lower the envelope by at most 2–4%, vanishing
 at its measured summit. These are visual interpretations around actual activity,
 not invented intraday measurements or unrelated decorative peaks. No activity
@@ -687,3 +687,15 @@ No mountain-over-card overlap was observed; the historical intermittent issue
 is not claimed fixed. Temporary comparisons, captures, benchmark output and
 review scripts are under `/tmp/pr92-mountains/`; these are disposable evidence,
 not required application files or a permanent preview service.
+
+
+## Selected B contour
+
+The Spider-Man comparison used identical fresh copies of its 124 Thoughts and
+80 Events, at the default month, normal boost, 100% size, and compact height.
+Actual app captures showed the former 4–6/3–4-bucket supports merging the seed's
+mostly 5–6 Events and 8–9 Thoughts per completed day. B was selected: narrower
+1.8–2.7/1.2–1.8-bucket shoulders with equal cosine and linear contributions.
+Only contour parameters change; counts, historical scale, four-row cap, compact
+layout, colors, and controls stay the same. Earlier wide-terrain benchmark
+results above describe their original parameters, not new measurements of B.

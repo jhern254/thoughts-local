@@ -69,12 +69,31 @@ func TestDayActivity_Terrain(t *testing.T) {
 			}
 			return cells[7][column].Glyph != '⣀'
 		}
-		if !occupied(46) {
-			t.Fatal("four days before the summit has no broad shoulder")
+		if !occupied(58) {
+			t.Fatal("one day before the summit has no shoulder")
 		}
-		for _, column := range []int{0, 35, 79, 100, 123} {
+		for _, column := range []int{0, 49, 70, 100, 123} {
 			if occupied(column) {
-				t.Fatalf("column %d invented activity beyond the six/four-day supports", column)
+				t.Fatalf("column %d invented activity beyond the 2.7/1.8-day supports", column)
+			}
+		}
+	})
+	t.Run("selected B contour leaves room around an isolated day's summit", func(t *testing.T) {
+		cells := RenderDayActivity(124, 8, mountainFixtures()["isolated"], mountainOptions())
+		occupied := func(column int) bool {
+			for _, row := range cells[:7] {
+				if row[column].Glyph != ' ' {
+					return true
+				}
+			}
+			return cells[7][column].Glyph != '⣀'
+		}
+		if !occupied(58) {
+			t.Fatal("one day before the summit lost its shoulder")
+		}
+		for _, column := range []int{49, 50, 70, 71} {
+			if occupied(column) {
+				t.Fatalf("column %d smears beyond the selected 2.7/1.8-day shoulders", column)
 			}
 		}
 	})

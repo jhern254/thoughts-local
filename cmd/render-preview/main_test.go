@@ -323,12 +323,12 @@ func TestPreview_DayActivityNormalBaseline(t *testing.T) {
 	if defaultView != explicitNormal {
 		t.Fatal("default must be the normal 100 percent baseline")
 	}
-	// Reviewed compact four-row profile, retaining the broad contours.
+	// Reviewed four-row profile of the selected B contour.
 	want := []string{
-		"     ⢀⣤⣤⣶⣾⣿⣦⣄                   ",
-		"  ⣀⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⣷⡄  ⣀⣤⣶⣶⣿⣷⣦⣄       ",
-		"⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⣀    ",
-		"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⣤",
+		"        ⢀⣴⣧                     ",
+		"      ⢀⣴⣿⣿⣿⣧        ⣤⣾⣆         ",
+		"     ⣠⣿⣿⣿⣿⣿⣿⣆ ⢀⣀⣄⡀⣠⣾⣿⣿⣿⣧⣤⣄      ",
+		"⣀⣠⣤⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⣤⣄⣀⣀",
 	}
 	rows := strings.Split(defaultView, "\n")
 	for i, row := range want {

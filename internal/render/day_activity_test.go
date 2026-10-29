@@ -48,9 +48,9 @@ func TestDayActivity_Geometry(t *testing.T) {
 	t.Run("baseline shares the bottom dots with filled and outline mountains", func(t *testing.T) {
 		for _, outline := range []bool{false, true} {
 			cells := RenderDayActivity(1, 3, []DayActivity{{Events: 1}}, DayActivityOptions{Total: true, Outline: outline, Baseline: true})
-			want := []rune{'⣾', '⣿', '⣿'}
+			want := []rune{'⣸', '⣿', '⣿'}
 			if outline {
-				want = []rune{'⠞', ' ', '⣀'}
+				want = []rune{'⣸', '⠇', '⣀'}
 			}
 			for y, glyph := range want {
 				if got := cells[y][0].Glyph; got != glyph {
@@ -83,9 +83,9 @@ func TestDayActivity_Geometry(t *testing.T) {
 			t.Fatalf("Event summit row=%d, want higher than Thought summit row=%d", got, want)
 		}
 	})
-	t.Run("outline leaves the interior blank", func(t *testing.T) {
+	t.Run("outline follows the summit without filling beneath its stroke", func(t *testing.T) {
 		cells := RenderDayActivity(1, 3, []DayActivity{{Events: 1, Thoughts: 1}}, DayActivityOptions{Total: true, Outline: true, Exponent: 1, Size: 1})
-		for row, want := range []rune{'⠞', ' ', ' '} {
+		for row, want := range []rune{'⣸', '⠇', ' '} {
 			if got := cells[row][0].Glyph; got != want {
 				t.Fatalf("row %d: got %q, want %q", row, got, want)
 			}
@@ -365,7 +365,7 @@ func TestDayActivity_RelativeSize(t *testing.T) {
 	t.Run("normal reaches the old full summit while smaller sizes shrink it", func(t *testing.T) {
 		values := []DayActivity{{Events: 1}}
 		normal := RenderDayActivity(1, 3, values, DayActivityOptions{Total: true, Outline: true, Size: 1})
-		if normal[0][0].Glyph != '⠞' {
+		if normal[0][0].Glyph != '⣸' {
 			t.Fatalf("normal summit: got %q, want a pointed contour at the top of the compact canvas", normal[0][0].Glyph)
 		}
 		smaller := RenderDayActivity(1, 3, values, DayActivityOptions{Total: true, Outline: true, Size: .5})

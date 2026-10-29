@@ -277,8 +277,8 @@ func dayActivityTerrain(width, days, padding, visibleSamples int, levels []DayAc
 		fraction := float64(seed&0xffff) / 65535
 		mountains = append(mountains, mountain{
 			center:    dayActivityPixel(width, days, options.FirstDay, day),
-			left:      4 + 2*fraction,
-			right:     3 + float64((seed>>16)&0xffff)/65535,
+			left:      1.8 + .9*fraction,
+			right:     1.2 + .6*float64((seed>>16)&0xffff)/65535,
 			roughness: .02 + .02*fraction,
 			level:     level,
 		})
@@ -295,10 +295,10 @@ func dayActivityTerrain(width, days, padding, visibleSamples int, levels []DayAc
 			if math.Abs(distance) >= radius {
 				continue
 			}
-			// Cosine shoulders supply most of the width; a small linear cap
-			// gives the summit a visible point rather than a rounded bell.
+			// Equal cosine and linear contributions retain shoulders while
+			// separating nearby summits, as in the selected browser comparison.
 			slope := math.Abs(distance) / radius
-			kernel := .85*(1+math.Cos(math.Pi*slope))/2 + .15*(1-slope)
+			kernel := .5*(1+math.Cos(math.Pi*slope))/2 + .5*(1-slope)
 			current := &terrain[column]
 			if kernel*peak.level.Total <= current.Total && kernel*peak.level.Events <= current.Events && kernel*peak.level.Thoughts <= current.Thoughts {
 				continue
