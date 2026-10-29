@@ -180,8 +180,7 @@ historical scale. Focus/style changes reuse the loaded values;
 ordinary selection changes reuse the rendered curve as well.
 
 Events still owns daily loading, cards, inline expansion and selection. Mindset
-keeps its full-text reading and scrolling behavior. The plot adds no timers,
-WebSocket protocols or browser-only drawing.
+keeps its full-text reading and scrolling behavior. Loading feedback uses one cancellable 150 ms timer per read; there is no animation timer, new WebSocket protocol or browser-only drawing.
 
 ## Verification and measurements
 
@@ -215,29 +214,13 @@ A standalone renderer comparison is available with:
 go run ./cmd/render-preview -scenario day-activity -width 80
 ```
 
-Measured on 2026-10-23, Intel i5-8250U (8 logical CPUs), Linux amd64,
-Go 1.25.14. Before is merged PR #88 (`99d791b`, binary built from its
-`97b1bf0` base plus the merged bounded-query change); after is this feature's
-working tree before rebasing the independently merged full-text Mindset fix.
-The rebase preserves that fix and the activity implementation. Measurements
-below are revision-specific evidence, not a claim of speed improvement.
-Runs used no competing builds/tests. Five repetitions do not establish
-statistical significance.
+## Performance evidence
 
-The unchanged synthetic stress fixture has 721 Events and 20,000 Thoughts,
-anchored at Unix 1792739869. Both widths yield daily buckets for its roughly
-one-month history. Setup, migration and compilation are excluded. Medians of
-five one-second runs (`BenchmarkDayActivity`, `-benchmem`):
+Measurements are revision-specific, not current guarantees. Native microbenchmarks do not measure browser CPU, key-to-display latency or total application responsiveness. Run revisions separately with identical fixtures, clocks, dimensions and toolchains; exclude migration, seeding and compilation. Keep the original stress seed unchanged.
 
-| Operation | Width | ns/op | B/op | allocs/op |
-| --- | ---: | ---: | ---: | ---: |
-| Activity read (both count queries) | 80 | 5,712,009 | 30,635 | 2,297 |
-| Loaded selection + View + marker | 80 | 2,664 | 1,056 | 7 |
-| Activity read (both count queries) | 160 | 5,503,443 | 30,608 | 2,297 |
-| Loaded selection + View + marker | 160 | 2,882 | 1,696 | 7 |
+### Original timeline comparison
 
-Existing `BenchmarkTimeline` smoke comparison, median of five one-second runs.
-These measure the daily renderer, not the whole root view or the new plot:
+On 2026-10-23, i5-8250U, Linux amd64, Go 1.25.14: five one-second runs compared merged PR #88 (`99d791b`, built from `97b1bf0` plus the bounded-query fix) with the initial day navigator before its Mindset rebase. This measured the daily renderer, not the whole root view or plot.
 
 | Size / operation | Before ns/op | After ns/op | B/op before → after | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
@@ -248,249 +231,11 @@ These measure the daily renderer, not the whole root view or the new plot:
 | 40×20 Navigate | 975,108 | 968,815 | 143,244 → 143,588 | 3,483 |
 | 40×20 Expanded | 683,300 | 697,952 | 91,206 → 90,973 | 2,465 |
 
-Headful Brave 148.0.7778.217, 1200×850, static dark background, same database:
-five groups of 12 alternating historical day keys through the real WebSocket.
-Latency starts at keydown and ends at xterm's render with the requested date and
-its settled 30-Thought count. These are whole-app observations:
+The original headful Brave stress comparison at 1200×850 measured median key-to-display 42.3 → 41.45 ms and p95 47.3 → 54.0 ms. Sampled combined CPU rose about 11%. This was added presentation work, not a speedup; five groups of twelve keys are limited evidence.
 
-| Metric | Before | After |
-| --- | ---: | ---: |
-| Median key-to-display | 42.3 ms | 41.45 ms |
-| p95 key-to-display | 47.3 ms | 54.0 ms |
-| Native CPU for 60 transitions | 2.37 s | 2.64 s |
-| Browser process-tree CPU | 2.09 s | 2.30 s |
-| Native RSS after workload | 41,892 KiB | 45,792 KiB |
+### Stable historical scale tradeoff
 
-The p95 increased 6.7 ms and sampled CPU increased about 11%; this is additional
-presentation work, not a performance improvement. RSS is a single observation,
-not retained-allocation evidence. No missed keys occurred in this workload.
-Video, hardware acceleration and the unresolved black-rectangle report are not
-retested or claimed fixed by these static-background measurements.
-
-## Mountain detail and controls
-
-The earlier mountain-style follow-up was compared with `8dbe4cb` on the same i5-8250U,
-Go 1.25.14 and Brave 148 reference machine, before the subsequent focus-navigation
-changes. Binaries were compiled first; measurements ran sequentially without
-competing builds/tests. Five runs describe this machine, not statistical significance.
-
-The original stress fixture remains 721 Events/20,000 Thoughts. The then-current
-varied activity fixture had 3,927 Events/29,479 Thoughts across roughly two years.
-Both revisions used the same migrated fixture files. The baseline received only
-the matched benchmark-test changes. Load includes bounds, counts, and repaint;
-Rebuild measures the focused plot; Navigate reuses accepted data and the cached
-plot. Default plot height at the measured 40-row window grows from three to five
-rows, and long-history sampling grows from one to two samples per terminal cell,
-capped at 256. The added work is intentional detail, not an optimization.
-
-Medians of five one-second runs on the long-history fixture:
-
-| Width / operation | Before ns/op | Mountain ns/op | B/op before → after | allocs/op before → after |
-| --- | ---: | ---: | ---: | ---: |
-| 80 Load | 13,082,807 | 13,645,988 | 157,076 → 181,649 | 12,108 → 12,294 |
-| 80 Rebuild | 149,313 | 324,757 | 13,648 → 28,264 | 226 → 608 |
-| 80 Navigate | 688 | 994 | 896 → 2,048 | 1 → 1 |
-| 160 Load | 13,376,908 | 14,672,404 | 184,360 → 218,160 | 12,276 → 12,506 |
-| 160 Rebuild | 274,065 | 479,943 | 25,792 → 46,456 | 419 → 798 |
-| 160 Navigate | 859 | 1,158 | 1,792 → 3,072 | 1 → 1 |
-
-Load on the original stress fixture changed from 6.15 to 6.17 ms at 80 columns,
-and 5.96 to 6.14 ms at 160. Long-history repaint cost more than doubled, but
-remains below 0.5 ms in these runs and is not performed on each in-range day key.
-The loaded plot's View/marker path remains around one microsecond.
-
-Headful Brave at 1200×850 used the unchanged stress fixture and the focused day
-plot. Each condition ran five groups of twelve alternating historical day keys,
-waiting for the requested date and settled 30-Thought count in xterm. Dramatic
-means 300% size with extra contrast; it uses twelve plot rows on this viewport.
-
-| Metric | Before default | Mountain default | Dramatic |
-| --- | ---: | ---: | ---: |
-| Median key-to-display | 27.05 ms | 27.30 ms | 34.55 ms |
-| p95 key-to-display | 49.30 ms | 43.90 ms | 45.70 ms |
-| Native CPU, 60 transitions | 2.08 s | 2.08 s | 2.18 s |
-| Browser process-tree CPU | 1.70 s | 1.72 s | 2.12 s |
-| Native RSS after workload | 39,680 KiB | 42,708 KiB | 44,204 KiB |
-
-Dramatic rendering uses more CPU and display area. The lower sampled p95 is not
-evidence of an improvement; frame scheduling varies. No keys were lost in these
-runs. RSS samples do not establish retained allocations. No new timer, animation,
-background worker or per-key aggregate query is introduced. These measurements
-cover static browser mode, not video playback or the unresolved compositor issue.
-
-## Bounded month-view follow-up
-
-Historical comparison: `4beacc1` versus the working tree committed as `1a07bb1`,
-before the compact-height correction below, on the same reference
-machine/toolchain/browser, using the unchanged 721-Event/20,000-Thought stress
-fixture and anchor. That revision's default is low boost, the former 300% look mapped
-to 100%, and one calendar month of activity. The canvas is capped at twelve rows;
-tuning does not move Events. Comparisons ran sequentially with binaries compiled
-first and no competing builds/tests. Five runs are descriptive, not statistical
-significance or a speedup claim.
-
-Medians of five one-second native runs at a 40-row terminal:
-
-| Width / operation | Before ns/op | After ns/op | B/op before → after | allocs/op before → after |
-| --- | ---: | ---: | ---: | ---: |
-| 80 Load | 6,245,150 | 5,906,500 | 51,077 → 73,679 | 2,409 → 2,594 |
-| 80 Rebuild | 104,486 | 276,462 | 16,560 → 38,824 | 85 → 244 |
-| 80 Navigate | 687 | 1,372 | 1,152 → 3,200 | 1 → 1 |
-| 160 Load | 6,155,958 | 5,683,206 | 64,108 → 110,567 | 2,413 → 2,609 |
-| 160 Rebuild | 188,943 | 444,462 | 29,904 → 75,808 | 110 → 259 |
-| 160 Navigate | 938 | 1,480 | 2,304 → 6,144 | 1 → 1 |
-
-The larger default canvas costs about 2.4–2.6 times as much to rebuild here,
-remaining below 0.45 ms. Copying the cached View also costs more. Rebuilds do not
-run for each in-range day key; palette changes and real layout/style/data changes
-rebuild without adding database reads. History Load remains about six milliseconds
-on this fixture. No performance improvement is claimed.
-
-Actual headful Brave at 1200×850, static dark background, five groups of twelve
-alternating historical day keys, waiting for the requested date and settled
-30-Thought count in xterm:
-
-| Metric | Before default | New default |
-| --- | ---: | ---: |
-| Median key-to-display | 42.10 ms | 41.85 ms |
-| p95 key-to-display | 49.10 ms | 56.90 ms |
-| Native CPU, 60 transitions | 2.35 s | 2.58 s |
-| Browser process-tree CPU | 1.86 s | 2.20 s |
-| Native RSS after workload | 44,808 KiB | 44,084 KiB |
-| Summed browser process RSS | 846,820 KiB | 855,020 KiB |
-| WebSocket received bytes / frames | 37,909 / 77 | 26,712 / 80 |
-
-The p95 increased 7.8 ms and sampled combined CPU increased about 14%; this is
-additional presentation cost. No keys were lost. Three-second idle samples
-consumed 0.05 → 0.06 s native CPU and 0.10 → 0.11 s browser CPU; these short
-samples are variable rather than stable idle baselines. Summed browser RSS
-includes shared pages and does not establish retained allocation growth. Video,
-hardware acceleration and the unresolved compositor issue are not measured here.
-
-Actual Brave captures at 1200×850 and 480×480 were reviewed for grey Events focus,
-colored graph/Mindset/entity focus, outline, reset, fixed-height tuning and compact
-component colors. The affected Chromium/Firefox acceptance cases cover focus, geometry and navigation.
-Compact colors and the overlap-boundary guard passed three consecutive runs in
-both engines (twelve case executions). The
-compact test waits for a complete backend frame matching each browser's fitted
-terminal dimensions before recording the divider position. Initial test failures
-exposed a resize synchronization issue and different browser font metrics. Earlier
-full-suite measurements and acceptance results apply to their recorded revisions.
-
-The reported intermittent mountain-over-card overlap has not been reproduced or
-claimed fixed. An additional actual activity-demo probe reviewed 125 rendered
-frames during repeated tuning, zoom, resize, day navigation and Thought expansion;
-no horizontal mountain glyphs crossed into Event-card columns. The browser guard
-checks this boundary during repaint as well as in settled views. Synthetic captures
-and probe output are under `/tmp/thoughts-daynav-evidence`. These bounded checks
-are evidence, not a guarantee about every terminal or compositor.
-
-Final verification included `make ci` (unit, migrated SQLite integration, browser
-acceptance and race checks). A subsequent one-path correction makes Q from the
-entity picker use the shared focus update; its palette regression failed in both
-browsers before the correction and all ten affected browser cases passed after.
-Post-correction root race tests and the normal commit/push hooks verify that last
-change separately.
-
-## Historical five-row cap and stable loading
-
-At `a7b1a04`, the fullscreen-height follow-up reduced the maximum to five plot
-rows, four on medium windows, two on short windows and one on compact windows.
-Low boost and maximum fill were the default inside that area; tuning and zoom
-did not grow the panel. The fixed graph band and normal baseline supersede
-those visual defaults; the measurements below retain their original context.
-
-The graph budget is allocated before Mindset reading space. A regression
-reproduced the previous graph shrinking from six to four rows (including its
-spacer) when long Mindset content arrived. Data replies and in-range Left/Right
-navigation now retain the graph's canvas and cached geometry. The quantitative
-measurements above describe earlier revisions, not this five-row correction;
-no new performance improvement is claimed.
-
-The compact correction passed focused Go/root/preview tests and race tests, plus
-all 22 Chromium/Firefox navigation, clipboard, resize and graph cases. Actual
-Brave review covered 1200×850, 1920×1080 and 480×480, including maximum fill,
-outline and focus changes. One earlier Firefox run detected a transient buffer
-boundary violation during rapid resize; five diagnostic repeats and the final
-22-case run passed. The stricter boundary assertion remains, with painted-row
-and buffer-row diagnostics. This does not establish the intermittent overlap's
-root cause or claim that it is eliminated.
-
-## Calendar-anchored panning
-
-A dramatic one-day-pan regression reproduced a peak changing height/profile
-because each new viewport restarted fractional pixel sampling. Vertices now use
-an absolute civil-date grid, with the viewport origin aligned to complete Braille
-cells. Panning therefore translates the same dated profile instead of changing
-its peak rounding or color-cell pairing. The selected-date marker uses this grid.
-
-A separate edge regression reproduced a flattened flank when the last visible
-sample became an interior sample. The same bounded read now includes one adjacent
-bucket at each edge. These samples continue interpolation outside the visible
-range and do not add another database round trip. The existing request limit,
-cancellation and stale-result checks remain. Both filled and outline translation
-and edge-flank regressions pass at dramatic settings.
-
-The final correction was compared with compact baseline `a7b1a04` on the same
-i5-8250U / Linux amd64 / Go 1.25.14 reference machine. Both binaries used the
-unchanged 721-Event/20,000-Thought stress fixture, a 40-row terminal and five
-one-second runs, sequentially without competing builds/tests. Setup and
-compilation were excluded. Medians:
-
-| Width / operation | Before ns/op | After ns/op | B/op before → after | allocs/op before → after |
-| --- | ---: | ---: | ---: | ---: |
-| 80 Load | 6,951,749 | 6,110,406 | 49,349 → 51,994 | 2,436 → 2,457 |
-| 80 Rebuild | 123,038 | 125,684 | 14,512 → 15,712 | 86 → 102 |
-| 160 Load | 6,170,441 | 6,352,235 | 63,174 → 67,601 | 2,441 → 2,470 |
-| 160 Rebuild | 214,921 | 215,114 | 28,416 → 31,232 | 91 → 114 |
-
-These runs show no material time regression, while allocations increase for
-neighboring samples, vertex positions and changed style runs. They do not show
-statistical significance or an overall performance improvement. The bounded
-count request widens by adjacent context rather than adding a database call.
-
-Actual Brave at 1200×850 exercised 45 days left and 31 days right at extra boost
-and maximum fill. Across a one-day viewport pan, every shared terminal cell,
-including the edge flank, matched an exact five-column translation. Screenshots
-were inspected. All 22 browser navigation/resize cases and focused renderer,
-day-graph and root race tests passed. Deterministic regressions also cover a high
-peak entering from outside the viewport, in filled and outline modes.
-
-## Stable scale and buckets during sustained scrolling
-
-The previous pixel-grid correction (`9376f76`) did not fix viewport normalization.
-An actual Brave reproduction changed 230 shared mountain cells after the 33rd
-Left press, when a peak moved out of the window. The window also used to regroup
-wide-range samples on every one-day pan, changing their measured averages.
-
-The current scale uses the maximum across the full active history at the chosen
-bucket resolution. Whole buckets are anchored to civil dates, and sample centers
-use those actual dates. The accepted scale and viewport publish together under
-the existing owner/request checks. Failed or canceled refreshes retain the old
-landscape. Replacing a pending history refresh with zoom retains its refresh
-requirement rather than reusing a stale reference. Changing data or resolution may legitimately establish a new scale;
-ordinary panning does not. This adds bounded history reads when establishing a
-scale, not on each pan. No new store API, schema, dependency, timer, worker or
-persistent history cache was introduced.
-
-Focused regressions reproduce both original failures, exercise a remote peak
-across three history batches, preserve the scale across 40 pans in each direction,
-and cover cancellation, failed refresh, DST and pre-epoch bucket anchoring. Shared
-filled/outline cells are checked at dramatic settings. Actual Brave at 1200×850
-passed 270 day changes across low/extra/outline modes with zero shared glyph/color
-mismatches (90 viewport pans). A separate 45-repeat keydown burst in each direction
-reached the exact dates without reconnecting. Representative screenshots were
-inspected. One initial manual capture compared a prior style frame against the
-next style; the final run explicitly awaited the style change before capture.
-This is unrelated to the unresolved intermittent resize-overlap report above.
-
-The same i5-8250U / Linux amd64 / Go 1.25.14 machine compared `9376f76` with this
-follow-up using identical benchmarks and unchanged migrated fixtures: stress
-721 Events/20,000 Thoughts; two-year activity 3,992 Events/30,493 Thoughts. Each
-revision ran separately, without competing builds/tests: five one-second runs,
-setup/compilation excluded. `Load` explicitly refreshes the history reference;
-`Pan` alternates adjacent viewport positions; `Navigate` stays inside loaded data.
-Medians:
+The stable-scale follow-up compared `9376f76` with its replacement on the same i5-8250U/Linux/Go toolchain. Five one-second runs used unchanged migrated fixtures: stress 721 Events/20,000 Thoughts; two-year activity 3,992 Events/30,493 Thoughts. Load refreshes history; Pan reads adjacent viewports; Navigate remains inside loaded data.
 
 | Fixture / operation / width | Before ns/op | After ns/op | B/op before → after | allocs/op before → after |
 | --- | ---: | ---: | ---: | ---: |
@@ -512,207 +257,41 @@ and cached navigation remains around a microsecond. This is a correctness tradeo
 not a speedup. Five runs do not establish statistical significance. No new
 whole-app CPU, memory or navigation-p95 improvement is claimed from these tests.
 
-## Normal baseline and consistent browser height at `323c1dd`
+### Formatting cleanup against `f74f8e1`
 
-Startup and style Reset use normal boost (0.8), 100% size, and filled mode.
-This rebases the former low/300% silhouette rather than returning to the older,
-smaller gain. Higher and lower settings modulate this baseline inside the fixed
-canvas; no setting moves Events downward. The renderer retains the prior fill
-calibration so ordinary Braille rounding and outline appearance stay intact.
+Measured 2026-10-28 on the same i5-8250U, Linux amd64, Go 1.25.14. Fresh databases were migrated with go-migrate and seeded from the unchanged stress (721 Events/20,000 Thoughts) and two-year activity (3,992/30,493) scripts. Revisions ran separately, without competing builds/tests; compilation and setup were excluded.
 
-At that revision, the plot used two rows from a 26-row terminal upward, matching
-the accepted small browser window. Very short windows retain their one-row fallback. Actual Brave
-review at 480×480, 1200×700, 1200×850, and 1920×1080 verified the same two-row plot
-and Events header position. Small-window cells/colors matched the prior binary
-exactly. At each larger size, tuning to 300% and resetting restored the exact
-normal profile. Screenshots were inspected. Literal preview geometry and root
-resize tests preserve these relationships. The earlier performance tables
-predate this presentation change; no new timing or CPU improvement is claimed.
+Five 300 ms runs on the stress fixture, medians:
 
-## Shared baseline, gap, and status placement
-
-The approved Braille + gap preview uses four mountain rows and one marker row.
-The bottom two Braille dots form a continuous baseline in the same cells as the
-filled slopes. Outline mode omits that axis and leaves its interior blank. The
-accepted date is a single background-colored space in the row below it, matching
-the purple Events highlight. Moving that block does not rerasterize mountains
-or overwrite any of their dots.
-
-The Events header sits at row 9 with a collapsed Mindset in normal windows
-(counting from zero). The five-row graph band cannot grow with zoom, tuning, or
-fullscreen height. Short terminals progressively reduce plot rows, retaining the
-marker gap and usable Event-card viewport. Status belongs beside the Events date
-when both fit, or in the existing footer when they do not. Normal/100%/filled
-remains the style default.
-
-The earlier literal two-row profiles and timing tables describe their original
-revisions, not this increased plot resolution.
-
-### Focused layout cost
-
-Compared the pre-layout PR head `135f9cd7047a937c6fb88f23d483a0c877812da6`
-with the Braille + gap layout at `25bc91e`, using the existing
-`BenchmarkDayActivity` Rebuild
-and Navigate cases. The same migrated synthetic fixture contained 721 Events and
-20,000 Thoughts, all before the accepted cutoff. Binaries were compiled first
-and run separately without competing builds/tests. Linux/amd64, Intel i5-8250U
-(8 logical CPUs), Go 1.25.14; five 1-second runs per case, medians below.
-
-| Operation / columns | ns/op before → after | Δ time | B/op before → after | allocs/op before → after |
+| Operation, 80 columns | Before | After | Bytes before → after | Allocations before → after |
 | --- | ---: | ---: | ---: | ---: |
-| Rebuild/80 | 76,330.0 → 142,264.0 | +86.4% | 8,248 → 13,584 | 108 → 85 |
-| Navigate/80 | 591.9 → 4,794.0 | +709.9% | 704 → 1,376 | 1 → 8 |
-| Rebuild/160 | 128,898.0 → 242,853.0 | +88.4% | 14,704 → 26,816 | 155 → 97 |
-| Navigate/160 | 700.1 → 4,582.0 | +554.5% | 1,280 → 2,491 | 1 → 8 |
+| Styled redraw | 282.1 µs | 96.0 µs | 25,760 → 15,200 | 415 → 22 |
+| Cached navigation + View + marker | 4.57 µs | 4.47 µs | 2,144 → 2,144 | 8 → 8 |
 
-The final plot rasterizes four rather than two mountain rows. Cached navigation
-also composes the solid marker row; it does not rerasterize or query history.
-The old Navigate case omitted the root's separate divider composition; the new
-component includes its marker row. This is a component-cost comparison, not an
-end-to-end navigation regression measurement. These are additional bounded
-presentation costs, not speedups. Five runs do not establish statistical significance. This comparison does not measure whole-app
-CPU, memory, browser composition, or navigation p95; the earlier query/pan
-measurements retain their original revision-specific meaning.
+Three 200 ms runs also measured stress redraw at 160 columns: 426.4 → 191.6 µs, 44,088 → 26,208 bytes, 462 → 22 allocations. Two-year activity redraw at 80 columns: 201.5 → 85.8 µs, 20,096 → 13,152 bytes, 238 → 21 allocations; at 160 columns: 298.0 → 175.2 µs, 33,016 → 22,112 bytes, 253 → 21 allocations. These short comparisons are not statistical significance claims.
 
-Focused Go/root tests cover the 24–27-row allocation boundaries and loading before
-the first reply. All 28 affected Chromium/Firefox cases passed. Brave captures
-were reviewed at 1200×850, 380×480, 380×440 and 1920×1080, including normal/300%,
-outline, Events focus and expanded Thoughts. Both narrow viewports fitted 43×26
-terminal cells; normal/fullscreen used four mountain rows plus the marker gap.
-Reset restored the exact normal plot; left/right marker movement, 40 day changes
-in each direction and card expansion kept one WebSocket. The manual harness's
-initial incomplete resize snapshots were rejected; this is not evidence that the
-previous intermittent overlap report has been fixed.
+The measured saving removes full Lip Gloss layout from foreground-only runs and intermediate run buffers. It does not change terrain mathematics, historical scaling or database reads. In a separate three-second stress redraw profile, Lip Gloss Render accounted for about 62% cumulative CPU before this change. No-op tuning now allocates zero bytes and retains its plot. Five 200 ms presentation runs cover filled/outline rebuilds, palette changes and tuning at a bound.
 
-### Loading-feedback follow-up
+The prior standalone 80×4 terrain benchmark measured 70.5 µs (five 300 ms runs). Initial/refresh loads were 11–24 ms across the two fixtures; pans were 3–6 ms. They remain database work, not the formatting optimization's claimed benefit. No whole-app CPU, memory or browser-latency improvement is inferred.
 
-The first gap-layout revision `25bc91e` displayed loading immediately for each
-viewport read. Consecutive pans could keep the label visible while moving even
-though individual reads were quick. The follow-up uses the same cancellable
-150 ms one-shot feedback pattern as Events. A slow read still reports progress;
-newer requests clear the prior label, and an accepted result or failure retires
-its timer. Neither data reads nor their application wait for that timer.
+Reproduce using disposable migrated fixtures:
 
-Deterministic tests exercise fast/slow reads, stale component/request replies,
-cancellation, failures, a selection moving beyond an in-flight pan, and real
-root-dispatch feedback/zoom transitions. The browser regression crosses the
-month viewport with forty keys each way and checks that feedback settles without
-reconnecting. The layout timing table above belongs to `25bc91e`; this follow-up
-does not change rasterization or cached marker composition and makes no new
-performance claim.
+```sh
+THOUGHTS_STRESS_DSN=file:/path/to/stress.db go test ./internal/tui/daynav \
+  -run '^$' -bench '^BenchmarkDayActivity/(Rebuild|Navigate)/80$' \
+  -benchmem -count=5 -benchtime=300ms
+go test ./internal/tui/daynav -run '^$' \
+  -bench '^BenchmarkDayMountainPresentation$' -benchmem -count=5 -benchtime=200ms
+```
 
-A matched Brave observation on the same synthetic activity fixture used 45 held
-Left keydowns and 45 Right keydowns. The `25bc91e` binary showed loading in three
-captured render frames (longest observed interval 17 ms); the delayed-feedback
-binary showed it in zero. Both returned to the exact date with one WebSocket and
-no final loading label. This reproduced brief feedback during movement, not a
-permanently stuck label after movement stopped. The lifecycle regressions cover
-stale timers and queued pans; this single walkthrough is not a latency or CPU
-benchmark.
+A temporary comparison checked byte-identical plot output against the previous formatter across 36 width/height/palette/fill combinations. Edge/pan tests now use the same explicit calendar sample context as production, removing an unused alternate input contract. Duplicate fixed-height coverage was consolidated; ownership and layout regressions remain.
 
-### Pinned block while panning
+## Remaining limitations
 
-The first/last selected dates occupy the outermost columns of the marker gap.
-Previously a pan clamped an outside date to the border, then moved the block
-inward to its sample center when the new viewport arrived. Pinning edge dates
-keeps pending and accepted positions identical, without changing curve samples.
-For a one-day viewport, the last movement direction selects the shared edge;
-reapplying the accepted date does not reset it. Interior dates retain their
-calendar-grid positions.
+- Daily buckets cannot reveal intraday peaks. The terrain is a bounded visual interpretation, not a new measurement.
+- A terminal cell has only one foreground color; thin component bands can disappear inside a shared cell. One-row Total intentionally remains grey.
+- Initial and explicit-refresh history work grows with retained history. Panning reuses its scale, and each query remains bounded to 256 buckets.
+- Prior browser runs were variable: one default-view comparison increased p95 by 7.8 ms and sampled combined CPU by about 14%. Native cleanup results must not be presented as browser improvements.
+- Intermittent mountain-over-Event overlap and an extra stale marker during a supplementary rapid-resize probe remain unproven resolved. The pinned xterm shrink correction addresses a reproduced right-margin defect, not every compositor or resize issue.
 
-Deterministic tests check repeated left/right pans at 1, 40, 80 and 160 columns,
-including month and one-day zoom. Browser capture checks painted block positions
-through forty-five day changes each way, rather than only inspecting a settled
-endpoint.
-
-### Now and Mindset day navigation
-
-Now/day-boundary focus survives day arrivals instead of becoming entry focus.
-That preserves the latest-card/boundary/metrics composition, including empty
-days. Returning to today restores live follow-Now behavior; Right at today does
-not open a card. Only entry browsing initializes the first card on a changed day.
-Mindset arrows use the same day command while retaining panel focus. Enter is
-its sole Thought-opening key; reading and paging stay in the component.
-
-Focused Go tests cover populated/empty day cycling, the first-card distinction,
-today's limit, Enter-only Mindset opening and root dispatch. All 36 affected
-Chromium/Firefox cases and navigator/Events/Mindset/root race tests passed. The
-single changed preview golden line is the Now-view help binding; its geometry
-is unchanged.
-
-An actual Brave walkthrough used the varied synthetic diary at 1200×850. Its
-Now view kept one latest card plus metrics across dates, Mindset arrows preserved
-focus and Enter opened a real synthetic pinned Thought. The temporary pin was
-removed through the UI. Reviewed captures and results are under
-`/tmp/thoughts-daynav-evidence`; one WebSocket served the whole walkthrough.
-
-
-## Broad-terrain experiment at `acf5eaf` (height superseded)
-
-The six/eight-row application height tested here was subsequently reverted to
-four rows at all zoom levels. The terrain and fixed-canvas measurements remain
-valid; taller benchmark canvases do not describe the current application layout.
-
-Synthetic comparison fixtures cover a dominant summit, two separated peaks,
-sustained activity, an isolated day, Thought/Event-heavy periods, empty data,
-and irregular history. `BenchmarkDayMountainRender` fixes the same 43 daily
-samples (31 visible plus context), reference, channels, width, and canvas height
-for both versions. `BenchmarkDayMountainCachedNavigation` loads once, then
-moves ten dates inside the month without reads. Measurements are five-run
-medians, 300 ms per run, with fixture generation and compilation outside timing;
-no competing build/test process ran. CPU/hardware metadata is retained in the
-benchmark output. These are native render/marker costs, not end-to-end browser
-latency or a claim about GPU composition.
-
-| Braille canvas | Linear render, µs | Broad terrain, µs | Go bytes before → after |
-| --- | ---: | ---: | ---: |
-| 40×2 | 12.1 | 44.1 | 2,432 → 6,816 |
-| 80×4 | 30.5 | 103.7 | 5,184 → 11,616 |
-| 80×6 | 38.5 | 112.5 | 7,024 → 13,456 |
-| 80×8 | 46.9 | 127.2 | 8,864 → 15,296 |
-| 120×6 | 55.4 | 176.6 | 10,096 → 18,576 |
-| 120×8 | 76.8 | 192.5 | 12,960 → 21,440 |
-
-The terrain mathematics cost roughly 2.5–3.6 times the linear renderer in this
-fixture, adding under 0.12 ms per rebuild. Increasing the new 80-column canvas
-from four to six rows adds about 9 µs, and six to eight adds about 15 µs. Cached
-navigation at a matched four-row canvas remains about 4.0 µs with eight
-allocations; normal six-row navigation is about 4.2–4.4 µs. Taller cached strings
-increase bytes per navigation from roughly 1.5 to 1.9 KiB. No rendering speedup
-is claimed, and ordinary marker movement does not pay the terrain rebuild cost.
-
-Reproduce with `go test ./internal/render ./internal/tui/daynav -run '^$'
--bench '^BenchmarkDayMountain' -benchmem -count=5 -benchtime=300ms`.
-The intermittent mountain-over-Event report remains unresolved; passing pure
-render/layout tests does not establish a compositor fix. Current browser
-qualification and reviewed captures must be reported separately.
-
-
-Visual qualification for this experiment reviewed actual Go Braille output at
-40×2, 80×4/6/8, and 120×6/8 using all seven fixtures. A temporary monotone cubic
-shoulder comparison was similarly broad but rounder at the summit; the cosine
-shoulder plus small pointed cap was retained. Four rows show the range clearly,
-six separate crests and component layers better, and eight add slope detail
-without changing the counts. At one-day zoom a daily measurement and its broad
-neighboring shoulders can look almost flat: eight rows are not intraday data.
-
-Fourteen focused Chromium/Firefox checks passed, including the per-render
-mountain-over-Event guard during six/eight-row zoom transitions, tuning, resize,
-and return to an expanded Event. The real two-year activity demo was reviewed at
-1200×850 and 480×480, including one-day zoom, panning, outline, and Event expansion.
-No mountain-over-card overlap was observed; the historical intermittent issue
-is not claimed fixed. Temporary comparisons, captures, benchmark output and
-review scripts are under `/tmp/pr92-mountains/`; these are disposable evidence,
-not required application files or a permanent preview service.
-
-
-## Selected B contour
-
-The Spider-Man comparison used identical fresh copies of its 124 Thoughts and
-80 Events, at the default month, normal boost, 100% size, and compact height.
-Actual app captures showed the former 4–6/3–4-bucket supports merging the seed's
-mostly 5–6 Events and 8–9 Thoughts per completed day. B was selected: narrower
-1.8–2.7/1.2–1.8-bucket shoulders with equal cosine and linear contributions.
-Only contour parameters change; counts, historical scale, four-row cap, compact
-layout, colors, and controls stay the same. Earlier wide-terrain benchmark
-results above describe their original parameters, not new measurements of B.
+Superseded height/contour experiments are omitted here. Current controls and geometry above are authoritative; earlier measurements describe their original revisions.
