@@ -73,6 +73,7 @@ type Model struct {
 	// screen selects the root child that owns ordinary messages and rendering.
 	screen                  screen
 	subjectReturn           *events.CreateSubjectRequest
+	goalSubjectReturn       *goals.CreateSubjectRequest
 	logger                  logging.Logger
 	browserRecordingEnabled bool
 	browserOptionsEnabled   bool
@@ -124,7 +125,8 @@ type homeOpened struct{}
 func (m *Model) ConfigureGoals(service goals.GoalService, assignments goals.Assignments, memberships goals.Memberships) {
 	child := goals.New(m.ctx, m.user.UserID, service, assignments, memberships, m.subjects.service)
 	child.SetLogger(m.logger)
-	child.Resize(m.width, max(1, m.height-2))
+	child.SetBorderWeight(m.borderWeight)
+	child.Resize(m.width, m.height)
 	m.goals = &child
 }
 
@@ -305,6 +307,12 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.voiceSubjectReturn = &message
 		m.voiceSubjectScreen = m.screen
 		return m.openSubjectCreate(message.Query)
+	case goals.CreateSubjectRequest:
+		if m.screen != screenGoals || m.goals == nil || !m.goals.AwaitingSubject(message) {
+			return m, nil
+		}
+		m.goalSubjectReturn = &message
+		return m.openSubjectCreate(message.Query)
 	case events.CreateSubjectRequest:
 		if m.screen != screenEvents || !m.events.AwaitingSubject(message) {
 			return m, nil
@@ -337,7 +345,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeHome()
 		m.resizeSubjects(message.Width, message.Height)
 		if m.goals != nil {
-			m.goals.Resize(message.Width, max(1, message.Height-2))
+			m.goals.Resize(message.Width, message.Height)
 		}
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
 		return m, nil

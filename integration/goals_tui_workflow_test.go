@@ -74,6 +74,7 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 			key(tea.KeyTab)
 		}
 		key(tea.KeyEnter)
+		key(tea.KeyDown)
 		key(tea.KeySpace)
 		key(tea.KeyDown)
 		key(tea.KeySpace)
@@ -97,6 +98,7 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("edited Goal: got %+v, %v; want version increment and 10 hours", after, err)
 		}
 		send(tea.KeyPressMsg{Code: 's', Text: "s"})
+		key(tea.KeyDown)
 		key(tea.KeySpace)
 		key(tea.KeyEnter)
 		live, err = runtime.SubjectGoals().ListLiveSubjectsForGoal(t.Context(), user, item.GoalID)

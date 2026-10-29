@@ -60,3 +60,17 @@ screenshots are transient artifacts outside the source tree.
 This interface does not record progress, manage parents, toggle activation, or
 change priority. Very long Details and forms use Bubbles viewport scrolling;
 filtering and pagination use Bubbles lists. No schema changes are needed.
+
+## Shared Subject layout and creation
+
+The Subjects browser and Goal picker share heading, always-visible search,
+Subject-name column, two-line rows, and footer geometry. Compact windows retain
+context and cancellation controls. Separator weight follows accessibility settings.
+Browse rows retain thought counts; picker rows show selection without reading counts.
+
+Create subject… is the picker's first action. Enter opens the existing Subject
+creation form. Cancel returns to the unchanged picker; successful creation returns
+with the new Subject checked and the Goal draft intact. This creates the Subject
+only; Goal membership is persisted when the user confirms the picker or creates
+the Goal. Ctrl+S confirms a selection independently of the highlighted action,
+including an empty selection when no Subjects exist.

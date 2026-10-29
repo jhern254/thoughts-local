@@ -16,6 +16,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/goal"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 )
 
@@ -92,10 +93,17 @@ func (r subjectRow) Title() string {
 	}
 	return mark + r.item.SubjectName
 }
-func (r subjectRow) Description() string { return "" }
+func (r subjectRow) Description() string {
+	if r.selected {
+		return "Selected"
+	}
+	return ""
+}
 func (r subjectRow) FilterValue() string { return r.item.SubjectName }
 
 type Model struct {
+	borderWeight          data.BorderWeight
+	subjectCreation       *byte
 	now                   func() time.Time
 	pickerReady           bool
 	logger                logging.Logger
@@ -141,7 +149,7 @@ func New(ctx context.Context, userID string, service GoalService, assignments As
 		memberships: memberships,
 		subjects:    subjects,
 		list:        list.New(nil, delegate, 80, 18),
-		picker:      list.New(nil, list.NewDefaultDelegate(), 80, 18),
+		picker:      list.New(nil, appearance.SubjectListDelegate(true), 80, 18),
 		body:        viewport.New(),
 		width:       80,
 		height:      24,
@@ -152,7 +160,7 @@ func New(ctx context.Context, userID string, service GoalService, assignments As
 	m.list.DisableQuitKeybindings()
 	m.picker.DisableQuitKeybindings()
 	m.list.SetShowStatusBar(false)
-	m.picker.SetShowStatusBar(false)
+	appearance.ConfigureSubjectList(&m.picker)
 	for i := range m.fields {
 		m.fields[i] = textinput.New()
 		m.fields[i].CharLimit = 0
@@ -166,6 +174,7 @@ func (m *Model) Close() {
 	}
 	m.owner = nil
 	m.open = false
+	m.subjectCreation = nil
 	m.filter.Invalidate()
 	m.pickerFilter.Invalidate()
 }
@@ -185,7 +194,7 @@ func (m *Model) Resize(width, height int) {
 	m.width = max(1, width)
 	m.height = max(1, height)
 	m.list.SetSize(m.width, max(1, height-4))
-	m.picker.SetSize(m.width, max(1, height-4))
+	appearance.ResizeSubjectList(&m.picker, m.width, height)
 	m.body.SetWidth(m.width)
 	m.body.SetHeight(max(1, height-4))
 	for i := range m.fields {
@@ -466,17 +475,28 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case createView, editView:
 		return m, m.updateForm(msg)
 	case subjectsView:
-		if !m.pickerReady {
+		if !m.pickerReady || m.subjectCreation != nil {
 			return m, nil
 		}
 		if ok && !m.picker.SettingFilter() {
 			switch key.String() {
+			case "n":
+				return m, m.requestSubjectCreation()
+			case "ctrl+s":
+				if m.pickerReturn == createView {
+					m.screen = createView
+					return m, nil
+				}
+				return m, m.saveSubjects()
 			case "space":
 				if row, ok := m.picker.SelectedItem().(subjectRow); ok {
 					m.selectedIDs[row.item.SubjectID] = !m.selectedIDs[row.item.SubjectID]
 					return m, m.refreshPicker()
 				}
 			case "enter":
+				if _, ok := m.picker.SelectedItem().(createSubjectRow); ok {
+					return m, m.requestSubjectCreation()
+				}
 				if m.pickerReturn == createView {
 					m.screen = createView
 					return m, nil
@@ -489,7 +509,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 func (m *Model) refreshPicker() tea.Cmd {
-	rows := make([]list.Item, 0, len(m.available))
+	rows := make([]list.Item, 0, len(m.available)+1)
+	rows = append(rows, createSubjectRow{})
 	for _, s := range m.available {
 		rows = append(rows, subjectRow{s, m.selectedIDs[s.SubjectID]})
 	}
@@ -535,11 +556,39 @@ func (m Model) View() string {
 		content = m.list.View()
 		help = "n: new · Enter: open · f: " + []string{"All", "Active", "Inactive"}[m.visibility] + " · Esc: back"
 	case subjectsView:
-		content = m.picker.View()
-		help = "Space: toggle · Enter: save · Esc: cancel"
-		if m.pickerReturn == createView {
-			help = "Space: toggle · Enter: done · Esc: cancel"
+		goalName := "New Goal"
+		if m.pickerReturn == createView && m.fields[0].Value() != "" {
+			goalName = m.fields[0].Value()
+		} else if m.selected != nil {
+			goalName = m.selected.GoalName
 		}
+		summary := fmt.Sprintf("%d selected · empty selection means Misc", len(m.ids()))
+		status := m.status
+		if status == "" {
+			count := 0
+			for _, item := range m.picker.VisibleItems() {
+				if _, ok := item.(subjectRow); ok {
+					count++
+				}
+			}
+			label := "subjects"
+			if count == 1 {
+				label = "subject"
+			}
+			status = fmt.Sprintf("%d %s · %d selected", count, label, len(m.ids()))
+		}
+		if m.picker.FilterValue() != "" && len(m.picker.VisibleItems()) == 0 {
+			status = "No matches."
+		}
+		action := "save"
+		if m.pickerReturn == createView {
+			action = "done"
+		}
+		actions := "Enter/Ctrl+S: " + action + " · Esc: cancel"
+		if _, ok := m.picker.SelectedItem().(createSubjectRow); ok {
+			actions = "Enter: create · Ctrl+S: " + action + " · Esc: cancel"
+		}
+		return appearance.SubjectListView(m.picker, m.width, m.height, m.borderWeight, "Subjects for "+goalName, summary, status, actions, "↑/↓: move · Space: toggle · /: search")
 	case detailView:
 		content = m.detailContent()
 		help = "e: Edit Goal · s: Manage Subjects · Esc: Back"
@@ -572,3 +621,5 @@ func (m Model) detailContent() string {
 func (m Model) IsOpen() bool { return m.open }
 
 func (m *Model) SetLogger(logger logging.Logger) { m.logger = logger }
+
+func (m *Model) SetBorderWeight(weight data.BorderWeight) { m.borderWeight = weight }
