@@ -118,7 +118,7 @@ survive browser reloads and do not change the native terminal.
 
 ### Browser background
 
-Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use
+Select **Options** alongside Goals, Thoughts, and Subjects (Tab, arrows, Enter), or use
 **Ctrl+,** / **Cmd+,** without leaving a draft. Under Visual, choose a local JPEG/PNG image or supported SDR MP4/MOV/MKV video, preview it, and
 apply it behind the terminal. Background darkness changes only the readability
 overlay; Apply saves it. Remove background returns to the normal dark surface.
@@ -214,3 +214,10 @@ refused. Logs use the same fixed-message policy as native mode.
 The adapter uses xterm.js and selected ideas/options from sip. See
 [the upstream and asset record](internal/browserterm/UPSTREAM.md) for versions,
 licenses, update steps, limits, and optional browser tests.
+
+### Goals
+
+Open **Goals** from the entity strip to browse all, active, or inactive Goals.
+Use `n` to create one, `e` in Details to edit its target and dates, or `s` to
+manage its Subjects separately. Goals without live Subjects display **Misc**.
+See [Goals controls](docs/goals-tui.md) for duration inputs and multiselection.

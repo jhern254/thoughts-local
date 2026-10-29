@@ -12,9 +12,12 @@ import (
 	"github.com/jhern254/go-thoughts/internal/editorprefs"
 	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/failure"
+	"github.com/jhern254/go-thoughts/internal/goal"
+	"github.com/jhern254/go-thoughts/internal/goalassignment"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/subjectgoal"
 	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/tui"
@@ -31,6 +34,9 @@ type runtime interface {
 	Thoughts() *thought.Service
 	Metrics() *metrics.Service
 	Events() *event.Service
+	Goals() *goal.Service
+	GoalAssignments() *goalassignment.Service
+	SubjectGoals() *subjectgoal.Service
 	TimelineView() *timeline.Service
 	BrowserVisual(context.Context) (*visual.Service, error)
 	Close() error
@@ -105,6 +111,7 @@ func newTUI(app *application) *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			newModel := func(ctx context.Context) tui.Model {
 				model := tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.runtime.Events(), app.runtime.TimelineView(), app.logger)
+				model.ConfigureGoals(app.runtime.Goals(), app.runtime.GoalAssignments(), app.runtime.SubjectGoals())
 				if preferences := app.runtime.EditorPreferences(); preferences != nil {
 					model.ConfigureEditorPreferences(preferences)
 				}

@@ -12,20 +12,26 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/editorprefs"
 	"github.com/jhern254/go-thoughts/internal/event"
+	"github.com/jhern254/go-thoughts/internal/goal"
+	"github.com/jhern254/go-thoughts/internal/goalassignment"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
+	"github.com/jhern254/go-thoughts/internal/subjectgoal"
 	"github.com/jhern254/go-thoughts/internal/thought"
 	"github.com/jhern254/go-thoughts/internal/timeline"
 	"github.com/jhern254/go-thoughts/internal/visual"
 )
 
 type runtimeStub struct {
-	events       *event.Service
-	timelineView *timeline.Service
-	localUser    *data.User
-	subjects     *subject.Service
-	close        func() error
+	goals           *goal.Service
+	goalAssignments *goalassignment.Service
+	subjectGoals    *subjectgoal.Service
+	events          *event.Service
+	timelineView    *timeline.Service
+	localUser       *data.User
+	subjects        *subject.Service
+	close           func() error
 }
 
 func (stub *runtimeStub) Thoughts() *thought.Service { return nil }
@@ -437,3 +443,7 @@ func (r *runtimeStub) BrowserVisual(context.Context) (*visual.Service, error) {
 }
 
 func (r *runtimeStub) EditorPreferences() *editorprefs.Service { return nil }
+
+func (s *runtimeStub) Goals() *goal.Service                     { return s.goals }
+func (s *runtimeStub) GoalAssignments() *goalassignment.Service { return s.goalAssignments }
+func (s *runtimeStub) SubjectGoals() *subjectgoal.Service       { return s.subjectGoals }
