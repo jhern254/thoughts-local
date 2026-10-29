@@ -267,7 +267,7 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 				}
 				cell := cells[y][x]
 				color := lipgloss.Color("240")
-				if cell.CurveIndex >= 0 {
+				if cell.CurveIndex >= 0 && !m.neutralSubjectTimeColors {
 					color = subjectTimeColor(barSubjects[cell.CurveIndex])
 				}
 				lane.WriteString(lipgloss.NewStyle().Foreground(color).Render(string(cell.Glyph)))
@@ -286,6 +286,11 @@ func (m *Model) boundaryBody() string {
 		layout := m.measureTimeline()
 		last := layout.cards[len(layout.cards)-1]
 		available := max(0, height-6)
+		if available < 4 {
+			// When the metrics preview cannot fit, reserve the boundary itself
+			// before clipping the latest card. Down still opens the metrics.
+			available = max(0, height-1)
+		}
 		if len(last.content)+2 > available && available >= 4 {
 			card := m.paintCard(last.content[:available-2], last.selected)
 			for i, row := range card {

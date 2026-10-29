@@ -20,6 +20,50 @@ import (
 )
 
 func TestModel_SubjectTimeNavigation(t *testing.T) {
+	t.Run("metrics colors switch every subject bar together without changing geometry", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m.subjectTime.items = []data.SubjectTimeView{{SubjectID: 1, SubjectName: "Coding", TimeSpentSeconds: 12000}, {SubjectID: 2, SubjectName: "Reading", TimeSpentSeconds: 6000}}
+		lanes := func(rows []string) string {
+			var out strings.Builder
+			for _, row := range rows {
+				out.WriteString(ansi.Truncate(row, m.cardColumn(), ""))
+			}
+			return out.String()
+		}
+		colored := m.subjectTimePanel(false)
+		if !strings.Contains(lanes(colored), "38;2;255;176;0") || !strings.Contains(lanes(colored), "38;2;182;255;0") {
+			t.Fatal("fixture is missing the two subject bar colors")
+		}
+		m.SetSubjectTimeColors(false)
+		neutral := m.subjectTimePanel(false)
+		if strings.Contains(lanes(neutral), "38;2;") || !strings.Contains(lanes(neutral), "38;5;240") {
+			t.Fatal("metrics did not switch every bar to grey")
+		}
+		if ansi.Strip(strings.Join(colored, "\n")) != ansi.Strip(strings.Join(neutral, "\n")) {
+			t.Fatal("metrics palette changed geometry or labels")
+		}
+		m.SetSubjectTimeColors(true)
+		if strings.Join(m.subjectTimePanel(false), "\n") != strings.Join(colored, "\n") {
+			t.Fatal("metrics colors were not restored")
+		}
+	})
+
+	t.Run("short Now view keeps the latest card and boundary visible", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		for _, height := range []int{10, 11, 12} {
+			m.Resize(98, height)
+			m, _ = m.Update(eventKey("end"))
+			rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
+			body := strings.Join(rows, "\n")
+			if len(rows) != height-4 || !strings.Contains(body, "Now ·") || !strings.Contains(body, "Reading") {
+				t.Fatalf("height %d: body=%q, want latest card and Now within %d rows", height, body, height-4)
+			}
+			if !strings.Contains(rows[0], "10:37 AM") || !strings.Contains(rows[0], "╭") {
+				t.Fatalf("height %d: first row=%q, want latest card anchored at its start", height, rows[0])
+			}
+		}
+	})
+
 	t.Run("starts at Now then opens pinned metrics without reading", func(t *testing.T) {
 		m, _, store := fixture(t)
 		startup := New(m.ctx, m.userID, m.service, m.timelineView, thought.NewService(testutils.NewFakeThoughtStore()), m.subjectReader, m.logger)
@@ -82,15 +126,12 @@ func TestModel_SubjectTimeNavigation(t *testing.T) {
 		}
 	})
 
-	t.Run("Up returns from the top of metrics while Left stays in the chart", func(t *testing.T) {
+	t.Run("Up returns from metrics without another read", func(t *testing.T) {
 		m, _, store := fixture(t)
 		m, _ = m.Update(eventKey("end"))
 		m, _ = m.Update(eventKey("down"))
 		reads := store.subjectReads
-		m, cmd := m.Update(eventKey("left"))
-		if cmd != nil || m.position.target != targetSubjectTime {
-			t.Fatal("Left exited metrics")
-		}
+		var cmd tea.Cmd
 		m, cmd = m.Update(eventKey("up"))
 		if cmd != nil || m.position.target != targetDayBoundary || store.subjectReads != reads {
 			t.Fatal("Up did not return to the latest event and Now without a read")
@@ -507,6 +548,56 @@ func TestModel_SubjectTimeDistributions(t *testing.T) {
 			if m.distributions.open {
 				t.Fatal("tuning did not close")
 			}
+		}
+	})
+}
+
+func TestModel_SubjectTimeDayNavigation(t *testing.T) {
+	t.Run("cycles days while keeping metrics focused and stops at today", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m, _ = m.Update(eventKey("end"))
+		m, _ = m.Update(eventKey("down"))
+		today := m.day
+		m, cmd := m.Update(eventKey("left"))
+		if cmd == nil {
+			t.Fatal("Left did not request the previous day")
+		}
+		if !m.day.Equal(today) || m.position.target != targetSubjectTime {
+			t.Fatal("pending navigation lost the accepted day or metrics focus")
+		}
+		m = execute(t, m, cmd)
+		if !m.day.Equal(today.AddDate(0, 0, -1)) || m.position.target != targetSubjectTime || !m.subjectTime.itemsDay.Equal(m.day) {
+			t.Fatal("previous day did not retain metrics focus with matching data")
+		}
+		m, cmd = m.Update(eventKey("right"))
+		m = execute(t, m, cmd)
+		if !m.day.Equal(today) || m.position.target != targetSubjectTime {
+			t.Fatal("Right did not return to today's metrics")
+		}
+		m, cmd = m.Update(eventKey("right"))
+		if cmd != nil || m.position.target != targetSubjectTime || !m.expanded.IsZero() {
+			t.Fatal("Right at today navigated to the future or opened an Event")
+		}
+	})
+	t.Run("pending repeats accumulate and stale lists cannot steal metrics focus", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m.day = m.day.AddDate(0, 0, -5)
+		m.position.target = targetSubjectTime
+		start := m.day
+		m, first := m.Update(eventKey("left"))
+		if first == nil {
+			t.Fatal("missing first read")
+		}
+		old := first().(tea.BatchMsg)[0]()
+		m, _ = m.Update(eventKey("left"))
+		m, last := m.Update(eventKey("right"))
+		if last == nil {
+			t.Fatal("missing final read")
+		}
+		m = execute(t, m, last)
+		m = execute(t, m, func() tea.Msg { return old })
+		if !m.day.Equal(start.AddDate(0, 0, -1)) || m.position.target != targetSubjectTime {
+			t.Fatal("burst or stale reply changed the accepted destination/focus")
 		}
 	})
 }

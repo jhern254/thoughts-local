@@ -27,6 +27,23 @@ func (s *reader) ListMindsetsInRange(_ context.Context, _ string, from, until ti
 	return s.items, s.err
 }
 func TestModel_Panel(t *testing.T) {
+	t.Run("only Enter opens a focused Thought", func(t *testing.T) {
+		service := &reader{items: []data.MindsetThought{{ThoughtID: 1, Text: "one"}}}
+		m := New(t.Context(), "u", service, logging.Nop())
+		m, _ = m.Update(m.Load(time.Now())())
+		m, _ = m.SetFocused(true)
+		for _, key := range []rune{tea.KeyLeft, tea.KeyRight} {
+			var cmd tea.Cmd
+			m, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: key}))
+			if cmd != nil {
+				t.Fatalf("key %q opened a Thought instead of leaving day navigation to home", key)
+			}
+		}
+		_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+		if cmd == nil || cmd().(OpenThoughtMsg).Thought.ThoughtID != 1 {
+			t.Fatal("Enter did not open the focused Thought")
+		}
+	})
 	t.Run("rotates in order and pauses while focused", func(t *testing.T) {
 		service := &reader{items: []data.MindsetThought{{ThoughtID: 1, Text: "first"}, {ThoughtID: 2, Text: "second"}}}
 		m := New(t.Context(), "u", service, logging.Nop())

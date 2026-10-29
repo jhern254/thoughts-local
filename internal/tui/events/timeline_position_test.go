@@ -11,6 +11,24 @@ import (
 )
 
 func TestModel_TimelinePosition(t *testing.T) {
+	t.Run("shrinking the timeline keeps the selected collapsed card visible", func(t *testing.T) {
+		m, _, store := fixture(t)
+		m.Resize(120, 40)
+		m, _ = m.Update(eventKey("home"))
+		selected, reads := m.entries[m.position.entryIndex].Key(), store.reads
+		m.SetFocused(false)
+		for _, size := range [][2]int{{54, 14}, {120, 40}, {40, 14}} {
+			m.Resize(size[0], size[1])
+			body := ansi.Strip(m.timelineBody())
+			if !strings.Contains(body, "Reading") || !strings.Contains(body, "230 thoughts") {
+				t.Fatalf("%dx%d: selected collapsed card left the viewport: %q", size[0], size[1], body)
+			}
+			if m.entries[m.position.entryIndex].Key() != selected || store.reads != reads || !m.blurred {
+				t.Fatal("resize changed selection, queried data, or stole panel focus")
+			}
+		}
+	})
+
 	t.Run("losing focus pauses follow-now and returning focus preserves selection", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		selected, top := m.entries[m.position.entryIndex].Event.EventID, m.position.topLine

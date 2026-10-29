@@ -13,6 +13,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subjectdiscovery"
 	"github.com/jhern254/go-thoughts/internal/tui/appearance"
+	"github.com/jhern254/go-thoughts/internal/tui/daynav"
 	"github.com/jhern254/go-thoughts/internal/tui/events"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 	"github.com/jhern254/go-thoughts/internal/tui/mindset"
@@ -85,8 +86,11 @@ type Model struct {
 	speechSetup                       speechSetupState
 	exitPromptOpen                    bool
 	exitYes                           bool
+	days                              daynav.Model
 	mindsets                          mindset.Model
 	mindsetsNeedRefresh               bool
+	dayActivityRevision               uint64
+	distributionColors                homeDistributionColorMode
 	homeEventsHeight, homeEventsWidth int
 	events                            events.Model
 	subjects                          subjectState
@@ -107,6 +111,7 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 		thoughts: thoughts.New(ctx, user.UserID, thoughtService, logger),
 		metrics:  metrics,
 		mindsets: mindset.New(ctx, user.UserID, thoughtService, logger),
+		days:     daynav.New(ctx, user.UserID, metrics),
 	}
 	model.resizeHome()
 	return model
@@ -125,7 +130,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) openHome() (tea.Model, tea.Cmd) {
 	m.subjects.stopRead()
 	m.screen = screenEvents
-	m.events.SetFocused(!m.entityFocused && !m.mindsets.Focused())
+	m.events.SetFocused(!m.entityFocused && !m.mindsets.Focused() && !m.days.Focused())
 	m.mindsetsNeedRefresh = true
 	cmd := m.events.Open()
 	return m, cmd
@@ -201,11 +206,22 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "esc":
+			if m.screen == screenEvents && m.days.Focused() {
+				if m.days.Tuning() {
+					return m, m.days.Key("esc")
+				}
+				return m, m.focusHome(homePanelEvents)
+			}
 			if m.canExit() {
 				m.exitPromptOpen, m.exitYes = true, false
 				return m, nil
 			}
 		}
+	}
+	if daynav.Owns(message) {
+		m.days = m.days.Update(message)
+		m.resizeHome()
+		return m, nil
 	}
 	if mindset.Owns(message) {
 		var cmd tea.Cmd
@@ -308,6 +324,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.events, eventCmd = m.events.Update(message)
 		return m, tea.Batch(cmd, eventCmd)
 	case thoughts.ChangedMsg:
+		m.days.Invalidate()
 		m.subjects.listStale = true
 		if m.screen == screenSubjectList && !m.subjects.loading {
 			return m.openSubjects()
@@ -404,13 +421,51 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok && m.events.CanLeave() {
 		if key.String() == "tab" || key.String() == "shift+tab" {
-			panel := (m.homeFocus() + 1) % homePanelCount
+			current := m.homeFocus()
+			if current == homePanelDays {
+				current = homePanelEvents
+			}
+			panel := (current + 1) % homePanelCount
 			if key.String() == "shift+tab" {
-				panel = (m.homeFocus() + homePanelCount - 1) % homePanelCount
+				panel = (current + homePanelCount - 1) % homePanelCount
 			}
 			return m, m.focusHome(panel)
 		}
+		if m.homeFocus() == homePanelEvents && (key.String() == "up" || key.String() == "k") && m.events.AtTimelineStart() {
+			return m, m.focusHome(homePanelDays)
+		}
+		if m.homeFocus() == homePanelEvents && !m.events.TuningDistributions() {
+			switch key.String() {
+			case "+", "=", "-", "0":
+				return m, m.days.Key(key.String())
+			}
+		}
+		if key.String() == "d" && (m.entityFocused || m.mindsets.Focused()) {
+			m.distributionColors = (m.distributionColors + 1) % distributionColorModeCount
+			m.applyDistributionColors()
+			return m, nil
+		}
+		if m.days.Focused() {
+			if m.days.Tuning() {
+				return m, m.days.Key(key.String())
+			}
+			switch key.String() {
+			case "left", "h":
+				return m, m.events.MoveDay(-1)
+			case "right", "l":
+				return m, m.events.MoveDay(1)
+			case "down", "j", "q":
+				return m, m.focusHome(homePanelEvents)
+			}
+			return m, m.days.Key(key.String())
+		}
 		if m.mindsets.Focused() {
+			switch key.String() {
+			case "left", "h":
+				return m, m.events.MoveDay(-1)
+			case "right", "l":
+				return m, m.events.MoveDay(1)
+			}
 			var cmd tea.Cmd
 			m.mindsets, cmd = m.mindsets.Update(message)
 			return m, cmd
@@ -421,9 +476,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.entityFocused {
 			switch key.String() {
 			case "q":
-				m.entityFocused = false
-				m.events.SetFocused(true)
-				return m, nil
+				return m, m.focusHome(homePanelEvents)
 			case "left", "right", "h", "l":
 				order := []entityKind{entityThoughts, entitySubjects, entityOptions}
 				for index, entity := range order {
@@ -464,7 +517,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) entityStrip() string {
+func (m Model) entityStrip(status string) string {
 	parts := []string{}
 	for _, entity := range []entityKind{entityThoughts, entitySubjects, entityOptions} {
 		label := entity.title()
@@ -482,8 +535,17 @@ func (m Model) entityStrip() string {
 		}
 	}
 	help := "Tab/Shift+Tab: panels"
+	if m.homeFocus() == homePanelEvents && m.events.AtTimelineStart() {
+		help = "↑: day activity • " + help
+	}
+	if m.homeFocus() == homePanelEvents && m.events.CanLeave() && !m.events.TuningDistributions() {
+		help = "+/-: zoom • 0: reset zoom • " + help
+	}
 	if m.mindsets.Focused() {
-		help = "Enter: open • ↑/↓: read/select • PgUp/PgDn: page • r: refresh"
+		help = "←/→: day • Enter: open • ↑/↓: read/select • PgUp/PgDn: page • r: refresh"
+		if m.width < 60 {
+			help = "←/→ day · Enter open · ↑/↓ read"
+		}
 	}
 	if m.entityFocused {
 		help = "Tab: mindset • Q: events • ←/→: entity • Enter: open"
@@ -494,8 +556,20 @@ func (m Model) entityStrip() string {
 			help = "Esc/Ctrl+C: exit • Q: back • Enter: open"
 		}
 	}
+	if m.entityFocused && m.width < 60 {
+		help = "Esc/Ctrl+C: exit • Enter: open • d colors"
+	} else if m.entityFocused || m.mindsets.Focused() {
+		help = "d: colors • " + help
+	}
 	if m.browserRecordingEnabled && ansi.StringWidth(help+" • t: create thought") <= m.width {
 		help += " • t: create thought"
+	}
+	if m.days.Focused() {
+		help = m.days.Help()
+		line = m.days.Legend()
+	}
+	if status != "" {
+		line = status
 	}
 	return ansi.Truncate(line, max(1, m.width), "…") + "\n" + ansi.Truncate(help, max(1, m.width), "…")
 }
@@ -554,11 +628,18 @@ func (m Model) viewUnderlying() tea.View {
 	case screenMindsetThought:
 		content = m.thoughts.View()
 	case screenEvents:
-		content = m.events.View()
 		if m.events.TimelineVisible() {
-			content = m.mindsets.View() + "\n\n" + m.homeDivider(m.homeFocus() == homePanelEvents) + "\n" + content
+			status := m.days.Status()
+			var placed bool
+			content, placed = m.events.ViewWithHeadingStatus(status)
+			if placed {
+				status = ""
+			}
+			content = m.mindsets.View() + "\n\n" + m.days.View() + "\n" + content
 			content = ansi.Truncate("Local user: "+localUserLabel(m.user), max(1, m.width), "…") + "\n\n" + content
-			content += "\n" + m.homeDivider(m.entityFocused) + "\n" + m.entityStrip()
+			content += "\n" + m.homeDivider(m.entityFocused) + "\n" + m.entityStrip(status)
+		} else {
+			content = m.events.View()
 		}
 	case screenSubjectList:
 		content = m.viewSubjectList()

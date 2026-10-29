@@ -479,17 +479,31 @@ func (m *Model) timelineBody() string {
 }
 
 func (m Model) View() string {
+	view, _ := m.ViewWithHeadingStatus("")
+	return view
+}
+
+// ViewWithHeadingStatus places overview feedback beside the date when both fit.
+// The caller owns the overview and can use its footer when placed is false.
+func (m Model) ViewWithHeadingStatus(statusText string) (view string, placed bool) {
 	styles := list.DefaultStyles(true)
 	heading := styles.Title.Render("Events") + " " + displaytime.Format(m.day, "January 2, 2006")
 	// Six body rows keep one compact card visible below the heading and above help.
 	if m.width < 24 || m.height < 10 {
-		return heading + "\nResize terminal to view timeline."
+		return heading + "\nResize terminal to view timeline.", false
 	}
 	if m.form.open {
-		return heading + "\n" + m.formView()
+		return heading + "\n" + m.formView(), false
 	}
 	if m.picker.ShowingDetail() {
-		return styles.Title.Render(m.picker.SelectedSubjectName()) + "\n\n" + m.picker.View()
+		return styles.Title.Render(m.picker.SelectedSubjectName()) + "\n\n" + m.picker.View(), false
+	}
+	if statusText != "" {
+		gap := m.width - ansi.StringWidth(heading) - ansi.StringWidth(statusText)
+		if gap >= 2 {
+			heading += strings.Repeat(" ", gap) + statusText
+			placed = true
+		}
 	}
 	body := m.load.retainedBody
 	if !m.load.entriesPending || body == "" {
@@ -517,12 +531,15 @@ func (m Model) View() string {
 	if !m.expanded.IsZero() {
 		help = "Q/Esc back • r reload • d distributions • m mindset"
 	}
-	if m.position.target == targetDayBoundary && m.message == "" && m.subjectTime.err == nil && !m.load.showStatus {
-		status = "↑: latest card • ↓: subject time • d: distributions"
+	if m.position.target == targetDayBoundary {
+		help = "←/→: day • Home: first • End: now • r: refresh • d: distributions"
+		if m.message == "" && m.subjectTime.err == nil && !m.load.showStatus {
+			status = "↑: latest card • ↓: subject time • d: distributions"
+		}
 	}
 	if m.position.target == targetSubjectTime {
 		status = "↑: back/scroll • ↓: subjects • PgUp/PgDn: page • Esc: now"
-		help = "Home: first • End: now • r: refresh • d: distributions"
+		help = "←/→: day • Home: first • End: now • r: refresh • d: distributions"
 		if m.subjectTime.err != nil {
 			status = "Could not refresh subject time. r: retry"
 		}
@@ -540,5 +557,5 @@ func (m Model) View() string {
 			help = "f mode · [0 Reset to default] · Q/Esc done"
 		}
 	}
-	return heading + "\n\n" + body + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")
+	return heading + "\n\n" + body + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…"), placed
 }

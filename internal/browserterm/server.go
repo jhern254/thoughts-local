@@ -3,6 +3,7 @@ package browserterm
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"embed"
 	"errors"
@@ -340,14 +341,22 @@ type terminalWriter struct {
 
 func (w *terminalWriter) Write(data []byte) (int, error) {
 	total := len(data)
+	header := "1"
+	if bytes.Contains(data, []byte("\x1b[H\x1b[2J")) {
+		// A pre-resize frame can restore old scrolling margins after xterm has
+		// grown. Full repaint already homes and clears the screen; reset its
+		// margins too, or drawing the bottom rows scrolls the new frame upward.
+		header += "\x1b[r"
+	}
 	for len(data) > 0 {
 		if w.ctx.Err() != nil {
 			return total - len(data), io.ErrClosedPipe
 		}
 		n := min(len(data), 64<<10)
-		frame := make([]byte, n+1)
-		frame[0] = '1'
-		copy(frame[1:], data[:n])
+		frame := make([]byte, n+len(header))
+		copy(frame, header)
+		copy(frame[len(header):], data[:n])
+		header = "1"
 		err := w.writeFrame(frame)
 		if err != nil {
 			return total - len(data), io.ErrClosedPipe

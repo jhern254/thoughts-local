@@ -239,7 +239,7 @@ func (m *Model) paintDistributionLane(lines []string, layout timelineLayout, off
 					style = plainStyle
 				case cell.CurveIndex < 0:
 					style = baselineStyle
-				case cell.CurveIndex == rowSelected && !m.blurred:
+				case m.highlightDistributions || (cell.CurveIndex == rowSelected && !m.blurred):
 					style = selectedStyle
 				}
 				if style != activeStyle {

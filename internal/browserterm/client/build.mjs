@@ -4,6 +4,8 @@ import {readFile, writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {transform} from 'esbuild';
 
+import {trimAlternateScreenOnShrink} from './xterm-patch.mjs';
+
 const root = new URL('../static/', import.meta.url);
 const modules = [
   ['@xterm/xterm', 'xterm'],
@@ -19,7 +21,10 @@ for (const [pkg, name] of modules) {
   // Some vendored xterm utilities bypass its configurable logger. Remove their
   // console calls reproducibly instead of overriding the browser's console.
   // Do not minify identifiers again: upstream's published bundle is minified.
-  const {code} = await transform(upstream, {drop: ['console'], minify: false, legalComments: 'inline', target: 'es2022'});
+  let {code} = await transform(upstream, {drop: ['console'], minify: false, legalComments: 'inline', target: 'es2022'});
+  if (pkg === '@xterm/xterm') {
+    code = trimAlternateScreenOnShrink(code, metadata.version);
+  }
   await writeFile(new URL(`${name}.js`, root), code);
   hashes.push(`${createHash('sha256').update(code).digest('hex')}  ${name}.js`);
   notices += `${pkg} ${metadata.version}\nSource commit: ${metadata.commit}\n\n${await readFile(new URL('LICENSE', base), 'utf8')}\n\n`;

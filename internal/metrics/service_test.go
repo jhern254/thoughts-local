@@ -100,3 +100,31 @@ func TestService_SubjectTimeInRange(t *testing.T) {
 		}
 	})
 }
+
+func (s *storeStub) ActivityStart(ctx context.Context, user string, cutoff time.Time) (time.Time, error) {
+	s.ctx, s.userID, s.cutoff = ctx, user, cutoff
+	return time.Unix(0, 0), s.err
+}
+func (s *storeStub) ActivityCounts(ctx context.Context, user string, boundaries []time.Time, cutoff time.Time) ([]data.ActivityCount, error) {
+	s.ctx, s.userID, s.from, s.until, s.cutoff = ctx, user, boundaries[0], boundaries[len(boundaries)-1], cutoff
+	return []data.ActivityCount{{EventDays: 2, Thoughts: 3}}, s.err
+}
+
+func TestService_DayActivity(t *testing.T) {
+	t.Run("passes ownership and calendar bounds without changing errors", func(t *testing.T) {
+		bounds := []time.Time{time.Unix(0, 0), time.Unix(86400, 0)}
+		cutoff := time.Unix(60000, 0)
+		for _, cause := range []error{nil, errors.New("store failure")} {
+			store := &storeStub{err: cause}
+			service := NewService(store)
+			start, err := service.ActivityStart(t.Context(), "u", cutoff)
+			if start.Unix() != 0 || err != cause || store.ctx != t.Context() || store.userID != "u" || store.cutoff != cutoff {
+				t.Fatal("activity start changed scope/result")
+			}
+			counts, err := service.ActivityCounts(t.Context(), "u", bounds, cutoff)
+			if err != cause || len(counts) != 1 || counts[0].EventDays != 2 || store.ctx != t.Context() || store.from != bounds[0] || store.until != bounds[1] {
+				t.Fatal("activity counts changed scope/result")
+			}
+		}
+	})
+}

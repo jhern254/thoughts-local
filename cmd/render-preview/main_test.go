@@ -276,3 +276,70 @@ func TestPreview_ThoughtLengths(t *testing.T) {
 		}
 	})
 }
+
+func TestPreview_DayActivity(t *testing.T) {
+	t.Run("focused comparison keeps the divider and date while revealing component traces", func(t *testing.T) {
+		plain := preview(t, "-scenario", "day-activity", "-plain", "-width", "40")
+		colored := preview(t, "-scenario", "day-activity", "-width", "40")
+		if ansi.Strip(colored) != plain {
+			t.Fatal("color changed graph geometry")
+		}
+		neutral := strings.SplitN(colored, " Events ", 2)[0]
+		for _, shade := range []string{"240", "244", "248"} {
+			if !strings.Contains(neutral, "38;5;"+shade+"m") {
+				t.Fatalf("neutral preview missing shade %s", shade)
+			}
+		}
+		if strings.Count(plain, "October 16, 2026") != 2 || !strings.Contains(colored, "48;5;62") {
+			t.Fatal("missing accepted-date markers")
+		}
+		if !strings.Contains(plain, "1 Total · 2 Events · 3 Thoughts") {
+			t.Fatal("missing component legend")
+		}
+		for _, line := range strings.Split(plain, "\n") {
+			if ansi.StringWidth(line) > 40 {
+				t.Fatalf("row exceeds width: %q", line)
+			}
+		}
+	})
+}
+
+func TestPreview_DramaticDayActivity(t *testing.T) {
+	t.Run("keeps the enlarged mountain setting within the same canvas", func(t *testing.T) {
+		normal := preview(t, "-scenario", "day-activity", "-plain", "-height", "80")
+		dramatic := preview(t, "-scenario", "day-activity", "-plain", "-size", "3", "-count-exponent", "2.4", "-height", "80")
+		if strings.Count(dramatic, "\n") != strings.Count(normal, "\n") || strings.Count(dramatic, "\n") > 80 {
+			t.Fatal("tuning moved the preview outside its fixed canvas")
+		}
+		if strings.Contains(dramatic, "Days ") {
+			t.Fatal("mountain preview reintroduced a heading")
+		}
+		for _, view := range []string{normal, dramatic} {
+			rows := strings.Split(view, "\n")
+			if !strings.HasPrefix(rows[7], " Events ") {
+				t.Fatalf("preview row 7: got %q, want Events below the unchanged graph band", rows[7])
+			}
+		}
+	})
+}
+
+func TestPreview_DayActivityNormalBaseline(t *testing.T) {
+	defaultView := preview(t, "-scenario", "day-activity", "-plain", "-width", "32", "-height", "80")
+	explicitNormal := preview(t, "-scenario", "day-activity", "-plain", "-width", "32", "-height", "80", "-size", "1", "-count-exponent", "0.8")
+	if defaultView != explicitNormal {
+		t.Fatal("default must be the normal 100 percent baseline")
+	}
+	// Reviewed four-row profile of the selected B contour.
+	want := []string{
+		"        ⢀⣴⣧                     ",
+		"      ⢀⣴⣿⣿⣿⣧        ⣤⣾⣆         ",
+		"     ⣠⣿⣿⣿⣿⣿⣿⣆ ⢀⣀⣄⡀⣠⣾⣿⣿⣿⣧⣤⣄      ",
+		"⣀⣠⣤⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⣤⣄⣀⣀",
+	}
+	rows := strings.Split(defaultView, "\n")
+	for i, row := range want {
+		if rows[i+2] != row {
+			t.Fatalf("plot row %d: got %q, want %q", i, rows[i+2], row)
+		}
+	}
+}

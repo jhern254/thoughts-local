@@ -84,7 +84,7 @@ jobs:
           pactl load-module module-null-sink sink_name=thoughts_test_audio rate=48000
           pactl set-default-sink thoughts_test_audio
       - name: PCM conversion and capture unit tests
-        run: node --test internal/browserterm/client/microphone.test.mjs internal/browserterm/client/pcm*.test.mjs
+        run: node --test internal/browserterm/client/xterm-patch.test.mjs internal/browserterm/client/microphone.test.mjs internal/browserterm/client/pcm*.test.mjs
       - name: Real worklets and sockets with injected fake consumer
         env:
           THOUGHTS_BROWSER_AUDIO_TEST: '1'

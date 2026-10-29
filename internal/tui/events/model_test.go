@@ -131,11 +131,54 @@ func (s *viewStore) ThoughtCountsByEvent(context.Context, string, time.Time, tim
 }
 
 func TestModel_DayArrival(t *testing.T) {
+	t.Run("Now view retains the latest card and metrics across populated and empty days", func(t *testing.T) {
+		m, service, _ := fixture(t)
+		today, original := m.day, service.items
+		m, _ = m.Update(eventKey("end"))
+		previous := today.AddDate(0, 0, -1)
+		service.items = nil
+		for i, label := range []string{"First event", "Middle event", "Final event"} {
+			start := previous.Add(time.Duration(9+i*4) * time.Hour)
+			end := start.Add(time.Hour)
+			service.items = append(service.items, data.Event{EventID: int64(i + 2), StartedAt: start, EndedAt: &end, ActivityType: &label})
+		}
+		m, cmd := m.Update(eventKey("left"))
+		if !m.day.Equal(today) || m.position.target != targetDayBoundary {
+			t.Fatal("pending navigation left the accepted Now view")
+		}
+		m = execute(t, m, cmd)
+		body := ansi.Strip(m.timelineBody())
+		if m.position.target != targetDayBoundary || !m.day.Equal(previous) || m.position.followNow {
+			t.Fatalf("previous-day target/day/follow: got %v/%v/%v, want boundary/%v/false", m.position.target, m.day, m.position.followNow, previous)
+		}
+		if !strings.Contains(body, "Final event") || strings.Contains(body, "First event") || strings.Contains(body, "Middle event") || strings.Count(body, "╭") != 2 || !strings.Contains(body, "Subject time") {
+			t.Fatalf("previous-day Now view: got %q, want only the latest card and metrics", body)
+		}
+		service.items = nil
+		m, cmd = m.Update(eventKey("left"))
+		m = execute(t, m, cmd)
+		if m.position.target != targetDayBoundary || strings.Count(ansi.Strip(m.timelineBody()), "╭") != 1 {
+			t.Fatal("an empty day lost the boundary view or invented an Event card")
+		}
+		m, cmd = m.Update(eventKey("right"))
+		m = execute(t, m, cmd)
+		service.items = original
+		m, cmd = m.Update(eventKey("right"))
+		m = execute(t, m, cmd)
+		if !m.day.Equal(today) || m.position.target != targetDayBoundary || !m.position.followNow || !strings.Contains(ansi.Strip(m.timelineBody()), "Now") {
+			t.Fatal("returning to today did not restore its live Now view")
+		}
+		m, cmd = m.Update(eventKey("right"))
+		if cmd != nil || m.position.target != targetDayBoundary || !m.expanded.IsZero() {
+			t.Fatal("Right at today's Now bar opened a Thought or navigated to the future")
+		}
+	})
 	t.Run("previous day opens at first event without entering its thought picker", func(t *testing.T) {
 		m, service, _ := fixture(t)
 		start := m.day.AddDate(0, 0, -1).Add(21 * time.Hour)
 		end := start.Add(time.Hour)
-		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
+		later, laterEnd := start.Add(time.Hour), start.Add(2*time.Hour)
+		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}, {EventID: 3, StartedAt: later, EndedAt: &laterEnd}}
 		m, cmd := m.Update(eventKey("left"))
 		m = execute(t, m, cmd)
 		if !m.expanded.IsZero() || m.position.entryIndex != 0 || !strings.HasPrefix(timelineCardText(strings.Split(m.View(), "\n")[2]), "09:00 PM  ╭") {
