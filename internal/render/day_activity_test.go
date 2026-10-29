@@ -298,14 +298,18 @@ func TestDayActivity_PanBoundaryShape(t *testing.T) {
 					b := append(append([]DayActivity{}, a[1:]...), next)
 					options := DayActivityOptions{
 						FirstDay: 20001, Days: 31,
-						Before: &empty, After: &next,
+						SampleFirstDay: 20000, SampleDays: 1,
 						Total: true, Events: true, Thoughts: true,
 						Outline: outline, Exponent: 2.4, Size: 9,
 					}
-					before := RenderDayActivity(80, 12, a, options)
+					samples := append([]DayActivity{empty}, a...)
+					samples = append(samples, next)
+					before := RenderDayActivity(80, 12, samples, options)
 					options.FirstDay++
-					options.After = &empty
-					after := RenderDayActivity(80, 12, b, options)
+					options.SampleFirstDay++
+					samples = append([]DayActivity{empty}, b...)
+					samples = append(samples, empty)
+					after := RenderDayActivity(80, 12, samples, options)
 					// This calendar step translates the grid three terminal columns left.
 					for y := range before {
 						for x := 0; x+3 < 80; x++ {

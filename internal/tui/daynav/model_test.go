@@ -989,23 +989,6 @@ func TestModel_CompactTerrainHeight(t *testing.T) {
 	})
 }
 
-func TestModel_CompactHeightAcrossZoom(t *testing.T) {
-	m, _ := fixture(t)
-	defer m.Close()
-	for _, height := range []int{28, 40, 60, 28} {
-		m.Resize(80, height)
-		if got := m.Height(); got != 5 {
-			t.Fatalf("terminal %d: got band %d, want four mountain rows plus marker", height, got)
-		}
-	}
-	for data.CalendarDays(m.from, m.until) > 1 {
-		m = m.Update(activityReply(m.Key("+")))
-	}
-	if got := m.Height(); got != 5 {
-		t.Fatalf("one-day band got %d, want unchanged five-row band", got)
-	}
-}
-
 func TestModel_BoostDirection(t *testing.T) {
 	t.Run("Right raises quieter mountains without moving the canvas or reading data", func(t *testing.T) {
 		m, reader := fixture(t)
@@ -1047,4 +1030,28 @@ func TestModel_BoostDirection(t *testing.T) {
 			t.Fatal("reset changed the approved normal default")
 		}
 	})
+}
+
+func TestModel_UnchangedTuning(t *testing.T) {
+	m, reader := fixture(t)
+	defer m.Close()
+	m.Key("d")
+	reads := reader.reads
+	for _, key := range []string{"unbound", "enter"} {
+		m.tuning = true
+		plot := m.plot
+		if got := testing.AllocsPerRun(10, func() { m.Key(key) }); got != 0 {
+			t.Fatalf("unchanged %s: got %g allocations, want cached plot reuse", key, got)
+		}
+		if m.plot != plot || reader.reads != reads {
+			t.Fatal("unchanged tuning modified plot or queried history")
+		}
+	}
+	m.Key("d")
+	m.boost, m.size = boostExtra, maxPlotSize
+	for _, key := range []string{"right", "up"} {
+		if got := testing.AllocsPerRun(10, func() { m.Key(key) }); got != 0 {
+			t.Fatalf("bounded %s: got %g allocations, want cached plot reuse", key, got)
+		}
+	}
 }

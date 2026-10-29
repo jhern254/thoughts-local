@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/render"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
@@ -361,6 +362,7 @@ func (m Model) boostPreset() (string, float64) {
 
 func (m *Model) Key(key string) tea.Cmd {
 	if m.tuning {
+		boost, size, outline := m.boost, m.size, m.outline
 		switch key {
 		case "left", "h":
 			m.boost = max(boostLow, m.boost-1)
@@ -377,8 +379,9 @@ func (m *Model) Key(key string) tea.Cmd {
 		case "q", "esc", "enter", "d":
 			m.tuning = false
 		}
-		m.rows = m.plotRows()
-		m.rebuild()
+		if m.boost != boost || m.size != size || m.outline != outline {
+			m.rebuild()
+		}
 		return nil
 	}
 	switch key {
@@ -446,13 +449,18 @@ func (m *Model) rebuild() {
 		// Size is relative to the normal mountain profile; the canvas stays fixed.
 		Size: float64(m.size) / 100,
 	})
-	styles := [...]lipgloss.Style{lipgloss.NewStyle().Foreground(lipgloss.Color("240")), lipgloss.NewStyle().Foreground(lipgloss.Color("37")), lipgloss.NewStyle().Foreground(lipgloss.Color("179"))}
+	palette := [...]uint8{240, 37, 179}
 	if !m.highlighted {
-		// Keep the unfocused graph neutral while retaining three visible bands.
-		styles[render.DayThoughts] = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-		styles[render.DayEvents] = lipgloss.NewStyle().Foreground(lipgloss.Color("248"))
+		palette = [3]uint8{240, 248, 244}
+	}
+	// These runs need only foreground color, not Lip Gloss layout or grapheme
+	// measurement. Build each escape once and write glyphs into the final buffer.
+	var colors [3]string
+	for i, color := range palette {
+		colors[i] = ansi.Style{}.ForegroundColor(ansi.IndexedColor(color)).String()
 	}
 	var out strings.Builder
+	out.Grow(m.rows * (m.width*4 + 32))
 	for y, row := range cells {
 		if y > 0 {
 			out.WriteByte('\n')
@@ -462,11 +470,11 @@ func (m *Model) rebuild() {
 			for end < len(row) && row[end].Series == row[start].Series {
 				end++
 			}
-			glyphs := make([]rune, end-start)
-			for i := range glyphs {
-				glyphs[i] = row[start+i].Glyph
+			out.WriteString(colors[row[start].Series])
+			for _, cell := range row[start:end] {
+				out.WriteRune(cell.Glyph)
 			}
-			out.WriteString(styles[row[start].Series].Render(string(glyphs)))
+			out.WriteString(ansi.ResetStyle)
 			start = end
 		}
 	}

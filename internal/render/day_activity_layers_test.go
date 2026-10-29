@@ -10,7 +10,7 @@ func TestDayActivity_SharedLayers(t *testing.T) {
 		options := mountainOptions()
 		values := mountainFixtures()["irregular"]
 		levels := DayActivityLevels(values, options.Exponent, options.Reference)
-		terrain := dayActivityTerrain(80, options.Days, 0, len(values), levels, options)
+		terrain := dayActivityTerrain(80, options.Days, len(values), levels, options)
 		for column, level := range terrain {
 			if level.Total == 0 {
 				continue
@@ -23,7 +23,7 @@ func TestDayActivity_SharedLayers(t *testing.T) {
 			}
 		}
 		options.Events = false
-		withoutEvents := dayActivityTerrain(80, options.Days, 0, len(values), levels, options)
+		withoutEvents := dayActivityTerrain(80, options.Days, len(values), levels, options)
 		for column, level := range terrain {
 			remaining := withoutEvents[column]
 			if remaining.Total != level.Total || math.Abs(remaining.Thoughts+level.Events-level.Thoughts) > 1e-12 {

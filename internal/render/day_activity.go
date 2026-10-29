@@ -35,10 +35,7 @@ type DayActivityOptions struct {
 	SampleFirstDay, SampleDays int
 	// Reference is the weighted historical peak at this bucket resolution. Zero
 	// derives it from the supplied samples; panning callers supply a stable peak.
-	Reference float64
-	// Optional single-bucket context for standalone callers. The navigator
-	// supplies all six neighboring buckets in Samples using SampleFirstDay.
-	Before, After           *DayActivity
+	Reference               float64
 	Total, Events, Thoughts bool
 	Outline                 bool
 	// Baseline joins the bottom Braille dots across the canvas, including gaps.
@@ -142,25 +139,12 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 		return rows
 	}
 
-	samples, padding := values, 0
-	if options.Before != nil || options.After != nil {
-		padding = 1
-		samples = make([]DayActivity, len(values)+2)
-		samples[0], samples[len(samples)-1] = values[0], values[len(values)-1]
-		if options.Before != nil {
-			samples[0] = *options.Before
-		}
-		if options.After != nil {
-			samples[len(samples)-1] = *options.After
-		}
-		copy(samples[1:], values)
-	}
 	size := options.Size
 	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
 		size = 1
 	}
 	size = min(3, max(.5, size))
-	levels := DayActivityLevels(samples, options.Exponent, options.Reference)
+	levels := DayActivityLevels(values, options.Exponent, options.Reference)
 	for i := range levels {
 		gain := size
 		if size > 1 {
@@ -177,7 +161,7 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	if days <= 0 {
 		days = len(values)
 	}
-	terrain := dayActivityTerrain(width, days, padding, len(values), levels, options)
+	terrain := dayActivityTerrain(width, days, len(values), levels, options)
 
 	// Normal is the former full mountain profile, now at relative size 1.
 	maximum := float64(height*brailleRows-1) * (1 - math.Exp(-1.6*dayActivityBaselineGain))
@@ -264,7 +248,7 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 // envelopes, not their sum: nearby samples form shoulders without inflating the
 // historical reference or inventing measurements on otherwise empty days.
 // The extra first value is the preceding dot, needed for clipped outlines.
-func dayActivityTerrain(width, days, padding, visibleSamples int, levels []DayActivityLevel, options DayActivityOptions) []DayActivityLevel {
+func dayActivityTerrain(width, days, visibleSamples int, levels []DayActivityLevel, options DayActivityOptions) []DayActivityLevel {
 	type mountain struct {
 		center                 int
 		left, right, roughness float64
@@ -280,9 +264,9 @@ func dayActivityTerrain(width, days, padding, visibleSamples int, levels []DayAc
 		if level.Total == 0 {
 			continue
 		}
-		day := float64(options.FirstDay) + (float64(i-padding)+.5)*bucketDays
+		day := float64(options.FirstDay) + (float64(i)+.5)*bucketDays
 		if options.SampleDays > 0 {
-			day = float64(options.SampleFirstDay) + (float64(i-padding)+.5)*bucketDays
+			day = float64(options.SampleFirstDay) + (float64(i)+.5)*bucketDays
 		}
 		// A stable integer mix varies shoulders by calendar bucket, never by screen
 		// position. This is visual interpretation, not random or intraday activity.

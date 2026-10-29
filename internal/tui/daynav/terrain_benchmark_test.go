@@ -32,3 +32,31 @@ func BenchmarkDayMountainCachedNavigation(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkDayMountainPresentation(b *testing.B) {
+	for _, outline := range []bool{false, true} {
+		for _, operation := range []string{"Rebuild", "Palette", "UnchangedTuning"} {
+			b.Run(fmt.Sprintf("outline=%t/%s", outline, operation), func(b *testing.B) {
+				today := time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)
+				m := New(b.Context(), "u", &readerStub{start: today.AddDate(-1, 0, 0)})
+				defer m.Close()
+				m.now = func() time.Time { return today.Add(12 * time.Hour) }
+				m.Resize(80, 27)
+				m = m.Update(activityReply(m.Sync(today, true, false)))
+				m.outline, m.tuning, m.boost = outline, true, boostExtra
+				m.rebuild()
+				b.ReportAllocs()
+				for b.Loop() {
+					switch operation {
+					case "Rebuild":
+						m.rebuild()
+					case "Palette":
+						m.SetHighlighted(!m.highlighted)
+					case "UnchangedTuning":
+						m.Key("right")
+					}
+				}
+			})
+		}
+	}
+}
