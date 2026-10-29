@@ -20,6 +20,22 @@ import (
 )
 
 func TestModel_SubjectTimeNavigation(t *testing.T) {
+	t.Run("short Now view keeps the latest card and boundary visible", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		for _, height := range []int{10, 11, 12} {
+			m.Resize(98, height)
+			m, _ = m.Update(eventKey("end"))
+			rows := strings.Split(ansi.Strip(m.timelineBody()), "\n")
+			body := strings.Join(rows, "\n")
+			if len(rows) != height-4 || !strings.Contains(body, "Now ·") || !strings.Contains(body, "Reading") {
+				t.Fatalf("height %d: body=%q, want latest card and Now within %d rows", height, body, height-4)
+			}
+			if !strings.Contains(rows[0], "10:37 AM") || !strings.Contains(rows[0], "╭") {
+				t.Fatalf("height %d: first row=%q, want latest card anchored at its start", height, rows[0])
+			}
+		}
+	})
+
 	t.Run("starts at Now then opens pinned metrics without reading", func(t *testing.T) {
 		m, _, store := fixture(t)
 		startup := New(m.ctx, m.userID, m.service, m.timelineView, thought.NewService(testutils.NewFakeThoughtStore()), m.subjectReader, m.logger)
