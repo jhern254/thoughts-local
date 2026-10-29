@@ -65,6 +65,12 @@ func visualError(w http.ResponseWriter, err error) {
 	message := "Could not update or load the background."
 	var tooLarge *http.MaxBytesError
 	switch {
+	case errors.Is(err, data.ErrVisualSchemaMismatch):
+		w.Header().Set("X-Visual-Error", "schema")
+		message = "The database is incompatible with this build. An explicit database update or repair is required. Reopen Options afterward."
+	case errors.Is(err, visual.ErrSettings):
+		w.Header().Set("X-Visual-Error", "settings")
+		message = "Could not access Visual settings in the database. Check database availability, then retry."
 	case errors.Is(err, visual.ErrVideoQuality):
 		status = http.StatusBadRequest
 		message = "Choose Efficient, High quality, or Maximum video quality."
@@ -78,6 +84,7 @@ func visualError(w http.ResponseWriter, err error) {
 		status = http.StatusBadRequest
 		message = "Video speed must be between 25 and 100 percent."
 	case errors.Is(err, visual.ErrImage):
+		w.Header().Set("X-Visual-Error", "image")
 		status = http.StatusBadRequest
 		message = "Choose a valid, non-animated JPEG or PNG within the image limits."
 	case errors.Is(err, visual.ErrDarkness):
@@ -90,6 +97,7 @@ func visualError(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 		message = "A visual change is already in progress."
 	case errors.As(err, &tooLarge):
+		w.Header().Set("X-Visual-Error", "image")
 		status = http.StatusRequestEntityTooLarge
 		message = "Background exceeds the upload limit."
 	}
@@ -275,6 +283,10 @@ func (s *server) importVisualBackground(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer s.importMu.Unlock()
+	if _, err := s.visual.Load(r.Context()); err != nil {
+		visualError(w, err)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxVisualRequestBytes)
 	// Keep bounded input in memory rather than creating multipart temporary files.
 	if err := r.ParseMultipartForm(maxVisualRequestBytes); err != nil {

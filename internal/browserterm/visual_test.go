@@ -28,12 +28,13 @@ import (
 )
 
 type visualStore struct {
+	loadErr  error
 	settings data.Visual
 	fail     bool
 }
 
 func (s *visualStore) Load(context.Context, string) (data.Visual, error) {
-	return s.settings, nil
+	return s.settings, s.loadErr
 }
 func (s *visualStore) Save(_ context.Context, _ string, value data.Visual) error {
 	if s.fail {
@@ -401,6 +402,46 @@ func TestVisual_VideoUploadOwnership(t *testing.T) {
 		}
 		if response.StatusCode < 400 || strings.Contains(string(body), "PRIVATE") || store.settings.BackgroundAsset != "" {
 			t.Fatalf("unsafe upload failure: %d %q %+v", response.StatusCode, body, store.settings)
+		}
+	})
+}
+
+type unavailableVisualStore struct{ err error }
+
+func (s *unavailableVisualStore) Load(context.Context, string) (data.Visual, error) {
+	return data.Visual{}, s.err
+}
+func (s *unavailableVisualStore) Save(context.Context, string, data.Visual) error { return s.err }
+
+func TestVisual_SettingsReadiness(t *testing.T) {
+	t.Run("rejects source before reading bytes and recovers on the same service", func(t *testing.T) {
+		store := &unavailableVisualStore{err: data.ErrVisualSchemaMismatch}
+		s := &server{authority: "127.0.0.1:7777", visual: visual.NewService(store, "owner", t.TempDir()), videoEditor: newVideoEditor(t.Context())}
+		id, _ := s.videoEditor.setOpen(true)
+		defer s.videoEditor.Close()
+		r := httptest.NewRequest("POST", "http://127.0.0.1:7777/visual/video/source", nil)
+		r.Header.Set("Origin", "http://127.0.0.1:7777")
+		r.Header.Set("X-Visual-Editor", id)
+		r.Body = unreadableVideoBody{t: t}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != 500 || w.Header().Get("X-Visual-Error") != "schema" || !strings.Contains(w.Body.String(), "repair") {
+			t.Fatalf("readiness: got %d %q %q, want schema feedback", w.Code, w.Header().Get("X-Visual-Error"), w.Body.String())
+		}
+		store.err = nil
+		w = httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest("GET", "http://127.0.0.1:7777/visual", nil))
+		if w.Code != 200 {
+			t.Fatalf("recovery: got %d, want 200", w.Code)
+		}
+	})
+	t.Run("does not disclose settings causes or label them as media rejection", func(t *testing.T) {
+		service := visual.NewService(&unavailableVisualStore{err: errors.New("PRIVATE SQL /secret")}, "owner", t.TempDir())
+		_, err := service.Load(t.Context())
+		w := httptest.NewRecorder()
+		videoError(w, err)
+		if w.Code != 500 || w.Header().Get("X-Visual-Error") != "settings" || strings.Contains(w.Body.String(), "PRIVATE") || strings.Contains(w.Body.String(), "media limits") {
+			t.Fatalf("settings failure: got %d %q", w.Code, w.Body.String())
 		}
 	})
 }

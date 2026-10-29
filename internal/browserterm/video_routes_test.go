@@ -168,6 +168,16 @@ func TestVideoEditor_Routes(t *testing.T) {
 			t.Fatalf("discarded candidate: %d", w.Code)
 		}
 
+		store.loadErr = data.ErrVisualSchemaMismatch
+		blocked := videoEditRequest(t, s, id, "POST", "/visual/video/preview", next)
+		if blocked.Code != 500 || blocked.Header().Get("X-Visual-Error") != "schema" {
+			t.Fatalf("blocked preparation: got %d %q, want schema failure", blocked.Code, blocked.Header().Get("X-Visual-Error"))
+		}
+		if s.videoEditor.accepted == nil || s.videoEditor.acceptedID != preview.PreviewID {
+			t.Fatal("settings failure discarded accepted loop")
+		}
+		store.loadErr = nil
+
 		// Identical cuts reuse the acknowledged files; no second processor is needed.
 		t.Setenv("PATH", t.TempDir())
 		if w := videoEditRequest(t, s, id, "POST", "/visual/video/preview", input); w.Code != 200 || !bytes.Equal(w.Body.Bytes(), prepared.Body.Bytes()) {

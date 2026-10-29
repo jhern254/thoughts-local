@@ -384,3 +384,14 @@ context when Stop is requested. The stop route joins the editor gate and removes
 only an unacknowledged candidate before the controls unlock. Browser preparation
 and acknowledgement are joined too: a loop acknowledged before Stop stays
 consistent on both sides. Cancel upload still retires the whole source editor.
+
+Visual settings failures are distinct from media rejection. A database may report
+current migrations yet lack columns from an amended, already-applied migration;
+`migrate/up` can report no change in that case. The app detects missing Visual
+columns and requires an explicit database update or repair. It never repairs or
+recreates a database automatically. After repair, reopen Visual or retry Apply;
+the browser refreshes failed settings loads without discarding the Thought draft.
+Native admission checks settings before upload consumption and loop preparation.
+This read does not guarantee that a later write will succeed. Failed saves retain
+the accepted loop; cleanup warnings and display failures after a confirmed save
+remain distinct from a failed commit.

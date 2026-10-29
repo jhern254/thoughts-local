@@ -106,9 +106,11 @@ class ThoughtsVisual {
     if (this.terminal.options.fontWeight !== weight) this.terminal.options.fontWeight = weight;
     if (this.terminal.options.fontWeightBold !== 700) this.terminal.options.fontWeightBold = 700;
   }
-  reply(action, operationID, connectionGeneration = this.connectionGeneration) {
+  failureAction(code) { return visualFailureAction(code); }
+  reply(action, operationID, connectionGeneration = this.connectionGeneration, settings = this.saved) {
     if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) {
-      this.sendAction({action, id: operationID, ...normalizeReadabilityPreferences(this.saved), videoQuality: this.saved.videoQuality || 'efficient', darkness: this.saved.darkness, background: this.saved.background, framing: this.saved.framing, kind: this.candidateKind || this.saved.kind, speedPercent: this.saved.speedPercent, userPaused: this.saved.userPaused, playbackBlocked: this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride)});
+      if (action === 'schemaFailed' || action === 'settingsFailed') this.loadFailed = action;
+      this.sendAction({action, id: operationID, ...normalizeReadabilityPreferences(settings), videoQuality: settings.videoQuality || 'efficient', darkness: settings.darkness, background: settings.background, framing: settings.framing, kind: this.candidateKind || settings.kind, speedPercent: settings.speedPercent, userPaused: settings.userPaused, playbackBlocked: this.playbackFailed || (this.motionQuery?.matches && !this.motionOverride)});
     }
   }
   async receive(state) {
@@ -139,14 +141,19 @@ class ThoughtsVisual {
     switch (state.request) {
       case 'load':
         await this.ready;
+        if (this.loadFailed) await (this.ready = this.restore());
         if (connectionGeneration !== this.connectionGeneration || !this.state.open || this.state.id !== operationID) return;
         if (this.activeURL) this.preview.src = this.activeURL;
-        this.reply(this.loadFailed ? 'failed' : 'loaded', operationID);
+        this.reply(this.loadFailed || 'loaded', operationID);
         this.terminal.focus();
         break;
       case 'choose':
         // Keep the native picker attached to the existing document. No terminal
         // replacement, reconnect or microphone operation is involved.
+        await this.ready;
+        if (this.loadFailed) await (this.ready = this.restore());
+        if (connectionGeneration !== this.connectionGeneration || !this.state.open || this.state.id !== operationID) return;
+        if (this.loadFailed) { this.reply(this.loadFailed, operationID); break; }
         this.file.click();
         break;
       case 'prepareLoop':
@@ -408,7 +415,7 @@ class ThoughtsVisual {
       if (previewGeneration !== this.previewGeneration || this.state.id !== operationID) return;
       this.discardPreview();
       if (this.activeURL) this.preview.src = this.activeURL;
-      this.reply(error.videoAction || 'failed', operationID);
+      this.reply(error.videoAction || 'mediaRejected', operationID);
     } finally { this.terminal.focus(); }
   }
   async activate(settings, connectionGeneration = this.connectionGeneration) {
@@ -422,7 +429,7 @@ class ThoughtsVisual {
     // still fetch the authoritative selected image through the existing route.
     if (settings.background && (!this.saved.background || !settings.backgroundID || settings.backgroundID !== this.saved.backgroundID)) {
       const response = await fetch(settings.kind === 'video' ? '/visual/poster' : '/visual/background', {cache: 'no-store'});
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw Object.assign(new Error('Visual operation unavailable.'), {visualAction:visualFailureAction(response.headers?.get('X-Visual-Error'))});
       const url = URL.createObjectURL(await response.blob());
       const candidate = new Image();
       candidate.src = url;
@@ -471,7 +478,7 @@ class ThoughtsVisual {
     let activationGeneration = ++this.activationGeneration;
     try {
       const response = await fetch('/visual', {cache: 'no-store'});
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw Object.assign(new Error('Visual operation unavailable.'), {visualAction:visualFailureAction(response.headers?.get('X-Visual-Error'))});
       const settings = await response.json();
       if (activationGeneration !== this.activationGeneration) return;
       const activation = this.activate(settings, connectionGeneration);
@@ -480,8 +487,8 @@ class ThoughtsVisual {
       activationGeneration = this.activationGeneration;
       if (!await activation) return;
       this.loadFailed = false;
-    } catch {
-      if (connectionGeneration === this.connectionGeneration && activationGeneration === this.activationGeneration) this.loadFailed = true;
+    } catch (error) {
+      if (connectionGeneration === this.connectionGeneration && activationGeneration === this.activationGeneration) this.loadFailed = error.visualAction || 'failed';
     }
   }
   async saveAccessibility(state, operationID, connectionGeneration) {
@@ -493,7 +500,7 @@ class ThoughtsVisual {
         method:'PUT', headers:{'Content-Type':'application/json'}, signal:controller.signal,
         body:JSON.stringify(normalizeReadabilityPreferences(state))
       });
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw Object.assign(new Error('Visual operation unavailable.'), {visualAction:visualFailureAction(response.headers?.get('X-Visual-Error'))});
       const settings = await response.json();
       if (connectionGeneration !== this.connectionGeneration || !this.state.open || this.state.id !== operationID) return;
       // Readability saves must not fetch, decode or replace background media.
@@ -503,8 +510,14 @@ class ThoughtsVisual {
       this.updateDarkness(this.saved.darkness);
       this.publishAppearance();
       this.reply('saved', operationID, connectionGeneration);
-    } catch {
-      if (connectionGeneration === this.connectionGeneration && this.state.open && this.state.id === operationID) this.reply('failed',operationID,connectionGeneration);
+    } catch (error) {
+      if (connectionGeneration !== this.connectionGeneration || !this.state.open || this.state.id !== operationID) return;
+      if (error.visualAction && error.visualAction !== 'failed') {
+        this.reply(error.visualAction,operationID,connectionGeneration);
+      } else {
+        await this.restore();
+        this.reply('saveUnconfirmed',operationID,connectionGeneration);
+      }
     } finally {
       if (this.saveController === controller) this.saveController = undefined;
     }
@@ -513,6 +526,7 @@ class ThoughtsVisual {
     this.saveController?.abort();
     const controller = new AbortController();
     this.saveController = controller;
+    let committed;
     try {
       this.stopPreviewPlayback();
       const preferences = {darkness, framing, videoQuality:this.state.videoQuality || 'efficient', speedPercent: this.state.speedPercent || 100, userPaused: !!this.state.userPaused};
@@ -530,19 +544,29 @@ class ThoughtsVisual {
         requestURL = '/visual/background'; requestOptions = {method: 'POST', body: form};
       }
       const response = await fetch(requestURL, {...requestOptions, signal: controller.signal});
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw Object.assign(new Error('Visual operation unavailable.'), {visualAction:visualFailureAction(response.headers?.get('X-Visual-Error'))});
       const settings = await response.json();
+      committed = settings;
       if (!await this.activate(settings, connectionGeneration)) return;
       if (settings.cleanupWarning) {
         this.discardPreview();
         if (this.activeURL) this.preview.src = this.activeURL;
       }
       this.reply(settings.cleanupWarning ? 'warning' : 'saved', operationID, connectionGeneration);
-    } catch {
+    } catch (error) {
       // Reconcile an ambiguous lost response with authoritative native state.
       if (connectionGeneration !== this.connectionGeneration) return;
-      await this.restore();
-      this.reply('failed', operationID, connectionGeneration);
+      if (committed) {
+        this.loadFailed = 'failed';
+        this.discardPreview();
+        this.reply('displayFailed', operationID, connectionGeneration, committed);
+      } else if (error.visualAction && error.visualAction !== 'failed') {
+        if (error.visualAction === 'schemaFailed' || error.visualAction === 'settingsFailed') this.loadFailed = error.visualAction;
+        this.reply(error.visualAction, operationID, connectionGeneration);
+      } else {
+        await this.restore();
+        this.reply('saveUnconfirmed', operationID, connectionGeneration);
+      }
     } finally {
       if (this.saveController === controller) this.saveController = undefined;
     }
@@ -685,4 +709,14 @@ function normalizeReadabilityPreferences(settings) {
 function previewBorderGlyphs(weight) {
   if (weight === 'heavy') return {topLeft:'┏', horizontal:'━', topRight:'┓', bottomLeft:'┗', bottomRight:'┛', vertical:'┃'};
   return {topLeft:'╭', horizontal:'─', topRight:'╮', bottomLeft:'╰', bottomRight:'╯', vertical:'│'};
+}
+
+// Only fixed native classifications cross the terminal control protocol.
+function visualFailureAction(code) {
+  switch (code) {
+    case 'schema': return 'schemaFailed';
+    case 'settings': return 'settingsFailed';
+    case 'image': return 'mediaRejected';
+    default: return 'failed';
+  }
 }

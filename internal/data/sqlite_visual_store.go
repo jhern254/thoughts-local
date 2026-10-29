@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 type SQLiteVisualStore struct{ db *sql.DB }
@@ -28,7 +30,7 @@ func (s *SQLiteVisualStore) Load(ctx context.Context, userID string) (Visual, er
 	if errors.Is(err, sql.ErrNoRows) {
 		return settings, nil
 	}
-	return settings, TranslateSQLiteError(err)
+	return settings, s.translateVisualError(ctx, err)
 }
 func (s *SQLiteVisualStore) Save(ctx context.Context, userID string, settings Visual) error {
 	if settings.BorderWeight == "" {
@@ -44,5 +46,21 @@ func (s *SQLiteVisualStore) Save(ctx context.Context, userID string, settings Vi
  speed_percent=excluded.speed_percent,user_paused=excluded.user_paused,video_quality=excluded.video_quality,border_weight=excluded.border_weight,heavier_text=excluded.heavier_text,text_size=excluded.text_size,high_contrast=excluded.high_contrast`,
 		userID, settings.BackgroundAsset, settings.Darkness, settings.Framing.Fit,
 		settings.Framing.Zoom, settings.Framing.PositionX, settings.Framing.PositionY, settings.SpeedPercent, settings.UserPaused, settings.VideoQuality, settings.BorderWeight, settings.HeavierText, settings.TextSize, settings.HighContrast)
+	return s.translateVisualError(ctx, err)
+}
+
+// A current migration version does not prove that an amended migration's columns
+// exist. Inspect metadata only after a SQL compilation failure, never by text.
+var ErrVisualSchemaMismatch = errors.New("incompatible Visual database schema")
+
+func (s *SQLiteVisualStore) translateVisualError(ctx context.Context, err error) error {
+	var cause *sqlite.Error
+	if errors.As(err, &cause) && cause.Code()&0xff == sqlite3.SQLITE_ERROR {
+		var count int
+		checkErr := s.db.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('visual') WHERE lower(name) IN ('user_id','background_asset','darkness','fit','zoom','position_x','position_y','speed_percent','user_paused','video_quality','border_weight','heavier_text','text_size','high_contrast')`).Scan(&count)
+		if checkErr == nil && count != 14 {
+			return &databaseError{cause: err, kind: ErrVisualSchemaMismatch}
+		}
+	}
 	return TranslateSQLiteError(err)
 }

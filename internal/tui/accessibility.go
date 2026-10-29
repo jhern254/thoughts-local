@@ -46,6 +46,10 @@ func (m Model) updateAccessibilityFromReply(msg BrowserOptionsMsg) (tea.Model, t
 	case msg.Action == "saved" && m.options.request == "applyAccessibility":
 		m.setBorderWeight(msg.BorderWeight)
 		m.options.open, m.options.accessibility = false, false
+	case msg.Action == "schemaFailed" || msg.Action == "settingsFailed":
+		m.options.status = visualFailureMessage(msg.Action)
+	case msg.Action == "saveUnconfirmed":
+		m.options.status = "Could not load or save accessibility settings. Result unconfirmed. Reopen Options to check saved settings."
 	case msg.Action == "failed":
 		m.options.status = "Could not load or save accessibility settings. Try again."
 	default:
@@ -153,7 +157,8 @@ func (m Model) viewAccessibility() tea.View {
 		rows = append(rows, "")
 		rows = append(rows, strings.Split(sample, "\n")...)
 	}
-	rows = append(rows, "", m.options.status, "↑/↓/Tab: focus · ←/→: adjust", "Enter: activate · Q/Esc: cancel")
+	rows = append(rows, "", ansi.Wrap(m.options.status, max(1, m.width), ""), "↑/↓/Tab: focus · ←/→: adjust", "Enter: activate · Q/Esc: cancel")
+	rows = strings.Split(strings.Join(rows, "\n"), "\n")
 	for i, row := range rows {
 		rows[i] = ansi.Truncate(row, max(1, m.width), "…")
 	}
