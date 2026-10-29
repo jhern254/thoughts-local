@@ -22,7 +22,9 @@ followed by live membership reads. There is no membership cache or bulk API.
 Tab/Shift+Tab moves between Name, Hours, Minutes, optional start/end dates,
 Cadence, and actions. Enter activates a control or saves from a text field;
 Ctrl+S saves. Dates use YYYY-MM-DD. Cadence cycles using arrows or Enter.
-Creation defaults to weekly; an empty Subject selection is valid.
+Creation defaults to weekly and today’s local start date, which can be cleared.
+The end date stays empty. Both date labels show an example; form controls have
+a blank line between them. An empty Subject selection is valid.
 
 Hours and Minutes accept nonnegative whole numbers, including 90 minutes. A
 positive total is required and overflow is rejected. Existing sub-minute target

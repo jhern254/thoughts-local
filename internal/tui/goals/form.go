@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
@@ -81,6 +82,7 @@ func (m *Model) startForm(create bool) {
 		for i := range m.fields {
 			m.fields[i].SetValue("")
 		}
+		m.fields[3].SetValue(m.now().Format(time.DateOnly))
 	} else {
 		m.screen = editView
 		m.populateForm()
@@ -165,7 +167,7 @@ func (m Model) formContent() string {
 		title = "Edit Goal"
 	}
 	lines := []string{title, ""}
-	labels := []string{"Name", "Hours", "Minutes", "Start date (optional)", "End date (optional)"}
+	labels := []string{"Name", "Hours", "Minutes", "Start date (optional; e.g. 2026-10-29)", "End date (optional; e.g. 2026-10-29)"}
 	for i, label := range labels {
 		prefix := "  "
 		if m.focus == i {
@@ -175,20 +177,20 @@ func (m Model) formContent() string {
 		if m.focus == i {
 			heading = m.list.Styles.Title.Render(heading)
 		}
-		lines = append(lines, heading, m.fields[i].View())
+		lines = append(lines, heading, m.fields[i].View(), "")
 	}
 	prefix := "  "
 	if m.focus == 5 {
 		prefix = "› "
 	}
-	lines = append(lines, prefix+"Cadence: "+cadenceLabel(cadenceAt(m.cadence)))
+	lines = append(lines, prefix+"Cadence: "+cadenceLabel(cadenceAt(m.cadence)), "")
 	if m.screen == createView {
 		prefix = "  "
 		if m.focus == 6 {
 			prefix = "› "
 		}
 		count := len(m.ids())
-		lines = append(lines, prefix+fmt.Sprintf("Subjects: %d selected (Enter to choose)", count))
+		lines = append(lines, prefix+fmt.Sprintf("Subjects: %d selected (Enter to choose)", count), "")
 	}
 	prefix = "  "
 	if (m.screen == createView && m.focus == 7) || (m.screen == editView && m.focus == 6) {

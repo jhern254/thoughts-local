@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
@@ -95,6 +96,7 @@ func (r subjectRow) Description() string { return "" }
 func (r subjectRow) FilterValue() string { return r.item.SubjectName }
 
 type Model struct {
+	now                   func() time.Time
 	pickerReady           bool
 	logger                logging.Logger
 	operation             logging.Operation
@@ -130,6 +132,7 @@ func New(ctx context.Context, userID string, service GoalService, assignments As
 	delegate := list.NewDefaultDelegate()
 	delegate.SetHeight(4)
 	m := Model{
+		now:         time.Now,
 		logger:      logging.Nop(),
 		ctx:         ctx,
 		userID:      userID,
@@ -266,16 +269,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 func (m *Model) refreshBody() {
 	if m.screen == createView || m.screen == editView {
 		m.body.SetContent(ansi.Hardwrap(m.formContent(), m.width, true))
-		row := 2 + m.focus*2
+		firstRow := 2 + m.focus*3
+		lastRow := firstRow + 1
 		if m.focus >= 5 {
-			row = 12 + m.focus - 5
+			firstRow = 17 + (m.focus-5)*2
+			lastRow = firstRow
 		}
-		if row < m.body.YOffset() {
-			m.body.SetYOffset(row)
+		if firstRow < m.body.YOffset() {
+			m.body.SetYOffset(firstRow)
 		}
-		if row >= m.body.YOffset()+m.body.Height() {
-			m.body.SetYOffset(row - m.body.Height() + 1)
+		if lastRow >= m.body.YOffset()+m.body.Height() {
+			m.body.SetYOffset(lastRow - m.body.Height() + 1)
 		}
+
 	} else if m.screen == detailView && m.selected != nil {
 		m.body.SetContent(ansi.Hardwrap(m.detailContent(), m.width, true))
 	}
