@@ -36,6 +36,46 @@ test.beforeAll(() => {
   } finally {rmSync(directory,{recursive:true,force:true});}
 });
 
+// Exercise a resize whose native controls move before the browser paints them.
+async function delayMovieResizePaint(page) {
+  await page.addInitScript(() => {
+    const BrowserWebSocket = window.WebSocket;
+    window.WebSocket = class extends BrowserWebSocket {
+      set onmessage(callback) {
+        super.onmessage = event => {
+          if (this.holdResize && new Uint8Array(event.data)[0] === 49) this.resizePaints.push(() => callback(event));
+          else callback(event);
+        };
+      }
+      send(data) {
+        if (window.delayNextMovieResize && data[0] === 50) {
+          window.delayNextMovieResize = false;
+          this.holdResize = true;
+          this.resizePaints = [];
+          setTimeout(() => {
+            this.holdResize = false;
+            for (const paint of this.resizePaints) paint();
+            this.resizePaints = [];
+          }, 200);
+        }
+        return super.send(data);
+      }
+    };
+  });
+}
+
+async function expectMoviePreviewCentered(page) {
+  // Aspect/height alone can already match before a resize's native paint.
+  // The current viewport center proves the new preview reservation arrived.
+  await expect.poll(() => page.locator('#background-preview-wrap').evaluate(preview => {
+    const bounds = preview.getBoundingClientRect();
+    const terminal = document.getElementById('terminal');
+    const container = terminal.getBoundingClientRect();
+    const cellTolerance = parseFloat(getComputedStyle(terminal).fontSize);
+    return bounds.width > 0 && Math.abs(bounds.x + bounds.width / 2 - container.x - container.width / 2) <= cellTolerance;
+  })).toBe(true);
+}
+
 async function stageSource(page) {
   const chooser = page.waitForEvent('filechooser');
   await clickControl(page,'Choose image or video');
@@ -897,6 +937,7 @@ test('complete source and prepared movie frames fit the preview after narrow res
  });
  await expect.poll(completeFrame).toBe(true);
  await page.setViewportSize({width:650,height:850});
+ await expectMoviePreviewCentered(page);
  await expect.poll(completeFrame).toBe(true);
  if(process.env.THOUGHTS_BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-full-source-narrow.png`});
  await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
@@ -904,6 +945,7 @@ test('complete source and prepared movie frames fit the preview after narrow res
  await expect.poll(completeFrame).toBe(true);
  if(process.env.THOUGHTS_BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-full-loop-narrow.png`});
  await page.setViewportSize({width:1200,height:850});
+ await expectMoviePreviewCentered(page);
  await expect.poll(completeFrame).toBe(true);
 });
 
@@ -947,6 +989,7 @@ for(const cancel of [false,true])test(`upload validation shares rendering activi
 });
 
 test('short movie editor scrolls controls without shrinking preview or losing accepted work',async({page},testInfo)=>{
+ await delayMovieResizePaint(page);
  let uploads=0,prepares=0,sockets=0;
  page.on('websocket',()=>sockets++);
  page.on('request',request=>{if(request.method()==='POST'){const path=new URL(request.url()).pathname;if(path==='/visual/video/source')uploads++;if(path==='/visual/video/preview')prepares++;}});
@@ -954,6 +997,7 @@ test('short movie editor scrolls controls without shrinking preview or losing ac
  const preview=page.locator('#background-preview-wrap');
  const normal=await preview.boundingBox();
  await page.setViewportSize({width:650,height:600});
+ await expectMoviePreviewCentered(page);
  await expect(preview).toBeVisible();await expect.poll(async()=>(await preview.boundingBox())?.height).toBe(normal.height);
  await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');await page.keyboard.press('Home');
  await page.keyboard.press('Shift+Tab');await page.keyboard.press('Shift+Tab');
@@ -968,12 +1012,18 @@ test('short movie editor scrolls controls without shrinking preview or losing ac
  if(process.env.THOUGHTS_BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/${testInfo.project.name}-resize-notice.png`});
  await page.keyboard.press('ArrowRight');
  await page.setViewportSize({width:650,height:600});
+ await expectMoviePreviewCentered(page);
  await expect(preview).toBeVisible();await expect.poll(async()=>(await preview.boundingBox())?.height).toBe(normal.height);
  await expect.poll(()=>page.locator('#background-preview-video').evaluate(video=>video===window.acceptedBeforeResize)).toBe(true);
  await expect(screen(page)).toContainText('Range: 00:00:00 - 00:00:01');
  expect(uploads).toBe(1);expect(prepares).toBe(1);expect(sockets).toBe(1);
+ await page.evaluate(()=>{window.delayNextMovieResize=true;});
  await page.setViewportSize({width:1200,height:850});
- await clickControl(page,'Done — use previewed loop');await clickControl(page,'Apply');
+ await expectMoviePreviewCentered(page);
+ expect(await page.evaluate(()=>window.delayNextMovieResize)).toBe(false);
+ await clickControl(page,'Done — use previewed loop');
+ await expect(screen(page)).toContainText('Background darkness:');
+ await clickControl(page,'Apply');
  await expect(screen(page)).not.toContainText('Background darkness:');
  expect(prepares).toBe(1);
 });

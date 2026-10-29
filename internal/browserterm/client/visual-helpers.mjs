@@ -9,20 +9,27 @@ export async function openVisual(page) {
 }
 export async function clickControl(page, label) {
   const terminal = page.locator('.xterm-screen');
-  // xterm replaces text spans during rendering. Wait on its persistent input
-  // surface, then measure the current label relative to that stable surface.
-  // The text layer itself ignores pointer events.
+  // Measure the live label and persistent input surface in one browser task.
+  // A span handle can detach between locator resolution and evaluation.
   await terminal.scrollIntoViewIfNeeded();
-  const position = await screen(page).getByText(label, {exact: true}).evaluate((element, label) => {
-    const node = element.firstChild;
-    const start = node.textContent.indexOf(label);
-    const range = document.createRange();
-    range.setStart(node, start);
-    range.setEnd(node, start + label.length);
-    const text = range.getBoundingClientRect();
-    const bounds = element.closest('.xterm-screen').getBoundingClientRect();
-    return {x: text.x - bounds.x + text.width / 2, y: text.y - bounds.y + text.height / 2};
-  }, label);
+  let position;
+  await expect.poll(async () => {
+    position = await terminal.evaluate((surface, label) => {
+      const matches = [...surface.querySelectorAll('.xterm-rows span')].filter(span => span.textContent.trim() === label);
+      if (matches.length > 1) throw new Error('Multiple painted terminal controls match');
+      const element = matches[0];
+      if (!element) return null;
+      const node = element.firstChild;
+      const start = node.textContent.indexOf(label);
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, start + label.length);
+      const text = range.getBoundingClientRect();
+      const bounds = surface.getBoundingClientRect();
+      return {x: text.x - bounds.x + text.width / 2, y: text.y - bounds.y + text.height / 2};
+    }, label);
+    return position;
+  }, {message: `Terminal control is painted: ${label}`}).not.toBeNull();
   await terminal.click({position});
 }
 export async function setDarkness(page, value) {

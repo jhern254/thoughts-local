@@ -435,3 +435,11 @@ native Shift+Tab focus has moved. Clicking a merely visible old Cancel label
 reproduces the hosted failure. Waiting for Cancel's native focus highlight before
 measuring its click fixes the test boundary while retaining the cancellation,
 prepared-byte, draft, connection and playback assertions.
+
+Movie resize acceptance also waits for the preview reservation to be centered in
+the current viewport before clicking a repositioned action. Holding a resize
+paint while the native controls move reproduces the missing-Apply failure in
+both browsers. The shared click helper resolves the current label and measures
+it against the persistent terminal surface in one browser task, avoiding retired
+span handles. These are readiness waits before one real click, not retries of a
+failed action; the preview, byte-reuse and ownership assertions remain intact.
