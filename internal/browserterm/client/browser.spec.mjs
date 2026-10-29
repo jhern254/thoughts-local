@@ -983,3 +983,47 @@ test('native renderer clears old mountain cells and marker after a grow',async({
   expect(result.stale).toEqual([]);expect(result.markers).toEqual([{x:110,y:8}]);
  }
 });
+
+
+test('full app repaint recovers from a stale pre-resize scrolling region', async ({page}) => {
+  await exposeMountainTerminal(page);
+  await page.addInitScript(() => {
+    const BrowserWebSocket = window.WebSocket;
+    window.staleMarginsInjected = 0;
+    window.WebSocket = class extends BrowserWebSocket {
+      set onmessage(listener) {
+        super.onmessage = event => {
+          const frame = new Uint8Array(event.data);
+          const term = window.mountainTerminal;
+          if (frame[0] === 49 && new TextDecoder().decode(frame).includes('\x1b[H\x1b[2J')) {
+            // An old-size scroll optimization can arrive after the browser
+            // has resized. Full paint must recover without another resize.
+            term.write(`\x1b[1;${Math.max(2, term.rows - 3)}r`);
+            window.staleMarginsInjected++;
+          }
+          listener.call(this, event);
+        };
+      }
+    };
+  });
+  await ready(page);
+  const geometry = () => page.evaluate(() => {
+    const term = window.mountainTerminal;
+    const rows = Array.from({length: term.rows}, (_, y) => term.buffer.active.getLine(y)?.translateToString(true) || '');
+    return {
+      header: rows[0].startsWith('Local user:'),
+      footer: rows.findLastIndex(row => /^─+$/.test(row)) - (term.rows - 4),
+      width: rows.findLast(row => /^─+$/.test(row))?.length - term.cols,
+    };
+  });
+  for (const size of [{width: 480, height: 480}, {width: 960, height: 450}, {width: 1200, height: 850}]) {
+    await page.setViewportSize(size);
+    await expect.poll(geometry).toEqual({header: true, footer: 0, width: 0});
+  }
+  expect(await page.evaluate(() => window.staleMarginsInjected)).toBeGreaterThan(1);
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('1 Total');
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await page.screenshot({path: test.info().outputPath('restored-scroll-margins.png')});
+});

@@ -420,6 +420,16 @@ The actual-app acceptance also covers rapid resizes and a long Mindset beside
 short ones. These are bounded reproductions, not a guarantee against every
 browser compositor artifact.
 
+Rapid resizes also exposed a separate ordering problem: an old-size native
+scroll optimization can arrive after xterm grows and leave an explicit shorter
+scrolling region. The next full paint homes/clears but does not reset that
+region, so its bottom rows scroll the whole frame upward. Captured ANSI replay
+and a browser fault-injection regression reproduce the displaced header/footer.
+`terminalWriter` now prefixes only a native full paint (`CSI H`, `CSI 2J`) with
+`CSI r`, restoring the actual viewport's margins before painting. Incremental
+frames retain their cursor and scroll optimizations; there is no repaint timer,
+session reset, new protocol or extra browser resize observer.
+
 The trim acceptance test deliberately holds one scrolled terminal paint after
 native Shift+Tab focus has moved. Clicking a merely visible old Cancel label
 reproduces the hosted failure. Waiting for Cancel's native focus highlight before
