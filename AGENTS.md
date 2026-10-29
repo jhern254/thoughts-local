@@ -205,6 +205,32 @@ A small key or wording correction needs its affected interaction checked, not
 an unrelated full-screen test matrix. New tooling or broad harness work should
 be justified separately rather than bundled into a feature PR.
 
+### Browser comparison previews for visual changes
+
+Prefer a clickable browser comparison page for reviewing visual UI changes,
+rather than requiring the owner to repeatedly restart the app.
+
+- Capture the actual app using representative seeded data. Preserve enough
+  surrounding UI to judge spacing, focus, and layout.
+- Show the current design alongside proposed alternatives using identical data,
+  viewport dimensions, zoom, and settings. Clearly label each alternative.
+- Include normal/highlighted and desktop/narrow views where relevant. Allow
+  full-size inspection so scaling does not conceal rendering details.
+- Use actual rendered output, not approximate HTML recreations of the TUI.
+  Temporary Go overlays are suitable for trying alternatives without changing
+  production code.
+- Serve the comparison on loopback and provide a directly clickable URL.
+  Also provide the exact command to reopen it.
+- Keep preview pages, captures, and launchers in the worktree's ignored
+  `internal_docs/` directory so they survive restarts. Do not commit generated
+  artifacts unless requested.
+- Make previews available after focused checks, before lengthy push/CI waits.
+  Use feedback to refine the chosen design.
+
+Comparison pages supplement actual app interaction and regression testing;
+they do not replace verification of navigation, resizing, focus, or lifecycle.
+Keep the workflow lightweight and reuse existing capture tools.
+
 ### Layered test structure
 
 Use each test layer for a distinct purpose:
