@@ -219,3 +219,25 @@ func TestModel_VideoImportCancellation(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_VisualSettingsFailure(t *testing.T) {
+	t.Run("schema feedback remains actionable without discarding the accepted loop", func(t *testing.T) {
+		m := newRootTestModel()
+		m.browserOptionsEnabled = true
+		m.width = 80
+		m.height = 40
+		m, _ = openVisualOptions(m)
+		m.options.newVideo = true
+		m.options.loopReady = true
+		m.options.hasBackground = true
+		m.options.request = "apply"
+		m, _ = rootUpdate(m, BrowserOptionsMsg{Action: "schemaFailed", ID: m.options.id})
+		rendered := ansi.Strip(m.View().Content)
+		if !strings.Contains(rendered, "repair required") || strings.Contains(rendered, "media limits") {
+			t.Fatalf("feedback: got %q, want visible repair guidance", rendered)
+		}
+		if !m.options.newVideo || !m.options.loopReady || !m.options.hasBackground || m.options.request != "" {
+			t.Fatal("failed Apply lost accepted loop or remained busy")
+		}
+	})
+}

@@ -16,6 +16,22 @@ import (
 
 var ErrFraming = errors.New("invalid background framing")
 
+// ErrSettings identifies settings access failures separately from media rejection.
+var ErrSettings = errors.New("Visual settings unavailable")
+
+type settingsError struct{ cause error }
+
+func (e *settingsError) Error() string        { return ErrSettings.Error() }
+func (e *settingsError) Unwrap() error        { return e.cause }
+func (e *settingsError) Is(target error) bool { return target == ErrSettings }
+
+func (s *Service) saveSettings(ctx context.Context, settings data.Visual) error {
+	if err := s.store.Save(ctx, s.userID, settings); err != nil {
+		return &settingsError{cause: err}
+	}
+	return nil
+}
+
 type Store interface {
 	Load(context.Context, string) (data.Visual, error)
 	Save(context.Context, string, data.Visual) error
@@ -55,6 +71,9 @@ func (s *Service) Load(ctx context.Context) (data.Visual, error) {
 
 func (s *Service) load(ctx context.Context) (data.Visual, error) {
 	settings, err := s.store.Load(ctx, s.userID)
+	if err != nil {
+		return data.Visual{}, &settingsError{cause: err}
+	}
 	if settings.VideoQuality == "" {
 		settings.VideoQuality = data.DefaultVideoQuality
 	}
@@ -165,7 +184,7 @@ func (s *Service) commitBackground(ctx context.Context, previous, settings data.
 		err = write(posterAsset(settings.BackgroundAsset), poster)
 	}
 	if err == nil {
-		err = s.store.Save(ctx, s.userID, settings)
+		err = s.saveSettings(ctx, settings)
 	}
 	if err != nil {
 		removeAsset(root, settings.BackgroundAsset)
@@ -250,7 +269,7 @@ func (s *Service) UpdateAccessibility(ctx context.Context, preferences data.Acce
 	settings.HeavierText = preferences.HeavierText
 	settings.TextSize = preferences.TextSize
 	settings.HighContrast = preferences.HighContrast
-	return settings, s.store.Save(ctx, s.userID, settings)
+	return settings, s.saveSettings(ctx, settings)
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, darkness int, framing data.BackgroundFraming, speedPercent int, userPaused bool, quality VideoQuality) (data.Visual, error) {
@@ -280,7 +299,7 @@ func (s *Service) UpdateSettings(ctx context.Context, darkness int, framing data
 	settings.SpeedPercent, settings.UserPaused = speedPercent, userPaused
 	settings.Darkness = darkness
 	settings.Framing = framing
-	return settings, s.store.Save(ctx, s.userID, settings)
+	return settings, s.saveSettings(ctx, settings)
 }
 
 func (s *Service) Remove(ctx context.Context) (data.Visual, bool, error) {
@@ -294,7 +313,7 @@ func (s *Service) Remove(ctx context.Context) (data.Visual, bool, error) {
 	}
 	previous := settings.BackgroundAsset
 	settings.BackgroundAsset = ""
-	if err = s.store.Save(ctx, s.userID, settings); err != nil {
+	if err = s.saveSettings(ctx, settings); err != nil {
 		return data.Visual{}, false, err
 	}
 	if previous == "" {
