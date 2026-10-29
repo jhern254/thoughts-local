@@ -15,7 +15,6 @@ type listControl uint8
 const (
 	goalListControl listControl = iota
 	statusControl
-	searchControl
 	subjectControl
 	priorityControl
 	createControl
@@ -130,16 +129,20 @@ func (m *Model) applyListControls() tea.Cmd {
 }
 
 func (m Model) subjectFilterLabel() string {
-	switch m.subjectFilter {
+	return m.subjectFilterOptionLabel(m.subjectFilter)
+}
+
+func (m Model) subjectFilterOptionLabel(index int) string {
+	switch index {
 	case 0:
 		return "All Subjects"
 	case 1:
 		return "Misc — no live Subjects"
 	}
-	if m.subjectFilter-2 >= len(m.filterSubjects) {
+	if index-2 >= len(m.filterSubjects) {
 		return "All Subjects"
 	}
-	subject := m.filterSubjects[m.subjectFilter-2]
+	subject := m.filterSubjects[index-2]
 	if subject.SubjectName == "Misc" {
 		return "Misc (Subject)"
 	}
@@ -160,9 +163,9 @@ func (m Model) listControlLayout() controlLayout {
 		x := ansi.StringWidth(line)
 		layout.hits = append(layout.hits, controlHit{focus, value, x, len(layout.rows), width})
 		if selected {
-			text = m.list.Styles.Title.Padding(0).Margin(0).Underline(m.listFocus == focus).Render(text)
+			text = m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render(text)
 		} else if m.listFocus == focus && focus != statusControl && focus != priorityControl {
-			text = m.list.Styles.Title.Padding(0).Margin(0).Underline(true).Render(text)
+			text = m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render(text)
 		}
 		line += text
 	}
@@ -182,24 +185,19 @@ func (m Model) listControlLayout() controlLayout {
 	}
 	flush()
 	layout.rows = append(layout.rows, "")
-	search := "Search Goals: / "
-	if m.list.SettingFilter() {
-		search = "Search Goals: " + m.list.FilterInput.View()
-	} else if m.list.FilterValue() != "" {
-		search = "Search Goals: " + m.list.FilterValue()
-	}
-	searchWidth := m.width
-	if m.width >= 80 {
-		searchWidth = m.width/2 - 2
-	}
-	add(ansi.Truncate(search, searchWidth, "…"), searchControl, 0, m.listFocus == searchControl && !m.list.SettingFilter())
-	if m.width >= 80 {
-		line += strings.Repeat(" ", max(2, m.width/2-ansi.StringWidth(line)))
-	} else {
-		flush()
-	}
-	add(ansi.Truncate("Subject: [← "+m.subjectFilterLabel()+" →]", m.width-ansi.StringWidth(line), "…"), subjectControl, 0, m.listFocus == subjectControl)
+	add("Subject: ["+m.subjectFilterLabel()+" ▾]", subjectControl, 0, m.listFocus == subjectControl)
 	flush()
+	if m.subjectMenuOpen {
+		search := "/ Search Subjects"
+		if m.subjectMenu.SettingFilter() {
+			search = m.subjectMenu.FilterInput.View()
+		} else if m.subjectMenu.FilterValue() != "" {
+			search = "/ " + m.subjectMenu.FilterValue()
+		}
+		layout.rows = append(layout.rows, ansi.Truncate(search, m.width, "…"))
+		layout.rows = append(layout.rows, strings.Split(m.subjectMenu.View(), "\n")...)
+		return layout
+	}
 	layout.rows = append(layout.rows, strings.Repeat(appearance.Border(m.borderWeight).Top, m.width))
 	line = "Priority: "
 	for i, label := range []string{"All", "High", "Normal", "Low"} {
@@ -211,8 +209,10 @@ func (m Model) listControlLayout() controlLayout {
 }
 
 func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
+	if m.subjectMenuOpen {
+		return true, m.updateSubjectMenu(msg)
+	}
 	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-		m.blurGoalSearch()
 		for _, hit := range m.listControlLayout().hits {
 			if click.Y == hit.y && click.X >= hit.x && click.X < hit.x+hit.width {
 				m.listFocus = hit.focus
@@ -224,10 +224,7 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 					m.priorityFilter = hit.value
 					return true, m.applyListControls()
 				case subjectControl:
-					m.subjectFilter = (m.subjectFilter + 1) % (len(m.filterSubjects) + 2)
-					return true, m.applyListControls()
-				case searchControl:
-					return true, m.focusGoalSearch()
+					return true, m.openSubjectMenu()
 				case createControl:
 					m.startForm(true)
 					return true, m.fields[0].Focus()
@@ -245,23 +242,14 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 		if key.String() == "shift+tab" {
 			step = -1
 		}
-		m.listFocus = listControl((int(m.listFocus) + step + 6) % 6)
-		m.blurGoalSearch()
-		if m.listFocus == searchControl {
-			return true, m.focusGoalSearch()
-		}
+		m.listFocus = listControl((int(m.listFocus) + step + 5) % 5)
+
 		return true, nil
-	}
-	if m.list.SettingFilter() {
-		return false, nil
 	}
 	switch key.String() {
 	case "j", "k", "down", "up":
 		m.listFocus = goalListControl
 		return false, nil
-	case "/":
-		m.listFocus = searchControl
-		return true, m.focusGoalSearch()
 	case "h", "l", "left", "right", "enter", "space":
 		direction := 1
 		if key.String() == "h" || key.String() == "left" {
@@ -279,10 +267,7 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 			}
 			m.priorityFilter = (m.priorityFilter + direction + 4) % 4
 		case subjectControl:
-			count := len(m.filterSubjects) + 2
-			m.subjectFilter = (m.subjectFilter + direction + count) % count
-		case searchControl:
-			return true, m.focusGoalSearch()
+			return true, m.openSubjectMenu()
 		case createControl:
 			if key.String() != "enter" && key.String() != "space" {
 				return true, nil
@@ -295,25 +280,4 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 		return true, m.applyListControls()
 	}
 	return false, nil
-}
-
-func (m *Model) focusGoalSearch() tea.Cmd {
-	m.listFocus = searchControl
-	if m.list.FilterState() != list.Filtering {
-		return m.filter.Update(&m.list, tea.KeyPressMsg{Code: '/', Text: "/"})
-	}
-	return m.list.FilterInput.Focus()
-}
-
-func (m *Model) blurGoalSearch() {
-	if !m.list.SettingFilter() {
-		return
-	}
-	if m.list.FilterValue() == "" {
-		m.list.ResetFilter()
-		m.filter.Invalidate()
-		return
-	}
-	m.list.SetFilterState(list.FilterApplied)
-	m.list.FilterInput.Blur()
 }

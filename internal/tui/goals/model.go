@@ -131,6 +131,9 @@ type Model struct {
 	subjectFilter         int
 	listRows              []list.Item
 	filterSubjects        []data.Subject
+	subjectMenu           list.Model
+	subjectMenuOpen       bool
+	subjectMenuFilter     listfilter.Scope
 }
 
 func New(ctx context.Context, userID string, service GoalService, assignments Assignments, memberships Memberships, subjects Subjects) Model {
@@ -153,7 +156,21 @@ func New(ctx context.Context, userID string, service GoalService, assignments As
 	}
 
 	m.list.Title = "Goals"
-	m.list.Filter = list.UnsortedFilter
+	m.list.SetFilteringEnabled(false)
+	m.visibility = 1
+	menuDelegate := list.NewDefaultDelegate()
+	menuDelegate.ShowDescription = false
+	menuDelegate.SetSpacing(0)
+	menuDelegate.Styles.SelectedTitle = m.list.Styles.Title.Padding(0, 1).Margin(0).Underline(false)
+	menuDelegate.Styles.FilterMatch = menuDelegate.Styles.FilterMatch.Underline(false).Bold(true)
+	m.subjectMenu = list.New(nil, menuDelegate, 80, 8)
+	m.subjectMenu.DisableQuitKeybindings()
+	m.subjectMenu.SetShowTitle(false)
+	m.subjectMenu.SetShowFilter(false)
+	m.subjectMenu.SetShowStatusBar(false)
+	m.subjectMenu.SetShowHelp(false)
+	m.subjectMenu.FilterInput.Prompt = "/ "
+	m.subjectMenu.FilterInput.Placeholder = "Search Subjects"
 	m.picker.Title = "Select Subjects"
 	m.list.DisableQuitKeybindings()
 	m.picker.DisableQuitKeybindings()
@@ -161,8 +178,6 @@ func New(ctx context.Context, userID string, service GoalService, assignments As
 	m.list.SetShowTitle(false)
 	m.list.SetShowFilter(false)
 	m.list.SetShowHelp(false)
-	m.list.FilterInput.Prompt = ""
-	m.list.FilterInput.Placeholder = "Search by Goal name"
 	appearance.ConfigureSubjectList(&m.picker)
 	for i := range m.fields {
 		m.fields[i] = textinput.New()
@@ -180,6 +195,7 @@ func (m *Model) Close() {
 	m.subjectCreation = nil
 	m.filter.Invalidate()
 	m.pickerFilter.Invalidate()
+	m.closeSubjectMenu()
 }
 func (m *Model) beginRequest(operation logging.Operation) context.Context {
 	m.operation = operation
@@ -196,12 +212,11 @@ func (m *Model) beginRequest(operation logging.Operation) context.Context {
 func (m *Model) Resize(width, height int) {
 	m.width = max(1, width)
 	m.height = max(1, height)
-	m.list.SetSize(m.width, max(1, height-len(m.listControlLayout().rows)-3))
-	searchWidth := width - 14
-	if width >= 80 {
-		searchWidth = width/2 - 16
-	}
-	m.list.FilterInput.SetWidth(max(1, searchWidth))
+	closedMenu := *m
+	closedMenu.subjectMenuOpen = false
+	m.list.SetSize(m.width, max(1, height-len(closedMenu.listControlLayout().rows)-3))
+	m.subjectMenu.SetSize(m.width, max(1, min(10, height-8)))
+	m.subjectMenu.FilterInput.SetWidth(max(1, width-4))
 	appearance.ResizeSubjectList(&m.picker, m.width, height)
 	m.body.SetWidth(m.width)
 	m.body.SetHeight(max(1, height-4))
@@ -354,6 +369,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	if reply, ok := msg.(listfilter.Reply); ok {
 		if m.screen == listView {
+			if m.subjectMenuOpen {
+				return m, m.subjectMenuFilter.Update(&m.subjectMenu, reply)
+			}
 			return m, m.filter.Update(&m.list, reply)
 		}
 		if m.screen == subjectsView {
@@ -542,10 +560,16 @@ func (m Model) View() string {
 	var content, help string
 	switch m.screen {
 	case listView:
-		content = strings.Join(m.listControlLayout().rows, "\n") + "\n" + m.list.View()
+		content = strings.Join(m.listControlLayout().rows, "\n")
+		if !m.subjectMenuOpen {
+			content += "\n" + m.list.View()
+		}
 		help = "Tab: controls · h/l: filter · j/k: Goals · n: new · Esc: back"
 		if m.width < 60 {
 			help = "Tab: controls · ←/→: filter · j/k: Goals"
+		}
+		if m.subjectMenuOpen {
+			help = "↑/↓ or j/k: move · /: search · Enter: select · Esc: cancel"
 		}
 	case subjectsView:
 		goalName := "New Goal"
