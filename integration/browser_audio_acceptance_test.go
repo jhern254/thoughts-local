@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -23,6 +25,15 @@ import (
 // This opt-in host owns both Playwright and its disposable app. Normal Go
 // checks remain network-free and require neither Node nor browser binaries.
 func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
+	filter := os.Getenv("THOUGHTS_BROWSER_TEST_FILTER")
+	t.Run("standard diary", func(t *testing.T) { runBrowserAcceptance(t, "demo.sql", filter) })
+	const resizeCase = "rapid resize and day movement leave one marker and no mountain ink over cards"
+	if filter == "" || regexp.MustCompile(filter).MatchString(resizeCase) {
+		t.Run("Spider-Man resize", func(t *testing.T) { runBrowserAcceptance(t, "demo_spider_man.sql", resizeCase) })
+	}
+}
+
+func runBrowserAcceptance(t *testing.T, seedFile, filter string) {
 	if os.Getenv("THOUGHTS_BROWSER_AUDIO_TEST") != "1" {
 		t.Skip("set THOUGHTS_BROWSER_AUDIO_TEST=1 after installing browser test dependencies")
 	}
@@ -44,12 +55,20 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	database, dsn := openMigratedSQLite(t)
-	seed, err := os.ReadFile("../scripts/demo.sql")
+	seed, err := os.ReadFile(filepath.Join("..", "scripts", seedFile))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.ExecContext(t.Context(), string(seed)); err != nil {
 		t.Fatal(err)
+	}
+
+	// A long synthetic reminder next to short ones makes expansion/collapse
+	// move the mountain band across rows after a width grow.
+	if seedFile == "demo_spider_man.sql" {
+		if _, err := database.ExecContext(t.Context(), `UPDATE thoughts SET thought=? WHERE user_id='spider-demo' AND thought_id=225`, strings.Repeat("Synthetic reminder: keep the next step small. ", 80)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	runtime, err := application.Open(ctx, dsn)
@@ -111,11 +130,11 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(ctx, "node", "node_modules/@playwright/test/cli.js", "test", "--output", filepath.Join(artifacts, "test-results"))
-	if filter := os.Getenv("THOUGHTS_BROWSER_TEST_FILTER"); filter != "" {
+	if filter != "" {
 		command.Args = append(command.Args, "--grep", filter)
 	}
 	command.Dir = clientDirectory
-	command.Env = append(os.Environ(), "THOUGHTS_BROWSER_URL=http://"+listener.Addr().String(), "THOUGHTS_BROWSER_ARTIFACTS="+artifacts)
+	command.Env = append(os.Environ(), "THOUGHTS_BROWSER_URL=http://"+listener.Addr().String(), "THOUGHTS_BROWSER_ARTIFACTS="+artifacts, "THOUGHTS_RENDERER_RESIZE_FRAMES="+rendererResizeFrames(t))
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {

@@ -121,8 +121,12 @@ stale colored cells when growing. Normal-screen reflow is unchanged. Thoughts
 redraws its canonical Go view after resize, so hidden alternate-screen cells are
 not a preservation mechanism. The patch checks the pinned version and exact
 resize condition; review/remove it when upgrading xterm. Browser regressions
-cover line widths, both character edits, single/multiple cells, shrink/grow,
-Unicode/color preservation, and repeated day-edge navigation. No repaint timers
+cover line widths, both character edits, single/multiple cells, repeated shrink/grow
+in normal and alternate screens, wrapping, erasing, Unicode/color preservation,
+and repeated day-edge navigation. `client/xterm-patch.test.mjs` builds the pinned
+upstream source, compares it with the committed asset, and rejects version changes,
+missing/duplicate matches, and already-patched input. The hosted browser workflow
+runs this guard before acceptance. No repaint timers
 or terminal/session resets are added. CSS is copied verbatim. No source maps or external URLs are loaded.
 
 To regenerate with development-only Node/npm:
@@ -394,3 +398,30 @@ context when Stop is requested. The stop route joins the editor gate and removes
 only an unacknowledged candidate before the controls unlock. Browser preparation
 and acknowledgement are joined too: a loop acknowledged before Stop stays
 consistent on both sides. Cancel upload still retires the whole source editor.
+
+
+### Native renderer resize cache
+
+The Go renderer is independently pinned to Ultraviolet
+[`d38ea0f8aa5c`](https://github.com/charmbracelet/ultraviolet/commit/d38ea0f8aa5cefbde40e02dc7da8c834504bd76e).
+The previous version copied a newly widened frame into an old-width cache before
+expanding that cache. The screen received the right-hand pixels, but the cache
+forgot them; later frames could omit clearing a marker or mountain there.
+This is separate from xterm's retained alternate-screen columns.
+
+The dense-diary reproducer moves days at 960×450, shrinks to 480×480, then grows
+to 960×400. Captured ANSI reproduced a second day marker even in a fresh xterm
+at fixed dimensions, ruling out websocket/resize ordering for that failure.
+A smaller Go-renderer fixture independently paints mountains, widens the screen,
+and moves the mountains above an Event card. Browser replay with the previous
+renderer retains Braille over the card; the pinned correction resizes the cache
+before drawing. No app repaint timer, transport protocol or session reset is used.
+The actual-app acceptance also covers rapid resizes and a long Mindset beside
+short ones. These are bounded reproductions, not a guarantee against every
+browser compositor artifact.
+
+The trim acceptance test deliberately holds one scrolled terminal paint after
+native Shift+Tab focus has moved. Clicking a merely visible old Cancel label
+reproduces the hosted failure. Waiting for Cancel's native focus highlight before
+measuring its click fixes the test boundary while retaining the cancellation,
+prepared-byte, draft, connection and playback assertions.

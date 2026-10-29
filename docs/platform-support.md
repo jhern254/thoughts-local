@@ -69,6 +69,16 @@ and recovery guidance rather than raw OS errors. A real occupied-port launch
 was exercised on Linux amd64. Windows error-code coverage uses controlled
 fixtures; it does not change the platform verification statuses above.
 
+## Terminal renderer resize correction
+
+The pure-Go Ultraviolet dependency is pinned to `d38ea0f8aa5c` for its resize-cache
+correction; its existing MIT license and no-cgo boundary are unchanged. The module
+requires `golang.org/x/sync` v0.22.0. Linux amd64 Chromium/Firefox tests exercise
+native renderer output, repeated terminal resizes and ordinary editing. Other
+platform statuses above are unchanged; hosted portable/runtime checks provide
+separate evidence and do not establish interactive browser verification there.
+See [browser maintenance](../internal/browserterm/UPSTREAM.md#native-renderer-resize-cache).
+
 ## Browser video background processor
 
 Video import requires user-installed FFmpeg/ffprobe with `libx264`, tested on

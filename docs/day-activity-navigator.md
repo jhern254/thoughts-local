@@ -292,6 +292,6 @@ A temporary comparison checked byte-identical plot output against the previous f
 - A terminal cell has only one foreground color; thin component bands can disappear inside a shared cell. One-row Total intentionally remains grey.
 - Initial and explicit-refresh history work grows with retained history. Panning reuses its scale, and each query remains bounded to 256 buckets.
 - Prior browser runs were variable: one default-view comparison increased p95 by 7.8 ms and sampled combined CPU by about 14%. Native cleanup results must not be presented as browser improvements.
-- Intermittent mountain-over-Event overlap and an extra stale marker during a supplementary rapid-resize probe remain unproven resolved. The pinned xterm shrink correction addresses a reproduced right-margin defect, not every compositor or resize issue.
+- The stale-marker grow scenario was reproduced in the actual dense diary. Fixed-size browser replay also reproduces stale mountain cells from the old Go renderer: its widened output and cache disagreed. The pinned upstream correction resizes the cache before drawing. This is separate from the retained xterm right-margin correction; neither establishes a universal compositor fix. See [the exact reproductions and ownership](../internal/browserterm/UPSTREAM.md#native-renderer-resize-cache).
 
 Superseded height/contour experiments are omitted here. Current controls and geometry above are authoritative; earlier measurements describe their original revisions.

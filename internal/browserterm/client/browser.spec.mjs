@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {test, expect} from '@playwright/test';
 
 const screen = page => page.locator('.xterm-rows');
@@ -767,6 +768,23 @@ test('day marker remains visible at today in a small window', async ({page},test
 
 test('terminal character edits honor the visible right margin after shrinking', async ({page}) => {
   await ready(page);
+  // Load the pinned, unpatched package only in this test page to prove the
+  // original failure, not just the corrected output. CSP still uses self scripts.
+  await page.evaluate(()=>{window.PatchedTerminal=window.Terminal;});
+  await page.route('**/unpatched-xterm-probe.js',route=>route.fulfill({contentType:'text/javascript',body:readFileSync(new URL('node_modules/@xterm/xterm/lib/xterm.js',import.meta.url),'utf8')}));
+  await page.addScriptTag({url:'/unpatched-xterm-probe.js'});
+  const original=await page.evaluate(async()=>{
+    const host=document.createElement('div');document.body.append(host);
+    const term=new Terminal({cols:120,rows:10,allowProposedApi:true});term.open(host);
+    const write=text=>new Promise(resolve=>term.write(text,resolve));
+    try{
+      await write('\x1b[?1049h');term.resize(111,10);
+      await write('\x1b[6;107H\x1b[48;5;62m\x1b[P\x1b[m');
+      const line=term.buffer.active.getLine(5);
+      return {width:line.length,blue:Array.from({length:line.length},(_,x)=>x).filter(x=>line.getCell(x).getBgColor()===62)};
+    }finally{term.dispose();host.remove();window.Terminal=window.PatchedTerminal;}
+  });
+  expect(original).toEqual({width:120,blue:[119]});
   const cases=await page.evaluate(async()=>{
     const results=[];
     // CSI P deletes characters; CSI @ inserts them. A shrunken alternate
@@ -829,4 +847,129 @@ test('d cycles the five approved palettes from entities and Mindset',async({page
     if(panel==='entities'){await page.keyboard.press('Tab');await expect(screen(page)).toContainText('Enter: open');}
   }
   expect(sockets).toBe(0); // No replacement connection while changing presentation.
+});
+
+test('rapid resize and day movement leave one marker and no mountain ink over cards', async ({page}, testInfo) => {
+  await exposeMountainTerminal(page);
+  await ready(page);
+  await page.keyboard.press('Home'); await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('1 Total');
+  const snapshot = () => page.evaluate(() => {
+    const term = window.mountainTerminal;
+    const lines = Array.from({length:term.rows},(_,y)=>term.buffer.active.getLine(term.buffer.active.viewportY+y));
+    const text = lines.map(line=>line?.translateToString(true)||'');
+    const heading = text.findIndex(line=>/^ Events\s/.test(line));
+    const footer = text.findLastIndex(line=>/^─+$/.test(line));
+    const markers = Array.from({length:term.cols},(_,x)=>x).filter(x=>lines[heading-1]?.getCell(x)?.getBgColor()===62);
+    const overlap=[];
+    for(let y=heading+1;y<term.rows-4;y++) for(let x=24;x<term.cols;x++) if(/[\u2801-\u28ff]/.test(lines[y]?.getCell(x)?.getChars()||'')) overlap.push({x,y});
+    return {date:text[heading]?.match(/^ Events\s+[A-Z][a-z]+ \d+, \d{4}/)?.[0],cols:term.cols,rows:term.rows,heading,markers,overlap,complete:footer===term.rows-4&&text[footer]?.length===term.cols,text};
+  });
+  const original=(await snapshot()).date;
+  // Reproduce the dense diary failure: narrow/taller to wider/shorter,
+  // then move the day marker across the newly added columns.
+  for(const size of [{width:960,height:450},{width:480,height:480},{width:960,height:400}]) {
+    await page.setViewportSize(size);
+    await expect.poll(async()=>{const s=await snapshot();return s.complete&&s.cols<(size.width===480?60:120)&&s.rows<30;}).toBe(true);
+    await expect.poll(async()=>{const s=await snapshot();return s.markers.length===1&&s.markers[0]===s.cols-1;}).toBe(true);
+    for(let step=0;step<45;step++) await page.keyboard.press('ArrowLeft');
+    await expect.poll(async()=>(await snapshot()).markers).toEqual([0]);
+    for(let step=0;step<45;step++) await page.keyboard.press('ArrowRight');
+    await expect.poll(async()=>{const s=await snapshot();return s.markers.length===1&&s.markers[0]===s.cols-1;}).toBe(true);
+  }
+  for(let round=0;round<8;round++) {
+    for(const size of [{width:960,height:400},{width:480,height:480},{width:1200,height:850},{width:960,height:450}]) {
+      await page.setViewportSize(size);
+      await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowRight');
+    }
+    await expect.poll(async()=>{const s=await snapshot();return {complete:s.complete,date:s.date};}).toEqual({complete:true,date:original});
+    await expect.poll(async()=>{const s=await snapshot();return s.markers.length===1&&s.markers[0]===s.cols-1&&s.overlap.length===0;}).toBe(true);
+    const s=await snapshot();
+    await testInfo.attach('resize-'+round,{body:JSON.stringify(s),contentType:'application/json'});
+    expect(s.markers).toEqual([s.cols-1]);
+    expect(s.overlap).toEqual([]);
+  }
+  if((await screen(page).textContent()).includes('spider-demo')) {
+    await page.keyboard.press('Escape');await page.keyboard.press('End');
+    await page.setViewportSize({width:480,height:850});
+    await page.keyboard.press('Tab');await page.keyboard.press('Tab');
+    await page.keyboard.press('End');
+    await expect.poll(async()=>(await snapshot()).heading).toBeGreaterThan(16);
+    await page.setViewportSize({width:1200,height:850});
+    await expect.poll(async()=>{const s=await snapshot();return s.complete&&s.cols>120&&s.heading>16;}).toBe(true);
+    await page.keyboard.press('Tab');
+    await expect.poll(async()=>(await snapshot()).heading).toBeLessThan(16);
+    await expect.poll(async()=>(await snapshot()).overlap).toEqual([]);
+    await page.screenshot({path:testInfo.outputPath('grown-then-collapsed-mindset.png')});
+  }
+
+});
+
+test('ordinary terminal editing survives repeated shrink and grow in both screens',async({page})=>{
+ await ready(page);
+ const states=await page.evaluate(async()=>{
+  const states=[];
+  for(const alternate of [false,true]){
+   const host=document.createElement('div');document.body.append(host);
+   const term=new Terminal({cols:120,rows:20,allowProposedApi:true,scrollback:20,convertEol:true});term.open(host);
+   const write=text=>new Promise(resolve=>term.write(text,resolve));
+   try{
+    if(alternate)await write('\x1b[?1049h');
+    await write('\x1b[H\x1b[38;5;179m界e\u0301\x1b[m');
+    for(let cycle=0;cycle<4;cycle++)for(const cols of [111,40,80,120]){
+     term.resize(cols,20);
+     const prefix=term.buffer.active.getLine(0).translateToString(true);
+     await write('\x1b[5;1Habcde\r\x1b[2C\x1b[P\x1b[@X');
+     const edited=term.buffer.active.getLine(4).translateToString(true);
+     await write(`\x1b[7;${cols}HAB`);
+     const last=term.buffer.active.getLine(6).getCell(cols-1).getChars();
+     const wrapped=term.buffer.active.getLine(7).getCell(0).getChars();
+     await write('\x1b[7;1H\x1b[2K\x1b[8;1H\x1b[2K');
+     states.push({alternate,cols,prefix,edited,last,wrapped,width:term.buffer.active.getLine(4).length,color:term.buffer.active.getLine(0).getCell(0).getFgColor()});
+    }
+    if(alternate)await write('\x1b[?1049l');
+   }finally{term.dispose();host.remove();}
+  }
+  return states;
+ });
+ for(const state of states){
+  expect(state.prefix).toBe('界é');expect(state.color).toBe(179);
+  expect(state.edited).toBe('abXde');expect(state.width).toBe(state.cols);
+  expect(state.last).toBe('A');expect(state.wrapped).toBe('B');
+ }
+});
+
+
+test('native renderer clears old mountain cells and marker after a grow',async({page})=>{
+ const frames=JSON.parse(readFileSync(process.env.THOUGHTS_RENDERER_RESIZE_FRAMES,'utf8'));
+ await ready(page);
+ const results=await page.evaluate(async frames=>{
+  const results=[];
+  for(const fixedSize of [false,true]){
+   const host=document.createElement('div');document.body.append(host);
+   const term=new Terminal({cols:55,rows:26,allowProposedApi:true,scrollback:0,convertEol:true});term.open(host);
+   const write=text=>new Promise(resolve=>term.write(text,resolve));
+   try{
+    // Fixed-size replay isolates the native diff from browser resize ordering.
+    if(fixedSize){term.resize(111,21);await write('\x1b[?1049h');}
+    for(const frame of fixedSize?frames.slice(1):frames){
+     if(!fixedSize)term.resize(frame.cols,frame.rows);
+     await write(frame.output);
+    }
+    const lines=Array.from({length:21},(_,y)=>term.buffer.active.getLine(y));
+    const stale=[],markers=[];
+    for(let y=0;y<21;y++)for(let x=0;x<111;x++){
+     const cell=lines[y]?.getCell(x);
+     if(y>=10&&/[\u2801-\u28ff]/.test(cell?.getChars()||''))stale.push({x,y});
+     if(cell?.getBgColor()===62)markers.push({x,y});
+    }
+    results.push({fixedSize,stale,markers,heading:lines[9].translateToString(true),card:lines[11].translateToString(true)});
+   }finally{term.dispose();host.remove();}
+  }
+  return results;
+ },frames);
+ for(const result of results){
+  expect(result.heading).toContain('Events');expect(result.card).toContain('Event card');
+  expect(result.stale).toEqual([]);expect(result.markers).toEqual([{x:110,y:8}]);
+ }
 });

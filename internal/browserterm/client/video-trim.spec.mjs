@@ -374,6 +374,25 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
     if(url.pathname==='/visual/video'&&request.method()==='POST')applies++;
   });
   await page.addInitScript(()=>{
+    // Hold the scrolled terminal paint briefly after native focus has moved.
+    // This reproduces a slow CI render without delaying or retrying the click.
+    const NativeSocket=window.WebSocket;
+    window.WebSocket=class extends NativeSocket {
+      set onmessage(callback) {
+        super.onmessage=event=>{
+          if(this.holdScroll && new Uint8Array(event.data)[0]===49) this.scrollPaints.push(()=>callback(event));
+          else callback(event);
+        };
+      }
+      send(data) {
+        if(window.delayTrimScroll && new TextDecoder().decode(data)==='0\x1b[Z') {
+          window.delayTrimScroll=false;this.holdScroll=true;this.scrollPaints=[];
+          setTimeout(()=>{this.holdScroll=false;for(const paint of this.scrollPaints)paint();this.scrollPaints=[];},200);
+        }
+        return super.send(data);
+      }
+    };
+
     const nativeFetch=window.fetch;
     window.fetch=async(...args)=>{
       const response=await nativeFetch(...args);
@@ -458,8 +477,10 @@ test('late cuts preview exact encoded bytes; failed and unpreviewed edits keep t
   await expect.poll(()=>page.locator('#background-video').evaluate(video=>video.paused)).toBe(true);
   // At the narrow viewport Cancel can be below the control window. Move back
   // from Source to reveal it, as a keyboard user would, before measuring a click.
+  await page.evaluate(()=>{window.delayTrimScroll=true;});
   await page.keyboard.press('Shift+Tab');
   await expect(screen(page).getByText('Cancel upload',{exact:true})).toBeVisible();
+  await expect(page.locator('.xterm-bg-62').filter({hasText:'Cancel upload'})).toBeVisible();
   await clickControl(page,'Cancel upload');
   await expect(screen(page)).toContainText('Background darkness:');
   await clickControl(page,'Back');
