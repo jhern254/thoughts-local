@@ -21,13 +21,15 @@ const goalColumns = `goal_id, user_id, goal_name, target_seconds, priority, goal
 const visibleGoals = `deleted_at IS NULL AND EXISTS
     (SELECT 1 FROM users WHERE users.user_id = goals.user_id AND users.deleted_at IS NULL)`
 
-func (s *SQLiteGoalStore) CreateGoal(ctx context.Context, item *Goal) (*Goal, error) {
-	created, err := scanGoal(s.db.QueryRowContext(ctx, `INSERT INTO goals
+const insertGoalSQL = `INSERT INTO goals
         (user_id, goal_name, target_seconds, priority, goal_start_date, goal_end_date,
          goal_is_active, cadence, tz, week_start, default_cadence, created_at, updated_at)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS
         (SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL)
-        RETURNING `+goalColumns, item.UserID, item.GoalName, item.TargetSeconds, item.Priority,
+        RETURNING ` + goalColumns
+
+func (s *SQLiteGoalStore) CreateGoal(ctx context.Context, item *Goal) (*Goal, error) {
+	created, err := scanGoal(s.db.QueryRowContext(ctx, insertGoalSQL, item.UserID, item.GoalName, item.TargetSeconds, item.Priority,
 		item.StartDate, item.EndDate, item.IsActive, item.Cadence, item.TZ, item.WeekStart,
 		item.DefaultCadence, item.CreatedAt.Unix(), item.UpdatedAt.Unix(), item.UserID))
 	if errors.Is(err, sql.ErrNoRows) {

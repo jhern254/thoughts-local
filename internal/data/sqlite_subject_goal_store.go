@@ -17,8 +17,15 @@ func NewSQLiteSubjectGoalStore(db *sql.DB) *SQLiteSubjectGoalStore {
 }
 
 // AddSubjectGoal links undeleted same-owner endpoints, including inactive goals.
+// A successful link change advances the Goal version once in the same transaction.
 func (s *SQLiteSubjectGoalStore) AddSubjectGoal(ctx context.Context, userID string, subjectID, goalID int64) error {
-	result, err := s.db.ExecContext(ctx, `INSERT INTO subject_goals(subject_id,goal_id,user_id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin subject goal mutation: %w", TranslateSQLiteError(err))
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `INSERT INTO subject_goals(subject_id,goal_id,user_id)
  SELECT ?,?,? WHERE EXISTS (SELECT 1 FROM users WHERE user_id=? AND deleted_at IS NULL)
  AND EXISTS (SELECT 1 FROM subjects WHERE subject_id=? AND user_id=? AND deleted_at IS NULL)
  AND EXISTS (SELECT 1 FROM goals WHERE goal_id=? AND user_id=? AND deleted_at IS NULL)`, subjectID, goalID, userID, userID, subjectID, userID, goalID, userID)
@@ -36,12 +43,25 @@ func (s *SQLiteSubjectGoalStore) AddSubjectGoal(ctx context.Context, userID stri
 	if count == 0 {
 		return ErrRecordNotFound
 	}
+	if err := advanceGoalAssociationVersion(ctx, tx, userID, goalID); err != nil {
+		return fmt.Errorf("update goal association version: %w", TranslateSQLiteError(err))
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit subject goal mutation: %w", TranslateSQLiteError(err))
+	}
 	return nil
 }
 
-// RemoveSubjectGoal removes only the link, including links to retained deleted endpoints.
+// RemoveSubjectGoal removes the link and advances the Goal version once,
+// including links to retained deleted endpoints.
 func (s *SQLiteSubjectGoalStore) RemoveSubjectGoal(ctx context.Context, userID string, subjectID, goalID int64) error {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM subject_goals WHERE user_id=? AND subject_id=? AND goal_id=?
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin subject goal mutation: %w", TranslateSQLiteError(err))
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `DELETE FROM subject_goals WHERE user_id=? AND subject_id=? AND goal_id=?
  AND EXISTS (SELECT 1 FROM users WHERE user_id=? AND deleted_at IS NULL)`, userID, subjectID, goalID, userID)
 	if err != nil {
 		return fmt.Errorf("remove subject goal: %w", TranslateSQLiteError(err))
@@ -52,6 +72,12 @@ func (s *SQLiteSubjectGoalStore) RemoveSubjectGoal(ctx context.Context, userID s
 	}
 	if count == 0 {
 		return ErrRecordNotFound
+	}
+	if err := advanceGoalAssociationVersion(ctx, tx, userID, goalID); err != nil {
+		return fmt.Errorf("update goal association version: %w", TranslateSQLiteError(err))
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit subject goal mutation: %w", TranslateSQLiteError(err))
 	}
 	return nil
 }

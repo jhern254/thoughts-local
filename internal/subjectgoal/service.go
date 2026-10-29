@@ -12,6 +12,7 @@ type Store interface {
 	RemoveSubjectGoal(context.Context, string, int64, int64) error
 	ListSubjectGoals(context.Context, string, int64) ([]data.SubjectGoal, error)
 	ListGoalSubjects(context.Context, string, int64) ([]data.SubjectGoal, error)
+	ListLiveSubjectsForGoal(context.Context, string, int64) ([]data.Subject, error)
 }
 
 type Service struct{ store Store }
@@ -20,6 +21,7 @@ func NewService(store Store) *Service { return &Service{store: store} }
 
 // Add links undeleted same-owner endpoints, including inactive goals.
 // The store checks availability atomically and rejects duplicate links.
+// Successful Add and Remove operations advance the Goal version once.
 func (s *Service) Add(ctx context.Context, userID string, subjectID, goalID int64) error {
 	return s.store.AddSubjectGoal(ctx, userID, subjectID, goalID)
 }
@@ -37,4 +39,10 @@ func (s *Service) ListForSubject(ctx context.Context, userID string, subjectID i
 // ListForGoal returns retained links in subject ID order, including deleted endpoints.
 func (s *Service) ListForGoal(ctx context.Context, userID string, goalID int64) ([]data.SubjectGoal, error) {
 	return s.store.ListGoalSubjects(ctx, userID, goalID)
+}
+
+// ListLiveSubjectsForGoal returns current user-managed membership. An empty
+// nonnil slice means Unassigned; an unavailable Goal returns ErrRecordNotFound.
+func (s *Service) ListLiveSubjectsForGoal(ctx context.Context, userID string, goalID int64) ([]data.Subject, error) {
+	return s.store.ListLiveSubjectsForGoal(ctx, userID, goalID)
 }
