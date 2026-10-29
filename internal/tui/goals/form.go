@@ -167,41 +167,34 @@ func (m Model) formContent() string {
 		title = "Edit Goal"
 	}
 	lines := []string{title, ""}
-	labels := []string{"Name", "Hours", "Minutes", "Start date (optional; e.g. 2026-10-29)", "End date (optional; e.g. 2026-10-29)"}
+	labels := []string{"Name", "Hours", "Minutes", "Start date", "End date"}
 	for i, label := range labels {
-		prefix := "  "
-		if m.focus == i {
-			prefix = "› "
-		}
-		heading := prefix + label
-		if m.focus == i {
-			heading = m.list.Styles.Title.Render(heading)
+		heading := m.formHeading(i, label)
+		if i == 3 || i == 4 {
+			heading += " (optional; e.g. 2026-10-29)"
 		}
 		lines = append(lines, heading, m.fields[i].View(), "")
 	}
-	prefix := "  "
-	if m.focus == 5 {
-		prefix = "› "
-	}
-	lines = append(lines, prefix+"Cadence: "+cadenceLabel(cadenceAt(m.cadence)), "")
+	lines = append(lines, m.formHeading(5, "Cadence:")+" "+cadenceLabel(cadenceAt(m.cadence)), "")
+	saveFocus := 6
 	if m.screen == createView {
-		prefix = "  "
-		if m.focus == 6 {
-			prefix = "› "
-		}
-		count := len(m.ids())
-		lines = append(lines, prefix+fmt.Sprintf("Subjects: %d selected (Enter to choose)", count), "")
+		lines = append(lines, m.formHeading(6, "Subjects:")+fmt.Sprintf(" %d selected (Enter to choose)", len(m.ids())), "")
+		saveFocus = 7
 	}
-	prefix = "  "
-	if (m.screen == createView && m.focus == 7) || (m.screen == editView && m.focus == 6) {
-		prefix = "› "
-	}
-	lines = append(lines, prefix+"Save")
+	lines = append(lines, m.formHeading(saveFocus, "Save"))
+
 	if m.screen == editView && m.selected.TargetSeconds%60 != 0 {
 		lines = append(lines, "Current target: "+formatDuration(m.selected.TargetSeconds), "Changing duration uses whole minutes.")
 	}
 	return strings.Join(lines, "\n")
 }
+func (m Model) formHeading(index int, label string) string {
+	if m.focus == index {
+		return m.list.Styles.Title.Render("› " + label)
+	}
+	return "  " + label
+}
+
 func (m Model) ids() []int64 {
 	ids := make([]int64, 0)
 	for id, selected := range m.selectedIDs {

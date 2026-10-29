@@ -1,6 +1,8 @@
 package goals
 
 import (
+	"charm.land/lipgloss/v2"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -83,4 +85,37 @@ func TestModel_FormPresentation(t *testing.T) {
 			m, _ = press(m, "tab")
 		}
 	})
+}
+
+func TestModel_FormFocusHighlight(t *testing.T) {
+	for _, create := range []bool{true, false} {
+		for _, tc := range []struct {
+			focus int
+			label string
+		}{{0, "Name"}, {1, "Hours"}, {2, "Minutes"}, {3, "Start date"}, {4, "End date"}, {5, "Cadence:"}, {6, "Subjects:"}, {7, "Save"}} {
+			if !create && tc.focus == 6 {
+				tc.label = "Save"
+			}
+			if !create && tc.focus == 7 {
+				continue
+			}
+			t.Run(fmt.Sprintf("create=%t/%s", create, tc.label), func(t *testing.T) {
+				m, s := testModel(t)
+				m.selected = &s.item
+				m.startForm(create)
+				m.focus = tc.focus
+				m.list.Styles.Title = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230"))
+				rendered := m.formContent()
+				highlighted := m.list.Styles.Title.Render("› " + tc.label)
+				if !strings.Contains(rendered, highlighted) {
+					t.Fatalf("focused %s lacks the standard highlight: %q", tc.label, rendered)
+				}
+				if tc.focus == 3 || tc.focus == 4 {
+					if !strings.Contains(rendered, highlighted+" (optional; e.g. 2026-10-29)") {
+						t.Fatalf("date guidance must follow the highlight as plain text: %q", rendered)
+					}
+				}
+			})
+		}
+	}
 }
