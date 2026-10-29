@@ -339,7 +339,7 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			return m, nil
 		}
 		m.options.status = ""
-	case "saved", "warning":
+	case "saved", "warning", "displayFailed":
 		if m.options.request != "apply" && m.options.request != "remove" {
 			return m, nil
 		}
@@ -364,8 +364,13 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 			m.options.open = false
 		} else {
 			m.options.status = "Saved. Some background files could not be removed."
+			if msg.Action == "displayFailed" {
+				m.options.status = "Saved. Background display unavailable. Reopen Visual to reload."
+			}
 		}
-	case "failed", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceProtected", "sourceTracks", "sourceContainer", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
+	case "schemaFailed", "settingsFailed", "saveUnconfirmed":
+		m.options.status = visualFailureMessage(msg.Action)
+	case "failed", "mediaRejected", "sourceSpace", "sourceTimeout", "sourceUnsupported", "sourceProtected", "sourceTracks", "sourceContainer", "sourceCodec", "sourceColor", "sourceDimensions", "sourceRate", "sourceDuration", "sourceSize", "sourceTools", "sourceBusy":
 		if m.options.request == "prepareLoop" && m.options.loopReady {
 			m.options.sourceFrame = false
 		}
@@ -384,11 +389,13 @@ func (m Model) updateBrowserOptions(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) 
 				m.options.framing = msg.Framing
 			}
 		}
-		m.options.status = "Could not load or apply. Check media limits and retry."
+		m.options.status = "Could not load or apply. Retry or reopen Visual."
 		if m.options.request == "prepareLoop" {
 			m.options.status = "Could not prepare this loop. Retry or choose another cut."
 		}
 		switch msg.Action {
+		case "mediaRejected":
+			m.options.status = "Choose a valid JPEG/PNG within the image limits."
 		case "sourceProtected":
 			m.options.status = "Protected movies cannot be imported."
 		case "sourceTracks":
@@ -698,10 +705,11 @@ func (m Model) viewOptions() tea.View {
 		lines = append(lines, "", m.acceptedVideoLabel(), m.acceptedVideoRangeLabel(), m.draftVideoQualityLabel())
 	}
 	if rect.Height == 0 && m.height < 20 {
-		lines = append(lines, muted.Render(m.options.status), muted.Render("↑/↓: focus · ←/→: value · Enter: activate · Q/Esc: back"))
+		lines = append(lines, muted.Render(ansi.Wrap(m.options.status, width, "")), muted.Render("↑/↓: focus · ←/→: value · Enter: activate · Q/Esc: back"))
 	} else {
-		lines = append(lines, "", muted.Render(m.options.status), "", muted.Render("↑/↓/Tab: focus · ←/→: value"), muted.Render("Enter: activate · Q/Esc: back"))
+		lines = append(lines, "", muted.Render(ansi.Wrap(m.options.status, width, "")), "", muted.Render("↑/↓/Tab: focus · ←/→: value"), muted.Render("Enter: activate · Q/Esc: back"))
 	}
+	lines = strings.Split(strings.Join(lines, "\n"), "\n")
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", rect.X-1) + ansi.Truncate(line, width, "…")
 	}
@@ -866,4 +874,15 @@ func (m Model) optionsMenuLabels() []string {
 		labels = append(labels, "Models")
 	}
 	return append(labels, "Editor", "Back")
+}
+
+func visualFailureMessage(action string) string {
+	switch action {
+	case "schemaFailed":
+		return "Database incompatible with this build. Explicit update or repair required. Reopen Options afterward."
+	case "settingsFailed":
+		return "Could not access Visual settings in the database. Check database availability, then retry."
+	default:
+		return "Could not load or apply. Result unconfirmed. Reopen Visual to check saved settings before retrying."
+	}
 }

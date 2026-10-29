@@ -185,6 +185,10 @@ func (s *server) stageVisualVideoSource(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer finish()
+	if _, err := s.visual.Load(ctx); err != nil {
+		videoError(w, err)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, visual.MaxVideoSourceBytes)
 	if r.ContentLength > visual.MaxVideoSourceBytes {
 		videoSourceError(w, visual.ErrVideoSourceSize)
@@ -268,6 +272,10 @@ func (s *server) prepareVisualVideoLoop(w http.ResponseWriter, r *http.Request) 
 	}
 	if editor.pending != nil && editor.pending.Info().Trim == input.Trim && editor.pending.Info().VideoQuality == input.VideoQuality {
 		writeVideoPreview(w, editor.pendingID, editor.pending)
+		return
+	}
+	if _, err := s.visual.Load(ctx); err != nil {
+		videoError(w, err)
 		return
 	}
 	prepared, err := editor.source.Prepare(ctx, input.Trim, input.VideoQuality)
@@ -464,6 +472,8 @@ func videoError(w http.ResponseWriter, err error) {
 		diskFull = diskFull || errors.Is(err, syscall.Errno(112)) || errors.Is(err, syscall.Errno(39))
 	}
 	switch {
+	case errors.Is(err, visual.ErrSettings):
+		visualError(w, err)
 	case diskFull:
 		http.Error(w, "Not enough temporary disk space for the video source.", http.StatusInsufficientStorage)
 	case errors.Is(err, visual.ErrVideoSourceSize):
