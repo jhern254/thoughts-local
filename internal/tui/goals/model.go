@@ -22,8 +22,6 @@ import (
 
 type GoalService interface {
 	List(context.Context, string) ([]data.Goal, error)
-	ListActive(context.Context, string) ([]data.Goal, error)
-	ListInactive(context.Context, string) ([]data.Goal, error)
 	Get(context.Context, string, int64) (*data.Goal, error)
 	Update(context.Context, string, int64, int64, goal.UpdateGoalInput) (*data.Goal, error)
 }
@@ -59,12 +57,6 @@ type result struct {
 }
 
 func Owns(msg tea.Msg) bool { _, ok := msg.(result); return ok }
-
-type createRow struct{}
-
-func (createRow) Title() string       { return "Create Goal…" }
-func (createRow) Description() string { return "Add a new Goal" }
-func (createRow) FilterValue() string { return "" }
 
 type goalRow struct {
 	item     data.Goal
@@ -134,6 +126,11 @@ type Model struct {
 	status                string
 	width, height         int
 	visibility            int
+	listFocus             listControl
+	priorityFilter        int
+	subjectFilter         int
+	listRows              []list.Item
+	filterSubjects        []data.Subject
 }
 
 func New(ctx context.Context, userID string, service GoalService, assignments Assignments, memberships Memberships, subjects Subjects) Model {
@@ -156,10 +153,16 @@ func New(ctx context.Context, userID string, service GoalService, assignments As
 	}
 
 	m.list.Title = "Goals"
+	m.list.Filter = list.UnsortedFilter
 	m.picker.Title = "Select Subjects"
 	m.list.DisableQuitKeybindings()
 	m.picker.DisableQuitKeybindings()
 	m.list.SetShowStatusBar(false)
+	m.list.SetShowTitle(false)
+	m.list.SetShowFilter(false)
+	m.list.SetShowHelp(false)
+	m.list.FilterInput.Prompt = ""
+	m.list.FilterInput.Placeholder = "Search by Goal name"
 	appearance.ConfigureSubjectList(&m.picker)
 	for i := range m.fields {
 		m.fields[i] = textinput.New()
@@ -193,7 +196,12 @@ func (m *Model) beginRequest(operation logging.Operation) context.Context {
 func (m *Model) Resize(width, height int) {
 	m.width = max(1, width)
 	m.height = max(1, height)
-	m.list.SetSize(m.width, max(1, height-4))
+	m.list.SetSize(m.width, max(1, height-len(m.listControlLayout().rows)-3))
+	searchWidth := width - 14
+	if width >= 80 {
+		searchWidth = width/2 - 16
+	}
+	m.list.FilterInput.SetWidth(max(1, searchWidth))
 	appearance.ResizeSubjectList(&m.picker, m.width, height)
 	m.body.SetWidth(m.width)
 	m.body.SetHeight(max(1, height-4))
@@ -205,20 +213,10 @@ func (m *Model) Resize(width, height int) {
 func (m *Model) Open() tea.Cmd { m.open = true; m.screen = listView; return m.loadList() }
 func (m *Model) loadList() tea.Cmd {
 	ctx := m.beginRequest(logging.GoalList)
-	owner, user, service, memberships, visibility := m.owner, m.userID, m.goals, m.memberships, m.visibility
+	owner, user, service, memberships := m.owner, m.userID, m.goals, m.memberships
 	return func() tea.Msg {
-		var items []data.Goal
-		var err error
-		switch visibility {
-		case 1:
-			items, err = service.ListActive(ctx, user)
-		case 2:
-			items, err = service.ListInactive(ctx, user)
-		default:
-			items, err = service.List(ctx, user)
-		}
-		rows := make([]list.Item, 0, len(items)+1)
-		rows = append(rows, createRow{})
+		items, err := service.List(ctx, user)
+		rows := make([]list.Item, 0, len(items))
 		for _, item := range items {
 			if err != nil {
 				break
@@ -331,21 +329,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		switch m.screen {
 		case listView:
-			var selectedID int64
-			if row, ok := m.list.SelectedItem().(goalRow); ok {
-				selectedID = row.item.GoalID
-			}
-			if m.selected != nil {
-				selectedID = m.selected.GoalID
-			}
-			cmd := m.filter.SetItems(&m.list, reply.rows)
-			for i, row := range reply.rows {
-				if record, ok := row.(goalRow); ok && record.item.GoalID == selectedID {
-					m.list.Select(i)
-					break
-				}
-			}
-			return m, cmd
+			m.listRows = reply.rows
+			m.collectFilterSubjects()
+			return m, m.applyListControls()
 		case subjectsView:
 			m.pickerReady = true
 			m.available = reply.available
@@ -375,6 +361,11 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.screen == listView && !m.loading && !m.saving {
+		if handled, cmd := m.updateListControls(msg); handled {
+			return m, cmd
+		}
+	}
 	if m.screen == listView || m.screen == subjectsView {
 		msg = appearance.ListScrollInput(msg)
 	}
@@ -385,6 +376,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	if ok && key.String() == "esc" {
 		if m.screen == listView && m.list.FilterState() != list.Unfiltered {
 			m.list.ResetFilter()
+			m.listFocus = goalListControl
 			m.filter.Invalidate()
 			return m, nil
 		}
@@ -442,16 +434,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 				m.startForm(true)
 				return m, m.fields[0].Focus()
 			case "f":
+				m.listFocus = statusControl
 				m.visibility = (m.visibility + 1) % 3
-				m.selected = nil
-				m.list.ResetFilter()
-				m.list.Select(0)
-				return m, m.loadList()
+				return m, m.applyListControls()
 			case "enter":
-				if _, ok := m.list.SelectedItem().(createRow); ok {
-					m.startForm(true)
-					return m, m.fields[0].Focus()
-				}
 				if row, ok := m.list.SelectedItem().(goalRow); ok {
 					m.screen = detailView
 					return m, m.loadDetail(row.item.GoalID)
@@ -556,8 +542,11 @@ func (m Model) View() string {
 	var content, help string
 	switch m.screen {
 	case listView:
-		content = m.list.View()
-		help = "n: new · Enter: open · f: " + []string{"All", "Active", "Inactive"}[m.visibility] + " · Esc: back"
+		content = strings.Join(m.listControlLayout().rows, "\n") + "\n" + m.list.View()
+		help = "Tab: controls · h/l: filter · j/k: Goals · n: new · Esc: back"
+		if m.width < 60 {
+			help = "Tab: controls · ←/→: filter · j/k: Goals"
+		}
 	case subjectsView:
 		goalName := "New Goal"
 		if m.pickerReturn == createView && m.fields[0].Value() != "" {
@@ -607,6 +596,12 @@ func (m Model) View() string {
 		content = m.body.View()
 	}
 	status := m.status
+	if status == "" && m.screen == listView && !m.loading {
+		status = fmt.Sprintf("%d Goals · %s · %s", len(m.list.VisibleItems()), []string{"All", "Active", "Inactive"}[m.visibility], m.subjectFilterLabel())
+		if len(m.list.VisibleItems()) == 0 {
+			status = "No Goals match these filters."
+		}
+	}
 	if status == "" && ((m.screen == subjectsView && m.picker.FilterValue() != "" && len(m.picker.VisibleItems()) == 0) || (m.screen == listView && m.list.FilterValue() != "" && len(m.list.VisibleItems()) == 0)) {
 		status = "No matches."
 	}

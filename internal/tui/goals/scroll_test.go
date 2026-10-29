@@ -48,14 +48,14 @@ func TestModel_GoalListAndDetailScroll(t *testing.T) {
 		m.open = true
 		m.screen = listView
 		m.Resize(48, 18)
-		rows := []list.Item{createRow{}}
+		rows := make([]list.Item, 0, 48)
 		for i := range 48 {
 			rows = append(rows, goalRow{item: data.Goal{GoalID: int64(i + 1), GoalName: fmt.Sprintf("Goal %02d", i+1)}})
 		}
 		m.filter.SetItems(&m.list, rows)
 		m, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 		if m.list.Index() != 1 || m.screen != listView {
-			t.Fatal("wheel did not move to the first Goal without opening it")
+			t.Fatal("wheel did not move to the next Goal without opening it")
 		}
 		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
 		if m.list.Index() <= 1 {
