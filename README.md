@@ -34,7 +34,7 @@ For disposable browser demos:
 | Command | Synthetic data |
 | --- | --- |
 | `make tui/browser/demo/seeded` | 2 subjects, 3 events, 12 thoughts |
-| `make tui/browser/demo/stress` | 4 subjects, 721 events, 20,000 thoughts |
+| `make tui/browser/demo/stress` | 32 live subjects, 48 goals, 721 events, 20,000 thoughts |
 
 Both build the same executable, migrate a fresh temporary database, and open on
 Events. Your default browser opens automatically; stop the server with Ctrl+C to
@@ -53,7 +53,9 @@ terminal or choose another port.
 The stress fixture spans about a month, includes empty historical events, and
 puts 200 thoughts in the current event. Expand events, scroll the thought picker,
 browse Subjects and Misc thoughts, and resize the browser to exercise the larger
-dataset. This is an interactive stress demo, with no fixed performance promise.
+dataset. Goals include all cadences/priorities, active/inactive records, zero-to-many
+Subject links, and a Goal linked to all 32 live Subjects for scrolling tests.
+This is an interactive stress demo, with no fixed performance promise.
 
 The application, SQLite, and filesystem remain native. The Go executable embeds
 the browser terminal assets; Node/npm, a CDN, WASM, and a separate frontend server
@@ -118,7 +120,7 @@ survive browser reloads and do not change the native terminal.
 
 ### Browser background
 
-Select **Options** alongside Thoughts and Subjects (Tab, arrows, Enter), or use
+Select **Options** alongside Goals, Thoughts, and Subjects (Tab, arrows, Enter), or use
 **Ctrl+,** / **Cmd+,** without leaving a draft. Under Visual, choose a local JPEG/PNG image or supported SDR MP4/MOV/MKV video, preview it, and
 apply it behind the terminal. Background darkness changes only the readability
 overlay; Apply saves it. Remove background returns to the normal dark surface.
@@ -214,3 +216,10 @@ refused. Logs use the same fixed-message policy as native mode.
 The adapter uses xterm.js and selected ideas/options from sip. See
 [the upstream and asset record](internal/browserterm/UPSTREAM.md) for versions,
 licenses, update steps, limits, and optional browser tests.
+
+### Goals
+
+Open **Goals** from the entity strip to browse all, active, or inactive Goals.
+Use `n` to create one, `e` in Details to edit its target and dates, or `s` to
+manage its Subjects separately. Goals without live Subjects display **Misc**.
+See [Goals controls](docs/goals-tui.md) for duration inputs and multiselection.

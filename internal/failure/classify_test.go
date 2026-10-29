@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/goal"
+	"github.com/jhern254/go-thoughts/internal/goalassignment"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
 )
@@ -23,6 +25,10 @@ func TestClassify(t *testing.T) {
 		category logging.FailureCategory
 		emit     bool
 	}{
+		{"ignores Goal validation", logging.GoalCreate, &goal.ValidationError{}, logging.UnexpectedFailure, false},
+		{"ignores assignment validation", logging.GoalSubjectsReplace, &goalassignment.ValidationError{}, logging.UnexpectedFailure, false},
+		{"ignores stale Goal updates", logging.GoalUpdate, data.ErrVersionConflict, logging.UnexpectedFailure, false},
+		{"retains busy Goal reads", logging.GoalList, data.ErrDatabaseBusy, logging.DatabaseBusy, true},
 		{"ignores missing timeline entry", logging.TimelineEntryOpen, data.ErrRecordNotFound, logging.UnexpectedFailure, false},
 		{"ignores missing timeline thought scope", logging.TimelineThoughtList, data.ErrRecordNotFound, logging.UnexpectedFailure, false},
 		{"retains busy timeline read", logging.TimelineList, data.ErrDatabaseBusy, logging.DatabaseBusy, true},

@@ -14,6 +14,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/subjectdiscovery"
 	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/tui/events"
+	"github.com/jhern254/go-thoughts/internal/tui/goals"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 	"github.com/jhern254/go-thoughts/internal/tui/mindset"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
@@ -29,6 +30,7 @@ type screen uint8
 
 const (
 	screenEvents screen = iota
+	screenGoals
 	screenMindsetThought
 	screenSubjectList
 	screenSubjectCreate
@@ -46,11 +48,15 @@ type entityKind uint8
 
 const (
 	entitySubjects entityKind = iota
+	entityGoals
 	entityThoughts
 	entityOptions
 )
 
 func (entity entityKind) title() string {
+	if entity == entityGoals {
+		return "Goals"
+	}
 	if entity == entityOptions {
 		return "Options"
 	}
@@ -67,6 +73,7 @@ type Model struct {
 	// screen selects the root child that owns ordinary messages and rendering.
 	screen                  screen
 	subjectReturn           *events.CreateSubjectRequest
+	goalSubjectReturn       *goals.CreateSubjectRequest
 	logger                  logging.Logger
 	browserRecordingEnabled bool
 	browserOptionsEnabled   bool
@@ -90,6 +97,7 @@ type Model struct {
 	homeEventsHeight, homeEventsWidth int
 	events                            events.Model
 	subjects                          subjectState
+	goals                             *goals.Model
 	thoughts                          thoughts.Model
 	metrics                           MetricsService
 }
@@ -114,6 +122,14 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 
 type homeOpened struct{}
 
+func (m *Model) ConfigureGoals(service goals.GoalService, assignments goals.Assignments, memberships goals.Memberships) {
+	child := goals.New(m.ctx, m.user.UserID, service, assignments, memberships, m.subjects.service)
+	child.SetLogger(m.logger)
+	child.SetBorderWeight(m.borderWeight)
+	child.Resize(m.width, m.height)
+	m.goals = &child
+}
+
 func (m Model) Init() tea.Cmd {
 	home := func() tea.Msg { return homeOpened{} }
 	if m.speechSetup.service != nil {
@@ -124,6 +140,9 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) openHome() (tea.Model, tea.Cmd) {
 	m.subjects.stopRead()
+	if m.goals != nil {
+		m.goals.Close()
+	}
 	m.screen = screenEvents
 	m.events.SetFocused(!m.entityFocused && !m.mindsets.Focused())
 	m.mindsetsNeedRefresh = true
@@ -212,6 +231,20 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.mindsets, cmd = m.mindsets.Update(message)
 		return m, cmd
 	}
+	if goals.Owns(message) {
+		if m.goals == nil {
+			return m, nil
+		}
+		child, cmd := m.goals.Update(message)
+		m.goals = &child
+		return m, cmd
+	}
+	if _, ok := message.(goals.BackMsg); ok {
+		if m.screen == screenGoals && m.goals != nil && !m.goals.IsOpen() {
+			return m.openHome()
+		}
+		return m, nil
+	}
 	if events.Owns(message) {
 		var cmd tea.Cmd
 		m.events, cmd = m.events.Update(message)
@@ -274,6 +307,12 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.voiceSubjectReturn = &message
 		m.voiceSubjectScreen = m.screen
 		return m.openSubjectCreate(message.Query)
+	case goals.CreateSubjectRequest:
+		if m.screen != screenGoals || m.goals == nil || !m.goals.AwaitingSubject(message) {
+			return m, nil
+		}
+		m.goalSubjectReturn = &message
+		return m.openSubjectCreate(message.Query)
 	case events.CreateSubjectRequest:
 		if m.screen != screenEvents || !m.events.AwaitingSubject(message) {
 			return m, nil
@@ -288,6 +327,11 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case list.FilterMatchesMsg:
 		return m, nil
 	case listfilter.Reply:
+		if m.screen == screenGoals && m.goals != nil {
+			child, cmd := m.goals.Update(message)
+			m.goals = &child
+			return m, cmd
+		}
 		if m.subjects.filter.Owns(message) {
 			cmd := m.subjects.filter.Update(&m.subjects.list, message)
 			return m, cmd
@@ -300,6 +344,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = message.Height
 		m.resizeHome()
 		m.resizeSubjects(message.Width, message.Height)
+		if m.goals != nil {
+			m.goals.Resize(message.Width, message.Height)
+		}
 		m.thoughts.Resize(message.Width, max(1, message.Height-8))
 		return m, nil
 	case thoughts.Result, thoughts.BrowseThoughtsResult, thoughts.ThoughtBrowseStatsResult, thoughts.MindsetResult:
@@ -347,6 +394,13 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.screen {
+	case screenGoals:
+		if m.goals == nil {
+			return m, nil
+		}
+		child, cmd := m.goals.Update(message)
+		m.goals = &child
+		return m, cmd
 	case screenMindsetThought:
 		if key, ok := message.(tea.KeyPressMsg); ok && !m.thoughts.SavingMindset() && (key.String() == "esc" || key.String() == "q" || key.String() == "left") {
 			m.thoughts.Reset()
@@ -425,7 +479,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.events.SetFocused(true)
 				return m, nil
 			case "left", "right", "h", "l":
-				order := []entityKind{entityThoughts, entitySubjects, entityOptions}
+				order := []entityKind{entityGoals, entityThoughts, entitySubjects, entityOptions}
 				for index, entity := range order {
 					if entity != m.selectedEntity {
 						continue
@@ -448,6 +502,14 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.options.menuFocus = len(m.optionsMenuLabels()) - 2
 					return m, nil
 				}
+				if m.selectedEntity == entityGoals {
+					if m.goals == nil {
+						return m, nil
+					}
+					m.events.Close()
+					m.screen = screenGoals
+					return m, m.goals.Open()
+				}
 				m.events.Close()
 				if m.selectedEntity == entitySubjects {
 					return m.openSubjects()
@@ -466,7 +528,7 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) entityStrip() string {
 	parts := []string{}
-	for _, entity := range []entityKind{entityThoughts, entitySubjects, entityOptions} {
+	for _, entity := range []entityKind{entityGoals, entityThoughts, entitySubjects, entityOptions} {
 		label := entity.title()
 		if m.selectedEntity == entity && m.entityFocused {
 			label = m.subjects.list.Styles.Title.Render(label)
@@ -532,6 +594,9 @@ func (m Model) viewUnderlying() tea.View {
 		view.Content = m.viewExitPrompt()
 		return view
 	}
+	if m.screen == screenSubjectList || (m.screen == screenGoals && m.goals != nil && m.goals.UsesMouseScroll()) {
+		view.MouseMode = tea.MouseModeCellMotion
+	}
 	switch m.screen {
 	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts, screenVoiceThought, screenMindsetThought:
 		if m.thoughts.Creating() {
@@ -551,6 +616,10 @@ func (m Model) viewUnderlying() tea.View {
 	}
 	var content string
 	switch m.screen {
+	case screenGoals:
+		if m.goals != nil {
+			content = m.goals.View()
+		}
 	case screenMindsetThought:
 		content = m.thoughts.View()
 	case screenEvents:

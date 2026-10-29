@@ -54,7 +54,7 @@ func TestModel_MiscThoughts(t *testing.T) {
 			m.metrics = &metricsStub{miscCount: int64(count)}
 			m = openSubjects(t, m)
 			row := m.subjects.list.Items()[1].(subjectRow)
-			if row.kind != subjectRowMisc || row.Title() != "Misc thoughts" || row.Description() != want || !strings.Contains(m.View().Content, "\n0 subjects\n") {
+			if row.kind != subjectRowMisc || row.Title() != "Misc thoughts" || row.Description() != want || !strings.Contains(m.View().Content, "\n  0 subjects\n") {
 				t.Fatalf("got row %+v and view %q, want Misc with %s and zero subjects", row, m.View().Content, want)
 			}
 		}

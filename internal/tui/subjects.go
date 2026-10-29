@@ -12,6 +12,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/diagnostics"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
 )
@@ -36,6 +37,7 @@ type SubjectService interface {
 }
 
 type subjectState struct {
+	height         int
 	service        SubjectService
 	createSession  *int
 	aliasToReplace *data.SubjectAliasConflictError
@@ -141,16 +143,17 @@ func subjectRows(subjects []data.Subject) []list.Item {
 }
 
 func newSubjectState(service SubjectService) subjectState {
-	subjectList := list.New(subjectRows(nil), list.NewDefaultDelegate(), defaultWidth, max(0, defaultHeight-4))
+	subjectList := list.New(subjectRows(nil), appearance.SubjectListDelegate(false), defaultWidth, max(1, defaultHeight-appearance.SubjectListReservedRows(defaultHeight)))
 	subjectList.DisableQuitKeybindings()
 	subjectList.Title = "Subjects"
-	subjectList.SetShowStatusBar(false)
+	appearance.ConfigureSubjectList(&subjectList)
 
 	input := textinput.New()
 	input.Prompt = "Subject name: "
 	input.Placeholder = "What is this about?"
 
 	return subjectState{
+		height:  defaultHeight,
 		service: service,
 		aliases: newSubjectAliasState(),
 		list:    subjectList,
@@ -159,9 +162,10 @@ func newSubjectState(service SubjectService) subjectState {
 }
 
 func (m *Model) resizeSubjects(width, height int) {
+	m.subjects.height = height
 	m.resizeSubjectAliases()
 	// Reserve feedback (two lines), the record count, and navigation help.
-	m.subjects.list.SetSize(width, max(0, height-4))
+	appearance.ResizeSubjectList(&m.subjects.list, width, height)
 	m.subjects.input.SetWidth(max(1, width-ansi.StringWidth(m.subjects.input.Prompt)-1))
 	m.subjects.input.SetCursor(m.subjects.input.Position())
 }
@@ -350,6 +354,12 @@ func (m Model) handleSubjectCreated(message subjectCreatedMsg) (tea.Model, tea.C
 	m.subjects.aliasToReplace = nil
 	m.subjects.listStale = true
 	m.logger.Mutation(logging.SubjectCreated, message.subject.SubjectID)
+	if m.goalSubjectReturn != nil {
+		cmd := m.goals.ReturnFromSubjectCreation(*m.goalSubjectReturn, message.subject)
+		m.goalSubjectReturn = nil
+		m.screen = screenGoals
+		return m, cmd
+	}
 	if m.voiceSubjectReturn != nil {
 		cmd := m.thoughts.ReturnFromVoiceSubject(*m.voiceSubjectReturn, message.subject)
 		m.voiceSubjectReturn = nil
@@ -431,6 +441,7 @@ func logSubjectError(logger logging.Logger, operation logging.Operation, err err
 }
 
 func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
+	message = appearance.ListScrollInput(message)
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		if key.String() == "q" && !m.subjects.list.SettingFilter() {
 			key = tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape})
@@ -506,6 +517,14 @@ func (m Model) updateSubjectCreate(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "esc":
 			m.subjects.createSession = nil
+			if m.goalSubjectReturn != nil {
+				cmd := m.goals.ReturnFromSubjectCreation(*m.goalSubjectReturn, nil)
+				m.goalSubjectReturn = nil
+				m.subjects.input.Blur()
+				m.subjects.err = nil
+				m.screen = screenGoals
+				return m, cmd
+			}
 			if m.voiceSubjectReturn != nil {
 				cmd := m.thoughts.ReturnFromVoiceSubject(*m.voiceSubjectReturn, nil)
 				m.voiceSubjectReturn = nil
@@ -634,12 +653,6 @@ func (m Model) updateSubjectDelete(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) viewSubjectList() string {
-	status := ""
-	if m.subjects.loading {
-		status = "Loading subjects…\n\n"
-	} else if m.subjects.err != nil {
-		status = fmt.Sprintf("Error: %s\n\n", m.subjects.errMessage)
-	}
 	count := 0
 	for _, item := range m.subjects.list.VisibleItems() {
 		if row, ok := item.(subjectRow); ok && row.kind == subjectRowRecord {
@@ -650,13 +663,21 @@ func (m Model) viewSubjectList() string {
 	if count == 1 {
 		label = "subject"
 	}
-	help := "Q/Esc: entities"
-	if m.subjects.list.SettingFilter() {
-		help = "Esc: cancel filter"
-	} else if m.subjects.list.IsFiltered() {
-		help = "Q/Esc: clear filter"
+	status := fmt.Sprintf("%d %s", count, label)
+	feedback := "Choose a Subject to view its thoughts."
+	if m.subjects.loading {
+		feedback = "Loading subjects…"
+	} else if m.subjects.err != nil {
+		feedback = "Error: " + m.subjects.errMessage
 	}
-	return fmt.Sprintf("%s%s\n%d %s\n%s", status, m.subjects.list.View(), count, label, help)
+
+	actions := "Enter: open · Q/Esc: entities"
+	if m.subjects.list.SettingFilter() {
+		actions = "Enter: apply filter · Esc: cancel filter"
+	} else if m.subjects.list.IsFiltered() {
+		actions = "Enter: open · Q/Esc: clear filter"
+	}
+	return appearance.SubjectListView(m.subjects.list, m.subjects.list.Width(), m.subjects.height, m.borderWeight, "Browse Subjects", feedback, status, actions, "↑/↓/wheel: move · /: search")
 }
 
 func (m Model) viewSubjectCreate() string {

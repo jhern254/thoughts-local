@@ -155,3 +155,15 @@ compacts the heading and footer, retaining the full 12-row media preview and
 scrolling controls. The minimum is 48 columns by 20 rows. Full-size layouts retain
 their existing presentation. During preparation, essential status and Stop/Cancel
 remain available even when there is no room for the optional activity wave.
+
+## Subject browsing and Goal selection
+
+Use the same heading/search baseline, Subject-name column, two-line row height,
+and footer positions for the Subjects browser and Goal Subject picker. Browsing
+shows thought counts; selection shows checkbox state and a Selected description.
+Do not fetch thought counts solely to decorate a picker.
+
+Keep creation as the first typed action, using the existing Subject form and
+returning to the preserved picker draft. Keep confirmation and cancellation
+visible at narrow sizes; Ctrl+S can confirm without activating the Create action.
+These layouts use shared presentation helpers, not a shared navigation model.

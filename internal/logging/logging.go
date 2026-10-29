@@ -23,6 +23,9 @@ const (
 	EventCreated
 	EventEnded
 	ThoughtMindsetChanged
+	GoalCreated
+	GoalUpdated
+	GoalSubjectsUpdated
 )
 
 type Operation uint8
@@ -55,6 +58,12 @@ const (
 	ThoughtMindsetSet
 	ThoughtMindsetList
 	SubjectTime
+	GoalList
+	GoalGet
+	GoalCreate
+	GoalUpdate
+	GoalSubjectsList
+	GoalSubjectsReplace
 )
 
 type FailureCategory uint8
@@ -67,6 +76,18 @@ const (
 
 func (operation Operation) name() string {
 	switch operation {
+	case GoalList:
+		return "goal_list"
+	case GoalGet:
+		return "goal_get"
+	case GoalCreate:
+		return "goal_create"
+	case GoalUpdate:
+		return "goal_update"
+	case GoalSubjectsList:
+		return "goal_subjects_list"
+	case GoalSubjectsReplace:
+		return "goal_subjects_replace"
 	case ThoughtMindsetSet:
 		return "thought_mindset_set"
 	case ThoughtMindsetList:
@@ -128,6 +149,12 @@ func (operation Operation) name() string {
 
 func (event MutationEvent) message() string {
 	switch event {
+	case GoalCreated:
+		return "goal created"
+	case GoalUpdated:
+		return "goal updated"
+	case GoalSubjectsUpdated:
+		return "goal subjects updated"
 	case ThoughtMindsetChanged:
 		return "thought mindset changed"
 	case EventCreated:

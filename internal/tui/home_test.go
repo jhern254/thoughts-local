@@ -384,6 +384,7 @@ func TestModel_EventsHome(t *testing.T) {
 			}
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
 			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
+			m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: key}))
 			if m.entityStrip() != before {
 				t.Fatal("entity navigation did not wrap")
 			}

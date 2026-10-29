@@ -85,6 +85,7 @@ func TestBrowserAudioWorkflow_Playwright(t *testing.T) {
 	go func() {
 		serverDone <- browserterm.ServeWithAudioConsumer(ctx, listener, func(session context.Context) tea.Model {
 			model := tui.NewModel(session, runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
+			model.ConfigureGoals(runtime.Goals(), runtime.GoalAssignments(), runtime.SubjectGoals())
 			model.ConfigureEditorPreferences(runtime.EditorPreferences())
 			if os.Getenv("THOUGHTS_MODELS_ONBOARDING_TEST") == "1" {
 				model.ConfigureSpeechModelSetup(&browserSpeechSetupFixture{repairRequired: os.Getenv("THOUGHTS_MODELS_REPAIR_TEST") == "1"})
