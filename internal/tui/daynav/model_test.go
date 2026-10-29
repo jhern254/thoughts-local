@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/bits"
 	"strings"
 	"testing"
 	"time"
@@ -647,7 +648,7 @@ func TestModel_ScrollingLandscape(t *testing.T) {
 				today := displaytime.Day(time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC))
 				reader := &datedActivityReader{first: today.AddDate(0, 0, -80), counts: map[time.Time]data.ActivityCount{}}
 				for i := 0; i <= 80; i++ {
-					reader.counts[today.AddDate(0, 0, -i)] = data.ActivityCount{EventDays: int64(20 + i%7), Thoughts: int64(140 + i%13)}
+					reader.counts[today.AddDate(0, 0, -i)] = data.ActivityCount{EventDays: int64(10 + i%7), Thoughts: int64(50 + i%13)}
 				}
 				// It is just outside the original viewport and its neighboring sample.
 				reader.counts[today.AddDate(0, 0, -32)] = data.ActivityCount{EventDays: 30, Thoughts: 180}
@@ -656,7 +657,9 @@ func TestModel_ScrollingLandscape(t *testing.T) {
 				m.now = func() time.Time { return today.Add(12 * time.Hour) }
 				m.Resize(93, 40) // 31 days: exactly three terminal columns per day.
 				m = m.Update(activityReply(m.Sync(today, true, false)))
-				m.boost, m.outline = 4, outline
+				// Normal boost keeps these quieter crests in the penultimate row;
+				// extra boost now raises them rather than deepening their valleys.
+				m.boost, m.outline = boostNormal, outline
 				m.SetHighlighted(true)
 				before := strings.Split(m.plot, "\n")
 				if strings.TrimSpace(ansi.Strip(before[len(before)-2])) == "" {
@@ -963,4 +966,47 @@ func TestModel_CompactHeightAcrossZoom(t *testing.T) {
 	if got := m.Height(); got != 5 {
 		t.Fatalf("one-day band got %d, want unchanged five-row band", got)
 	}
+}
+
+func TestModel_BoostDirection(t *testing.T) {
+	t.Run("Right raises quieter mountains without moving the canvas or reading data", func(t *testing.T) {
+		m, reader := fixture(t)
+		defer m.Close()
+		m.Resize(80, 40)
+		m.SetFocused(true)
+		m.Key("d")
+		for range 5 {
+			m.Key("left")
+		}
+		reads, height := reader.reads, m.Height()
+		var previousDots int
+		var previousLevel float64
+		for _, name := range []string{"low", "normal", "medium", "strong", "extra"} {
+			if !strings.Contains(m.Status(), name+" boost") {
+				t.Fatalf("status=%q, want %s boost", m.Status(), name)
+			}
+			_, exponent := m.boostPreset()
+			levels := render.DayActivityLevels([]render.DayActivity{{Events: 1}, {Events: 10}}, exponent, 7)
+			if levels[0].Total <= previousLevel || levels[1].Total != 1 {
+				t.Fatalf("%s: levels=%+v, want quieter mountain above %v and reference peak unchanged", name, levels, previousLevel)
+			}
+			dots := 0
+			for _, glyph := range ansi.Strip(m.plot) {
+				if glyph >= 0x2800 && glyph <= 0x28ff {
+					dots += bits.OnesCount8(uint8(glyph - 0x2800))
+				}
+			}
+			if dots <= previousDots {
+				t.Fatalf("%s: filled dots=%d, want more than %d", name, dots, previousDots)
+			}
+			if m.Key("right") != nil || reader.reads != reads || m.Height() != height {
+				t.Fatal("boost changed the canvas or requested activity data")
+			}
+			previousDots, previousLevel = dots, levels[0].Total
+		}
+		m.Key("0")
+		if m.boost != boostNormal || m.size != 100 {
+			t.Fatal("reset changed the approved normal default")
+		}
+	})
 }

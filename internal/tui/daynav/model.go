@@ -353,8 +353,9 @@ func (m Model) Update(msg tea.Msg) Model {
 
 func (m Model) boostPreset() (string, float64) {
 	names := [...]string{"low", "normal", "medium", "strong", "extra"}
-	// Stronger boost adds contrast: quiet days recede and summits stay sharp.
-	exponents := [...]float64{.5, render.DayActivityDefaultExponent, 1.1, 1.8, 2.4}
+	// Counts are normalized to [0, 1], so smaller exponents raise quieter
+	// activity without changing the reference summit, as in Event distributions.
+	exponents := [...]float64{1, render.DayActivityDefaultExponent, .5, .25, .15}
 	return names[m.boost], exponents[m.boost]
 }
 

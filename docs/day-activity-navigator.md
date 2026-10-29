@@ -82,7 +82,7 @@ even when the largest peak leaves or enters the viewport:
     Event activity   = 0.7 × Event daily average
     Thought activity = 0.3 × Thought daily average
     Combined         = Event activity + Thought activity
-    Total level      = (Combined / maximum Combined)^boost
+    Total level      = (Combined / maximum Combined)^exponent
     Event level      = 0.75 × Total level × Event activity / Combined
     Thought level    = 0.75 × Total level × Thought activity / Combined
 
@@ -97,8 +97,9 @@ offset beneath Thoughts without changing Total.
 
 Zero channels remain zero. The fixed weights give Events greater visual weight;
 there is no user-facing weight setting. Boost presets use exponents
-0.5 (low), 0.8 (normal, default), 1.1 (medium), 1.8 (strong), 2.4 (extra). Higher boost deepens valleys and sharpens
-summits. Size ranges from 50–300%; startup and Reset use normal boost at 100%.
+1 (low), 0.8 (normal, default), 0.5 (medium), 0.25 (strong), 0.15 (extra).
+Higher boost lifts quieter activity without moving the reference summit, matching
+the Event distribution controls. Size ranges from 50–300%; startup and Reset use normal boost at 100%.
 That baseline preserves the former full mountain profile within the compact
 bounded canvas. Below 100%, size reduces height proportionally. Above 100%,
 smaller ridges rise toward the reference summit without clipping it flat:
