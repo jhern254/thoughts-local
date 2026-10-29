@@ -256,7 +256,13 @@ func (m *Model) Resize(width, height int) {
 	if m.form.open {
 		m.resizeForm()
 	}
-	m.anchor()
+	if m.position.target == targetEntry && !m.position.followNow {
+		// Reflow changes calendar spacing even for collapsed cards; an old
+		// line offset can otherwise leave only the selected card's bottom edge.
+		m.revealSelected()
+	} else {
+		m.anchor()
+	}
 }
 func (m Model) tick() tea.Cmd {
 	owner, session := m.owner, m.session
