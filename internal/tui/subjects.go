@@ -441,6 +441,7 @@ func logSubjectError(logger logging.Logger, operation logging.Operation, err err
 }
 
 func (m Model) updateSubjectList(message tea.Msg) (tea.Model, tea.Cmd) {
+	message = appearance.ListScrollInput(message)
 	if key, ok := message.(tea.KeyPressMsg); ok {
 		if key.String() == "q" && !m.subjects.list.SettingFilter() {
 			key = tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape})
@@ -676,7 +677,7 @@ func (m Model) viewSubjectList() string {
 	} else if m.subjects.list.IsFiltered() {
 		actions = "Enter: open · Q/Esc: clear filter"
 	}
-	return appearance.SubjectListView(m.subjects.list, m.subjects.list.Width(), m.subjects.height, m.borderWeight, "Browse Subjects", feedback, status, actions, "↑/↓: move · /: search")
+	return appearance.SubjectListView(m.subjects.list, m.subjects.list.Width(), m.subjects.height, m.borderWeight, "Browse Subjects", feedback, status, actions, "↑/↓/wheel: move · /: search")
 }
 
 func (m Model) viewSubjectCreate() string {

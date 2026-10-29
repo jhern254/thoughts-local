@@ -594,6 +594,9 @@ func (m Model) viewUnderlying() tea.View {
 		view.Content = m.viewExitPrompt()
 		return view
 	}
+	if m.screen == screenSubjectList || (m.screen == screenGoals && m.goals != nil && m.goals.UsesMouseScroll()) {
+		view.MouseMode = tea.MouseModeCellMotion
+	}
 	switch m.screen {
 	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts, screenVoiceThought, screenMindsetThought:
 		if m.thoughts.Creating() {

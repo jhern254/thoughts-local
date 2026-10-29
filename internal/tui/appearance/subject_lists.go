@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 )
@@ -62,4 +63,18 @@ func SubjectListDelegate(checkboxes bool) list.DefaultDelegate {
 func ResizeSubjectList(model *list.Model, width, height int) {
 	model.SetSize(width, max(1, height-SubjectListReservedRows(height)))
 	model.FilterInput.SetWidth(max(1, width-6))
+}
+
+// ListScrollInput gives Bubbles lists wheel navigation without changing checks
+// or submitting the highlighted action.
+func ListScrollInput(message tea.Msg) tea.Msg {
+	if wheel, ok := message.(tea.MouseWheelMsg); ok {
+		switch wheel.Button {
+		case tea.MouseWheelUp:
+			return tea.KeyPressMsg{Code: tea.KeyUp}
+		case tea.MouseWheelDown:
+			return tea.KeyPressMsg{Code: tea.KeyDown}
+		}
+	}
+	return message
 }

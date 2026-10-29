@@ -5,7 +5,7 @@ same Bubble Tea component and application services.
 
 ## Browse and open
 
-Use arrows to select a Goal and Enter for Details. `n` or Create Goal opens the
+Use arrows, Page Up/Down, or the mouse wheel to browse Goals and Enter for Details. `n` or Create Goal opens the
 creation form. `f` cycles All, Active, and Inactive; `/` searches Goal names.
 Esc clears a filter before returning to Home. Lists retain Goal priority order.
 
@@ -74,3 +74,13 @@ with the new Subject checked and the Goal draft intact. This creates the Subject
 only; Goal membership is persisted when the user confirms the picker or creates
 the Goal. Ctrl+S confirms a selection independently of the highlighted action,
 including an empty selection when no Subjects exist.
+
+## Stress demo
+
+`make tui/browser/demo/stress` now supplies 48 Goals and 32 live Subjects alongside
+721 Events and 20,000 Thoughts. Goals cover every cadence/priority, active and
+inactive states, optional dates, Unicode/long names, and zero-to-many memberships.
+The first high-priority Goal includes all 32 live Subjects for Details/picker
+scrolling. Historical-only and empty associations both exercise Misc presentation.
+Mouse wheel and keyboard paging move through lists without changing checkbox
+state; Space toggles a Subject and confirmation persists the selection.

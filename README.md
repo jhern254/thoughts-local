@@ -34,7 +34,7 @@ For disposable browser demos:
 | Command | Synthetic data |
 | --- | --- |
 | `make tui/browser/demo/seeded` | 2 subjects, 3 events, 12 thoughts |
-| `make tui/browser/demo/stress` | 4 subjects, 721 events, 20,000 thoughts |
+| `make tui/browser/demo/stress` | 32 live subjects, 48 goals, 721 events, 20,000 thoughts |
 
 Both build the same executable, migrate a fresh temporary database, and open on
 Events. Your default browser opens automatically; stop the server with Ctrl+C to
@@ -53,7 +53,9 @@ terminal or choose another port.
 The stress fixture spans about a month, includes empty historical events, and
 puts 200 thoughts in the current event. Expand events, scroll the thought picker,
 browse Subjects and Misc thoughts, and resize the browser to exercise the larger
-dataset. This is an interactive stress demo, with no fixed performance promise.
+dataset. Goals include all cadences/priorities, active/inactive records, zero-to-many
+Subject links, and a Goal linked to all 32 live Subjects for scrolling tests.
+This is an interactive stress demo, with no fixed performance promise.
 
 The application, SQLite, and filesystem remain native. The Go executable embeds
 the browser terminal assets; Node/npm, a CDN, WASM, and a separate frontend server

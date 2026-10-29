@@ -66,7 +66,13 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 		if !strings.Contains(m.View().Content, "Goals") {
 			t.Fatalf("Goals navigation: %s", m.View().Content)
 		}
+		if m.View().MouseMode != tea.MouseModeCellMotion {
+			t.Fatal("Goal list did not enable terminal wheel input")
+		}
 		send(tea.KeyPressMsg{Code: 'n', Text: "n"})
+		if m.View().MouseMode != tea.MouseModeNone {
+			t.Fatal("Goal form retained list mouse capture")
+		}
 		text("Practice")
 		key(tea.KeyTab)
 		text("1")
@@ -74,6 +80,9 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 			key(tea.KeyTab)
 		}
 		key(tea.KeyEnter)
+		if m.View().MouseMode != tea.MouseModeCellMotion {
+			t.Fatal("Subject picker did not enable terminal wheel input")
+		}
 		key(tea.KeyDown)
 		key(tea.KeySpace)
 		key(tea.KeyDown)

@@ -375,6 +375,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.screen == listView || m.screen == subjectsView {
+		msg = appearance.ListScrollInput(msg)
+	}
 	key, ok := msg.(tea.KeyPressMsg)
 	if m.saving {
 		return m, nil
@@ -588,7 +591,7 @@ func (m Model) View() string {
 		if _, ok := m.picker.SelectedItem().(createSubjectRow); ok {
 			actions = "Enter: create · Ctrl+S: " + action + " · Esc: cancel"
 		}
-		return appearance.SubjectListView(m.picker, m.width, m.height, m.borderWeight, "Subjects for "+goalName, summary, status, actions, "↑/↓: move · Space: toggle · /: search")
+		return appearance.SubjectListView(m.picker, m.width, m.height, m.borderWeight, "Subjects for "+goalName, summary, status, actions, "↑/↓/wheel: move · Space: toggle · /: search")
 	case detailView:
 		content = m.detailContent()
 		help = "e: Edit Goal · s: Manage Subjects · Esc: Back"
@@ -623,3 +626,7 @@ func (m Model) IsOpen() bool { return m.open }
 func (m *Model) SetLogger(logger logging.Logger) { m.logger = logger }
 
 func (m *Model) SetBorderWeight(weight data.BorderWeight) { m.borderWeight = weight }
+
+func (m Model) UsesMouseScroll() bool {
+	return m.open && (m.screen == listView || m.screen == subjectsView || m.screen == detailView)
+}
