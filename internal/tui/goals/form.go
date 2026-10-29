@@ -210,15 +210,19 @@ func (m Model) ids() []int64 {
 	return ids
 }
 func (m *Model) saveProperties() tea.Cmd {
-	target, err := targetSeconds(m.fields[1].Value(), m.fields[2].Value())
-	if err != nil {
-		m.status = err.Error()
-		return nil
-	}
 	create := m.screen == createView
+	var target int64
 	if !create && m.fields[1].Value() == strconv.FormatInt(m.selected.TargetSeconds/3600, 10) && m.fields[2].Value() == strconv.FormatInt(m.selected.TargetSeconds%3600/60, 10) {
 		target = m.selected.TargetSeconds
+	} else {
+		var err error
+		target, err = targetSeconds(m.fields[1].Value(), m.fields[2].Value())
+		if err != nil {
+			m.status = err.Error()
+			return nil
+		}
 	}
+
 	input := goal.CreateGoalInput{
 		Name:          m.fields[0].Value(),
 		TargetSeconds: target,

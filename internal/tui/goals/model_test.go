@@ -294,3 +294,24 @@ func TestModel_DetailReadFailure(t *testing.T) {
 		t.Fatal("failed new Details read exposed a previous Goal as editable")
 	}
 }
+
+func TestModel_ExistingTargetPrecision(t *testing.T) {
+	for _, seconds := range []int64{30, 5430} {
+		t.Run(fmt.Sprint(seconds), func(t *testing.T) {
+			m, s := testModel(t)
+			s.item.TargetSeconds = seconds
+			m.open = true
+			m.selected = &s.item
+			m.startForm(false)
+			m.fields[0].SetValue("Renamed")
+			cmd := m.saveProperties()
+			if cmd == nil {
+				t.Fatalf("untouched target prevented rename: %s", m.status)
+			}
+			cmd()
+			if s.input.TargetSeconds != seconds {
+				t.Fatalf("target got %d, want %d", s.input.TargetSeconds, seconds)
+			}
+		})
+	}
+}
