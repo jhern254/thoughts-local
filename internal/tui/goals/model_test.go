@@ -220,3 +220,22 @@ func TestModel_StaleSave(t *testing.T) {
 		t.Fatal("expected submitted creation")
 	}
 }
+
+func TestModel_DetailScroll(t *testing.T) {
+	t.Run("opening Details starts at its heading after a scrolled view", func(t *testing.T) {
+		m, s := testModel(t)
+		m.open = true
+		m.screen = detailView
+		m.Resize(80, 24)
+		m.body.SetContent(strings.Repeat("old content\n", 100))
+		m.body.SetYOffset(50)
+		for i := range 100 {
+			s.subjects = append(s.subjects, data.Subject{SubjectID: int64(i + 1), SubjectName: "Long membership"})
+		}
+		reply := m.loadDetail(s.item.GoalID)()
+		m, _ = m.Update(reply)
+		if !strings.HasPrefix(m.View(), s.item.GoalName) {
+			t.Fatalf("Details heading hidden by previous scroll: %s", m.View())
+		}
+	})
+}
