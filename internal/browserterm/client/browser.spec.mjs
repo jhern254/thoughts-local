@@ -493,7 +493,9 @@ test('day mountains retain focus colors in a compact window without moving Event
       const event = rows.findIndex(row => /^ Events\s+[A-Z]/.test(row));
       // Font metrics can give Chromium and Firefox different terminal sizes.
       // Accept only a complete backend frame matching the fitted dimensions.
-      return divider === term.rows - 4 && rows[divider].length === term.cols && event > 0 && event < 10 ? event : null;
+      // A coherent desktop frame can still be present before ResizeObserver
+      // delivers the quarter-window size. Require that width before sampling.
+      return term.cols < 60 && divider === term.rows - 4 && rows[divider].length === term.cols && event > 0 && event < 10 ? event : null;
     });
     return before !== null;
   }).toBe(true);
