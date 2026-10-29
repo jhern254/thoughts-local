@@ -734,3 +734,70 @@ test('one-row mountains show grey Total and restore layers when the window grows
     await expect.poll(async()=>(await snapshot()).series).toEqual([37,179,240]);
   }
 });
+
+test('day marker remains visible at today in a small window', async ({page},testInfo) => {
+  await exposeMountainTerminal(page);
+  await ready(page);
+  await page.keyboard.press('Home');await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('1 Total');
+  const snapshot=()=>page.evaluate(()=>{
+    const term=window.mountainTerminal;
+    const lines=Array.from({length:term.rows},(_,y)=>term.buffer.active.getLine(term.buffer.active.viewportY+y));
+    const text=lines.map(line=>line?.translateToString(true)||'');
+    const event=text.findIndex(row=>/^ Events\s+[A-Z]/.test(row));
+    const footer=text.findLastIndex(row=>/^─+$/.test(row));
+    const columns=Array.from({length:term.cols},(_,x)=>x).filter(x=>lines[event-1]?.getCell(x)?.getBgColor()===62);
+    return {cols:term.cols,rows:term.rows,event,date:text[event],columns,complete:footer===term.rows-4&&text[footer]?.length===term.cols};
+  });
+  for(const viewport of [{width:960,height:450},{width:480,height:480},{width:960,height:400}]){
+    await page.setViewportSize(viewport);
+    await expect.poll(async()=>{const state=await snapshot();const expected=5+Math.max(1,Math.min(4,state.rows-23));return state.complete&&state.cols<(viewport.width===480?60:120)&&state.rows<30&&state.event===expected;}).toBe(true);
+    const initial=await snapshot();
+    await expect.poll(async()=>{const state=await snapshot();return state.columns.map(column=>column-(state.cols-1));}).toEqual([0]);
+    for(let round=0;round<3;round++){
+      for(let step=0;step<45;step++)await page.keyboard.press('ArrowLeft');
+      await expect.poll(async()=>(await snapshot()).columns).toEqual([0]);
+      for(let step=0;step<45;step++)await page.keyboard.press('ArrowRight');
+      await expect.poll(async()=>(await snapshot()).date).toBe(initial.date);
+      await expect.poll(async()=>{const state=await snapshot();return state.columns.map(column=>column-(state.cols-1));}).toEqual([0]);
+    }
+    await page.screenshot({path:testInfo.outputPath('today-marker-'+viewport.width+'x'+viewport.height+'.png')});
+  }
+});
+
+test('terminal character edits honor the visible right margin after shrinking', async ({page}) => {
+  await ready(page);
+  const cases=await page.evaluate(async()=>{
+    const results=[];
+    // CSI P deletes characters; CSI @ inserts them. A shrunken alternate
+    // screen can retain longer lines, but both edits must stop at the viewport.
+    for(const operation of ['P','@'])for(const count of [1,4]){
+      const host=document.createElement('div');host.style.cssText='position:fixed;left:-10000px;width:1200px;height:200px';document.body.append(host);
+      const term=new Terminal({cols:120,rows:10,allowProposedApi:true});term.open(host);
+      const write=text=>new Promise(resolve=>term.write(text,resolve));
+      try{
+        await write('\x1b[?1049h');term.resize(111,10);
+        const resizedWidth=term.buffer.active.getLine(5).length;
+        await write('\x1b[6;5H\x1b[38;5;179m界a\x1b[m');
+        if(operation==='@')await write('\x1b[6;111H\x1b[48;5;62m \x1b[m');
+        await write('\x1b[6;107H'+(operation==='P'?'\x1b[48;5;62m':'')+'\x1b['+count+operation+'\x1b[m');
+        const inspect=()=>{
+          const line=term.buffer.active.getLine(5);
+          return {blue:Array.from({length:line.length},(_,x)=>x).filter(x=>line.getCell(x).getBgColor()===62),unicode:line.getCell(4).getChars(),foreground:line.getCell(4).getFgColor(),following:line.getCell(6).getChars()};
+        };
+        const small=inspect();term.resize(120,10);
+        results.push({operation,count,resizedWidth,small,expanded:inspect()});
+      }finally{term.dispose();host.remove();}
+    }
+    return results;
+  });
+  for(const {operation,count,resizedWidth,small,expanded} of cases){
+    expect(resizedWidth).toBe(111);
+    const expected=operation==='P'?Array.from({length:count},(_,i)=>111-count+i):[];
+    expect(small.blue,operation+' '+count+' at the visible right edge').toEqual(expected);
+    expect(expanded.blue,operation+' '+count+' after expanding').toEqual(expected);
+    for(const state of [small,expanded]){
+      expect(state.unicode).toBe('界');expect(state.foreground).toBe(179);expect(state.following).toBe('a');
+    }
+  }
+});

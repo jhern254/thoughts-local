@@ -113,7 +113,17 @@ The published bundles are transformed by pinned esbuild 0.28.2 with
 `drop: ['console']` to remove diagnostic calls in vendored utilities that bypass
 xterm's supported logger. The logger itself also receives only fixed-message
 callbacks. Identifiers are **not** minified again; parser/rendering code is not
-hand-edited. CSS is copied verbatim. No source maps or external URLs are loaded.
+hand-edited. The build applies a guarded xterm 6.0.0 resize correction: shrinking
+must trim alternate-screen buffer lines even though that screen does not reflow.
+Otherwise ICH/DCH (insert/delete character) operations use a retained, wider
+right margin and can place the background-colored day marker offscreen or revive
+stale colored cells when growing. Normal-screen reflow is unchanged. Thoughts
+redraws its canonical Go view after resize, so hidden alternate-screen cells are
+not a preservation mechanism. The patch checks the pinned version and exact
+resize condition; review/remove it when upgrading xterm. Browser regressions
+cover line widths, both character edits, single/multiple cells, shrink/grow,
+Unicode/color preservation, and repeated day-edge navigation. No repaint timers
+or terminal/session resets are added. CSS is copied verbatim. No source maps or external URLs are loaded.
 
 To regenerate with development-only Node/npm:
 

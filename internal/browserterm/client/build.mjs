@@ -4,6 +4,16 @@ import {readFile, writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {transform} from 'esbuild';
 
+// Alternate-screen reflow is disabled, but its lines must still shrink to the
+// viewport. Retained hidden cells break ICH/DCH right-margin editing and can
+// revive stale markers on grow. Thoughts redraws its Go view after every resize.
+// Match the pinned bundle exactly so upgrades require reviewing this correction.
+function trimAlternateScreenOnShrink(code) {
+  const original = 'this._isReflowEnabled && (this._reflow(e3, t3), this._cols > e3)';
+  if (code.split(original).length !== 2) throw new Error('Review xterm viewport patch: resize source changed');
+  return code.replace(original, '(this._isReflowEnabled && this._reflow(e3, t3), this._cols > e3)');
+}
+
 const root = new URL('../static/', import.meta.url);
 const modules = [
   ['@xterm/xterm', 'xterm'],
@@ -19,7 +29,11 @@ for (const [pkg, name] of modules) {
   // Some vendored xterm utilities bypass its configurable logger. Remove their
   // console calls reproducibly instead of overriding the browser's console.
   // Do not minify identifiers again: upstream's published bundle is minified.
-  const {code} = await transform(upstream, {drop: ['console'], minify: false, legalComments: 'inline', target: 'es2022'});
+  let {code} = await transform(upstream, {drop: ['console'], minify: false, legalComments: 'inline', target: 'es2022'});
+  if (pkg === '@xterm/xterm') {
+    if (metadata.version !== '6.0.0') throw new Error('Review xterm viewport patch for the new version');
+    code = trimAlternateScreenOnShrink(code);
+  }
   await writeFile(new URL(`${name}.js`, root), code);
   hashes.push(`${createHash('sha256').update(code).digest('hex')}  ${name}.js`);
   notices += `${pkg} ${metadata.version}\nSource commit: ${metadata.commit}\n\n${await readFile(new URL('LICENSE', base), 'utf8')}\n\n`;
