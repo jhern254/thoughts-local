@@ -37,6 +37,8 @@ async function prepareAudioDraft(page) {
   });
   await page.goto('/');
   await expect(page.locator('#status')).toHaveText('Connected');
+  // Connected acknowledges transport, not the native draft/voice capability.
+  await expect(screen(page)).toContainText('t: create thought');
   await page.keyboard.press('t');
   await expect(screen(page)).toContainText('Create thought');
   await page.keyboard.type('typed draft');

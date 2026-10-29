@@ -158,9 +158,25 @@ test('End previews backward and held arrows accelerate without uploading or prep
 });
 
 test('preparing a loop reserves a braille wave above Stop rendering and keeps keyboard cancellation available',async({page},testInfo)=>{
-  let sockets=0, releasePreparation;
-  page.on('websocket',()=>sockets++);
-  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+  let sockets=0, busyAdmissions=0, releasePreparation;
+  page.on('websocket',socket=>{
+    sockets++;
+    socket.on('framereceived',({payload})=>{
+      const frame=Buffer.from(payload);
+      if(frame[0]===55&&frame.subarray(1).toString()==='busy')busyAdmissions++;
+    });
+  });
+  // Admission may retry while a previous tab retires. Exercise that boundary,
+  // then require exactly one accepted connection and no new sockets in the editor.
+  const retiring=await page.context().newPage();
+  await retiring.goto('/');await expect(retiring.locator('#status')).toHaveText('Connected');
+  await page.goto('/');
+  await expect.poll(()=>busyAdmissions).toBeGreaterThan(0);
+  await retiring.close();
+  await expect(page.locator('#status')).toHaveText('Connected');
+  await expect(screen(page)).toContainText('Events');
+  const acceptedSockets=sockets;
+  expect(acceptedSockets-busyAdmissions).toBe(1);
   await openVisual(page);await stageSource(page);
   await clickControl(page,'End: 00:00:30.000 (max 00:00:30.000)');
   await page.keyboard.press('Home');
@@ -304,7 +320,8 @@ test('preparing a loop reserves a braille wave above Stop rendering and keeps ke
       await page.keyboard.press('Enter');
       await expect(bar).toBeHidden();
       await expect(screen(page)).toContainText('Background darkness:');
-      expect(sockets).toBe(1);
+      expect(sockets).toBe(acceptedSockets);
+      expect(sockets-busyAdmissions).toBe(1);
     } finally { releaseCancelled(); }
   } finally { releasePreparation(); await page.unrouteAll({behavior:'wait'}); }
 });

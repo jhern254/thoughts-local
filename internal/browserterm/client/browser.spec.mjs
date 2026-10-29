@@ -401,11 +401,18 @@ test('Now view cycles days while retaining its latest-card and metrics layout', 
   const cards = () => screen(page).locator('div').evaluateAll(rows => rows.filter(row => row.textContent.includes('╭')).length);
   const original = await date();
   await expect.poll(cards).toBe(2);
+  // The relative seed spans three hours and can cross local midnight.
+  // Two dates back is empty regardless of the time this test is run.
   await page.keyboard.press('ArrowLeft');
   await expect.poll(date).not.toBe(original);
+  const previous = await date();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(date).not.toBe(previous);
   await expect(screen(page)).toContainText('↑: latest card');
   await expect(screen(page)).toContainText('Subject time');
-  await expect.poll(cards).toBe(1); // No invented Event on the empty previous day.
+  await expect.poll(cards).toBe(1); // No invented Event on the guaranteed-empty day.
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(date).toBe(previous);
   await page.keyboard.press('ArrowRight');
   await expect.poll(date).toBe(original);
   await expect(screen(page)).toContainText('↑: latest card');
