@@ -12,6 +12,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/editorprefs"
 	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/goal"
+	"github.com/jhern254/go-thoughts/internal/goalassignment"
 	"github.com/jhern254/go-thoughts/internal/goaldiscovery"
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
@@ -26,16 +27,17 @@ import (
 const DefaultSQLiteDSN = "file:data/thoughts.db"
 
 type Runtime struct {
-	db            *sql.DB
-	localUser     *data.User
-	subjects      *subject.Service
-	thoughts      *thought.Service
-	metrics       *metrics.Service
-	events        *event.Service
-	goals         *goal.Service
-	timelineView  *timeline.Service
-	subjectGoals  *subjectgoal.Service
-	goalDiscovery *goaldiscovery.Service
+	db              *sql.DB
+	localUser       *data.User
+	subjects        *subject.Service
+	thoughts        *thought.Service
+	metrics         *metrics.Service
+	events          *event.Service
+	goals           *goal.Service
+	timelineView    *timeline.Service
+	subjectGoals    *subjectgoal.Service
+	goalDiscovery   *goaldiscovery.Service
+	goalAssignments *goalassignment.Service
 }
 
 func Open(ctx context.Context, dsn string) (*Runtime, error) {
@@ -77,16 +79,17 @@ func open(
 	discovery := goaldiscovery.NewService(events, subjectGoalStore, goaldiscovery.AllCandidatesRecommender{})
 
 	return &Runtime{
-		db:            db,
-		localUser:     localUser,
-		subjects:      subjects,
-		thoughts:      thoughts,
-		metrics:       metricsService,
-		events:        events,
-		goals:         goals,
-		timelineView:  timelineView,
-		subjectGoals:  subjectGoals,
-		goalDiscovery: discovery,
+		db:              db,
+		localUser:       localUser,
+		subjects:        subjects,
+		thoughts:        thoughts,
+		metrics:         metricsService,
+		events:          events,
+		goals:           goals,
+		timelineView:    timelineView,
+		subjectGoals:    subjectGoals,
+		goalDiscovery:   discovery,
+		goalAssignments: goalassignment.NewService(goals, subjectGoalStore),
 	}, nil
 }
 
@@ -105,6 +108,8 @@ func (runtime *Runtime) Goals() *goal.Service                  { return runtime.
 func (runtime *Runtime) TimelineView() *timeline.Service       { return runtime.timelineView }
 func (runtime *Runtime) SubjectGoals() *subjectgoal.Service    { return runtime.subjectGoals }
 func (runtime *Runtime) GoalDiscovery() *goaldiscovery.Service { return runtime.goalDiscovery }
+
+func (runtime *Runtime) GoalAssignments() *goalassignment.Service { return runtime.goalAssignments }
 
 func ensureLocalUser(ctx context.Context, db *sql.DB) (*data.User, error) {
 	return user.NewService(data.NewSQLiteUserStore(db)).EnsureLocalUser(ctx)
@@ -126,6 +131,7 @@ func (runtime *Runtime) Close() error {
 	runtime.timelineView = nil
 	runtime.subjectGoals = nil
 	runtime.goalDiscovery = nil
+	runtime.goalAssignments = nil
 	return data.TranslateSQLiteError(err)
 }
 

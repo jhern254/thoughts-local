@@ -91,6 +91,19 @@ func (s *Service) ListInactive(ctx context.Context, userID string) ([]data.Goal,
 }
 
 func (s *Service) Create(ctx context.Context, userID string, input CreateGoalInput) (*data.Goal, error) {
+	item, err := s.PrepareCreate(ctx, userID, input)
+	if err != nil {
+		return nil, err
+	}
+	return s.store.CreateGoal(ctx, item)
+}
+
+// PrepareCreate normalizes and validates a new goal without persisting it.
+// Atomic cross-entity workflows use the same defaults and clock as standalone creation.
+func (s *Service) PrepareCreate(ctx context.Context, userID string, input CreateGoalInput) (*data.Goal, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	now := s.now().UTC().Truncate(time.Second)
 	item := &data.Goal{
 		UserID: userID, GoalName: strings.Trim(input.Name, " "), TargetSeconds: input.TargetSeconds,
@@ -117,7 +130,7 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateGoalInp
 	if err := validateGoal(item, &item.Priority); err != nil {
 		return nil, err
 	}
-	return s.store.CreateGoal(ctx, item)
+	return item, nil
 }
 
 // Update replaces settings using the caller's version for optimistic concurrency.

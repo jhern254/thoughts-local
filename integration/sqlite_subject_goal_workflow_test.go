@@ -164,7 +164,7 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 		if err := data.NewSQLiteSubjectStore(db).DeleteSubject(t.Context(), "owner", 1); err != nil {
 			t.Fatal(err)
 		}
-		if err := data.NewSQLiteGoalStore(db).DeleteGoal(t.Context(), "owner", 1, 1); err != nil {
+		if err := data.NewSQLiteGoalStore(db).DeleteGoal(t.Context(), "owner", 1, 2); err != nil {
 			t.Fatal(err)
 		}
 		want := []data.SubjectGoal{{SubjectID: 1, GoalID: 1, UserID: "owner"}}
@@ -208,6 +208,13 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 		if err := db.QueryRow(snapshot).Scan(&after[0], &after[1], &after[2], &after[3], &after[4], &after[5], &after[6], &after[7], &after[8], &after[9]); err != nil {
 			t.Fatal(err)
 		}
+		if got, want := after[2], before[2]+2; got != want {
+			t.Fatalf("goal version: got %d, want %d", got, want)
+		}
+		if after[1] < before[1] {
+			t.Fatalf("goal updated_at: got %d, want >= %d", after[1], before[1])
+		}
+		before[1], before[2] = after[1], after[2]
 		if after != before {
 			t.Fatalf("endpoint and provenance state: got %v, want %v", after, before)
 		}

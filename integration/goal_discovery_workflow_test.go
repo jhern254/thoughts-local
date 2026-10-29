@@ -120,6 +120,14 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(byGoal, wantLinks[:1]) {
 			t.Fatalf("goal links: got %+v, %v; want %+v, nil", byGoal, err, wantLinks[:1])
 		}
+		high, err = runtime.Goals().Get(t.Context(), owner, high.GoalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		normal, err = runtime.Goals().Get(t.Context(), owner, normal.GoalID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		now := time.Now().UTC().Truncate(time.Second)
 		item, err := runtime.Events().CreatePast(t.Context(), owner, "Coding", now.Add(-2*time.Hour), now.Add(-time.Hour), &subject.SubjectID)
 		if err != nil {
