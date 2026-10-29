@@ -140,9 +140,10 @@ type Model struct {
 	form               eventForm
 
 	// blurred preserves selection while the root entity strip owns keyboard focus.
-	active                 bool
-	blurred                bool
-	highlightDistributions bool
+	active                   bool
+	blurred                  bool
+	highlightDistributions   bool
+	neutralSubjectTimeColors bool
 }
 
 func New(ctx context.Context, userID string, service Service, view TimelineView, thoughtService thoughts.Service, subjects SubjectReader, logger logging.Logger) Model {
@@ -225,6 +226,15 @@ func (m *Model) SetDistributionHighlight(highlight bool) {
 		m.load.retainedBody = ""
 	}
 	m.highlightDistributions = highlight
+}
+
+// SetSubjectTimeColors colors or neutralizes every metrics bar together.
+func (m *Model) SetSubjectTimeColors(colored bool) {
+	neutral := !colored
+	if m.neutralSubjectTimeColors != neutral {
+		m.load.retainedBody = ""
+		m.neutralSubjectTimeColors = neutral
+	}
 }
 
 // AtTimelineStart excludes nested editors, pending days and the metrics card.

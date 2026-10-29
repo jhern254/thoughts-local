@@ -20,6 +20,34 @@ import (
 )
 
 func TestModel_SubjectTimeNavigation(t *testing.T) {
+	t.Run("metrics colors switch every subject bar together without changing geometry", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m.subjectTime.items = []data.SubjectTimeView{{SubjectID: 1, SubjectName: "Coding", TimeSpentSeconds: 12000}, {SubjectID: 2, SubjectName: "Reading", TimeSpentSeconds: 6000}}
+		lanes := func(rows []string) string {
+			var out strings.Builder
+			for _, row := range rows {
+				out.WriteString(ansi.Truncate(row, m.cardColumn(), ""))
+			}
+			return out.String()
+		}
+		colored := m.subjectTimePanel(false)
+		if !strings.Contains(lanes(colored), "38;2;255;176;0") || !strings.Contains(lanes(colored), "38;2;182;255;0") {
+			t.Fatal("fixture is missing the two subject bar colors")
+		}
+		m.SetSubjectTimeColors(false)
+		neutral := m.subjectTimePanel(false)
+		if strings.Contains(lanes(neutral), "38;2;") || !strings.Contains(lanes(neutral), "38;5;240") {
+			t.Fatal("metrics did not switch every bar to grey")
+		}
+		if ansi.Strip(strings.Join(colored, "\n")) != ansi.Strip(strings.Join(neutral, "\n")) {
+			t.Fatal("metrics palette changed geometry or labels")
+		}
+		m.SetSubjectTimeColors(true)
+		if strings.Join(m.subjectTimePanel(false), "\n") != strings.Join(colored, "\n") {
+			t.Fatal("metrics colors were not restored")
+		}
+	})
+
 	t.Run("short Now view keeps the latest card and boundary visible", func(t *testing.T) {
 		m, _, _ := fixture(t)
 		for _, height := range []int{10, 11, 12} {

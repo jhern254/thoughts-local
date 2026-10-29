@@ -27,7 +27,14 @@ the graph is an arrow-accessed part of Events. While the graph has focus:
   styling. Escape/Enter closes controls. Down or Escape outside controls returns to Events.
 - `r` explicitly refreshes activity. These display preferences last for the session.
 
-When focus is outside the Events timeline, all vertical Event curves are highlighted too;
+On Mindset or the entity picker, `d` cycles session-local distribution palettes:
+all colored → all neutral → metrics only → mountains + metrics → Events + metrics.
+Metrics bars are colored as a group except in all-neutral mode. Neutral mountains
+retain their grey/white layers and the one-row Total fallback. Switching panels
+preserves the mode. Events and mountain `d` controls still adjust their shapes;
+selection and keyboard-focus highlights remain independent.
+
+When focus is outside the Events timeline, the selected palette controls which vertical Event curves are highlighted;
 card selection and borders keep their own focus rules.
 
 The plot has no title or date-range heading. All zoom levels use at most four mountain rows.

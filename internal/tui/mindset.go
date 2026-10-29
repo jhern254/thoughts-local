@@ -64,11 +64,10 @@ func (m *Model) focusHome(panel homePanel) tea.Cmd {
 	// Tab switches Mindset, Events and entities; arrows enter the day plot.
 	m.entityFocused = panel == homePanelEntities
 	m.days.SetFocused(panel == homePanelDays)
-	m.days.SetHighlighted(panel != homePanelEvents)
 	var cmd tea.Cmd
 	m.mindsets, cmd = m.mindsets.SetFocused(panel == homePanelMindset)
 	m.events.SetFocused(panel == homePanelEvents)
-	m.events.SetDistributionHighlight(panel != homePanelEvents)
+	m.applyDistributionColors()
 	return cmd
 }
 func (m Model) homeFocus() homePanel {

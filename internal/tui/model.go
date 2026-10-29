@@ -90,6 +90,7 @@ type Model struct {
 	mindsets                          mindset.Model
 	mindsetsNeedRefresh               bool
 	dayActivityRevision               uint64
+	distributionColors                homeDistributionColorMode
 	homeEventsHeight, homeEventsWidth int
 	events                            events.Model
 	subjects                          subjectState
@@ -439,6 +440,11 @@ func (m Model) updateHome(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.days.Key(key.String())
 			}
 		}
+		if key.String() == "d" && (m.entityFocused || m.mindsets.Focused()) {
+			m.distributionColors = (m.distributionColors + 1) % distributionColorModeCount
+			m.applyDistributionColors()
+			return m, nil
+		}
 		if m.days.Focused() {
 			if m.days.Tuning() {
 				return m, m.days.Key(key.String())
@@ -549,6 +555,11 @@ func (m Model) entityStrip(status string) string {
 		if m.entityFocused && m.width < 60 {
 			help = "Esc/Ctrl+C: exit • Q: back • Enter: open"
 		}
+	}
+	if m.entityFocused && m.width < 60 {
+		help = "Esc/Ctrl+C: exit • Enter: open • d colors"
+	} else if m.entityFocused || m.mindsets.Focused() {
+		help = "d: colors • " + help
 	}
 	if m.browserRecordingEnabled && ansi.StringWidth(help+" • t: create thought") <= m.width {
 		help += " • t: create thought"

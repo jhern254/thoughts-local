@@ -801,3 +801,32 @@ test('terminal character edits honor the visible right margin after shrinking', 
     }
   }
 });
+
+test('d cycles the five approved palettes from entities and Mindset',async({page})=>{
+  await exposeMountainTerminal(page);await ready(page);
+  let sockets=0;page.on('websocket',()=>sockets++);
+  await page.keyboard.press('End');await page.keyboard.press('Tab');
+  await expect(screen(page)).toContainText('d: colors');
+  const colors=()=>page.evaluate(()=>{
+    const term=window.mountainTerminal;
+    const lines=Array.from({length:term.rows},(_,y)=>term.buffer.active.getLine(term.buffer.active.viewportY+y));
+    const event=lines.findIndex(line=>/^ Events\s/.test(line?.translateToString(true)||''));
+    let mountain=false,events=false;
+    for(let y=4;y<term.rows-4;y++)for(let x=0;x<term.cols;x++){
+      const cell=lines[y]?.getCell(x);
+      if(!/[\u2801-\u28ff]/.test(cell?.getChars()||''))continue;
+      if(y<event-1&&[37,179].includes(cell.getFgColor()))mountain=true;
+      if(y>event&&x<24&&cell.getFgColor()===62)events=true;
+    }
+    return{mountain,events};
+  });
+  for(const panel of ['entities','Mindset']){
+    await expect.poll(colors).toEqual({mountain:true,events:true});
+    for(const expected of [{mountain:false,events:false},{mountain:false,events:false},{mountain:true,events:false},{mountain:false,events:true},{mountain:true,events:true}]){
+      await page.keyboard.press('d');await expect.poll(colors).toEqual(expected);
+      await expect(screen(page)).not.toContainText('normal boost');
+    }
+    if(panel==='entities'){await page.keyboard.press('Tab');await expect(screen(page)).toContainText('Enter: open');}
+  }
+  expect(sockets).toBe(0); // No replacement connection while changing presentation.
+});

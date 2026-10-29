@@ -267,7 +267,7 @@ func (m *Model) subjectTimePanel(windowed bool) []string {
 				}
 				cell := cells[y][x]
 				color := lipgloss.Color("240")
-				if cell.CurveIndex >= 0 {
+				if cell.CurveIndex >= 0 && !m.neutralSubjectTimeColors {
 					color = subjectTimeColor(barSubjects[cell.CurveIndex])
 				}
 				lane.WriteString(lipgloss.NewStyle().Foreground(color).Render(string(cell.Glyph)))
