@@ -447,7 +447,9 @@ func (m *Model) rebuild() {
 	})
 	styles := [...]lipgloss.Style{lipgloss.NewStyle().Foreground(lipgloss.Color("240")), lipgloss.NewStyle().Foreground(lipgloss.Color("37")), lipgloss.NewStyle().Foreground(lipgloss.Color("179"))}
 	if !m.highlighted {
-		styles[1], styles[2] = styles[0], styles[0]
+		// Keep the unfocused graph neutral while retaining three visible bands.
+		styles[render.DayThoughts] = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+		styles[render.DayEvents] = lipgloss.NewStyle().Foreground(lipgloss.Color("248"))
 	}
 	var out strings.Builder
 	for y, row := range cells {

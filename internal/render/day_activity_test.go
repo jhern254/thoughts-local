@@ -45,12 +45,12 @@ func TestDayActivity(t *testing.T) {
 }
 
 func TestDayActivity_Geometry(t *testing.T) {
-	t.Run("baseline shares the bottom dots with filled and outline mountains", func(t *testing.T) {
+	t.Run("filled mountains share the baseline while outlines omit it", func(t *testing.T) {
 		for _, outline := range []bool{false, true} {
 			cells := RenderDayActivity(1, 3, []DayActivity{{Events: 1}}, DayActivityOptions{Total: true, Outline: outline, Baseline: true})
 			want := []rune{'⣸', '⣿', '⣿'}
 			if outline {
-				want = []rune{'⣸', '⠇', '⣀'}
+				want = []rune{'⣸', '⠇', ' '}
 			}
 			for y, glyph := range want {
 				if got := cells[y][0].Glyph; got != glyph {

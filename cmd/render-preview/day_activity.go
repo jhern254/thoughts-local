@@ -28,7 +28,7 @@ func drawDayActivity(width, height int, options render.Options, plain bool) stri
 			for _, cell := range row {
 				palette := [...]int{240, 37, 179}
 				if !focused {
-					palette = [3]int{240, 240, 240}
+					palette = [3]int{240, 248, 244}
 				}
 				out.WriteString(color(string(cell.Glyph), palette[cell.Series], plain))
 			}

@@ -20,7 +20,7 @@ the graph is an arrow-accessed part of Events. While the graph has focus:
   at September 23). Short months clamp to their last valid date. The range stays
   still until the selected date leaves it.
 - `1`, `2`, `3` toggle Total, Events, Thoughts. All three are visible initially;
-  chosen toggles persist. The plot is grey while Events has focus, and colored
+  chosen toggles persist. The plot uses three grey/white shades while Events has focus, and is colored
   in the day graph, Mindset, and entity picker.
 - `d` opens local distribution controls: Left/Right changes boost, Up/Down
   changes size, `f` switches the mountains between filled and outline, `0` resets
@@ -90,7 +90,10 @@ Zero combined activity produces zero levels. An Event retains greater per-record
 weight, while many Thoughts naturally outweigh fewer Events. All three use the same weighted reference. A shared 0.75 component-height
 factor reserves at least a quarter of Total's height above either component;
 this is display separation, not a change to the underlying counts. The ratio
-between Events and Thoughts still follows the data rather than a forced order.
+between Event and Thought band thicknesses follows the data. Local weighted
+shares are blended over the same envelopes; Thoughts sit above visible Events
+inside Total, so both components follow its ridge. Hiding Events removes their
+offset beneath Thoughts without changing Total.
 
 Zero channels remain zero. The fixed weights give Events greater visual weight;
 there is no user-facing weight setting. Boost presets use exponents
@@ -133,9 +136,12 @@ Filled mode uses opaque silhouettes: grey Total behind amber Thoughts behind
 teal Events, each filled to the baseline. Each shared Braille cell takes the color with the largest exposed dot area
 after foreground occlusion; ties favor the front layer. This keeps tiny foreground
 contributions from recoloring a whole compact cell. One cell supports one
-foreground color, so sub-cell boundaries are quantized. Event-heavy days can
-naturally obscure some Thoughts. Outline mode retains connected contour strokes
-and blank interiors. Hiding a channel does not renormalize the others.
+foreground color, so filled color boundaries remain stepped; no dots are removed
+to smooth them. Thin bands can still share cells at compact sizes. Unfocused
+Total, Thoughts and Events use terminal shades 240, 244 and 248 respectively.
+Outline mode retains only the owning contour’s dots in each shared cell, with
+blank interiors and no separate baseline. Hiding a channel does not renormalize
+Total or the remaining channel’s measured share.
 
 
 ## Ownership and cost
@@ -516,7 +522,7 @@ predate this presentation change; no new timing or CPU improvement is claimed.
 
 The approved Braille + gap preview uses four mountain rows and one marker row.
 The bottom two Braille dots form a continuous baseline in the same cells as the
-filled slopes. Outline mode shares that axis without filling its interior. The
+filled slopes. Outline mode omits that axis and leaves its interior blank. The
 accepted date is a single background-colored space in the row below it, matching
 the purple Events highlight. Moving that block does not rerasterize mountains
 or overwrite any of their dots.

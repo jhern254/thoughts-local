@@ -529,6 +529,29 @@ func TestModel_DefaultMountains(t *testing.T) {
 }
 
 func TestModel_MountainFocusPalette(t *testing.T) {
+	t.Run("neutral focus retains three distinct shades in filled and outline modes", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		m.values = make([]render.DayActivity, 43)
+		m.values[21] = render.DayActivity{Events: 10, Thoughts: 20}
+		m.reference = 13
+		m.Resize(80, 30)
+		for _, outline := range []bool{false, true} {
+			m.outline = outline
+			m.SetHighlighted(true)
+			m.rebuild()
+			highlighted := ansi.Strip(m.plot)
+			m.SetHighlighted(false)
+			for _, color := range []string{"240", "244", "248"} {
+				if !strings.Contains(m.plot, "38;5;"+color+"m") {
+					t.Fatalf("outline=%v: missing neutral shade %s", outline, color)
+				}
+			}
+			if ansi.Strip(m.plot) != highlighted {
+				t.Fatalf("outline=%v: neutral palette changed geometry", outline)
+			}
+		}
+	})
 	t.Run("Events uses grey while other home focus keeps colors even on one row", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()

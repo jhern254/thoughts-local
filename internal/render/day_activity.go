@@ -115,6 +115,11 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	if width <= 0 || height <= 0 {
 		return nil
 	}
+	// Outline mode has three contours, not a second colored baseline under
+	// them. The purple day-marker row remains separate and unchanged.
+	if options.Outline {
+		options.Baseline = false
+	}
 	rows := make([][]DayActivityCell, height)
 	masks := make([][3]uint8, width*height)
 	for y := range rows {
@@ -238,6 +243,11 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 					row[x].Series, largest = series, count
 				}
 			}
+			if options.Outline && largest > 0 {
+				// A terminal cell has one foreground color. Retain only that
+				// contour's dots, never recolor another line as this series.
+				row[x].Glyph = brailleBlank | rune(mask[row[x].Series])
+			}
 		}
 	}
 
@@ -286,6 +296,9 @@ func dayActivityTerrain(width, days, padding, visibleSamples int, levels []DayAc
 	terrain := make([]DayActivityLevel, width*brailleColumns+1)
 	for column := range terrain {
 		x := column - 1
+		// Blend the local measured shares, then apply them to the shared ridge.
+		// Independent maxima can bury one component under the other.
+		var totalWeight, eventWeight, thoughtWeight float64
 		for _, peak := range mountains {
 			distance := float64(x-peak.center) / pixelsPerBucket
 			radius := peak.right
@@ -300,16 +313,24 @@ func dayActivityTerrain(width, days, padding, visibleSamples int, levels []DayAc
 			slope := math.Abs(distance) / radius
 			kernel := .5*(1+math.Cos(math.Pi*slope))/2 + .5*(1-slope)
 			current := &terrain[column]
-			if kernel*peak.level.Total <= current.Total && kernel*peak.level.Events <= current.Events && kernel*peak.level.Thoughts <= current.Thoughts {
-				continue
-			}
 			// Restrained multiscale erosion only lowers this envelope (2–4% maximum).
 			// Both scales vanish at the measured summit and stay calendar-anchored.
 			coarse, fine := math.Sin(math.Pi*distance/1.6), math.Sin(math.Pi*distance/.65)
 			kernel *= 1 - peak.roughness*(.65*coarse*coarse+.35*fine*fine)
 			current.Total = max(current.Total, kernel*peak.level.Total)
-			current.Events = max(current.Events, kernel*peak.level.Events)
-			current.Thoughts = max(current.Thoughts, kernel*peak.level.Thoughts)
+			totalWeight += kernel * peak.level.Total
+			eventWeight += kernel * peak.level.Events
+			thoughtWeight += kernel * peak.level.Thoughts
+		}
+		if totalWeight > 0 {
+			current := &terrain[column]
+			current.Events = current.Total * eventWeight / totalWeight
+			current.Thoughts = current.Total * thoughtWeight / totalWeight
+			// The upper Thought boundary includes visible Events beneath it. Its
+			// thickness still represents the Thought share, not an invented count.
+			if options.Events {
+				current.Thoughts += current.Events
+			}
 		}
 	}
 	return terrain

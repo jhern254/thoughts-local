@@ -284,6 +284,12 @@ func TestPreview_DayActivity(t *testing.T) {
 		if ansi.Strip(colored) != plain {
 			t.Fatal("color changed graph geometry")
 		}
+		neutral := strings.SplitN(colored, " Events ", 2)[0]
+		for _, shade := range []string{"240", "244", "248"} {
+			if !strings.Contains(neutral, "38;5;"+shade+"m") {
+				t.Fatalf("neutral preview missing shade %s", shade)
+			}
+		}
 		if strings.Count(plain, "October 16, 2026") != 2 || !strings.Contains(colored, "48;5;62") {
 			t.Fatal("missing accepted-date markers")
 		}
