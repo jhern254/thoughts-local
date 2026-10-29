@@ -102,12 +102,16 @@ func TestDayActivityBoundaries_SQLite(t *testing.T) {
 	t.Run("empty and deleted users have no activity", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u")
+		// Explicit lifecycle times keep this deletion fixture independent of wall-clock seconds.
+		if _, err := db.Exec(`UPDATE users SET created_at=1,updated_at=1 WHERE user_id='u'`); err != nil {
+			t.Fatal(err)
+		}
 		store := data.NewSQLiteMetricsStore(db)
 		cutoff := time.Unix(86400, 0).UTC()
 		boundaries := []time.Time{time.Unix(0, 0).UTC(), cutoff}
 		for _, deleted := range []bool{false, true} {
 			if deleted {
-				if _, err := db.Exec(`INSERT INTO thoughts(user_id,thought,observed_at) VALUES('u','synthetic',0); UPDATE users SET deleted_at=unixepoch() WHERE user_id='u'`); err != nil {
+				if _, err := db.Exec(`INSERT INTO thoughts(user_id,thought,observed_at) VALUES('u','synthetic',0); UPDATE users SET deleted_at=2,updated_at=2 WHERE user_id='u'`); err != nil {
 					t.Fatal(err)
 				}
 			}
