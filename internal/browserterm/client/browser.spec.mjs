@@ -852,10 +852,12 @@ test('d cycles the five approved palettes from entities and Mindset',async({page
 test('rapid resize and day movement leave one marker and no mountain ink over cards', async ({page}, testInfo) => {
   await exposeMountainTerminal(page);
   await ready(page);
+  await page.evaluate(()=>{window.resizeFitProbe=new FitAddon.FitAddon();window.mountainTerminal.loadAddon(window.resizeFitProbe);});
   await page.keyboard.press('Home'); await page.keyboard.press('ArrowUp');
   await expect(screen(page)).toContainText('1 Total');
   const snapshot = () => page.evaluate(() => {
     const term = window.mountainTerminal;
+    const fitted=window.resizeFitProbe.proposeDimensions();
     const lines = Array.from({length:term.rows},(_,y)=>term.buffer.active.getLine(term.buffer.active.viewportY+y));
     const text = lines.map(line=>line?.translateToString(true)||'');
     const heading = text.findIndex(line=>/^ Events\s/.test(line));
@@ -863,7 +865,7 @@ test('rapid resize and day movement leave one marker and no mountain ink over ca
     const markers = Array.from({length:term.cols},(_,x)=>x).filter(x=>lines[heading-1]?.getCell(x)?.getBgColor()===62);
     const overlap=[];
     for(let y=heading+1;y<term.rows-4;y++) for(let x=24;x<term.cols;x++) if(/[\u2801-\u28ff]/.test(lines[y]?.getCell(x)?.getChars()||'')) overlap.push({x,y});
-    return {date:text[heading]?.match(/^ Events\s+[A-Z][a-z]+ \d+, \d{4}/)?.[0],cols:term.cols,rows:term.rows,heading,markers,overlap,complete:footer===term.rows-4&&text[footer]?.length===term.cols,text};
+    return {date:text[heading]?.match(/^ Events\s+[A-Z][a-z]+ \d+, \d{4}/)?.[0],cols:term.cols,rows:term.rows,heading,markers,overlap,complete:fitted?.cols===term.cols&&fitted?.rows===term.rows&&footer===term.rows-4&&text[footer]?.length===term.cols,text};
   });
   const original=(await snapshot()).date;
   // Reproduce the dense diary failure: narrow/taller to wider/shorter,
@@ -882,12 +884,12 @@ test('rapid resize and day movement leave one marker and no mountain ink over ca
       await page.setViewportSize(size);
       await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowRight');
     }
-    await expect.poll(async()=>{const s=await snapshot();return {complete:s.complete,date:s.date};}).toEqual({complete:true,date:original});
-    await expect.poll(async()=>{const s=await snapshot();return s.markers.length===1&&s.markers[0]===s.cols-1&&s.overlap.length===0;}).toBe(true);
-    const s=await snapshot();
-    await testInfo.attach('resize-'+round,{body:JSON.stringify(s),contentType:'application/json'});
-    expect(s.markers).toEqual([s.cols-1]);
-    expect(s.overlap).toEqual([]);
+    let accepted;
+    await expect.poll(async()=>{
+      accepted=await snapshot();
+      return {complete:accepted.complete,date:accepted.date,markerOffsets:accepted.markers.map(x=>x-(accepted.cols-1)),overlap:accepted.overlap};
+    }).toEqual({complete:true,date:original,markerOffsets:[0],overlap:[]});
+    await testInfo.attach('resize-'+round,{body:JSON.stringify(accepted),contentType:'application/json'});
   }
   if((await screen(page).textContent()).includes('spider-demo')) {
     await page.keyboard.press('Escape');await page.keyboard.press('End');
