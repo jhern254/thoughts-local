@@ -44,7 +44,13 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 			}
 			_, back := reply.(goals.BackMsg)
 			_, filtered := reply.(listfilter.Reply)
-			if goals.Owns(reply) || back || filtered {
+			if back {
+				// Home starts a recurring clock; navigation is observable without running it.
+				next, _ := m.Update(reply)
+				m = next.(tui.Model)
+				return
+			}
+			if goals.Owns(reply) || filtered {
 				next, cmd := m.Update(reply)
 				m = next.(tui.Model)
 				deliver(cmd)
