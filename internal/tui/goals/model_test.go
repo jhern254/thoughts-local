@@ -278,3 +278,19 @@ func TestModel_SubjectReadFailure(t *testing.T) {
 		t.Fatal("failed Subject load changed memberships")
 	}
 }
+
+func TestModel_DetailReadFailure(t *testing.T) {
+	m, s := testModel(t)
+	m.open = true
+	m.Resize(80, 24)
+	m.screen = detailView
+	m.selected = &s.item
+	m.live = []data.Subject{{SubjectName: "Previous membership"}}
+	s.err = data.ErrRecordNotFound
+	reply := m.loadDetail(99)()
+	m, _ = m.Update(reply)
+	m, _ = press(m, "e")
+	if m.screen != detailView || m.selected != nil || strings.Contains(m.View(), "Previous membership") || strings.Contains(m.View(), "Misc") {
+		t.Fatal("failed new Details read exposed a previous Goal as editable")
+	}
+}

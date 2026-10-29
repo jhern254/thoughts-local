@@ -219,6 +219,10 @@ func (m *Model) loadList() tea.Cmd {
 	}
 }
 func (m *Model) loadDetail(id int64) tea.Cmd {
+	if m.screen == detailView {
+		m.selected = nil
+		m.live = nil
+	}
 	m.body.GotoTop()
 	ctx := m.beginRequest(logging.GoalGet)
 	owner, user, service, memberships := m.owner, m.userID, m.goals, m.memberships
