@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thoughts · Goals controls preview</title>
+<style>
+:root{color-scheme:dark;--page:#111112;--panel:#181819;--line:#343037;--text:#e8e5eb;--muted:#aaa3b2;--purple:#ad58b4;--bright:#ee6ff8;--selected:#704399}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--text);font:15px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}button,input,select{font:inherit;color:inherit}button{cursor:pointer;background:transparent;border:1px solid var(--line);padding:8px 12px}button:hover{border-color:var(--purple)}:focus-visible{outline:2px solid var(--bright);outline-offset:3px}main{max-width:1060px;margin:auto;padding:28px 24px}h1{font:600 22px/1.3 system-ui,sans-serif;margin:0 0 8px}.intro{display:flex;gap:20px;justify-content:space-between;align-items:start;margin-bottom:22px}.intro p{font-size:12px;color:var(--muted);margin:0;max-width:68ch}.intro button{flex-shrink:0}.intro button[aria-pressed=true]{border-color:var(--bright);color:var(--bright)}
+.screen{background:var(--panel);border:1px solid var(--line);height:740px;display:flex;flex-direction:column;min-width:0;margin:auto}.heading{display:flex;gap:18px;align-items:center;padding:20px;flex-wrap:wrap}.heading h2{font-size:15px;font-weight:400;background:var(--selected);padding:2px 9px;margin:0 auto 0 0}.status-toggle{display:flex;border:1px solid var(--line);min-width:0}.status-toggle button{border:0;border-right:1px solid var(--line);padding:7px 12px;white-space:nowrap}.status-toggle button:last-child{border-right:0}.status-toggle button[aria-pressed=true]{background:var(--selected);color:#fff}.status-toggle .count{font-size:11px;color:#d6c9df;margin-left:6px}.new{color:var(--bright)}
+.filters{padding:0 20px 16px;display:grid;grid-template-columns:minmax(160px,1fr) minmax(220px,1.1fr);gap:20px}.filters label{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:12px}.filters input,.filters select{font-size:14px;border:1px solid var(--line);background:#141315;min-width:0;width:100%;height:40px;padding:7px 10px;color:var(--text)}.sort{margin:0 20px;padding:10px 0;color:var(--muted);font-size:12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.sort strong{color:var(--bright);font-weight:400}.goal-list{flex:1;min-height:0;overflow:auto;padding:8px 20px;scrollbar-color:var(--line) transparent;outline-offset:-4px}.goal{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:17px 10px 17px 18px;border-left:2px solid transparent;border-bottom:1px solid #29262c;cursor:pointer}.goal.focused{border-left-color:var(--purple);background:#211b24}.goal.focused .name{color:var(--bright)}.name{font-size:15px;font-weight:400;margin:0 0 4px;overflow-wrap:anywhere}.subjects{font-size:13px;color:var(--muted);margin:0 0 6px;overflow-wrap:anywhere}.target{font-size:13px;margin:0;color:#d6cfdc}.period{font-size:11px;color:var(--muted);margin:5px 0 0}.meta{display:flex;flex-direction:column;align-items:flex-end;gap:7px;font-size:12px}.priority{padding:1px 7px;border:1px solid var(--line);color:var(--muted)}.priority.high{color:var(--bright);border-color:#74437b}.state{color:var(--muted)}.empty{color:var(--muted);padding:36px 12px}.footer{padding:14px 20px;border-top:1px solid var(--line);font-size:12px;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between;color:var(--muted)}.footer p{margin:0}.note{margin:16px 0 0;font-size:12px;color:var(--muted)}.narrow .screen{max-width:550px;height:650px}.narrow .heading{gap:12px}.narrow .status-toggle{order:3;flex:1 0 100%}.narrow .status-toggle button{flex:1}.narrow .filters{grid-template-columns:1fr;gap:12px}
+@media(max-width:650px){main{padding:18px 12px}.intro{flex-direction:column;gap:12px}.screen{height:720px}.heading{padding:16px;gap:12px}.status-toggle{order:3;flex:1 0 100%}.status-toggle button{flex:1}.filters{grid-template-columns:1fr;padding:0 16px 14px;gap:12px}.sort{margin:0 16px}.goal-list{padding:8px 10px}.goal{padding-left:12px;gap:8px}.meta{font-size:11px}.footer{padding:12px 16px}}
+</style>
+</head>
+<body>
+<main>
+<header class="intro"><div><h1>Goals · proposed controls</h1><p>Interactive HTML preview with synthetic Goals. Try the status buttons and Subject filter. This page does not change the running app or save data.</p></div><button id="narrow" aria-pressed="false">Narrow layout</button></header>
+<section class="screen" aria-labelledby="goals-title">
+<header class="heading"><h2 id="goals-title">Goals</h2>
+<div class="status-toggle" role="group" aria-label="Goal status">
+<button type="button" data-status="all" aria-pressed="true">All <span class="count"></span></button>
+<button type="button" data-status="active" aria-pressed="false">Active <span class="count"></span></button>
+<button type="button" data-status="inactive" aria-pressed="false">Inactive <span class="count"></span></button>
+</div><button class="new" id="new-goal" type="button">+ New Goal</button></header>
+<div class="filters">
+<label>Search Goals<input id="search" type="search" placeholder="Search by Goal name"></label>
+<label>Subject<select id="subject"><option value="all">All Subjects</option><option value="unassigned">Misc — no live Subjects</option></select></label>
+</div>
+<p class="sort">Priority: <strong>High</strong> → Normal → Low <span aria-hidden="true">·</span> across all Subjects</p>
+<div class="goal-list" id="goals" role="listbox" aria-label="Goals" tabindex="0"></div>
+<footer class="footer"><p id="summary" aria-live="polite"></p><p>↑/↓: select · /: search</p><p id="feedback" aria-live="polite"></p></footer>
+</section>
+<p class="note">Status and Subject filters work together. A Goal with several Subjects matches any one of its assigned Subjects. High-priority Goals stay first, including inactive Goals when All is selected.</p>
+</main>
+<script>
+const subjects=[{id:1,name:'Go Programming'},{id:2,name:'Software Projects'},{id:3,name:'Reading'},{id:4,name:'Fitness'},{id:5,name:'Design'},{id:6,name:'Misc'}];
+const goals=[
+ {id:7,name:'Walk after lunch',priority:'low',active:true,subjects:[4],target:'90m / week'},
+ {id:2,name:'Read more',priority:'normal',active:true,subjects:[3],target:'3h / week'},
+ {id:8,name:'Archive reference notes',priority:'high',active:false,subjects:[3],target:'2h / month'},
+ {id:1,name:'Practice Go',priority:'high',active:true,subjects:[1,2],target:'5h / week',period:'Oct 29, 2026 — Nov 28, 2026'},
+ {id:6,name:'Learn typography',priority:'normal',active:false,subjects:[5],target:'2h / month'},
+ {id:4,name:'Build Thoughts App',priority:'high',active:true,subjects:[1,2,5,3],target:'10h / week',period:'From Oct 29, 2026'},
+ {id:3,name:'Mobility practice',priority:'high',active:false,subjects:[4],target:'20m / day'},
+ {id:5,name:'Review loose ideas',priority:'high',active:true,subjects:[],target:'1h / week'},
+ {id:9,name:'Organize the Subject called Misc',priority:'normal',active:true,subjects:[6],target:'30m / week'},
+ {id:10,name:'Practice 日本語 and review a deliberately long Goal name',priority:'low',active:true,subjects:[3],target:'2h / week'}
+];
+const priorityOrder={high:0,normal:1,low:2};
+const list=document.querySelector('#goals');
+const search=document.querySelector('#search');
+const subject=document.querySelector('#subject');
+const toggles=[...document.querySelectorAll('[data-status]')];
+let status='all';let focusedId=1;
+for(const item of subjects){const option=document.createElement('option');option.value=String(item.id);option.textContent=item.name==='Misc'?'Misc (Subject)':item.name;subject.append(option)}
+function candidates(){
+ const query=search.value.trim().toLocaleLowerCase();
+ return goals.filter(goal=>goal.name.toLocaleLowerCase().includes(query)).filter(goal=>subject.value==='all'||(subject.value==='unassigned'?goal.subjects.length===0:goal.subjects.includes(Number(subject.value))));
+}
+function visibleGoals(){return candidates().filter(goal=>status==='all'||goal.active===(status==='active')).sort((a,b)=>priorityOrder[a.priority]-priorityOrder[b.priority]||a.id-b.id)}
+function element(tag,className,text){const result=document.createElement(tag);result.className=className;result.textContent=text;return result}
+function render(){
+ const matching=candidates();
+ for(const button of toggles){const value=button.dataset.status;button.setAttribute('aria-pressed',String(status===value));button.querySelector('.count').textContent=matching.filter(goal=>value==='all'||goal.active===(value==='active')).length}
+ const visible=visibleGoals();
+ if(!visible.some(goal=>goal.id===focusedId))focusedId=visible[0]?.id;
+ list.replaceChildren();
+ for(const goal of visible){
+ const row=document.createElement('article');row.className='goal';row.id=`goal-${goal.id}`;row.dataset.id=goal.id;row.dataset.priority=goal.priority;row.role='option';row.setAttribute('aria-selected',String(goal.id===focusedId));row.classList.toggle('focused',goal.id===focusedId);
+ const copy=document.createElement('div');copy.append(element('h3','name',goal.name));
+ const names=goal.subjects.map(id=>subjects.find(item=>item.id===id).name);const preview=names.length?names.slice(0,3).join(', ')+(names.length>3?', ...':''):'Misc';
+ copy.append(element('p','subjects',preview),element('p','target',goal.target));if(goal.period)copy.append(element('p','period',goal.period));
+ const meta=document.createElement('div');meta.className='meta';meta.append(element('span',`priority ${goal.priority}`,goal.priority[0].toUpperCase()+goal.priority.slice(1)),element('span','state',goal.active?'Active':'Inactive'));
+ row.append(copy,meta);row.addEventListener('click',()=>{focusedId=goal.id;render();list.focus()});list.append(row);
+ }
+ if(!visible.length)list.append(element('p','empty','No Goals match these filters.'));
+ if(focusedId)list.setAttribute('aria-activedescendant',`goal-${focusedId}`);else list.removeAttribute('aria-activedescendant');
+ const statusLabel=status[0].toUpperCase()+status.slice(1);const subjectLabel=subject.selectedOptions[0].textContent;
+ document.querySelector('#summary').textContent=`${visible.length} ${visible.length===1?'Goal':'Goals'} · ${statusLabel} · ${subjectLabel}`;
+ document.querySelector('#feedback').textContent='';
+}
+for(const button of toggles)button.addEventListener('click',()=>{status=button.dataset.status;render();list.scrollTop=0});
+subject.addEventListener('change',()=>{render();list.scrollTop=0});search.addEventListener('input',()=>{render();list.scrollTop=0});
+list.addEventListener('keydown',event=>{
+ if(event.key==='/'){event.preventDefault();search.focus();return}
+ if(event.key!=='ArrowUp'&&event.key!=='ArrowDown')return;
+ event.preventDefault();const visible=visibleGoals();const current=visible.findIndex(goal=>goal.id===focusedId);const index=Math.max(0,Math.min(visible.length-1,current+(event.key==='ArrowDown'?1:-1)));focusedId=visible[index]?.id;render();list.querySelector('.focused')?.scrollIntoView({block:'nearest'});
+});
+search.addEventListener('keydown',event=>{if(event.key==='Escape'){search.value='';render();list.focus()}});
+document.querySelector('#narrow').addEventListener('click',event=>{const narrow=document.body.classList.toggle('narrow');event.currentTarget.setAttribute('aria-pressed',String(narrow))});
+document.querySelector('#new-goal').addEventListener('click',()=>{document.querySelector('#feedback').textContent='Preview: opens the existing Create Goal form.'});
+render();
+</script>
+</body>
+</html>
