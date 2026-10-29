@@ -260,3 +260,21 @@ func TestGoalRow_DateBounds(t *testing.T) {
 		t.Fatalf("date bounds exceed the three description rows: %q", description)
 	}
 }
+
+func TestModel_SubjectReadFailure(t *testing.T) {
+	m, s := testModel(t)
+	m.open = true
+	m.selected = &s.item
+	m.screen = subjectsView
+	m.pickerReturn = detailView
+	s.err = errors.New("Subject list unavailable")
+	reply := m.loadPicker()()
+	m, _ = m.Update(reply)
+	_, save := press(m, "enter")
+	if save != nil {
+		t.Fatal("failed Subject load enabled a save that could clear unseen memberships")
+	}
+	if s.replaces != 0 {
+		t.Fatal("failed Subject load changed memberships")
+	}
+}

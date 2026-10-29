@@ -95,6 +95,7 @@ func (r subjectRow) Description() string { return "" }
 func (r subjectRow) FilterValue() string { return r.item.SubjectName }
 
 type Model struct {
+	pickerReady           bool
 	logger                logging.Logger
 	operation             logging.Operation
 	ctx                   context.Context
@@ -231,6 +232,7 @@ func (m *Model) loadDetail(id int64) tea.Cmd {
 	}
 }
 func (m *Model) loadPicker() tea.Cmd {
+	m.pickerReady = false
 	ctx := m.beginRequest(logging.GoalSubjectsList)
 	owner, user, subjects, service, memberships := m.owner, m.userID, m.subjects, m.goals, m.memberships
 	var id int64
@@ -326,6 +328,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			return m, cmd
 		case subjectsView:
+			m.pickerReady = true
 			m.available = reply.available
 			if m.pickerReturn == detailView {
 				m.selected = reply.item
@@ -453,6 +456,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case createView, editView:
 		return m, m.updateForm(msg)
 	case subjectsView:
+		if !m.pickerReady {
+			return m, nil
+		}
 		if ok && !m.picker.SettingFilter() {
 			switch key.String() {
 			case "space":
