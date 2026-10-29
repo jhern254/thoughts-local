@@ -239,3 +239,24 @@ func TestModel_DetailScroll(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_ResizeFocus(t *testing.T) {
+	m, _ := testModel(t)
+	m.open = true
+	m.Resize(100, 40)
+	m.startForm(true)
+	for range 7 {
+		m, _ = press(m, "tab")
+	}
+	m.Resize(48, 16)
+	if !strings.Contains(m.View(), "Save") {
+		t.Fatalf("resize hid the focused Save action: %s", m.View())
+	}
+}
+func TestGoalRow_DateBounds(t *testing.T) {
+	start, end := "2026-01-01", "2026-12-31"
+	description := (goalRow{item: data.Goal{StartDate: &start, EndDate: &end}}).Description()
+	if strings.Count(description, "\n") > 2 || !strings.Contains(description, start) || !strings.Contains(description, end) {
+		t.Fatalf("date bounds exceed the three description rows: %q", description)
+	}
+}

@@ -153,6 +153,7 @@ func New(ctx context.Context, userID string, service GoalService, assignments As
 		m.fields[i] = textinput.New()
 		m.fields[i].CharLimit = 0
 	}
+	m.Resize(m.width, m.height)
 	return m
 }
 func (m *Model) Close() {
@@ -186,6 +187,7 @@ func (m *Model) Resize(width, height int) {
 	for i := range m.fields {
 		m.fields[i].SetWidth(max(1, width-4))
 	}
+	m.refreshBody()
 }
 func (m *Model) Open() tea.Cmd { m.open = true; m.screen = listView; return m.loadList() }
 func (m *Model) loadList() tea.Cmd {
@@ -251,22 +253,26 @@ func (m *Model) loadPicker() tea.Cmd {
 }
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	next, cmd := m.update(msg)
-	if next.screen == createView || next.screen == editView {
-		next.body.SetContent(ansi.Hardwrap(next.formContent(), next.width, true))
-		row := 2 + next.focus*2
-		if next.focus >= 5 {
-			row = 12 + next.focus - 5
-		}
-		if row < next.body.YOffset() {
-			next.body.SetYOffset(row)
-		}
-		if row >= next.body.YOffset()+next.body.Height() {
-			next.body.SetYOffset(row - next.body.Height() + 1)
-		}
-	} else if next.screen == detailView && next.selected != nil {
-		next.body.SetContent(ansi.Hardwrap(next.detailContent(), next.width, true))
-	}
+	next.refreshBody()
 	return next, cmd
+}
+
+func (m *Model) refreshBody() {
+	if m.screen == createView || m.screen == editView {
+		m.body.SetContent(ansi.Hardwrap(m.formContent(), m.width, true))
+		row := 2 + m.focus*2
+		if m.focus >= 5 {
+			row = 12 + m.focus - 5
+		}
+		if row < m.body.YOffset() {
+			m.body.SetYOffset(row)
+		}
+		if row >= m.body.YOffset()+m.body.Height() {
+			m.body.SetYOffset(row - m.body.Height() + 1)
+		}
+	} else if m.screen == detailView && m.selected != nil {
+		m.body.SetContent(ansi.Hardwrap(m.detailContent(), m.width, true))
+	}
 }
 
 func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
@@ -496,12 +502,14 @@ func goalSummary(item data.Goal) string {
 		state = "Inactive"
 	}
 	summary := fmt.Sprintf("%s / %s · %s · %s", formatDuration(item.TargetSeconds), cadenceLabel(item.Cadence), item.Priority, state)
-	if item.StartDate != nil {
+	if item.StartDate != nil && item.EndDate != nil {
+		summary += "\n" + *item.StartDate + " – " + *item.EndDate
+	} else if item.StartDate != nil {
 		summary += "\nFrom " + *item.StartDate
-	}
-	if item.EndDate != nil {
+	} else if item.EndDate != nil {
 		summary += "\nUntil " + *item.EndDate
 	}
+
 	return summary
 }
 func (m Model) View() string {
@@ -509,13 +517,19 @@ func (m Model) View() string {
 	switch m.screen {
 	case listView:
 		content = m.list.View()
-		help = "n: new · Enter: details · f: " + []string{"All", "Active", "Inactive"}[m.visibility] + " · Esc: back"
+		help = "n: new · Enter: open · f: " + []string{"All", "Active", "Inactive"}[m.visibility] + " · Esc: back"
 	case subjectsView:
 		content = m.picker.View()
-		help = "Space: select · Enter: confirm · /: search · Esc: cancel"
+		help = "Space: toggle · Enter: save · Esc: cancel"
+		if m.pickerReturn == createView {
+			help = "Space: toggle · Enter: done · Esc: cancel"
+		}
 	case detailView:
 		content = m.detailContent()
 		help = "e: Edit Goal · s: Manage Subjects · Esc: Back"
+		if m.width < 60 {
+			help = "e: edit · s: Subjects · Esc: back"
+		}
 	default:
 		content = m.formContent()
 		help = "Tab: next · Ctrl+S: save · Esc: cancel"
