@@ -872,7 +872,8 @@ test('rapid resize and day movement leave one marker and no mountain ink over ca
     const markers = Array.from({length:term.cols},(_,x)=>x).filter(x=>lines[heading-1]?.getCell(x)?.getBgColor()===62);
     const overlap=[];
     for(let y=heading+1;y<term.rows-4;y++) for(let x=24;x<term.cols;x++) if(/[\u2801-\u28ff]/.test(lines[y]?.getCell(x)?.getChars()||'')) overlap.push({x,y});
-    return {date:text[heading]?.match(/^ Events\s+[A-Z][a-z]+ \d+, \d{4}/)?.[0],cols:term.cols,rows:term.rows,heading,markers,overlap,complete:fitted?.cols===term.cols&&fitted?.rows===term.rows&&footer===term.rows-4&&text[footer]?.length===term.cols,text};
+    const geometry={columns:term.cols-fitted.cols,rows:term.rows-fitted.rows,footerRow:footer-(term.rows-4),footerWidth:(text[footer]?.length??-1)-term.cols};
+    return {geometry,date:text[heading]?.match(/^ Events\s+[A-Z][a-z]+ \d+, \d{4}/)?.[0],cols:term.cols,rows:term.rows,heading,markers,overlap,complete:fitted?.cols===term.cols&&fitted?.rows===term.rows&&footer===term.rows-4&&text[footer]?.length===term.cols,text};
   });
   const original=(await snapshot()).date;
   // Reproduce the dense diary failure: narrow/taller to wider/shorter,
@@ -894,8 +895,8 @@ test('rapid resize and day movement leave one marker and no mountain ink over ca
     let accepted;
     await expect.poll(async()=>{
       accepted=await snapshot();
-      return {complete:accepted.complete,date:accepted.date,markerOffsets:accepted.markers.map(x=>x-(accepted.cols-1)),overlap:accepted.overlap};
-    }).toEqual({complete:true,date:original,markerOffsets:[0],overlap:[]});
+      return {geometry:accepted.geometry,date:accepted.date,markerOffsets:accepted.markers.map(x=>x-(accepted.cols-1)),overlap:accepted.overlap};
+    }).toEqual({geometry:{columns:0,rows:0,footerRow:0,footerWidth:0},date:original,markerOffsets:[0],overlap:[]});
     await testInfo.attach('resize-'+round,{body:JSON.stringify(accepted),contentType:'application/json'});
   }
   if((await screen(page).textContent()).includes('spider-demo')) {
