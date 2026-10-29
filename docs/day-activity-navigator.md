@@ -138,7 +138,10 @@ teal Events, each filled to the baseline. Each shared Braille cell takes the col
 after foreground occlusion; ties favor the front layer. This keeps tiny foreground
 contributions from recoloring a whole compact cell. One cell supports one
 foreground color, so filled color boundaries remain stepped; no dots are removed
-to smooth them. Thin bands can still share cells at compact sizes. Unfocused
+to smooth them. Thin bands can still share cells at compact sizes. When only one mountain row
+fits and Total is enabled, show its grey contour alone rather than giving the
+combined mountain an Event or Thought color. Hiding Total reveals the selected
+components; a taller viewport restores their layers without changing the toggles. Unfocused
 Total, Thoughts and Events use terminal shades 240, 244 and 248 respectively.
 Outline mode retains only the owning contour’s dots in each shared cell, with
 blank interiors and no separate baseline. Hiding a channel does not renormalize

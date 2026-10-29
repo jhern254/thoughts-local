@@ -450,7 +450,7 @@ test('metrics card cycles days without losing its focused view', async ({page}) 
   await expect(screen(page)).not.toContainText('Newest first');
 });
 
-test('day mountains retain focus colors in a compact window without moving Events', async ({page}) => {
+test('day mountains preserve focus palettes in a compact window without moving Events', async ({page}) => {
   await exposeMountainTerminal(page);
   await ready(page);
   const mountainHasColor = () => screen(page).locator('div').evaluateAll(rows => {
@@ -499,7 +499,9 @@ test('day mountains retain focus colors in a compact window without moving Event
     });
     return before !== null;
   }).toBe(true);
-  await expect.poll(mountainHasColor).toBe(true);
+  // Font metrics can leave one plot row here, where enabled Total stays grey.
+  // Multiple rows retain the highlighted component palette.
+  await expect.poll(mountainHasColor).toBe(before > 6);
   await page.keyboard.press('d');
   for (let step = 0; step < 40; step++) await page.keyboard.press('ArrowUp');
   await expect(screen(page)).toContainText('300%');
@@ -690,5 +692,45 @@ test('quarter window retains its previous compact mountain height through zoom a
     await page.keyboard.press('Escape');
     await page.keyboard.press('0');
     expect((await snapshot()).eventRow).toBe(baseline.eventRow);
+  }
+});
+
+test('one-row mountains show grey Total and restore layers when the window grows', async ({page},testInfo) => {
+  await exposeMountainTerminal(page);
+  await ready(page);
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('1 Total');
+  const snapshot = () => page.evaluate(() => {
+    const term = window.mountainTerminal;
+    const lines = Array.from({length:term.rows},(_,y)=>term.buffer.active.getLine(term.buffer.active.viewportY+y));
+    const text = lines.map(line=>line?.translateToString(true)||'');
+    const eventRow = text.findIndex(row=>/^ Events\s+[A-Z]/.test(row));
+    const footer = text.findLastIndex(row=>/^─+$/.test(row));
+    const series = new Set();
+    for(let y=4;y<eventRow-1;y++)for(let x=0;x<term.cols;x++){
+      const cell=lines[y]?.getCell(x);
+      if(/[\u2801-\u28ff]/.test(cell?.getChars()||''))series.add(cell.getFgColor());
+    }
+    return {cols:term.cols,rows:term.rows,eventRow,series:[...series].sort((a,b)=>a-b),complete:footer===term.rows-4&&text[footer]?.length===term.cols};
+  });
+  for(const mode of ['filled','outline']){
+    if(mode==='outline'){
+      await page.keyboard.press('d');await page.keyboard.press('f');
+      await expect(screen(page)).toContainText('outline');await page.keyboard.press('Escape');
+    }
+    await page.setViewportSize({width:960,height:450});
+    await expect.poll(async()=>{const state=await snapshot();return state.complete&&state.cols<120&&state.rows<=24&&state.eventRow===6;}).toBe(true);
+    await expect.poll(async()=>(await snapshot()).series).toEqual([240]);
+    await page.screenshot({path:testInfo.outputPath('one-row-total-'+mode+'.png')});
+    await page.keyboard.press('1');
+    await expect(screen(page)).toContainText('1 Total off');
+    await expect.poll(async()=>(await snapshot()).series.some(color=>color===37||color===179)).toBe(true);
+    await page.keyboard.press('1');
+    await expect(screen(page)).not.toContainText('1 Total off');
+    await expect.poll(async()=>(await snapshot()).series).toEqual([240]);
+    await page.setViewportSize({width:1200,height:850});
+    await expect.poll(async()=>{const state=await snapshot();return state.complete&&state.cols>120&&state.eventRow===9;}).toBe(true);
+    await expect.poll(async()=>(await snapshot()).series).toEqual([37,179,240]);
   }
 });

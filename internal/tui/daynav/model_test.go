@@ -530,6 +530,44 @@ func TestModel_DefaultMountains(t *testing.T) {
 }
 
 func TestModel_MountainFocusPalette(t *testing.T) {
+	t.Run("one-row Total stays grey and layer colors return after resizing", func(t *testing.T) {
+		m, _ := fixture(t)
+		defer m.Close()
+		m.values = make([]render.DayActivity, 43)
+		m.values[21] = render.DayActivity{Events: 10, Thoughts: 20}
+		m.reference = 13
+		for _, outline := range []bool{false, true} {
+			m.outline = outline
+			m.Resize(80, 20)
+			m.rebuild()
+			for _, highlighted := range []bool{false, true} {
+				m.SetHighlighted(highlighted)
+				if !strings.Contains(m.plot, "38;5;240m") {
+					t.Fatal("compact Total lost its grey color")
+				}
+				for _, shade := range []string{"37", "179", "244", "248"} {
+					if strings.Contains(m.plot, "38;5;"+shade+"m") {
+						t.Fatalf("outline=%v highlighted=%v: compact Total inherited component shade %s", outline, highlighted, shade)
+					}
+				}
+			}
+			m.Key("1")
+			if !strings.Contains(m.plot, "38;5;37m") && !strings.Contains(m.plot, "38;5;179m") {
+				t.Fatal("hiding Total did not reveal the selected component colors")
+			}
+			m.Key("1")
+			m.Resize(80, 40)
+			for _, shade := range []string{"240", "37", "179"} {
+				if !strings.Contains(m.plot, "38;5;"+shade+"m") {
+					t.Fatalf("outline=%v: growing the graph did not restore shade %s", outline, shade)
+				}
+			}
+			if m.series != [3]bool{true, true, true} {
+				t.Fatal("compact fallback changed the saved layer toggles")
+			}
+		}
+	})
+
 	t.Run("neutral focus retains three distinct shades in filled and outline modes", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
@@ -553,7 +591,7 @@ func TestModel_MountainFocusPalette(t *testing.T) {
 			}
 		}
 	})
-	t.Run("Events uses grey while other home focus keeps colors even on one row", func(t *testing.T) {
+	t.Run("Events uses grey while other home focus keeps colors when layers fit", func(t *testing.T) {
 		m, _ := fixture(t)
 		defer m.Close()
 		m.values = make([]render.DayActivity, 43)
@@ -561,7 +599,7 @@ func TestModel_MountainFocusPalette(t *testing.T) {
 		m.values[28].Events = 100
 		m.reference = 70
 		m.rebuild()
-		for _, height := range []int{40, 20} {
+		for _, height := range []int{40, 30} {
 			m.Resize(80, height)
 			m.SetHighlighted(false)
 			grey := m.plot

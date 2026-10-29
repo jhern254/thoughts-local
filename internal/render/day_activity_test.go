@@ -157,13 +157,13 @@ func TestDayActivity_SharedScale(t *testing.T) {
 }
 
 func TestDayActivity_SolidLayers(t *testing.T) {
-	t.Run("a one-row graph retains component colors instead of a grey overpaint", func(t *testing.T) {
+	t.Run("a one-row graph retains component colors when Total is hidden", func(t *testing.T) {
 		cells := RenderDayActivity(20, 1, func() []DayActivity {
 			values := make([]DayActivity, 24)
 			values[5].Thoughts = 100
 			values[18].Events = 100
 			return values
-		}(), DayActivityOptions{Total: true, Events: true, Thoughts: true, Size: 3})
+		}(), DayActivityOptions{Events: true, Thoughts: true, Size: 3})
 		thoughts, events := false, false
 		for _, cell := range cells[0] {
 			thoughts = thoughts || cell.Glyph != ' ' && cell.Series == DayThoughts

@@ -115,6 +115,12 @@ func RenderDayActivity(width, height int, values []DayActivity, options DayActiv
 	if width <= 0 || height <= 0 {
 		return nil
 	}
+	// One terminal row cannot reliably separate the three layers. Show the
+	// enabled Total honestly, rather than tinting their combined area as Events.
+	// These local options preserve the caller's toggles for a taller viewport.
+	if height == 1 && options.Total {
+		options.Events, options.Thoughts = false, false
+	}
 	// Outline mode has three contours, not a second colored baseline under
 	// them. The purple day-marker row remains separate and unchanged.
 	if options.Outline {

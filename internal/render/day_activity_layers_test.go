@@ -106,3 +106,21 @@ func TestDayActivity_SharedLayers(t *testing.T) {
 		}
 	})
 }
+
+func TestDayActivity_CompactTotal(t *testing.T) {
+	for _, outline := range []bool{false, true} {
+		t.Run(map[bool]string{false: "filled", true: "outline"}[outline], func(t *testing.T) {
+			options := mountainOptions()
+			options.Outline = outline
+			values := mountainFixtures()["channels"]
+			combined := RenderDayActivity(80, 1, values, options)
+			options.Events, options.Thoughts = false, false
+			total := RenderDayActivity(80, 1, values, options)
+			for x, cell := range combined[0] {
+				if cell != total[0][x] {
+					t.Fatalf("column %d: compact cell=%+v, want grey Total cell=%+v", x, cell, total[0][x])
+				}
+			}
+		})
+	}
+}
