@@ -75,6 +75,16 @@ only; Goal membership is persisted when the user confirms the picker or creates
 the Goal. Ctrl+S confirms a selection independently of the highlighted action,
 including an empty selection when no Subjects exist.
 
+## Future Goal distribution curve
+
+A future, separately scoped feature can explore a distribution curve around
+Goals on the Goals page, building on their highlighted natural widths and the
+[visual data guidance](app-style-guide.md#visual-data-and-content-shape).
+First agree what the curve represents: the shape of rendered text or a defined
+Goal metric. Keep its relationship to the Goal rows clear and preserve text,
+focus, filtering, and narrow-window navigation. This is a design idea, not an
+implemented Goal visualization or progress feature.
+
 ## Stress demo
 
 `make tui/browser/demo/stress` now supplies 48 Goals and 32 live Subjects alongside
