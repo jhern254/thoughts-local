@@ -565,9 +565,14 @@ func (m Model) View() string {
 			goalList.SetDelegate(goalListDelegate(m.listFocus == goalListControl))
 			content += "\n" + goalList.View()
 		}
-		help = "Tab: controls · h/l: filter · j/k: Goals · n: new · Esc: back"
-		if m.width < 60 {
-			help = "Tab: controls · ←/→: filter · j/k: Goals"
+		help = "Tab: panels · h/l: filter · n: new · Esc: back"
+		if m.listFocus == goalListControl {
+			help = "p: priority · ↑/k: filter · j/k: Goals · Tab: panels · n: new · Esc: back"
+			if m.width < 60 {
+				help = "p: priority · ↑/k: filter · Tab: panels"
+			}
+		} else if m.listFocus == priorityControl {
+			help = "h/l: priority · ↓/j: Goals · Tab: panels · Esc: back"
 		}
 		if m.subjectMenuOpen {
 			help = "↑/↓ or j/k: move · /: search · Enter: select · Esc: cancel"

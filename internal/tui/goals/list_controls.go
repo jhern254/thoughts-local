@@ -241,12 +241,31 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 		if key.String() == "shift+tab" {
 			step = -1
 		}
-		m.listFocus = listControl((int(m.listFocus) + step + 4) % 4)
+		if m.listFocus == priorityControl {
+			m.listFocus = goalListControl
+		}
+		m.listFocus = listControl((int(m.listFocus) + step + 3) % 3)
 
 		return true, nil
 	}
 	switch key.String() {
-	case "j", "k", "down", "up":
+	case "p":
+		if m.listFocus == goalListControl {
+			m.priorityFilter = (m.priorityFilter + 1) % 4
+			return true, m.applyListControls()
+		}
+		return true, nil
+	case "k", "up":
+		if m.listFocus == goalListControl && m.list.Index() == 0 {
+			m.listFocus = priorityControl
+			return true, nil
+		}
+		return m.listFocus != goalListControl, nil
+	case "j", "down":
+		if m.listFocus == priorityControl {
+			m.listFocus = goalListControl
+			return true, nil
+		}
 		return m.listFocus != goalListControl, nil
 	case "h", "l", "left", "right", "enter", "space":
 		direction := 1

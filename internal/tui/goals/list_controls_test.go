@@ -35,7 +35,7 @@ func TestModel_ListControls(t *testing.T) {
 				t.Fatalf("removed New Goal button remains at width %d", width)
 			}
 		}
-		for _, want := range []listControl{statusControl, subjectControl, priorityControl, goalListControl} {
+		for _, want := range []listControl{statusControl, subjectControl, goalListControl} {
 			m, _ = press(m, "tab")
 			if m.listFocus != want {
 				t.Fatalf("Tab focus got %d, want %d", m.listFocus, want)
@@ -75,8 +75,9 @@ func TestModel_ListControls(t *testing.T) {
 		}
 		m = selectSubjectFilter(m, 2)
 
-		m, _ = press(m, "tab") // priority
-		m, _ = press(m, "l")   // High
+		m, _ = press(m, "tab")                            // Goals
+		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp}) // priority
+		m, _ = press(m, "l")                              // High
 		if len(m.list.Items()) != 0 {
 			t.Fatal("High filter retained Normal Goal")
 		}
@@ -85,8 +86,8 @@ func TestModel_ListControls(t *testing.T) {
 			t.Fatal("All priority did not restore matching Goal")
 		}
 	})
-	t.Run("only Tab moves focus between filters and Goals", func(t *testing.T) {
-		for _, focus := range []listControl{statusControl, subjectControl, priorityControl} {
+	t.Run("only Tab moves focus between external filters and the Goals panel", func(t *testing.T) {
+		for _, focus := range []listControl{statusControl, subjectControl} {
 			for _, key := range []tea.KeyPressMsg{{Code: 'j', Text: "j"}, {Code: 'k', Text: "k"}, {Code: tea.KeyDown}, {Code: tea.KeyUp}} {
 				m := setup(t)
 				m.listFocus = focus
@@ -99,7 +100,6 @@ func TestModel_ListControls(t *testing.T) {
 		m := setup(t)
 		m.listFocus = subjectControl
 		m, _ = press(m, "tab")
-		m, _ = press(m, "tab")
 		if m.listFocus != goalListControl {
 			t.Fatal("Tab did not reach Goals")
 		}
@@ -110,6 +110,62 @@ func TestModel_ListControls(t *testing.T) {
 		m, _ = press(m, "k")
 		if m.list.Index() != 0 {
 			t.Fatal("k did not move back through focused Goals")
+		}
+	})
+
+	t.Run("Up reaches Priority within the Goals panel and Down returns to its selection", func(t *testing.T) {
+		for _, keys := range []struct{ up, down tea.KeyPressMsg }{
+			{tea.KeyPressMsg{Code: tea.KeyUp}, tea.KeyPressMsg{Code: tea.KeyDown}},
+			{tea.KeyPressMsg{Code: 'k', Text: "k"}, tea.KeyPressMsg{Code: 'j', Text: "j"}},
+		} {
+			m := setup(t)
+			m, _ = m.Update(keys.up)
+			if m.listFocus != priorityControl || m.list.Index() != 0 {
+				t.Fatal("Up from the first Goal did not focus Priority")
+			}
+			m, _ = press(m, "l")
+			if m.priorityFilter != 1 {
+				t.Fatal("focused Priority did not respond to l")
+			}
+			m, _ = m.Update(keys.down)
+			if m.listFocus != goalListControl || m.list.Index() != 0 {
+				t.Fatal("Down from Priority skipped or changed the selected Goal")
+			}
+			m, _ = m.Update(keys.down)
+			m, _ = m.Update(keys.up)
+			if m.listFocus != goalListControl || m.list.Index() != 0 {
+				t.Fatal("Up from a later Goal left the Goal list")
+			}
+			m, _ = m.Update(keys.up)
+			m, _ = press(m, "tab")
+			if m.listFocus != statusControl {
+				t.Fatal("Tab from Priority did not leave the Goals panel")
+			}
+		}
+	})
+	t.Run("an empty Goals panel can reach Priority", func(t *testing.T) {
+		m, _ := testModel(t)
+		m.open = true
+		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+		if m.listFocus != priorityControl {
+			t.Fatal("empty Goals could not focus Priority")
+		}
+	})
+
+	t.Run("p cycles the priority filter while keeping focus in the Goals scroller", func(t *testing.T) {
+		m := setup(t)
+		for _, want := range []int{1, 2, 3, 0} {
+			m, _ = press(m, "p")
+			if m.priorityFilter != want || m.listFocus != goalListControl || m.screen != listView {
+				t.Fatalf("p got filter %d and focus %d, want filter %d and Goals focus", m.priorityFilter, m.listFocus, want)
+			}
+		}
+		for _, focus := range []listControl{statusControl, subjectControl, priorityControl} {
+			m.listFocus = focus
+			m, _ = press(m, "p")
+			if m.priorityFilter != 0 || m.listFocus != focus {
+				t.Fatal("p changed the priority filter outside the Goals scroller")
+			}
 		}
 	})
 
@@ -370,7 +426,10 @@ func TestModel_ListFocusColors(t *testing.T) {
 		m, s := testModel(t)
 		s.item.IsActive = true
 		m, _ = m.Update(m.Open()())
-		focused := ansi.Strip(m.View())
+		withoutHelp := func(content string) string {
+			return content[:strings.LastIndex(content, "\n")]
+		}
+		focused := withoutHelp(ansi.Strip(m.View()))
 		m.listFocus = subjectControl
 		muted := m.View()
 		delegate := list.NewDefaultDelegate()
@@ -378,7 +437,7 @@ func TestModel_ListFocusColors(t *testing.T) {
 		if !strings.Contains(muted, expected) {
 			t.Fatal("unfocused selected Goal lacks muted purple")
 		}
-		if ansi.Strip(muted) != focused || m.list.Index() != 0 {
+		if withoutHelp(ansi.Strip(muted)) != focused || m.list.Index() != 0 {
 			t.Fatal("changing focus altered content, geometry or selection")
 		}
 	})
@@ -417,5 +476,24 @@ func TestModel_GoalListStatusOrdering(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestModel_SubjectDropdownTabPanels(t *testing.T) {
+	for _, tc := range []struct {
+		key  tea.KeyPressMsg
+		want listControl
+	}{
+		{tea.KeyPressMsg{Code: tea.KeyTab}, goalListControl},
+		{tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}, statusControl},
+	} {
+		m, _ := testModel(t)
+		m.open = true
+		m.listFocus = subjectControl
+		m, _ = press(m, "enter")
+		m, _ = m.Update(tc.key)
+		if m.subjectMenuOpen || m.listFocus != tc.want {
+			t.Fatalf("dropdown Tab focus got %d, want %d", m.listFocus, tc.want)
+		}
 	}
 }
