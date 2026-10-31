@@ -17,7 +17,6 @@ const (
 	statusControl
 	subjectControl
 	priorityControl
-	createControl
 )
 
 type controlHit struct {
@@ -171,17 +170,12 @@ func (m Model) listControlLayout() controlLayout {
 	}
 	line = m.list.Styles.Title.Padding(0).Margin(0).Render("Goals")
 	if m.width < 60 {
-		line += strings.Repeat(" ", max(1, m.width-ansi.StringWidth(line)-12))
-		add("[+ New Goal]", createControl, 0, m.listFocus == createControl)
 		flush()
 	} else {
-		line += strings.Repeat(" ", max(1, m.width-ansi.StringWidth(line)-38))
+		line += strings.Repeat(" ", max(1, m.width-ansi.StringWidth(line)-26))
 	}
 	for i, label := range []string{"All", "Active", "Inactive"} {
 		add("["+label+"] ", statusControl, i, m.visibility == i)
-	}
-	if m.width >= 60 {
-		add("[+ New Goal]", createControl, 0, m.listFocus == createControl)
 	}
 	flush()
 	layout.rows = append(layout.rows, "")
@@ -225,9 +219,6 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 					return true, m.applyListControls()
 				case subjectControl:
 					return true, m.openSubjectMenu()
-				case createControl:
-					m.startForm(true)
-					return true, m.fields[0].Focus()
 				}
 			}
 		}
@@ -242,7 +233,7 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 		if key.String() == "shift+tab" {
 			step = -1
 		}
-		m.listFocus = listControl((int(m.listFocus) + step + 5) % 5)
+		m.listFocus = listControl((int(m.listFocus) + step + 4) % 4)
 
 		return true, nil
 	}
@@ -268,12 +259,6 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 			m.priorityFilter = (m.priorityFilter + direction + 4) % 4
 		case subjectControl:
 			return true, m.openSubjectMenu()
-		case createControl:
-			if key.String() != "enter" && key.String() != "space" {
-				return true, nil
-			}
-			m.startForm(true)
-			return true, m.fields[0].Focus()
 		default:
 			return false, nil
 		}

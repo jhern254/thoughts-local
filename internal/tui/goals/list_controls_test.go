@@ -27,6 +27,26 @@ func TestModel_ListControls(t *testing.T) {
 		m.applyListControls()
 		return m
 	}
+	t.Run("creation uses n without a New Goal button or extra Tab stop", func(t *testing.T) {
+		m := setup(t)
+		for _, width := range []int{80, 48} {
+			m.Resize(width, 24)
+			if strings.Contains(ansi.Strip(m.View()), "New Goal") {
+				t.Fatalf("removed New Goal button remains at width %d", width)
+			}
+		}
+		for _, want := range []listControl{statusControl, subjectControl, priorityControl, goalListControl} {
+			m, _ = press(m, "tab")
+			if m.listFocus != want {
+				t.Fatalf("Tab focus got %d, want %d", m.listFocus, want)
+			}
+		}
+		m, _ = press(m, "n")
+		if m.screen != createView || m.saving {
+			t.Fatal("n did not open an unsaved Goal creation form")
+		}
+	})
+
 	t.Run("status Subject and priority controls combine without another read", func(t *testing.T) {
 		m := setup(t)
 		if got := m.list.Items()[0].(goalRow).item.GoalID; got != 1 {
