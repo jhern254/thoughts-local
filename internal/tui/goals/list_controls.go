@@ -112,6 +112,9 @@ func (m *Model) applyListControls() tea.Cmd {
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		a, b := rows[i].(goalRow).item, rows[j].(goalRow).item
+		if a.IsActive != b.IsActive {
+			return a.IsActive
+		}
 		if rank(a.Priority) != rank(b.Priority) {
 			return rank(a.Priority) < rank(b.Priority)
 		}

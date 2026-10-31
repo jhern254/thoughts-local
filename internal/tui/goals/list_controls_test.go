@@ -161,7 +161,11 @@ func TestModel_ListControls(t *testing.T) {
 	})
 	t.Run("filtering preserves selection when possible and resets when excluded", func(t *testing.T) {
 		m := setup(t)
-		m.list.Select(2)
+		for i, item := range m.list.Items() {
+			if item.(goalRow).item.GoalID == 3 {
+				m.list.Select(i)
+			}
+		}
 		m.visibility = 1
 		m.applyListControls()
 		if m.list.SelectedItem().(goalRow).item.GoalID != 3 {
@@ -378,4 +382,40 @@ func TestModel_ListFocusColors(t *testing.T) {
 			t.Fatal("changing focus altered content, geometry or selection")
 		}
 	})
+}
+
+func TestModel_GoalListStatusOrdering(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		visibility int
+		want       []int64
+	}{
+		{"All puts every active Goal before inactive Goals", 0, []int64{5, 8, 4, 6, 1, 2, 3}},
+		{"Active keeps priority ordering", 1, []int64{5, 8, 4, 6}},
+		{"Inactive keeps priority ordering", 2, []int64{1, 2, 3}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _ := testModel(t)
+			reply := m.Open()().(result)
+			reply.rows = []list.Item{
+				goalRow{item: data.Goal{GoalID: 1, GoalName: "Inactive high", Priority: "high"}},
+				goalRow{item: data.Goal{GoalID: 6, GoalName: "Active low", Priority: "low", IsActive: true}},
+				goalRow{item: data.Goal{GoalID: 3, GoalName: "Inactive low", Priority: "low"}},
+				goalRow{item: data.Goal{GoalID: 4, GoalName: "Active normal", Priority: "normal", IsActive: true}},
+				goalRow{item: data.Goal{GoalID: 8, GoalName: "Later active high", Priority: "high", IsActive: true}},
+				goalRow{item: data.Goal{GoalID: 2, GoalName: "Inactive normal", Priority: "normal"}},
+				goalRow{item: data.Goal{GoalID: 5, GoalName: "Active high", Priority: "high", IsActive: true}},
+			}
+			m.visibility = tc.visibility
+			m, _ = m.Update(reply)
+			if len(m.list.Items()) != len(tc.want) {
+				t.Fatalf("Goal count got %d, want %d", len(m.list.Items()), len(tc.want))
+			}
+			for i, id := range tc.want {
+				if got := m.list.Items()[i].(goalRow).item.GoalID; got != id {
+					t.Fatalf("Goal at position %d got %d, want %d", i, got, id)
+				}
+			}
+		})
+	}
 }
