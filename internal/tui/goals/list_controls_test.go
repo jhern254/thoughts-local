@@ -85,22 +85,34 @@ func TestModel_ListControls(t *testing.T) {
 			t.Fatal("All priority did not restore matching Goal")
 		}
 	})
-	t.Run("vertical and Vim navigation leave filters unchanged and move Goals", func(t *testing.T) {
+	t.Run("only Tab moves focus between filters and Goals", func(t *testing.T) {
 		for _, focus := range []listControl{statusControl, subjectControl, priorityControl} {
-			for _, key := range []tea.KeyPressMsg{{Code: 'j', Text: "j"}, {Code: tea.KeyDown}} {
+			for _, key := range []tea.KeyPressMsg{{Code: 'j', Text: "j"}, {Code: 'k', Text: "k"}, {Code: tea.KeyDown}, {Code: tea.KeyUp}} {
 				m := setup(t)
 				m.listFocus = focus
 				m, _ = m.Update(key)
-				if m.visibility != 0 || m.subjectFilter != 0 || m.priorityFilter != 0 || m.list.Index() != 1 {
-					t.Fatalf("vertical navigation changed filters or failed to move Goal: focus %d", focus)
-				}
-				m, _ = press(m, "k")
-				if m.list.Index() != 0 {
-					t.Fatal("k failed to move back up the Goals")
+				if m.listFocus != focus || m.list.Index() != 0 || m.visibility != 0 || m.subjectFilter != 0 || m.priorityFilter != 0 {
+					t.Fatalf("vertical input moved focus or changed selection from control %d", focus)
 				}
 			}
 		}
+		m := setup(t)
+		m.listFocus = subjectControl
+		m, _ = press(m, "tab")
+		m, _ = press(m, "tab")
+		if m.listFocus != goalListControl {
+			t.Fatal("Tab did not reach Goals")
+		}
+		m, _ = press(m, "j")
+		if m.list.Index() != 1 {
+			t.Fatal("j did not move through focused Goals")
+		}
+		m, _ = press(m, "k")
+		if m.list.Index() != 0 {
+			t.Fatal("k did not move back through focused Goals")
+		}
 	})
+
 	t.Run("clickable status buttons and keyboard priority focus", func(t *testing.T) {
 		m := setup(t)
 		for _, hit := range m.listControlLayout().hits {

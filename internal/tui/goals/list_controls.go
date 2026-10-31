@@ -224,6 +224,9 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 		}
 		m.listFocus = goalListControl
 	}
+	if _, ok := msg.(tea.MouseWheelMsg); ok && m.listFocus != goalListControl {
+		return true, nil
+	}
 	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return false, nil
@@ -239,8 +242,7 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 	}
 	switch key.String() {
 	case "j", "k", "down", "up":
-		m.listFocus = goalListControl
-		return false, nil
+		return m.listFocus != goalListControl, nil
 	case "h", "l", "left", "right", "enter", "space":
 		direction := 1
 		if key.String() == "h" || key.String() == "left" {
