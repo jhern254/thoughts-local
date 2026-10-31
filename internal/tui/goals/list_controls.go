@@ -167,7 +167,7 @@ func (m Model) listControlLayout() controlLayout {
 		}
 		line += text
 	}
-	line = m.listControlStyle(m.listFocus == goalListControl).Render("Goals")
+	line = m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render("Goals")
 	if m.width < 60 {
 		flush()
 	} else {
@@ -178,7 +178,10 @@ func (m Model) listControlLayout() controlLayout {
 	}
 	flush()
 	layout.rows = append(layout.rows, "")
-	add("Subject: ["+m.subjectFilterLabel()+" ▾]", subjectControl, 0, true)
+	add("Subject:", subjectControl, 0, true)
+	value := ansi.Truncate(" ["+m.subjectFilterLabel()+" ▾]", max(1, m.width-ansi.StringWidth(line)), "…")
+	line += value
+	layout.hits[len(layout.hits)-1].width += ansi.StringWidth(value)
 	flush()
 	if m.subjectMenuOpen {
 		search := "/ Search Subjects"

@@ -204,7 +204,7 @@ func TestModel_SubjectFilterDropdown(t *testing.T) {
 		for _, control := range []struct {
 			focus listControl
 			label string
-		}{{statusControl, "[Active] "}, {priorityControl, "[All] "}, {subjectControl, "Subject: [All Subjects ▾]"}} {
+		}{{statusControl, "[Active] "}, {priorityControl, "[All] "}, {subjectControl, "Subject:"}} {
 			m.listFocus = control.focus
 			expected := m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render(control.label)
 			if !strings.Contains(m.View(), expected) {
@@ -330,6 +330,17 @@ func TestModel_SubjectFilterDropdown(t *testing.T) {
 }
 
 func TestModel_ListFocusColors(t *testing.T) {
+	t.Run("the static Goals header keeps its style when focus changes", func(t *testing.T) {
+		m, _ := testModel(t)
+		m.list.Styles.Title = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230"))
+		heading := m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render("Goals")
+		for _, focus := range []listControl{goalListControl, statusControl, subjectControl, priorityControl} {
+			m.listFocus = focus
+			if !strings.HasPrefix(m.listControlLayout().rows[0], heading) {
+				t.Fatalf("static heading changed style for focus %d", focus)
+			}
+		}
+	})
 	t.Run("selected controls stay muted until their group receives focus", func(t *testing.T) {
 		m, _ := testModel(t)
 		m.list.Styles.Title = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230"))
@@ -342,12 +353,12 @@ func TestModel_ListFocusColors(t *testing.T) {
 				t.Fatalf("unfocused selected control %q lacks muted purple", label)
 			}
 		}
-		if !strings.Contains(content, focused.Render("Subject: [All Subjects ▾]")) {
+		if !strings.Contains(content, focused.Render("Subject:")+" [All Subjects ▾]") {
 			t.Fatal("focused Subject lacks the current bright highlight")
 		}
 		m.listFocus = priorityControl
 		content = m.View()
-		if !strings.Contains(content, focused.Render("[All] ")) || !strings.Contains(content, muted.Render("Subject: [All Subjects ▾]")) {
+		if !strings.Contains(content, focused.Render("[All] ")) || !strings.Contains(content, muted.Render("Subject:")+" [All Subjects ▾]") {
 			t.Fatal("Tab focus did not exchange bright and muted highlights")
 		}
 	})
