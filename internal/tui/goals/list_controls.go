@@ -284,6 +284,10 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 			}
 			m.priorityFilter = (m.priorityFilter + direction + 4) % 4
 		case subjectControl:
+			if direction < 0 {
+				m.Close()
+				return true, func() tea.Msg { return BackMsg{} }
+			}
 			return true, m.openSubjectMenu()
 		default:
 			return false, nil

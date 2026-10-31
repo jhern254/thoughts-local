@@ -497,3 +497,52 @@ func TestModel_SubjectDropdownTabPanels(t *testing.T) {
 		}
 	}
 }
+
+func TestModel_SubjectFilterDirections(t *testing.T) {
+	for _, keys := range []struct {
+		name        string
+		right, left tea.KeyPressMsg
+	}{
+		{"arrows", tea.KeyPressMsg{Code: tea.KeyRight}, tea.KeyPressMsg{Code: tea.KeyLeft}},
+		{"Vim", tea.KeyPressMsg{Code: 'l', Text: "l"}, tea.KeyPressMsg{Code: 'h', Text: "h"}},
+	} {
+		t.Run(keys.name+" open forward and return back without changing the filter", func(t *testing.T) {
+			m, _ := testModel(t)
+			m, _ = m.Update(m.Open()())
+			m.listFocus = subjectControl
+			m.subjectFilter = 1
+			m, _ = m.Update(keys.right)
+			if !m.subjectMenuOpen {
+				t.Fatal("Right did not open Subjects")
+			}
+			m.subjectMenu.Select(0)
+			m, cmd := m.Update(keys.left)
+			if m.subjectMenuOpen || !m.open || m.subjectFilter != 1 || cmd != nil {
+				t.Fatal("Left did not cancel the dropdown and return to Goals")
+			}
+			m, cmd = m.Update(keys.left)
+			if m.open || m.subjectMenuOpen || cmd == nil {
+				t.Fatal("Left on the closed Subject filter did not return back")
+			}
+			if _, ok := cmd().(BackMsg); !ok {
+				t.Fatal("Left did not request return to Events")
+			}
+			_, cmd = m.Update(keys.left)
+			if cmd != nil {
+				t.Fatal("repeated Left issued another return command")
+			}
+		})
+	}
+	t.Run("Left keeps editing the Subject query while search owns input", func(t *testing.T) {
+		m, _ := testModel(t)
+		m.open = true
+		m.listFocus = subjectControl
+		m, _ = press(m, "enter")
+		m.subjectMenu.SetFilterText("Reading")
+		m.subjectMenu.SetFilterState(list.Filtering)
+		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+		if !m.subjectMenuOpen || !m.open || m.subjectMenu.FilterValue() != "Reading" {
+			t.Fatal("Left left the picker or changed its query while editing")
+		}
+	})
+}

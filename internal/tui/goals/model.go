@@ -573,9 +573,14 @@ func (m Model) View() string {
 			}
 		} else if m.listFocus == priorityControl {
 			help = "h/l: priority · ↓/j: Goals · Tab: panels · Esc: back"
+		} else if m.listFocus == subjectControl {
+			help = "→/l: Subjects · ←/h: back · Tab: panels · Esc: back"
 		}
 		if m.subjectMenuOpen {
-			help = "↑/↓ or j/k: move · /: search · Enter: select · Esc: cancel"
+			help = "↑/↓: move · /: search · Enter: select · ←/h/Esc: back"
+			if m.subjectMenu.SettingFilter() {
+				help = "Type to search · ↑/↓: move · Enter: select · Esc: cancel"
+			}
 		}
 	case subjectsView:
 		goalName := "New Goal"
