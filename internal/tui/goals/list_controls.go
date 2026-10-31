@@ -205,13 +205,13 @@ func (m Model) listControlLayout() controlLayout {
 	layout.hits[len(layout.hits)-1].width += ansi.StringWidth(value)
 	flush()
 	if m.subjectMenuOpen {
-		search := "/ Search Subjects"
+		search := "/ Search..."
 		if m.subjectMenu.SettingFilter() {
 			search = m.subjectMenu.FilterInput.View()
 		} else if m.subjectMenu.FilterValue() != "" {
 			search = "/ " + m.subjectMenu.FilterValue()
 		}
-		layout.rows = append(layout.rows, ansi.Truncate(search, m.width, "…"))
+		layout.rows = append(layout.rows, ansi.Truncate(search, m.width, "…"), "")
 		layout.rows = append(layout.rows, strings.Split(m.subjectMenu.View(), "\n")...)
 		return layout
 	}

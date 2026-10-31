@@ -45,20 +45,23 @@ func (m *Model) selectSubjectMenuOption() tea.Cmd {
 
 func (m *Model) updateSubjectMenu(msg tea.Msg) tea.Cmd {
 	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-		// The menu starts below the Subject control and its search row. Entries
+		// The menu starts below the Subject control, search and blank row. Entries
 		// occupy one terminal row; the Bubbles paginator owns the page offset.
 		menuTop := 0
 		for _, hit := range m.listControlLayout().hits {
 			if hit.focus == subjectControl {
-				menuTop = hit.y + 2
+				menuTop = hit.y + 3
 				break
 			}
 		}
-		if click.Y == menuTop-1 {
+		if click.Y == menuTop-2 {
 			if m.subjectMenu.SettingFilter() {
 				return m.subjectMenu.FilterInput.Focus()
 			}
 			return m.subjectMenuFilter.Update(&m.subjectMenu, tea.KeyPressMsg{Code: '/', Text: "/"})
+		}
+		if click.Y == menuTop-1 {
+			return nil
 		}
 		index := click.Y - menuTop
 		if index >= 0 && index < m.subjectMenu.Paginator.PerPage {

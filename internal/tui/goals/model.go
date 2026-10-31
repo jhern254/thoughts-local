@@ -170,7 +170,7 @@ func New(ctx context.Context, userID string, service GoalService, assignments As
 	m.subjectMenu.SetShowStatusBar(false)
 	m.subjectMenu.SetShowHelp(false)
 	m.subjectMenu.FilterInput.Prompt = "/ "
-	m.subjectMenu.FilterInput.Placeholder = "Search Subjects"
+	m.subjectMenu.FilterInput.Placeholder = "Search..."
 	m.picker.Title = "Select Subjects"
 	m.list.DisableQuitKeybindings()
 	m.picker.DisableQuitKeybindings()
@@ -214,8 +214,16 @@ func (m *Model) Resize(width, height int) {
 	m.height = max(1, height)
 	closedMenu := *m
 	closedMenu.subjectMenuOpen = false
-	m.list.SetSize(m.width, max(1, height-len(closedMenu.listControlLayout().rows)-3))
-	m.subjectMenu.SetSize(m.width, max(1, min(10, height-8)))
+	controls := closedMenu.listControlLayout()
+	m.list.SetSize(m.width, max(1, height-len(controls.rows)-3))
+	for _, hit := range controls.hits {
+		if hit.focus == subjectControl {
+			menuHeaderRows := hit.y + 3 // Through the search line and its blank row.
+			// Match the Goals list's bottom-row reserve so the renderer keeps help visible.
+			m.subjectMenu.SetSize(m.width, max(1, height-menuHeaderRows-3))
+			break
+		}
+	}
 	m.subjectMenu.FilterInput.SetWidth(max(1, width-4))
 	appearance.ResizeSubjectList(&m.picker, m.width, height)
 	m.body.SetWidth(m.width)

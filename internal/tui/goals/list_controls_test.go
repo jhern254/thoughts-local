@@ -360,7 +360,11 @@ func TestModel_SubjectFilterDropdown(t *testing.T) {
 		if !m.subjectMenuOpen {
 			t.Fatal("Subject click did not open the dropdown")
 		}
-		m, _ = m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: subjectRow + 3})
+		m, _ = m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: subjectRow + 2})
+		if !m.subjectMenuOpen || m.subjectFilter != 0 {
+			t.Fatal("clicking search spacing closed the dropdown or changed the filter")
+		}
+		m, _ = m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: subjectRow + 4})
 		if m.subjectMenuOpen || m.subjectFilter != 1 {
 			t.Fatal("click did not select Misc")
 		}
@@ -372,7 +376,7 @@ func TestModel_SubjectFilterDropdown(t *testing.T) {
 		m.filterSubjects = []data.Subject{{SubjectID: 8, SubjectName: "Reading"}, {SubjectID: 9, SubjectName: "Writing"}}
 		m.listFocus = subjectControl
 		m, _ = press(m, "enter")
-		if !m.subjectMenuOpen || !strings.Contains(m.View(), "Search Subjects") {
+		if !m.subjectMenuOpen || !strings.Contains(m.View(), "/ Search...") {
 			t.Fatal("Subject did not open a searchable dropdown")
 		}
 		m.subjectMenu.SetFilterText("Writing")
