@@ -78,7 +78,7 @@ func (m *Model) updateSubjectMenu(msg tea.Msg) tea.Cmd {
 			m.closeSubjectMenu()
 			return nil
 		case "left", "h":
-			if !m.subjectMenu.SettingFilter() {
+			if !m.subjectMenu.SettingFilter() && m.subjectMenu.Paginator.Page == 0 {
 				m.closeSubjectMenu()
 				return nil
 			}
