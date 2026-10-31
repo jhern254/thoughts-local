@@ -137,8 +137,7 @@ type Model struct {
 }
 
 func New(ctx context.Context, userID string, service GoalService, assignments Assignments, memberships Memberships, subjects Subjects) Model {
-	delegate := list.NewDefaultDelegate()
-	delegate.SetHeight(4)
+	delegate := goalListDelegate(true)
 	m := Model{
 		now:         time.Now,
 		logger:      logging.Nop(),
@@ -562,7 +561,9 @@ func (m Model) View() string {
 	case listView:
 		content = strings.Join(m.listControlLayout().rows, "\n")
 		if !m.subjectMenuOpen {
-			content += "\n" + m.list.View()
+			goalList := m.list
+			goalList.SetDelegate(goalListDelegate(m.listFocus == goalListControl))
+			content += "\n" + goalList.View()
 		}
 		help = "Tab: controls · h/l: filter · j/k: Goals · n: new · Esc: back"
 		if m.width < 60 {

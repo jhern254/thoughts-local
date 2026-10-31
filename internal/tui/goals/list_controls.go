@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 )
@@ -161,14 +162,12 @@ func (m Model) listControlLayout() controlLayout {
 		}
 		x := ansi.StringWidth(line)
 		layout.hits = append(layout.hits, controlHit{focus, value, x, len(layout.rows), width})
-		if selected {
-			text = m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render(text)
-		} else if m.listFocus == focus && focus != statusControl && focus != priorityControl {
-			text = m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render(text)
+		if selected || m.listFocus == focus && focus != statusControl && focus != priorityControl {
+			text = m.listControlStyle(m.listFocus == focus).Render(text)
 		}
 		line += text
 	}
-	line = m.list.Styles.Title.Padding(0).Margin(0).Render("Goals")
+	line = m.listControlStyle(m.listFocus == goalListControl).Render("Goals")
 	if m.width < 60 {
 		flush()
 	} else {
@@ -179,7 +178,7 @@ func (m Model) listControlLayout() controlLayout {
 	}
 	flush()
 	layout.rows = append(layout.rows, "")
-	add("Subject: ["+m.subjectFilterLabel()+" ▾]", subjectControl, 0, m.listFocus == subjectControl)
+	add("Subject: ["+m.subjectFilterLabel()+" ▾]", subjectControl, 0, true)
 	flush()
 	if m.subjectMenuOpen {
 		search := "/ Search Subjects"
@@ -267,4 +266,25 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 		return true, m.applyListControls()
 	}
 	return false, nil
+}
+
+const mutedGoalSelection = "#B7A8CD"
+
+func (m Model) listControlStyle(focused bool) lipgloss.Style {
+	style := m.list.Styles.Title.Padding(0).Margin(0).Underline(false)
+	if !focused {
+		style = style.Background(lipgloss.Color("#403752")).Foreground(lipgloss.Color(mutedGoalSelection))
+	}
+	return style
+}
+
+func goalListDelegate(focused bool) list.DefaultDelegate {
+	delegate := list.NewDefaultDelegate()
+	delegate.SetHeight(4)
+	if !focused {
+		muted := lipgloss.Color(mutedGoalSelection)
+		delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(muted).BorderForeground(muted)
+		delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(muted).BorderForeground(muted)
+	}
+	return delegate
 }
