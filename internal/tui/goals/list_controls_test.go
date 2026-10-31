@@ -546,3 +546,85 @@ func TestModel_SubjectFilterDirections(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_PrioritySelectionMemory(t *testing.T) {
+	setup := func(t *testing.T) Model {
+		m, _ := testModel(t)
+		reply := m.Open()().(result)
+		reply.rows = nil
+		for i := range 30 {
+			reply.rows = append(reply.rows, goalRow{item: data.Goal{GoalID: int64(i + 1), GoalName: "Goal", Priority: []string{"high", "normal", "low"}[i%3], IsActive: true}})
+		}
+		m.Resize(48, 18)
+		m, _ = m.Update(reply)
+		return m
+	}
+	selectGoal := func(t *testing.T, m Model, id int64) Model {
+		t.Helper()
+		for i, row := range m.list.Items() {
+			if row.(goalRow).item.GoalID == id {
+				m.list.Select(i)
+				return m
+			}
+		}
+		t.Fatalf("Goal %d missing from filter %d", id, m.priorityFilter)
+		return m
+	}
+	for _, method := range []string{"p", "arrows", "mouse"} {
+		t.Run(method+" restores each filter's last Goal and its page", func(t *testing.T) {
+			m := setup(t)
+			change := func(next int) {
+				switch method {
+				case "p":
+					m.listFocus = goalListControl
+					m, _ = press(m, "p")
+				case "arrows":
+					m.listFocus = priorityControl
+					m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+				case "mouse":
+					for _, hit := range m.listControlLayout().hits {
+						if hit.focus == priorityControl && hit.value == next {
+							m, _ = m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: hit.x, Y: hit.y})
+							break
+						}
+					}
+				}
+			}
+			m = selectGoal(t, m, 26)
+			allPage := m.list.Paginator.Page
+			change(1)
+			m = selectGoal(t, m, 19)
+			highPage := m.list.Paginator.Page
+			change(2)
+			m = selectGoal(t, m, 23)
+			change(3)
+			m = selectGoal(t, m, 30)
+			change(0)
+			if got := m.list.SelectedItem().(goalRow).item.GoalID; got != 26 || m.list.Paginator.Page != allPage {
+				t.Fatalf("All restored Goal %d page %d, want Goal 26 page %d", got, m.list.Paginator.Page, allPage)
+			}
+			change(1)
+			if got := m.list.SelectedItem().(goalRow).item.GoalID; got != 19 || m.list.Paginator.Page != highPage {
+				t.Fatalf("High restored Goal %d page %d, want Goal 19 page %d", got, m.list.Paginator.Page, highPage)
+			}
+		})
+	}
+	t.Run("a remembered Goal excluded by another filter cannot be restored", func(t *testing.T) {
+		m := setup(t)
+		m = selectGoal(t, m, 26)
+		m, _ = press(m, "p")
+		for i, row := range m.listRows {
+			goal := row.(goalRow)
+			if goal.item.GoalID == 26 {
+				goal.item.IsActive = false
+				m.listRows[i] = goal
+			}
+		}
+		for range 3 {
+			m, _ = press(m, "p")
+		}
+		if got := m.list.SelectedItem().(goalRow).item.GoalID; got == 26 {
+			t.Fatal("restored inactive Goal into Active filter")
+		}
+	})
+}

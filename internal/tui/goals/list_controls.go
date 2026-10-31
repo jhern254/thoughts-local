@@ -131,6 +131,24 @@ func (m *Model) applyListControls() tea.Cmd {
 	return cmd
 }
 
+func (m *Model) changePriorityFilter(priority int) tea.Cmd {
+	if priority == m.priorityFilter {
+		return nil
+	}
+	if selected, ok := m.list.SelectedItem().(goalRow); ok {
+		m.lastGoalIDsByPriority[m.priorityFilter] = selected.item.GoalID
+	}
+	m.priorityFilter = priority
+	cmd := m.applyListControls()
+	for i, item := range m.list.Items() {
+		if item.(goalRow).item.GoalID == m.lastGoalIDsByPriority[priority] {
+			m.list.Select(i)
+			break
+		}
+	}
+	return cmd
+}
+
 func (m Model) subjectFilterLabel() string {
 	return m.subjectFilterOptionLabel(m.subjectFilter)
 }
@@ -220,8 +238,7 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 					m.visibility = hit.value
 					return true, m.applyListControls()
 				case priorityControl:
-					m.priorityFilter = hit.value
-					return true, m.applyListControls()
+					return true, m.changePriorityFilter(hit.value)
 				case subjectControl:
 					return true, m.openSubjectMenu()
 				}
@@ -251,8 +268,7 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 	switch key.String() {
 	case "p":
 		if m.listFocus == goalListControl {
-			m.priorityFilter = (m.priorityFilter + 1) % 4
-			return true, m.applyListControls()
+			return true, m.changePriorityFilter((m.priorityFilter + 1) % 4)
 		}
 		return true, nil
 	case "k", "up":
@@ -282,7 +298,7 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 			if key.String() == "enter" || key.String() == "space" {
 				return true, nil
 			}
-			m.priorityFilter = (m.priorityFilter + direction + 4) % 4
+			return true, m.changePriorityFilter((m.priorityFilter + direction + 4) % 4)
 		case subjectControl:
 			if direction < 0 {
 				m.Close()

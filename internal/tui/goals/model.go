@@ -128,6 +128,7 @@ type Model struct {
 	visibility            int
 	listFocus             listControl
 	priorityFilter        int
+	lastGoalIDsByPriority [4]int64
 	subjectFilter         int
 	listRows              []list.Item
 	filterSubjects        []data.Subject
