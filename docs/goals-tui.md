@@ -13,8 +13,9 @@ Priority filters remember their last selected Goal.
 Tab moves between the Goals panel, status buttons, and Subject filter. Down from
 status focuses Subject; Up returns to status. Up from the first Goal focuses
 Priority, and Down returns to the Goal list. Right on Subject opens its searchable
-picker. Left/Right in that picker only page, including at its boundaries; Esc
-closes it. On the main Goals list, Left pages backward and a fresh Left on the
+picker. Left/Right page within it; a fresh Left on the first page closes the
+picker without leaving Goals. Held Left stops at that boundary. Esc also closes
+it. On the main Goals list, Left pages backward and a fresh Left on the
 first page returns to Events. Held repeats stop at the first page; see
 [native terminal limitations](platform-support.md#held-keys-during-goal-navigation).
 Paging retains the highlighted row position. Active Goals sort before Inactive

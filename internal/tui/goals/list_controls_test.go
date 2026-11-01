@@ -507,7 +507,7 @@ func TestModel_SubjectFilterDirections(t *testing.T) {
 		{"arrows", tea.KeyPressMsg{Code: tea.KeyRight}, tea.KeyPressMsg{Code: tea.KeyLeft}},
 		{"Vim", tea.KeyPressMsg{Code: 'l', Text: "l"}, tea.KeyPressMsg{Code: 'h', Text: "h"}},
 	} {
-		t.Run(keys.name+" only return back from the main Goals list", func(t *testing.T) {
+		t.Run(keys.name+" return from the picker without leaving Goals", func(t *testing.T) {
 			m, _ := testModel(t)
 			m, _ = m.Update(m.Open()())
 			m.listFocus = subjectControl
@@ -518,10 +518,9 @@ func TestModel_SubjectFilterDirections(t *testing.T) {
 			}
 			m.subjectMenu.Select(0)
 			m, cmd := m.Update(keys.left)
-			if !m.subjectMenuOpen || !m.open || m.subjectFilter != 1 || cmd != nil {
-				t.Fatal("Left on the first picker page should stay in the picker")
+			if m.subjectMenuOpen || !m.open || m.subjectFilter != 1 || cmd != nil {
+				t.Fatal("Left on the first picker page should return to Goals without changing the filter")
 			}
-			m, _ = press(m, "esc")
 			m, cmd = m.Update(keys.left)
 			if !m.open || m.subjectMenuOpen || cmd != nil {
 				t.Fatal("Left on the Subject filter should stay on Goals")

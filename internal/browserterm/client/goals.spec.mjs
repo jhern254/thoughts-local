@@ -51,8 +51,8 @@ test('Goal panels navigate vertically and held Left stops before leaving the Goa
  await expect(screen(page)).toContainText('Priority:');
  await page.keyboard.press('Tab');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');
  await expect(screen(page)).toContainText('/ Search...');
- await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('/ Search...');
- await page.keyboard.press('Escape');await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
+ await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
+ await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
  await page.keyboard.press('ArrowUp');await expect(screen(page)).toContainText('h/l: status');
  await page.keyboard.press('ArrowDown');await page.keyboard.press('Tab');
  for(let i=0;i<3;i++) {
@@ -61,7 +61,7 @@ test('Goal panels navigate vertically and held Left stops before leaving the Goa
   await page.keyboard.press('Control+s');await expect(screen(page)).toContainText('Manage Subjects');
   await page.keyboard.press('Escape');await expect(screen(page)).toContainText('p: priority');
  }
- await page.setViewportSize({width:480,height:360});await expect(screen(page)).toContainText('p: priority');
+ await page.setViewportSize({width:480,height:360});await expect(screen(page)).toContainText('p: priority · ↑: filter');
  await page.keyboard.press('End');
  for(let i=0;i<20;i++)await page.keyboard.down('ArrowLeft');
  await expect(screen(page)).toContainText('p: priority');
