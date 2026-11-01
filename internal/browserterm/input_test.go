@@ -16,6 +16,14 @@ func TestInputMessages(t *testing.T) {
 			t.Fatalf("got %#v, %v, want %#v", messages, err, want)
 		}
 	})
+	t.Run("preserves held Vim Left as text and repeat metadata", func(t *testing.T) {
+		messages, err := inputMessages([]byte("0\x1b[104;1:2u"))
+		want := []tea.Msg{tea.KeyPressMsg{Code: 'h', Text: "h", IsRepeat: true}}
+		if err != nil || !reflect.DeepEqual(messages, want) {
+			t.Fatalf("got %#v, %v, want %#v", messages, err, want)
+		}
+	})
+
 	t.Run("bounds visual metadata and rejects unknown actions", func(t *testing.T) {
 		for _, frame := range []string{`o{"action":"open"}`, `o{"action":"appearance","borderWeight":"heavy","heavierText":false}`, `o{"action":"loaded","id":1,"darkness":70}`} {
 			if _, err := inputMessages([]byte(frame)); err != nil {

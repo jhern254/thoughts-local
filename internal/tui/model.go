@@ -573,6 +573,9 @@ func (m Model) homeDivider(focused bool) string {
 
 func (m Model) View() tea.View {
 	view := m.viewUnderlying()
+	if m.screen == screenGoals {
+		view.KeyboardEnhancements.ReportEventTypes = true
+	}
 	if m.exitPromptOpen {
 		return view
 	}

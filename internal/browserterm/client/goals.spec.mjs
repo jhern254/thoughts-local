@@ -42,3 +42,30 @@ test('Goal Subject picker creates through the existing form and retains its draf
  await expect(screen(page)).toContainText('Browse Subjects');await expect(screen(page)).toContainText('Create subject…');
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/subjects-browse-${testInfo.project.name}.png`});
 });
+
+test('Goal panels navigate vertically and held Left stops before leaving the Goals list', async ({page}) => {
+ let sockets=0;page.on('websocket',()=>sockets++);
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await page.locator('.xterm-helper-textarea').focus();
+ for(const key of ['Tab','ArrowLeft','ArrowLeft','Enter'])await page.keyboard.press(key);
+ await expect(screen(page)).toContainText('Priority:');
+ await page.keyboard.press('Tab');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');
+ await expect(screen(page)).toContainText('/ Search...');
+ await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('/ Search...');
+ await page.keyboard.press('Escape');await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
+ await page.keyboard.press('ArrowUp');await expect(screen(page)).toContainText('h/l: status');
+ await page.keyboard.press('ArrowDown');await page.keyboard.press('Tab');
+ for(let i=0;i<3;i++) {
+  await page.keyboard.press('n');await expect(screen(page)).toContainText('Create Goal');
+  await page.keyboard.type(`Paging Goal ${Date.now()} ${i}`);await page.keyboard.press('Tab');await page.keyboard.type('1');
+  await page.keyboard.press('Control+s');await expect(screen(page)).toContainText('Manage Subjects');
+  await page.keyboard.press('Escape');await expect(screen(page)).toContainText('p: priority');
+ }
+ await page.setViewportSize({width:480,height:360});await expect(screen(page)).toContainText('p: priority');
+ await page.keyboard.press('End');
+ for(let i=0;i<20;i++)await page.keyboard.down('ArrowLeft');
+ await expect(screen(page)).toContainText('p: priority');
+ await page.keyboard.up('ArrowLeft');await page.keyboard.press('ArrowLeft');
+ await expect(screen(page)).toContainText('Events');
+ expect(sockets).toBe(1);
+});

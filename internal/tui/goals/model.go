@@ -574,19 +574,22 @@ func (m Model) View() string {
 			goalList.SetDelegate(goalListDelegate(m.listFocus == goalListControl))
 			content += "\n" + goalList.View()
 		}
-		help = "Tab: panels · h/l: filter · n: new · Esc: back"
+		help = "h/l: status · ↓/j: Subject · Tab: panels · Esc: back"
 		if m.listFocus == goalListControl {
-			help = "p: priority · ↑/k: filter · j/k: Goals · Tab: panels · n: new · Esc: back"
+			help = "p: priority · ↑/k: filter · ←: pages/back · Tab: panels · n: new · Esc: back"
 			if m.width < 60 {
-				help = "p: priority · ↑/k: filter · Tab: panels"
+				help = "p: priority · ↑: filter · ←: pages/back"
 			}
 		} else if m.listFocus == priorityControl {
 			help = "h/l: priority · ↓/j: Goals · Tab: panels · Esc: back"
 		} else if m.listFocus == subjectControl {
-			help = "→/l: Subjects · ←/h: back · Tab: panels · Esc: back"
+			help = "→/l: Subjects · ↑/k: status · Tab: panels · Esc: back"
 		}
 		if m.subjectMenuOpen {
-			help = "↑/↓: move · /: search · Enter: select · ←/h/Esc: back"
+			help = "↑/↓: move · ←/→: pages · /: search · Enter: pick · Esc: back"
+			if m.width < 60 {
+				help = "/: search · Enter: pick · Esc: back"
+			}
 			if m.subjectMenu.SettingFilter() {
 				help = "Type to search · ↑/↓: move · Enter: select · Esc: cancel"
 			}

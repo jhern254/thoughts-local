@@ -66,6 +66,9 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 		if !strings.Contains(m.View().Content, "Goals") {
 			t.Fatalf("Goals navigation: %s", m.View().Content)
 		}
+		if !m.View().KeyboardEnhancements.ReportEventTypes {
+			t.Fatal("Goals did not request native held-key repeat metadata")
+		}
 		if m.View().MouseMode != tea.MouseModeCellMotion {
 			t.Fatal("Goal list did not enable terminal wheel input")
 		}

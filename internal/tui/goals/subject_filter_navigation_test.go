@@ -12,7 +12,7 @@ import (
 
 func TestModel_SubjectFilterPageNavigation(t *testing.T) {
 	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyLeft}, {Code: 'h', Text: "h"}} {
-		t.Run(key.String()+" visits earlier pages before returning back", func(t *testing.T) {
+		t.Run(key.String()+" visits earlier pages and stays on the first page", func(t *testing.T) {
 			m, _ := testModel(t)
 			m.open = true
 			m.Resize(48, 18)
@@ -33,8 +33,8 @@ func TestModel_SubjectFilterPageNavigation(t *testing.T) {
 				}
 			}
 			m, _ = m.Update(key)
-			if m.subjectMenuOpen || !m.open || m.listFocus != subjectControl {
-				t.Fatal("Left from the first page did not return to the Subject filter")
+			if !m.subjectMenuOpen || !m.open || m.subjectMenu.Paginator.Page != 0 {
+				t.Fatal("Left from the first picker page should stay in the picker")
 			}
 		})
 	}

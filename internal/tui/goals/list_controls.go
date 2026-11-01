@@ -272,12 +272,20 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 		}
 		return true, nil
 	case "k", "up":
+		if m.listFocus == subjectControl {
+			m.listFocus = statusControl
+			return true, nil
+		}
 		if m.listFocus == goalListControl && m.list.Index() == 0 {
 			m.listFocus = priorityControl
 			return true, nil
 		}
 		return m.listFocus != goalListControl, nil
 	case "j", "down":
+		if m.listFocus == statusControl {
+			m.listFocus = subjectControl
+			return true, nil
+		}
 		if m.listFocus == priorityControl {
 			m.listFocus = goalListControl
 			return true, nil
@@ -301,10 +309,18 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 			return true, m.changePriorityFilter((m.priorityFilter + direction + 4) % 4)
 		case subjectControl:
 			if direction < 0 {
+				return true, nil
+			}
+			return true, m.openSubjectMenu()
+		case goalListControl:
+			if direction < 0 && m.list.Paginator.Page == 0 {
+				if key.IsRepeat {
+					return true, nil
+				}
 				m.Close()
 				return true, func() tea.Msg { return BackMsg{} }
 			}
-			return true, m.openSubjectMenu()
+			return false, nil
 		default:
 			return false, nil
 		}

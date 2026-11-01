@@ -5,9 +5,20 @@ same Bubble Tea component and application services.
 
 ## Browse and open
 
-Use arrows, Page Up/Down, or the mouse wheel to browse Goals and Enter for Details. `n` or Create Goal opens the
-creation form. `f` cycles All, Active, and Inactive; `/` searches Goal names.
-Esc clears a filter before returning to Home. Lists retain Goal priority order.
+Use arrows, `j/k`, Page Up/Down, or the mouse wheel to browse Goals and Enter
+for Details. `n` opens creation. Goals initially show Active with All priorities;
+`f` cycles status and `p` cycles priority while the Goals list owns focus.
+Priority filters remember their last selected Goal.
+
+Tab moves between the Goals panel, status buttons, and Subject filter. Down from
+status focuses Subject; Up returns to status. Up from the first Goal focuses
+Priority, and Down returns to the Goal list. Right on Subject opens its searchable
+picker. Left/Right in that picker only page, including at its boundaries; Esc
+closes it. On the main Goals list, Left pages backward and a fresh Left on the
+first page returns to Events. Held repeats stop at the first page; see
+[native terminal limitations](platform-support.md#held-keys-during-goal-navigation).
+Paging retains the highlighted row position. Active Goals sort before Inactive
+Goals, with High → Normal → Low ordering within each group.
 
 Cards show up to three live Subjects, target/cadence, status, priority, and any
 configured date boundaries. Details shows every live Subject and record metadata.

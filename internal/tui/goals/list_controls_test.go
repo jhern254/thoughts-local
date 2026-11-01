@@ -86,15 +86,20 @@ func TestModel_ListControls(t *testing.T) {
 			t.Fatal("All priority did not restore matching Goal")
 		}
 	})
-	t.Run("only Tab moves focus between external filters and the Goals panel", func(t *testing.T) {
-		for _, focus := range []listControl{statusControl, subjectControl} {
-			for _, key := range []tea.KeyPressMsg{{Code: 'j', Text: "j"}, {Code: 'k', Text: "k"}, {Code: tea.KeyDown}, {Code: tea.KeyUp}} {
-				m := setup(t)
-				m.listFocus = focus
-				m, _ = m.Update(key)
-				if m.listFocus != focus || m.list.Index() != 0 || m.visibility != 0 || m.subjectFilter != 0 || m.priorityFilter != 0 {
-					t.Fatalf("vertical input moved focus or changed selection from control %d", focus)
-				}
+	t.Run("status and Subject filters share vertical navigation without changing their values", func(t *testing.T) {
+		for _, keys := range []struct{ down, up tea.KeyPressMsg }{
+			{tea.KeyPressMsg{Code: tea.KeyDown}, tea.KeyPressMsg{Code: tea.KeyUp}},
+			{tea.KeyPressMsg{Code: 'j', Text: "j"}, tea.KeyPressMsg{Code: 'k', Text: "k"}},
+		} {
+			m := setup(t)
+			m.listFocus = statusControl
+			m, _ = m.Update(keys.down)
+			if m.listFocus != subjectControl {
+				t.Fatal("Down from status did not focus Subject")
+			}
+			m, _ = m.Update(keys.up)
+			if m.listFocus != statusControl || m.list.Index() != 0 || m.visibility != 0 || m.subjectFilter != 0 || m.priorityFilter != 0 {
+				t.Fatal("Up from Subject changed filters or failed to focus status")
 			}
 		}
 		m := setup(t)
@@ -102,14 +107,6 @@ func TestModel_ListControls(t *testing.T) {
 		m, _ = press(m, "tab")
 		if m.listFocus != goalListControl {
 			t.Fatal("Tab did not reach Goals")
-		}
-		m, _ = press(m, "j")
-		if m.list.Index() != 1 {
-			t.Fatal("j did not move through focused Goals")
-		}
-		m, _ = press(m, "k")
-		if m.list.Index() != 0 {
-			t.Fatal("k did not move back through focused Goals")
 		}
 	})
 
@@ -510,7 +507,7 @@ func TestModel_SubjectFilterDirections(t *testing.T) {
 		{"arrows", tea.KeyPressMsg{Code: tea.KeyRight}, tea.KeyPressMsg{Code: tea.KeyLeft}},
 		{"Vim", tea.KeyPressMsg{Code: 'l', Text: "l"}, tea.KeyPressMsg{Code: 'h', Text: "h"}},
 	} {
-		t.Run(keys.name+" open forward and return back without changing the filter", func(t *testing.T) {
+		t.Run(keys.name+" only return back from the main Goals list", func(t *testing.T) {
 			m, _ := testModel(t)
 			m, _ = m.Update(m.Open()())
 			m.listFocus = subjectControl
@@ -521,19 +518,21 @@ func TestModel_SubjectFilterDirections(t *testing.T) {
 			}
 			m.subjectMenu.Select(0)
 			m, cmd := m.Update(keys.left)
-			if m.subjectMenuOpen || !m.open || m.subjectFilter != 1 || cmd != nil {
-				t.Fatal("Left did not cancel the dropdown and return to Goals")
+			if !m.subjectMenuOpen || !m.open || m.subjectFilter != 1 || cmd != nil {
+				t.Fatal("Left on the first picker page should stay in the picker")
 			}
+			m, _ = press(m, "esc")
 			m, cmd = m.Update(keys.left)
-			if m.open || m.subjectMenuOpen || cmd == nil {
-				t.Fatal("Left on the closed Subject filter did not return back")
+			if !m.open || m.subjectMenuOpen || cmd != nil {
+				t.Fatal("Left on the Subject filter should stay on Goals")
+			}
+			m.listFocus = goalListControl
+			m, cmd = m.Update(keys.left)
+			if m.open || cmd == nil {
+				t.Fatal("Left from the main Goals list did not return back")
 			}
 			if _, ok := cmd().(BackMsg); !ok {
 				t.Fatal("Left did not request return to Events")
-			}
-			_, cmd = m.Update(keys.left)
-			if cmd != nil {
-				t.Fatal("repeated Left issued another return command")
 			}
 		})
 	}
@@ -631,4 +630,46 @@ func TestModel_PrioritySelectionMemory(t *testing.T) {
 			t.Fatal("restored inactive Goal into Active filter")
 		}
 	})
+}
+
+func TestModel_GoalListBackRepeat(t *testing.T) {
+	for _, code := range []rune{tea.KeyLeft, 'h'} {
+		t.Run(tea.KeyPressMsg{Code: code}.String()+" held paging stops before Back", func(t *testing.T) {
+			m, _ := testModel(t)
+			m.open = true
+			m.Resize(48, 18)
+			rows := make([]list.Item, 0, 20)
+			for i := range 20 {
+				rows = append(rows, goalRow{item: data.Goal{GoalID: int64(i + 1), GoalName: "Goal", IsActive: true}})
+			}
+			m.filter.SetItems(&m.list, rows)
+			m.list.Select(19)
+			held := tea.KeyPressMsg{Code: code, IsRepeat: true}
+			if code == 'h' {
+				held.Text = "h"
+			}
+			for m.list.Paginator.Page > 0 {
+				var cmd tea.Cmd
+				m, cmd = m.Update(held)
+				if cmd != nil || !m.open {
+					t.Fatal("held Left left Goals before the first page")
+				}
+			}
+			for range 3 {
+				var cmd tea.Cmd
+				m, cmd = m.Update(held)
+				if cmd != nil || !m.open {
+					t.Fatal("held Left exited at the first page")
+				}
+			}
+			held.IsRepeat = false
+			m, cmd := m.Update(held)
+			if m.open || cmd == nil {
+				t.Fatal("fresh Left did not return back")
+			}
+			if _, ok := cmd().(BackMsg); !ok {
+				t.Fatal("fresh Left did not return to the previous screen")
+			}
+		})
+	}
 }

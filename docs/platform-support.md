@@ -118,3 +118,12 @@ licensed speech → four-second silence → speech integration fixture, includin
 one generated newline and no trailing break. This does not establish new runtime
 verification for macOS or Windows; their existing support classifications remain
 unchanged. Word timestamps and speaker identification remain disabled.
+
+### Held keys during Goal navigation
+
+The browser preserves repeat metadata for Left and `h` using the existing
+terminal input protocol. Held paging stops at the first Goal page; a fresh
+press there returns to Events. The native Goals view requests repeat reporting
+from compatible terminals. Legacy terminals that send identical bytes for taps
+and repeats cannot guarantee this distinction; Esc remains available for Back.
+This keyboard capability does not change the platform verification table.

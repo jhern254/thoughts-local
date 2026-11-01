@@ -80,11 +80,6 @@ func (m *Model) updateSubjectMenu(msg tea.Msg) tea.Cmd {
 		case "esc":
 			m.closeSubjectMenu()
 			return nil
-		case "left", "h":
-			if !m.subjectMenu.SettingFilter() && m.subjectMenu.Paginator.Page == 0 {
-				m.closeSubjectMenu()
-				return nil
-			}
 		case "enter":
 			return m.selectSubjectMenuOption()
 		case "tab", "shift+tab":
