@@ -273,10 +273,12 @@ func (m Model) videoTrimFits() bool {
 func (m Model) compactVideoTrim() bool { return m.height < videoTrimFullLayoutHeight }
 
 func (m Model) videoTrimFooterHeight() int {
+	width, _ := m.optionsLayout()
+	extra := strings.Count(ansi.Wrap(m.options.status, width, ""), "\n")
 	if m.compactVideoTrim() {
-		return 3
+		return 3 + extra
 	}
-	return videoTrimFooterRows
+	return videoTrimFooterRows + extra
 }
 
 func (m Model) videoTrimControlsTop(preview PreviewRect) int {
@@ -453,7 +455,8 @@ func (m Model) viewVideoTrim() tea.View {
 			}
 		}
 	}
-	lines = append(lines, "", muted.Render(m.options.status))
+	lines = append(lines, "")
+	lines = append(lines, strings.Split(muted.Render(ansi.Wrap(m.options.status, width, "")), "\n")...)
 	if m.options.sourceChecking {
 		lines = append(lines, muted.Render("Enter/Esc: cancel upload"), "")
 	} else if m.options.request == "prepareLoop" || m.options.request == "stopPreview" {
@@ -595,5 +598,7 @@ func (m Model) compactVideoTrimFooter() []string {
 	case m.options.trimTimecodeEditing:
 		help = "HH:MM:SS[.mmm] · Enter: jump · Esc: back"
 	}
-	return []string{summary, m.options.status, help}
+	width, _ := m.optionsLayout()
+	footer := append([]string{summary}, strings.Split(ansi.Wrap(m.options.status, width, ""), "\n")...)
+	return append(footer, help)
 }

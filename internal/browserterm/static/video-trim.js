@@ -14,7 +14,8 @@ class ThoughtsVideoTrim {
     const response = await fetch(path, {...options, headers: {...this.headers(), ...options.headers}, signal});
     if (!response.ok) {
       const error=new Error('Video operation unavailable.');
-      error.videoAction=response.status===400 ? 'failed' : this.failureAction(response.status,null);
+      const settingsAction=this.visual.failureAction?.(response.headers?.get('X-Visual-Error'));
+      error.videoAction=settingsAction && settingsAction !== 'failed' ? settingsAction : response.status===400 ? 'failed' : this.failureAction(response.status,null);
       throw error;
     }
     return response;
@@ -102,7 +103,8 @@ class ThoughtsVideoTrim {
       upload.onload=()=>{
         if (upload.status===200 && upload.response?.sourceID) {finish(null,upload.response);return;}
         const error=new Error('Video source unavailable.');
-        error.videoAction=this.failureAction(upload.status,upload.getResponseHeader('X-Video-Rejection'));
+        const settingsAction=this.visual.failureAction?.(upload.getResponseHeader('X-Visual-Error'));
+        error.videoAction=settingsAction && settingsAction !== 'failed' ? settingsAction : this.failureAction(upload.status,upload.getResponseHeader('X-Video-Rejection'));
         finish(error);
       };
       upload.onerror=upload.onabort=()=>finish(new Error('Video transfer unavailable.'));

@@ -388,3 +388,52 @@ test('removed development appearance choices restore supported defaults',()=>{
  assert.equal(visual.terminal.options.fontSize,14);
  assert.equal(visual.terminal.options.fontWeight,600);
 });
+
+test('Visual failures accept only fixed native codes and preserve schema identity', () => {
+ const f=activationFixture();
+ assert.equal(vm.runInContext("visualFailureAction('schema')",f.context),'schemaFailed');
+ assert.equal(vm.runInContext("visualFailureAction('settings')",f.context),'settingsFailed');
+ assert.equal(vm.runInContext("visualFailureAction('PRIVATE SQL /path')",f.context),'failed');
+});
+
+test('failed Apply retains the file and accepted loop and retry can commit',async()=>{
+ const f=activationFixture(), actions=[];
+ f.context.AbortController=AbortController;
+ Object.assign(f.visual,{state:{open:true,id:4,request:'apply'},file:{files:[{}]},candidateKind:'video',
+  videoTrim:{accepted:{previewID:'accepted'},applyRequest(){return {method:'POST'};}},stopPreviewPlayback(){},sendAction:action=>actions.push(action)});
+ const accepted=f.visual.videoTrim.accepted, file=f.visual.file.files[0];
+ f.context.fetch=async()=>({ok:false,headers:{get:()=> 'settings'}});
+ await f.visual.save(false,4,42,{},0);
+ assert.equal(actions.at(-1).action,'settingsFailed');
+ assert.equal(f.visual.videoTrim.accepted,accepted); assert.equal(f.visual.file.files[0],file);
+ f.context.fetch=async()=>({ok:true,json:async()=>({background:false,darkness:42})});
+ await f.visual.save(false,4,42,{},0);
+ assert.equal(actions.at(-1).action,'saved');
+});
+
+test('a fresh restore recovers a cached schema failure without reconnecting',async()=>{
+ const f=activationFixture();
+ f.context.fetch=async()=>({ok:false,headers:{get:()=> 'schema'}});
+ await f.visual.restore(); assert.equal(f.visual.loadFailed,'schemaFailed');
+ f.context.fetch=async()=>({ok:true,json:async()=>({background:false,darkness:70})});
+ await f.visual.restore(); assert.equal(f.visual.loadFailed,false);
+ assert.equal(f.visual.saved.darkness,70); assert.equal(f.visual.connectionGeneration,0);
+});
+
+test('confirmed save with failed activation reports saved display failure',async()=>{
+ const f=activationFixture(),actions=[];
+ f.context.AbortController=AbortController;
+ Object.assign(f.visual,{state:{open:true,id:4,request:'apply'},file:{files:[]},stopPreviewPlayback(){},discardPreview(){},sendAction:action=>actions.push(action)});
+ f.context.fetch=async()=>({ok:true,json:async()=>({background:true,backgroundID:'new',darkness:42})});
+ f.visual.activate=async()=>{throw new Error('PRIVATE decode');};
+ await f.visual.save(false,4,42,{},0);
+ assert.equal(actions.at(-1).action,'displayFailed'); assert.equal(actions.at(-1).background,true);
+});
+
+test('native image rejection retains its classification without blocking settings recovery',async()=>{
+ const f=activationFixture(),actions=[]; f.context.AbortController=AbortController;
+ Object.assign(f.visual,{state:{open:true,id:4,request:'apply'},file:{files:[]},stopPreviewPlayback(){},sendAction:action=>actions.push(action)});
+ f.context.fetch=async()=>({ok:false,headers:{get:()=> 'image'}});
+ await f.visual.save(false,4,42,{},0);
+ assert.equal(actions.at(-1).action,'mediaRejected'); assert.ok(!f.visual.loadFailed);
+});
