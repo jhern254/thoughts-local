@@ -239,15 +239,23 @@ Table subject_goals {
   subject_id integer [not null]
   goal_id    integer [not null]
   user_id    text [not null]
+  goal_number integer [not null, note: 'Positive signed 64-bit integer; stable within its Subject']
+  deleted_at integer [note: 'NULL means unretired; otherwise UTC Unix seconds']
 
   Indexes {
     (subject_id, goal_id) [pk, name: 'pk_subject_goals']
+    (subject_id, goal_number) [unique, name: 'uq_subject_goals_number']
     (goal_id, subject_id) [name: 'idx_subject_goals_goal_subject']
   }
 
   Note: '''
     Both endpoints share user_id, enforced by composite foreign keys in SQL.
-    Soft deletion retains links; hard deletion removes them.
+    One retained row per pair owns its stable Subject-local Goal number.
+    Number uniqueness includes retired rows; relinking clears deleted_at and restores the number.
+    Live membership also requires undeleted endpoints and an available owner.
+    Soft deletion of endpoints retains links; hard deletion cascades.
+    This is retained relationship state, not a chronological audit log.
+    SQL migration 000015 is authoritative for integer checks and constraints.
     Linking does not enable automatic credit or create goal progress.
   '''
 }

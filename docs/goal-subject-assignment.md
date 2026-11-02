@@ -121,5 +121,10 @@ with the previous unmerged version of migration 15 must be deliberately rebuilt;
 changing a migration file does not rerun an already applied version. Meaningful
 data in such a development database requires a backup and a separately reviewed
 conversion rather than a reset. No user database is reset by this feature.
-Downgrading to the old schema preserves all endpoint pairs but cannot represent
-numbers or retirement state; retain a backup before downgrading.
+Downgrading is rejected when any relationship is retired, because the old schema
+would reactivate it. The migration transaction rolls back the guard and leaves
+the current schema and relationships unchanged. With no retired relationships,
+downgrading preserves all endpoint pairs but removes their numbers, which the
+old schema cannot represent.
+As with other migration failures, golang-migrate marks its version metadata
+dirty on rejection; this does not mean the schema or relationship rows changed.

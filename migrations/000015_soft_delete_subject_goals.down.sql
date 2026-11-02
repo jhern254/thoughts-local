@@ -1,5 +1,21 @@
--- The old schema cannot represent retirement or stable numbers. Retain all
--- endpoint pairs when downgrading; retirement state requires a backup to restore.
+-- The old schema cannot represent retired relationships. Reject the downgrade
+-- before rebuilding the table rather than silently reactivating retained pairs.
+-- golang-migrate's SQLite transaction rolls back the guard on rejection.
+CREATE TEMP TABLE subject_goals_downgrade_guard (
+    has_retired_relationships INTEGER NOT NULL,
+    CONSTRAINT cannot_downgrade_retired_subject_goals
+        CHECK (has_retired_relationships = 0)
+);
+
+INSERT INTO subject_goals_downgrade_guard (has_retired_relationships)
+SELECT EXISTS (
+    SELECT 1
+    FROM subject_goals
+    WHERE deleted_at IS NOT NULL
+);
+
+DROP TABLE subject_goals_downgrade_guard;
+
 CREATE TABLE subject_goals_legacy (
     subject_id INTEGER NOT NULL,
     goal_id    INTEGER NOT NULL,
