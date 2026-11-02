@@ -23,7 +23,7 @@ func readNumberedGoalSubjects(ctx context.Context, memberships Memberships, user
 func numberedSubjectNames(subjects []data.Subject, numbers map[int64]int64) []string {
 	names := subjectNames(subjects)
 	for i, subject := range subjects {
-		names[i] = fmt.Sprintf("%s #%d", subject.SubjectName, numbers[subject.SubjectID])
+		names[i] = fmt.Sprintf("%s %d", subject.SubjectName, numbers[subject.SubjectID])
 	}
 	return names
 }

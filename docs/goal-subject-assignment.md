@@ -76,7 +76,7 @@ automatic progress, change parent relationships, or implement a Goals screen.
 
 ## Stable Subject-local Goal references
 
-A live membership can be displayed as `Programming #3`. Numbers identify a Goal
+A live membership can be displayed as `Programming 3`. Numbers identify a Goal
 within a particular Subject, not its current position or priority. One Goal can
 have different numbers in different Subjects. Unassigned Goals display `Misc`
 without a number; internal Goal IDs remain unchanged.

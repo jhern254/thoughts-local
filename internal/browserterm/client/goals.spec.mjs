@@ -43,10 +43,10 @@ test('Goal Subject picker creates through the existing form and retains its draf
  await expect(screen(page)).toContainText('Select Subjects');await expect(screen(page)).toContainText(subjectName);await expect(screen(page)).toContainText('1 selected');
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/subject-picker-${testInfo.project.name}.png`});
  await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Create Goal');await expect(screen(page)).toContainText(goalName);
- await page.keyboard.press('Control+s');await expect(screen(page)).toContainText('Manage Subjects');await expect(screen(page)).toContainText(`${subjectName} #1`);
+ await page.keyboard.press('Control+s');await expect(screen(page)).toContainText('Manage Subjects');await expect(screen(page)).toContainText(`${subjectName} 1`);
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-subject-number-${testInfo.project.name}.png`});
  // Retiring and reactivating membership must restore this Subject-local reference.
- for (const expected of ['Misc', `${subjectName} #1`]) {
+ for (const expected of ['Misc', `${subjectName} 1`]) {
   await expect(screen(page)).not.toContainText('Loading');
   await page.keyboard.press('s');await expect(screen(page)).toContainText('Select Subjects');await expect(screen(page)).not.toContainText('Loading');
   await page.keyboard.press('/');await page.keyboard.press('Control+u');await page.keyboard.type(subjectName);

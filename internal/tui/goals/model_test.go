@@ -440,7 +440,7 @@ func TestModel_SubjectNumbers(t *testing.T) {
 		reply := m.loadDetail(42)()
 		m, _ = m.Update(reply)
 		got := m.View()
-		for _, want := range []string{"Programming #1", "Fitness #2"} {
+		for _, want := range []string{"Programming 1", "Fitness 2"} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("view missing %q: %s", want, got)
 			}
