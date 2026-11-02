@@ -26,6 +26,9 @@ func (m *Model) setBorderWeight(weight data.BorderWeight) {
 	}
 	m.borderWeight = weight
 	m.events.SetBorderWeight(weight)
+	if m.goals != nil {
+		m.goals.SetBorderWeight(weight)
+	}
 }
 func (m Model) updateAccessibilityFromReply(msg BrowserOptionsMsg) (tea.Model, tea.Cmd) {
 	if !m.options.open || msg.ID != m.options.id || m.options.request == "" {

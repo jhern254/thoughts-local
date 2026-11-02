@@ -68,6 +68,17 @@ including clean distribution curves and the video-preparation activity wave.
 
 This guidance supports small, deliberate presentation choices. It does not authorize broad UI rewrites or a second frontend architecture; a future rendering engine remains a separately scoped project.
 
+### Visual data and content shape
+
+When designing UI, consider both stored values and the patterns already visible
+in rendered content: widths, paragraph lengths, whitespace, time, and grouping.
+Explore whether highlighting, comparison, or a simple distribution could help
+users see those patterns. Highlighted Goal widths and the shape of Thought prose
+are reference examples. Inspect the visual effect before normalizing existing
+interaction behavior. Follow the [app style guide](docs/app-style-guide.md#visual-data-and-content-shape):
+keep the meaning explicit and the text usable. This is a design prompt, not a
+requirement to add a graphic to every screen.
+
 ### Cross-entity coordination
 
 When a use case combines multiple entities, put that coordination in a small, dedicated application service with narrow, consumer-defined interfaces. Keep each entity service focused on its own operations rather than accumulating dependencies for combined views or workflows.

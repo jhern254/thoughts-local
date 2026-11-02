@@ -10,19 +10,25 @@ export async function openVisual(page) {
 export async function clickControl(page, label) {
   const terminal = page.locator('.xterm-screen');
   // xterm replaces text spans during rendering. Wait on its persistent input
-  // surface, then measure the current label relative to that stable surface.
+  // surface, then retry measurement if a redraw detached the current label.
   // The text layer itself ignores pointer events.
   await terminal.scrollIntoViewIfNeeded();
-  const position = await screen(page).getByText(label, {exact: true}).evaluate((element, label) => {
-    const node = element.firstChild;
-    const start = node.textContent.indexOf(label);
-    const range = document.createRange();
-    range.setStart(node, start);
-    range.setEnd(node, start + label.length);
-    const text = range.getBoundingClientRect();
-    const bounds = element.closest('.xterm-screen').getBoundingClientRect();
-    return {x: text.x - bounds.x + text.width / 2, y: text.y - bounds.y + text.height / 2};
-  }, label);
+  let position;
+  await expect.poll(async () => {
+    position = await screen(page).getByText(label, {exact: true}).evaluate((element, label) => {
+      const node = element.firstChild;
+      const start = node.textContent.indexOf(label);
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, start + label.length);
+      const text = range.getBoundingClientRect();
+      const surface = element.closest('.xterm-screen');
+      if (!surface) return null;
+      const bounds = surface.getBoundingClientRect();
+      return {x: text.x - bounds.x + text.width / 2, y: text.y - bounds.y + text.height / 2};
+    }, label);
+    return position;
+  }, {message: `Measure attached terminal control: ${label}`}).not.toBeNull();
   await terminal.click({position});
 }
 export async function setDarkness(page, value) {

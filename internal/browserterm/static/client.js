@@ -149,6 +149,13 @@
   }, true);
 
   term.attachCustomKeyEventHandler(event => {
+    // Preserve held Back-key identity using the same terminal repeat metadata
+    // as trim arrows. Go decides whether the key pages or leaves a screen.
+    if (event.type === 'keydown' && event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && (event.key === 'ArrowLeft' || event.key === 'h')) {
+      event.preventDefault();
+      send('0', encoder.encode(event.key === 'ArrowLeft' ? '\x1b[1;1:2D' : '\x1b[104;1:2u'));
+      return false;
+    }
     const repeatedArrow = visual.videoTrim.repeatedArrowSequence(event);
     if (repeatedArrow) {
       event.preventDefault();

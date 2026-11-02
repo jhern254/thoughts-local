@@ -21,6 +21,29 @@ Data graphics must reflect actual values, with appropriate scales and labels;
 do not reshape them into an attractive curve. An activity wave is a repeating
 visual cue, not a measurement or a completion percentage.
 
+## Visual data and content shape
+
+Look at what the UI already portrays as visual data, including the shape of
+text. Use selection, color, filtering, and comparison to help users explore
+patterns before adding a separate chart.
+
+- **Goals:** natural text and row widths become more apparent when highlighted.
+  Keeping the highlighted row position while paging lets users compare different
+  contours; preserve this reviewed behavior rather than treating it as a defect.
+- **Thoughts:** paragraph lengths, line breaks, and whitespace give prose a
+  visible distribution of text density. Explore that shape while preserving the
+  authored text and its readability.
+- **Measured data:** counts, durations, and observations over time can support
+  quantitative distributions when the values and scale are clear.
+
+A text silhouette describes rendered form; wrapping and font size affect it.
+Keep that meaning distinct from progress, importance, or a statistical measure.
+Use the existing clean curves, restrained purple highlighting, and muted
+unfocused selections. Review examples at normal and narrow widths before
+deciding whether a visual improves comparison or understanding.
+
+See the [future Goal curve idea](goals-tui.md#future-goal-distribution-curve).
+
 ## Approved video-preparation indicator
 
 The reviewed design uses a fading braille trail along a fixed sine wave, with a
@@ -155,3 +178,15 @@ compacts the heading and footer, retaining the full 12-row media preview and
 scrolling controls. The minimum is 48 columns by 20 rows. Full-size layouts retain
 their existing presentation. During preparation, essential status and Stop/Cancel
 remain available even when there is no room for the optional activity wave.
+
+## Subject browsing and Goal selection
+
+Use the same heading/search baseline, Subject-name column, two-line row height,
+and footer positions for the Subjects browser and Goal Subject picker. Browsing
+shows thought counts; selection shows checkbox state and a Selected description.
+Do not fetch thought counts solely to decorate a picker.
+
+Keep creation as the first typed action, using the existing Subject form and
+returning to the preserved picker draft. Keep confirmation and cancellation
+visible at narrow sizes; Ctrl+S can confirm without activating the Create action.
+These layouts use shared presentation helpers, not a shared navigation model.

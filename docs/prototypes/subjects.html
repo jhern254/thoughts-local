@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thoughts · Subject screens</title>
+<style>
+:root{color-scheme:dark;--page:#111112;--surface:#181819;--line:#343037;--text:#e8e5eb;--muted:#b0a8b8;--purple:#ad58b4;--bright:#ee6ff8;--focus:#704399;--row-height:4.75rem}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--text);font:15px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+button,input{font:inherit}button{color:inherit;cursor:pointer;background:transparent;border:1px solid var(--line);padding:.4rem .65rem}button:hover{border-color:var(--purple)}:focus-visible{outline:2px solid var(--bright);outline-offset:3px}button.primary{background:var(--focus);border-color:var(--focus)}
+main{max-width:1320px;margin:auto;padding:30px 28px}.intro{display:flex;gap:20px;align-items:start;justify-content:space-between;margin-bottom:24px}h1{font:600 23px/1.3 system-ui,sans-serif;margin:0 0 8px}.intro p{margin:0;color:var(--muted);max-width:75ch;font-size:13px}.controls{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}.controls button[aria-pressed=true]{border-color:var(--bright);color:var(--bright)}
+.comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}.caption{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-bottom:10px;gap:8px}.screen{height:690px;display:grid;grid-template-rows:64px 54px 142px minmax(0,1fr) 136px;background:var(--surface);border:1px solid var(--line);min-width:0;overflow:hidden}.screen-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 20px}.screen-header h2{font-size:15px;font-weight:500;margin:0;background:var(--focus);padding:2px 9px}.screen-header span{color:var(--muted);font-size:12px;white-space:nowrap}.search{display:flex;align-items:center;gap:12px;margin:0 20px;border-bottom:1px solid var(--line);min-width:0}.search span{color:var(--purple)}.search input{width:100%;min-width:0;border:0;background:transparent;color:var(--text);padding:8px 2px}.search input::placeholder{color:var(--muted)}
+.context{margin:0 20px;border-bottom:1px solid var(--line);padding:12px 0;display:grid;align-content:start;gap:10px}.special{display:grid;grid-template-columns:2ch 4ch minmax(0,1fr);text-align:left;border:0;padding:0;min-height:48px;align-content:start}.special .copy{grid-column:3}.special strong{font-weight:400;display:block}.special small{color:var(--muted);display:block;font-size:12px}.context-title{color:var(--muted);font-size:12px;margin:0}.goal-name{font-weight:400;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.selection-summary{font-size:12px;color:var(--muted);margin:0}.selection-summary strong{color:var(--bright);font-weight:400}
+.subject-list{overflow:auto;scrollbar-color:var(--line) transparent;padding:12px 20px;outline-offset:-3px;min-height:0}.row{display:grid;grid-template-columns:2ch 4ch minmax(0,1fr);grid-template-rows:auto auto;align-content:center;height:var(--row-height);min-height:var(--row-height);position:relative;cursor:pointer}.row.focused{color:var(--bright)}.row.focused:before{content:"│";position:absolute;left:0;top:50%;transform:translateY(-50%);color:var(--purple)}.row:hover{background:#211b24}.row .check{grid-column:2;grid-row:1;align-self:center;accent-color:var(--purple);width:15px;height:15px;margin:0}.row .name{grid-column:3;grid-row:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.row .description{grid-column:3;grid-row:2;color:var(--muted);font-size:12px;min-height:18px}.row.focused .description{color:var(--purple)}.empty{color:var(--muted);padding-left:6ch}
+.screen-footer{border-top:1px solid var(--line);padding:12px 20px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;min-width:0}.screen-footer .status{font-size:12px;color:var(--muted);min-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.actions{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}.help{font-size:11px;color:var(--muted);margin:0}kbd{font:inherit;color:var(--text)}.note{font-size:12px;color:var(--muted);margin:18px 0 0;max-width:100ch}.narrow .comparison{max-width:900px;margin:auto}.narrow .screen{height:510px;grid-template-rows:58px 48px 126px minmax(0,1fr) 150px}.narrow .screen-header,.narrow .screen-footer{padding-left:12px;padding-right:12px}.narrow .search,.narrow .context{margin-left:12px;margin-right:12px}.narrow .subject-list{padding-left:12px;padding-right:12px}
+@media(max-width:1000px){.intro{flex-direction:column}.controls{flex-shrink:1}.comparison{gap:16px}main{padding:20px 16px}.screen-header{padding:0 12px}.screen-header span{display:none}.screen-footer{padding:12px}.subject-list{padding:12px}.search,.context{margin-left:12px;margin-right:12px}}
+@media(max-width:720px){.comparison{grid-template-columns:1fr}.screen{height:560px}.intro p{font-size:12px}}
+</style>
+</head>
+<body>
+<main>
+<header class="intro">
+<div><h1>Subject screens, aligned</h1><p>Compare both views with the same synthetic Subjects. Try search, selection, and the narrow layout.</p></div>
+<div class="controls"><button id="narrow" aria-pressed="false">Narrow layout</button><button id="reset">Reset preview</button></div>
+</header>
+<div class="comparison">
+<section aria-labelledby="browse-caption">
+<div class="caption" id="browse-caption"><span>01 / Subjects</span><span>Browse</span></div>
+<div class="screen" data-screen="browse">
+<header class="screen-header"><h2>Subjects</h2><span>Thoughts</span></header>
+<label class="search"><span aria-hidden="true">/</span><input type="search" aria-label="Search Subjects" placeholder="Search Subjects"></label>
+<div class="context">
+<button class="special" data-action="create"><span class="copy"><strong>Create subject…</strong><small>Add a new subject</small></span></button>
+<button class="special" data-action="misc"><span class="copy"><strong>Misc thoughts</strong><small>8 thoughts without a Subject</small></span></button>
+</div>
+<div class="subject-list" role="listbox" aria-label="Browse Subjects" tabindex="0"></div>
+<footer class="screen-footer">
+<div class="status" aria-live="polite"></div>
+<div class="actions"><button data-action="open">Open Subject</button><button data-action="back">Back</button></div>
+<p class="help"><kbd>↑/↓</kbd> move · <kbd>Enter</kbd> open · <kbd>/</kbd> search · <kbd>Esc</kbd> back</p>
+</footer>
+</div>
+</section>
+<section aria-labelledby="picker-caption">
+<div class="caption" id="picker-caption"><span>02 / Goal Subjects</span><span>Multiselect</span></div>
+<div class="screen" data-screen="picker">
+<header class="screen-header"><h2>Select Subjects</h2><span>Goal membership</span></header>
+<label class="search"><span aria-hidden="true">/</span><input type="search" aria-label="Search Goal Subjects" placeholder="Search Subjects"></label>
+<div class="context">
+<p class="context-title">Subjects for</p><p class="goal-name">Practice Go</p>
+<p class="selection-summary"><strong id="selected-count">2 selected</strong> · an empty selection means Misc</p>
+</div>
+<div class="subject-list" role="listbox" aria-label="Select Goal Subjects" aria-multiselectable="true" tabindex="0"></div>
+<footer class="screen-footer">
+<div class="status" aria-live="polite"></div>
+<div class="actions"><button class="primary" data-action="confirm">Use selection</button><button data-action="cancel">Cancel</button></div>
+<p class="help"><kbd>↑/↓</kbd> move · <kbd>Space</kbd> toggle · <kbd>Enter</kbd> confirm · <kbd>Esc</kbd> cancel</p>
+</footer>
+</div>
+</section>
+</div>
+<p class="note">Aligned headings, search rows, name columns, row heights, and footers. Browse actions stay separate from assignable Subjects. Preview selections are temporary; nothing is saved to the app.</p>
+</main>
+<script>
+const subjects = [
+ {id:1,name:'Go Programming',count:24}, {id:2,name:'Software Projects',count:18},
+ {id:3,name:'Reading',count:12}, {id:4,name:'Fitness',count:9},
+ {id:5,name:'Work & Career',count:16}, {id:6,name:'日本語の練習 · Language learning',count:7},
+ {id:7,name:'Misc',count:3}, {id:8,name:'Designing thoughtful interfaces with very long Subject names',count:5},
+ {id:9,name:'Music',count:11}, {id:10,name:'Cooking',count:4},
+ {id:11,name:'Walking',count:6}, {id:12,name:'Personal projects',count:8}
+];
+let committed = new Set([1,3]);
+let selected = new Set(committed);
+const screens = [...document.querySelectorAll('[data-screen]')].map(element => ({
+ element, kind:element.dataset.screen, search:element.querySelector('input[type=search]'),
+ list:element.querySelector('.subject-list'), status:element.querySelector('.status'), focused:1
+}));
+function visibleSubjects(screen) {
+ const query=screen.search.value.trim().toLocaleLowerCase();
+ return subjects.filter(subject=>subject.name.toLocaleLowerCase().includes(query));
+}
+function draw(screen) {
+ const visible=visibleSubjects(screen);
+ if (!visible.some(subject=>subject.id===screen.focused)) screen.focused=visible[0]?.id;
+ screen.list.replaceChildren();
+ for (const subject of visible) {
+ const row=document.createElement('div');row.className='row';row.role='option';row.dataset.id=subject.id;
+ const focused=subject.id===screen.focused;row.classList.toggle('focused',focused);
+ row.id=`${screen.kind}-subject-${subject.id}`;
+ row.setAttribute('aria-selected',String(screen.kind==='picker'?selected.has(subject.id):focused));
+ if(screen.kind==='picker'){
+ const check=document.createElement('input');check.type='checkbox';check.className='check';check.checked=selected.has(subject.id);check.tabIndex=-1;check.setAttribute('aria-label',`Select ${subject.name}`);
+ check.addEventListener('click',event=>{event.stopPropagation();toggle(screen,subject.id)});row.append(check);
+ }
+ const name=document.createElement('span');name.className='name';name.textContent=subject.name;name.title=subject.name;
+ const description=document.createElement('span');description.className='description';description.textContent=screen.kind==='browse'?`${subject.count} thoughts`:(selected.has(subject.id)?'Selected':'\u00a0');
+ row.append(name,description);
+ row.addEventListener('click',()=>{screen.focused=subject.id;if(screen.kind==='picker')toggle(screen,subject.id);else draw(screen);screen.list.focus()});
+ row.addEventListener('dblclick',()=>{if(screen.kind==='browse')screen.status.textContent=`Preview: ${subject.name}`});
+ screen.list.append(row);
+ }
+ if(!visible.length){const empty=document.createElement('p');empty.className='empty';empty.textContent='No matching Subjects.';screen.list.append(empty)}
+ if(screen.focused)screen.list.setAttribute('aria-activedescendant',`${screen.kind}-subject-${screen.focused}`);else screen.list.removeAttribute('aria-activedescendant');
+ screen.status.textContent=screen.kind==='browse'?`${visible.length} Subjects`:`${visible.length} Subjects · ${selected.size} selected`;
+ document.querySelector('#selected-count').textContent=`${selected.size} selected`;
+}
+function toggle(screen,id){screen.focused=id;if(selected.has(id))selected.delete(id);else selected.add(id);draw(screen)}
+function confirm(screen){committed=new Set(selected);screen.status.textContent=`Preview confirmed: ${selected.size} Subjects. No app data saved.`}
+function cancel(screen){selected=new Set(committed);draw(screen);screen.status.textContent='Unconfirmed selection discarded.'}
+for(const screen of screens){
+ screen.search.addEventListener('input',()=>draw(screen));
+ screen.element.addEventListener('keydown',event=>{
+ const searching=event.target===screen.search;
+ if(event.key==='Escape'){
+ event.preventDefault();if(screen.search.value){screen.search.value='';draw(screen);screen.list.focus()}else if(screen.kind==='picker')cancel(screen);else screen.status.textContent='Preview: back to entity navigation.';return;
+ }
+ if(searching)return;
+ if(event.key==='/'){event.preventDefault();screen.search.focus();return}
+ const visible=visibleSubjects(screen);const index=visible.findIndex(subject=>subject.id===screen.focused);
+ if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+ event.preventDefault();const next=Math.max(0,Math.min(visible.length-1,index+(event.key==='ArrowDown'?1:-1)));
+ screen.focused=visible[next]?.id;draw(screen);screen.list.querySelector('.focused')?.scrollIntoView({block:'nearest'});return;
+ }
+ if(event.target.closest('button'))return;
+ if(event.key===' '&&screen.kind==='picker'&&screen.focused){event.preventDefault();toggle(screen,screen.focused)}
+ if(event.key==='Enter'){
+ event.preventDefault();if(screen.kind==='picker')confirm(screen);else{const subject=subjects.find(subject=>subject.id===screen.focused);if(subject)screen.status.textContent=`Preview: ${subject.name}`}
+ }
+ });
+ screen.element.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>{
+ switch(button.dataset.action){
+ case 'confirm':confirm(screen);break;case 'cancel':cancel(screen);break;
+ case 'open':{const subject=subjects.find(subject=>subject.id===screen.focused);screen.status.textContent=subject?`Preview: ${subject.name}`:'Choose a Subject.';break}
+ case 'create':screen.status.textContent='Preview: open Create Subject.';break;
+ case 'misc':screen.status.textContent='Preview: open thoughts with no Subject.';break;
+ case 'back':screen.status.textContent='Preview: back to entity navigation.';break;
+ }
+ }));draw(screen);
+}
+document.querySelector('#narrow').addEventListener('click',event=>{
+ const narrow=document.body.classList.toggle('narrow');event.currentTarget.setAttribute('aria-pressed',String(narrow));
+});
+document.querySelector('#reset').addEventListener('click',()=>{committed=new Set([1,3]);selected=new Set(committed);for(const screen of screens){screen.search.value='';screen.focused=1;draw(screen);screen.list.scrollTop=0}});
+</script>
+</body>
+</html>

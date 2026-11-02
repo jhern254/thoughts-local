@@ -7,6 +7,8 @@ import (
 
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/event"
+	"github.com/jhern254/go-thoughts/internal/goal"
+	"github.com/jhern254/go-thoughts/internal/goalassignment"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/subject"
 	"github.com/jhern254/go-thoughts/internal/thought"
@@ -27,7 +29,13 @@ func Classify(operation logging.Operation, err error) (logging.FailureCategory, 
 	}
 	var validation *thought.ValidationError
 	var eventValidation *event.ValidationError
+	var goalValidation *goal.ValidationError
+	var assignmentValidation *goalassignment.ValidationError
 	switch {
+	case (operation == logging.GoalCreate || operation == logging.GoalUpdate || operation == logging.GoalSubjectsReplace) && (errors.As(err, &goalValidation) || errors.As(err, &assignmentValidation) || errors.Is(err, data.ErrVersionConflict) || errors.Is(err, data.ErrRecordNotFound) || errors.Is(err, data.ErrDuplicateRecord)):
+		return logging.UnexpectedFailure, false
+	case (operation == logging.GoalGet || operation == logging.GoalSubjectsList) && errors.Is(err, data.ErrRecordNotFound):
+		return logging.UnexpectedFailure, false
 	case errors.Is(err, data.ErrDatabaseBusy):
 		return logging.DatabaseBusy, true
 	case errors.Is(err, data.ErrDatabaseReadOnly):

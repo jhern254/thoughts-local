@@ -38,7 +38,7 @@ func TestModel_SubjectListCount(t *testing.T) {
 			if tt.query == "alpha" && m.subjects.list.Paginator.TotalPages < 2 {
 				t.Fatal("want matching records spread across pages")
 			}
-			if got := m.View().Content; !strings.Contains(got, "\n"+tt.want+"\n") {
+			if got := m.View().Content; !strings.Contains(got, "\n  "+tt.want+"\n") {
 				t.Fatalf("got view %q, want count %q", got, tt.want)
 			}
 			if tt.createVisible {
@@ -56,7 +56,7 @@ func TestModel_SubjectListCount(t *testing.T) {
 		m := newRootTestModel()
 		m.resizeSubjects(80, 14)
 		m.subjects.loading = true
-		if got := m.viewSubjectList(); !strings.Contains(got, "Loading subjects…") || !strings.Contains(got, "\n0 subjects\n") {
+		if got := m.viewSubjectList(); !strings.Contains(got, "Loading subjects…") || !strings.Contains(got, "\n  0 subjects\n") {
 			t.Fatalf("got view %q, want loading feedback and record count", got)
 		}
 		if got := strings.Count(m.viewSubjectList(), "\n") + 1; got > 14 {
@@ -65,7 +65,7 @@ func TestModel_SubjectListCount(t *testing.T) {
 		m.subjects.loading = false
 		m.subjects.err = errors.New("failed")
 		m.subjects.errMessage = "Could not load subjects."
-		if got := m.viewSubjectList(); !strings.Contains(got, m.subjects.errMessage) || !strings.Contains(got, "\n0 subjects\n") {
+		if got := m.viewSubjectList(); !strings.Contains(got, m.subjects.errMessage) || !strings.Contains(got, "\n  0 subjects\n") {
 			t.Fatalf("got view %q, want error feedback and record count", got)
 		}
 	})
