@@ -66,20 +66,28 @@ test('back navigation and default No preserve the session until exit is confirme
 });
 
 test('reload during filter editing waits for the previous session to finish', async ({page}) => {
+  let connections = 0;
+  page.on('websocket', () => connections++);
   await ready(page);
+  const beforeReload = connections;
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Misc thoughts');
   await expect(screen(page)).not.toContainText('Loading');
   await page.keyboard.press('/');
   await page.keyboard.type('Building');
-  await expect(screen(page)).toContainText('Filter: Building');
+  await expect(screen(page)).toContainText('/ Building');
   // The old session must join its already-running cursor command. The new
   // connection may arrive during that short cleanup window.
   await page.reload();
   await expect(screen(page)).toContainText('Events');
   await expect(page.locator('#status')).toHaveText('Connected');
-  await expect(screen(page)).not.toContainText('Filter: Building');
+  expect(connections).toBeGreaterThan(beforeReload);
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(screen(page)).toContainText('Misc thoughts');
+  await expect(screen(page)).not.toContainText('/ Building');
 });
 
 test('Ctrl+C copies a terminal selection and requests exit only without a selection', async ({page}) => {

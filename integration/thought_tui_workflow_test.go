@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui"
@@ -65,7 +66,14 @@ func TestThoughtTUIWorkflow_SQLite(t *testing.T) {
 		}
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEscape))
 		model = runTUIModelCommand(t, model, tuiKey(tea.KeyEscape))
-		if got := model.View().Content; !strings.Contains(got, "Misc thoughts") || !strings.Contains(got, "1 thought") || !strings.Contains(got, "\n0 subjects\n") {
+		got := model.View().Content
+		countVisible := false
+		for _, row := range strings.Split(ansi.Strip(got), "\n") {
+			if strings.TrimSpace(row) == "0 subjects" {
+				countVisible = true
+			}
+		}
+		if !strings.Contains(got, "Misc thoughts") || !strings.Contains(got, "1 thought") || !countVisible {
 			t.Fatalf("got view %q, want updated Misc count and zero subjects", got)
 		}
 	})
