@@ -389,7 +389,8 @@ test('invalid selection clears an unsaved preview without implying it was applie
   const chooser = page.waitForEvent('filechooser');
   await clickControl(page, 'Choose image or video');
   await (await chooser).setFiles({name:'invalid.png',mimeType:'image/png',buffer:Buffer.from('not an image')});
-  await expect(screen(page)).toContainText('Could not load or apply');
+  await expect(screen(page)).toContainText('Choose a valid JPEG/PNG within the image limits.');
+  await expect(screen(page)).not.toContainText('Database incompatible');
   await expect(page.locator('#background-preview')).not.toHaveAttribute('src');
   await expect(page.locator('#background-preview-wrap')).toBeHidden();
   await clickControl(page, 'Apply');
