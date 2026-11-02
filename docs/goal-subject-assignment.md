@@ -68,3 +68,32 @@ An ordinary Misc Event has `subject_id = NULL`. Goal discovery returns no Goals
 for it, regardless of how many Unassigned Goals exist. Unassigned does not mean
 associated with every NULL-Subject Event. This API does not calculate or record
 automatic progress, change parent relationships, or implement a Goals screen.
+
+## Stable Subject-local Goal references
+
+A live membership can be displayed as `Programming #3`. Numbers identify a Goal
+within a particular Subject, not its current position or priority. One Goal can
+have different numbers in different Subjects. Unassigned Goals display `Misc`
+without a number; internal Goal IDs remain unchanged.
+
+`subject_goal_numbers` stores positive, unique reservations per Subject. It is
+not membership: `subject_goals` remains the sole membership authority. Creation,
+replacement, and standalone addition reserve a number inside the existing write
+transaction. Allocation uses the highest reserved number plus one. Unlinking,
+soft deletion, renaming, filtering, and activation changes never renumber Goals.
+Re-linking a Goal restores its previous reservation. Hard-deleting an endpoint
+cascades its reservations; permanent reservation after destructive purging is not
+guaranteed.
+
+Migration 15 backfills every retained link in Goal-ID order within each Subject,
+including deleted endpoints, without modifying Goals or their versions. Links
+removed before this migration cannot be reconstructed. It applies forward to
+existing databases without resetting them.
+
+`ListLiveNumberedSubjectsForGoal` returns Subject records with their numbers using
+one read snapshot, with the same unavailable-Goal and empty-Unassigned contracts
+as the existing live query. A membership missing its reservation is an error,
+not Misc. Direct SQL importers must populate reservations transactionally; normal
+application callers use the assignment or link services. Raw relationship and
+unnumbered Subject APIs retain their existing contracts. Number allocation adds
+no extra Goal version increment and changes no progress/discovery behavior.

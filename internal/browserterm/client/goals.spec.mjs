@@ -20,7 +20,9 @@ test('Goals workflow creates a target and returns to Events without reconnecting
  await page.keyboard.press('/');await page.keyboard.type('no-subject-matches-this-query');await expect(screen(page)).toContainText('No matches');
  await page.keyboard.press('Escape');await expect(screen(page)).not.toContainText('No matches');
  await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Created ');await expect(screen(page)).not.toContainText('Loading');
- await page.setViewportSize({width:700,height:450});await expect(screen(page)).toContainText(name);
+ await page.setViewportSize({width:700,height:450});
+ await expect.poll(async()=> (await page.locator('.xterm-screen').boundingBox()).width).toBeLessThan(700);
+ await expect(screen(page)).toContainText(name);
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goals-${test.info().project.name}-narrow.png`});
  await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Goals');await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Events');
  expect(sockets).toBe(connections);
@@ -41,7 +43,8 @@ test('Goal Subject picker creates through the existing form and retains its draf
  await expect(screen(page)).toContainText('Select Subjects');await expect(screen(page)).toContainText(subjectName);await expect(screen(page)).toContainText('1 selected');
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/subject-picker-${testInfo.project.name}.png`});
  await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Create Goal');await expect(screen(page)).toContainText(goalName);
- await page.keyboard.press('Control+s');await expect(screen(page)).toContainText('Manage Subjects');await expect(screen(page)).toContainText(subjectName);
+ await page.keyboard.press('Control+s');await expect(screen(page)).toContainText('Manage Subjects');await expect(screen(page)).toContainText(`${subjectName} #1`);
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-subject-number-${testInfo.project.name}.png`});
  await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Goals');await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Events');
  await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('Browse Subjects');await expect(screen(page)).toContainText('Create subject…');

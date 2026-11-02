@@ -43,6 +43,9 @@ func (s *SQLiteSubjectGoalStore) AddSubjectGoal(ctx context.Context, userID stri
 	if count == 0 {
 		return ErrRecordNotFound
 	}
+	if err := reserveGoalNumber(ctx, tx, userID, subjectID, goalID); err != nil {
+		return fmt.Errorf("reserve goal number: %w", TranslateSQLiteError(err))
+	}
 	if err := advanceGoalAssociationVersion(ctx, tx, userID, goalID); err != nil {
 		return fmt.Errorf("update goal association version: %w", TranslateSQLiteError(err))
 	}

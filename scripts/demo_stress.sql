@@ -115,4 +115,8 @@ INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES
 -- Goal 47 retains only a deleted Subject; Goal 48 has no links. Both show Misc.
 
 DROP TABLE demo_clock;
+
+INSERT INTO subject_goal_numbers(subject_id,goal_id,user_id,goal_number)
+SELECT subject_id,goal_id,user_id,row_number() OVER(PARTITION BY subject_id ORDER BY goal_id)
+FROM subject_goals;
 COMMIT;

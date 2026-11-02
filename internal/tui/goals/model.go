@@ -30,6 +30,7 @@ type Assignments interface {
 	ReplaceSubjects(context.Context, string, int64, int64, []int64) (*data.Goal, error)
 }
 type Memberships interface {
+	ListLiveNumberedSubjectsForGoal(context.Context, string, int64) ([]data.NumberedGoalSubject, error)
 	ListLiveSubjectsForGoal(context.Context, string, int64) ([]data.Subject, error)
 }
 type Subjects interface {
@@ -51,6 +52,7 @@ type result struct {
 	owner     *byte
 	rows      []list.Item
 	item      *data.Goal
+	numbers   map[int64]int64
 	subjects  []data.Subject
 	available []data.Subject
 	err       error
@@ -59,6 +61,7 @@ type result struct {
 func Owns(msg tea.Msg) bool { _, ok := msg.(result); return ok }
 
 type goalRow struct {
+	numbers  map[int64]int64
 	item     data.Goal
 	subjects []data.Subject
 }
@@ -66,7 +69,7 @@ type goalRow struct {
 func (r goalRow) Title() string       { return r.item.GoalName }
 func (r goalRow) FilterValue() string { return r.item.GoalName }
 func (r goalRow) Description() string {
-	names := subjectNames(r.subjects)
+	names := numberedSubjectNames(r.subjects, r.numbers)
 	if len(names) > 3 {
 		names = append(names[:3], "...")
 	}
@@ -121,6 +124,7 @@ type Model struct {
 	selected *data.Goal
 	// Requested identity survives failed reads when selected must remain nil.
 	requestedGoalID int64
+	goalNumbers     map[int64]int64
 	live            []data.Subject
 	available       []data.Subject
 	// The picker edits selectedIDs locally; pickerBefore restores the draft on
@@ -260,8 +264,9 @@ func (m *Model) loadList() tea.Cmd {
 				break
 			}
 			var subjects []data.Subject
-			subjects, err = memberships.ListLiveSubjectsForGoal(ctx, user, item.GoalID)
-			rows = append(rows, goalRow{item, subjects})
+			var numbers map[int64]int64
+			subjects, numbers, err = readNumberedGoalSubjects(ctx, memberships, user, item.GoalID)
+			rows = append(rows, goalRow{item: item, subjects: subjects, numbers: numbers})
 		}
 		return result{owner: owner, rows: rows, err: err}
 	}
@@ -278,10 +283,11 @@ func (m *Model) loadDetail(id int64) tea.Cmd {
 	return func() tea.Msg {
 		item, err := service.Get(ctx, user, id)
 		var subjects []data.Subject
+		var numbers map[int64]int64
 		if err == nil {
-			subjects, err = memberships.ListLiveSubjectsForGoal(ctx, user, id)
+			subjects, numbers, err = readNumberedGoalSubjects(ctx, memberships, user, id)
 		}
-		return result{owner: owner, item: item, subjects: subjects, err: err}
+		return result{owner: owner, item: item, subjects: subjects, numbers: numbers, err: err}
 	}
 }
 func (m *Model) loadPicker() tea.Cmd {
@@ -385,6 +391,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		default:
 			m.selected = reply.item
 			m.live = reply.subjects
+			m.goalNumbers = reply.numbers
 			if m.screen == editView {
 				m.populateForm()
 			}
@@ -678,7 +685,7 @@ func (m Model) detailContent() string {
 		return ""
 	}
 	item := m.selected
-	return item.GoalName + "\n\n" + goalSummary(*item) + "\n\nSubjects\n" + strings.Join(subjectNames(m.live), "\n") + fmt.Sprintf("\n\nGoal %d\nCreated %s\nUpdated %s", item.GoalID, item.CreatedAt.Format("Jan 2, 2006"), item.UpdatedAt.Format("Jan 2, 2006"))
+	return item.GoalName + "\n\n" + goalSummary(*item) + "\n\nSubjects\n" + strings.Join(numberedSubjectNames(m.live, m.goalNumbers), "\n") + fmt.Sprintf("\n\nCreated %s\nUpdated %s", item.CreatedAt.Format("Jan 2, 2006"), item.UpdatedAt.Format("Jan 2, 2006"))
 }
 
 func (m Model) IsOpen() bool { return m.open }

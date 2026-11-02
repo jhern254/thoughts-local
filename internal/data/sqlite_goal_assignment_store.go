@@ -32,6 +32,9 @@ func (s *SQLiteSubjectGoalStore) CreateGoalWithSubjects(ctx context.Context, ite
 		return nil, err
 	}
 	for _, id := range subjectIDs {
+		if err := reserveGoalNumber(ctx, tx, item.UserID, id, created.GoalID); err != nil {
+			return nil, err
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES(?,?,?)`, id, created.GoalID, item.UserID); err != nil {
 			return nil, err
 		}
@@ -101,6 +104,9 @@ func (s *SQLiteSubjectGoalStore) ReplaceGoalSubjects(ctx context.Context, userID
 	for _, id := range subjectIDs {
 		if !selected[id] {
 			continue
+		}
+		if err := reserveGoalNumber(ctx, tx, userID, id, goalID); err != nil {
+			return nil, err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES(?,?,?)`, id, goalID, userID); err != nil {
 			return nil, err

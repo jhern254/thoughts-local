@@ -8,6 +8,7 @@ import (
 )
 
 type Store interface {
+	ListLiveNumberedSubjectsForGoal(context.Context, string, int64) ([]data.NumberedGoalSubject, error)
 	AddSubjectGoal(context.Context, string, int64, int64) error
 	RemoveSubjectGoal(context.Context, string, int64, int64) error
 	ListSubjectGoals(context.Context, string, int64) ([]data.SubjectGoal, error)
@@ -45,4 +46,8 @@ func (s *Service) ListForGoal(ctx context.Context, userID string, goalID int64) 
 // nonnil slice means Unassigned; an unavailable Goal returns ErrRecordNotFound.
 func (s *Service) ListLiveSubjectsForGoal(ctx context.Context, userID string, goalID int64) ([]data.Subject, error) {
 	return s.store.ListLiveSubjectsForGoal(ctx, userID, goalID)
+}
+
+func (s *Service) ListLiveNumberedSubjectsForGoal(ctx context.Context, userID string, goalID int64) ([]data.NumberedGoalSubject, error) {
+	return s.store.ListLiveNumberedSubjectsForGoal(ctx, userID, goalID)
 }
