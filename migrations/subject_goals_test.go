@@ -8,18 +8,18 @@ import (
 const subjectGoalFixture = `INSERT INTO users(user_id) VALUES ('owner'),('other');
  INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'owner','Coding'),(2,'other','Other');
  INSERT INTO goals(goal_id,user_id,goal_name,target_seconds) VALUES (1,'owner','Practice',60),(2,'other','Other',60);
- INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES (1,1,'owner');`
+ INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1);`
 
 func TestMigrations_SubjectGoals(t *testing.T) {
 	for _, tc := range []struct{ name, statement string }{
-		{"rejects duplicate pairs", "INSERT INTO subject_goals VALUES (1,1,'owner')"},
-		{"rejects foreign subjects", "INSERT INTO subject_goals VALUES (2,1,'owner')"},
-		{"rejects foreign goals", "INSERT INTO subject_goals VALUES (1,2,'owner')"},
-		{"rejects missing subjects", "INSERT INTO subject_goals VALUES (99,1,'owner')"},
-		{"rejects missing goals", "INSERT INTO subject_goals VALUES (1,99,'owner')"},
-		{"requires subject", "INSERT INTO subject_goals VALUES (NULL,1,'owner')"},
-		{"requires goal", "INSERT INTO subject_goals VALUES (1,NULL,'owner')"},
-		{"requires owner", "INSERT INTO subject_goals VALUES (1,1,NULL)"},
+		{"rejects duplicate pairs", "INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1)"},
+		{"rejects foreign subjects", "INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (2,1,'owner',1)"},
+		{"rejects foreign goals", "INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,2,'owner',2)"},
+		{"rejects missing subjects", "INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (99,1,'owner',1)"},
+		{"rejects missing goals", "INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,99,'owner',99)"},
+		{"requires subject", "INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (NULL,1,'owner',1)"},
+		{"requires goal", "INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,NULL,'owner',NULL)"},
+		{"requires owner", "INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,NULL,1)"},
 		{"rejects changing link owner", "UPDATE subject_goals SET user_id='other'"},
 		{"rejects changing subject ownership alone", "UPDATE subjects SET user_id='other' WHERE subject_id=1"},
 		{"rejects changing goal ownership alone", "UPDATE goals SET user_id='other' WHERE goal_id=1"},
@@ -51,7 +51,7 @@ func TestMigrations_SubjectGoals(t *testing.T) {
 	} {
 		t.Run("hard deleting "+tc.name+" cascades only affected links", func(t *testing.T) {
 			db := openMigratedDatabase(t)
-			if _, err := db.Exec(subjectGoalFixture + "INSERT INTO subject_goals VALUES (2,2,'other');"); err != nil {
+			if _, err := db.Exec(subjectGoalFixture + "INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (2,2,'other',2);"); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := db.Exec(tc.statement); err != nil {

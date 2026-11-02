@@ -104,19 +104,24 @@ SELECT n,'demo',
  at-86400-n*60,at
 FROM samples CROSS JOIN demo_clock;
 
-INSERT INTO subject_goals(subject_id,goal_id,user_id)
-SELECT s.subject_id,g.goal_id,'demo' FROM goals g JOIN subjects s ON s.user_id=g.user_id
-WHERE s.deleted_at IS NULL AND g.goal_id NOT IN(2,47,48)
- AND s.subject_id<=CASE WHEN g.goal_id=1 THEN 32 ELSE
- CASE g.goal_id%6 WHEN 0 THEN 0 WHEN 1 THEN 1 WHEN 2 THEN 2
- WHEN 3 THEN 3 WHEN 4 THEN 5 ELSE 16 END END;
-INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES
- (31,2,'demo'),(32,2,'demo'),(33,47,'demo');
+WITH memberships AS (
+    SELECT s.subject_id, g.goal_id, 'demo' AS user_id
+    FROM goals AS g
+    JOIN subjects AS s ON s.user_id = g.user_id
+    WHERE s.deleted_at IS NULL
+      AND g.goal_id NOT IN (2, 47, 48)
+      AND s.subject_id <= CASE WHEN g.goal_id = 1 THEN 32 ELSE
+          CASE g.goal_id % 6 WHEN 0 THEN 0 WHEN 1 THEN 1 WHEN 2 THEN 2
+          WHEN 3 THEN 3 WHEN 4 THEN 5 ELSE 16 END END
+    UNION ALL SELECT 31, 2, 'demo'
+    UNION ALL SELECT 32, 2, 'demo'
+    UNION ALL SELECT 33, 47, 'demo'
+)
+INSERT INTO subject_goals (subject_id, goal_id, user_id, goal_number)
+SELECT subject_id, goal_id, user_id,
+       ROW_NUMBER() OVER (PARTITION BY subject_id ORDER BY goal_id)
+FROM memberships;
 -- Goal 47 retains only a deleted Subject; Goal 48 has no links. Both show Misc.
 
 DROP TABLE demo_clock;
-
-INSERT INTO subject_goal_numbers(subject_id,goal_id,user_id,goal_number)
-SELECT subject_id,goal_id,user_id,row_number() OVER(PARTITION BY subject_id ORDER BY goal_id)
-FROM subject_goals;
 COMMIT;

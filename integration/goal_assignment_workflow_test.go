@@ -92,8 +92,8 @@ func TestGoalAssignmentWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("unassigned: got %+v, %v; want nonnil empty", live, err)
 		}
 		raw, err := store.ListGoalSubjects(t.Context(), "owner", item.GoalID)
-		if err != nil || len(raw) != 1 || raw[0].SubjectID != 1 {
-			t.Fatalf("retained links: got %+v, %v; want subject 1", raw, err)
+		if err != nil || len(raw) != 2 || raw[0].SubjectID != 1 || raw[0].DeletedAt != nil || raw[0].GoalNumber != 1 || raw[1].SubjectID != 2 || raw[1].DeletedAt == nil || raw[1].GoalNumber != 1 {
+			t.Fatalf("retained links: got %+v,%v; want deleted Subject 1 unchanged and Subject 2 explicitly retired, both #1", raw, err)
 		}
 		if _, err := service.ReplaceSubjects(t.Context(), "owner", item.GoalID, 1, nil); !errors.Is(err, data.ErrVersionConflict) {
 			t.Fatalf("stale no-op: got %v, want version conflict", err)
@@ -177,7 +177,7 @@ func TestGoalAssignmentTransactionsWorkflow_SQLite(t *testing.T) {
 	t.Run("replacement rolls back removals when an insertion fails", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)
-		if _, err := db.Exec(`INSERT INTO subject_goals VALUES(1,1,'owner');
+		if _, err := db.Exec(`INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1);
    CREATE TEMP TRIGGER fail_assignment BEFORE INSERT ON subject_goals BEGIN SELECT RAISE(ABORT,'controlled failure'); END;`); err != nil {
 			t.Fatal(err)
 		}
@@ -195,7 +195,7 @@ func TestGoalAssignmentTransactionsWorkflow_SQLite(t *testing.T) {
 		t.Run("rejects invalid replacement "+fmt.Sprint(ids)+" before removing links", func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			seedSubjectGoals(t, db)
-			if _, err := db.Exec(`INSERT INTO subject_goals VALUES(1,1,'owner'); UPDATE subjects SET deleted_at=updated_at WHERE subject_id=2;`); err != nil {
+			if _, err := db.Exec(`INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1); UPDATE subjects SET deleted_at=updated_at WHERE subject_id=2;`); err != nil {
 				t.Fatal(err)
 			}
 			store := data.NewSQLiteSubjectGoalStore(db)
@@ -223,7 +223,7 @@ func TestGoalAssignmentTransactionsWorkflow_SQLite(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db, dsn := openMigratedSQLite(t)
 			seedSubjectGoals(t, db)
-			if _, err := db.Exec(`INSERT INTO subject_goals VALUES(1,1,'owner'); UPDATE goals SET updated_at=updated_at+1000 WHERE goal_id=1;`); err != nil {
+			if _, err := db.Exec(`INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1); UPDATE goals SET updated_at=updated_at+1000 WHERE goal_id=1;`); err != nil {
 				t.Fatal(err)
 			}
 			store := data.NewSQLiteSubjectGoalStore(db)
@@ -378,7 +378,7 @@ func TestGoalAssignmentConcurrencyWorkflow_SQLite(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			seedSubjectGoals(t, db)
 			if operation == "remove" {
-				if _, err := db.Exec("INSERT INTO subject_goals VALUES(1,1,'owner')"); err != nil {
+				if _, err := db.Exec("INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1)"); err != nil {
 					t.Fatal(err)
 				}
 			}

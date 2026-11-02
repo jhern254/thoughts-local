@@ -32,10 +32,7 @@ func (s *SQLiteSubjectGoalStore) CreateGoalWithSubjects(ctx context.Context, ite
 		return nil, err
 	}
 	for _, id := range subjectIDs {
-		if err := reserveGoalNumber(ctx, tx, item.UserID, id, created.GoalID); err != nil {
-			return nil, err
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES(?,?,?)`, id, created.GoalID, item.UserID); err != nil {
+		if err := activateGoalSubject(ctx, tx, item.UserID, id, created.GoalID); err != nil {
 			return nil, err
 		}
 	}
@@ -96,7 +93,13 @@ func (s *SQLiteSubjectGoalStore) ReplaceGoalSubjects(ctx context.Context, userID
 			delete(selected, subject.SubjectID)
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM subject_goals WHERE user_id=? AND goal_id=? AND subject_id=?`, userID, goalID, subject.SubjectID); err != nil {
+		if _, err := tx.ExecContext(ctx, `
+            UPDATE subject_goals
+            SET deleted_at = unixepoch('now')
+            WHERE user_id = ?
+              AND goal_id = ?
+              AND subject_id = ?
+              AND deleted_at IS NULL`, userID, goalID, subject.SubjectID); err != nil {
 			return nil, err
 		}
 		changed = true
@@ -105,10 +108,7 @@ func (s *SQLiteSubjectGoalStore) ReplaceGoalSubjects(ctx context.Context, userID
 		if !selected[id] {
 			continue
 		}
-		if err := reserveGoalNumber(ctx, tx, userID, id, goalID); err != nil {
-			return nil, err
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES(?,?,?)`, id, goalID, userID); err != nil {
+		if err := activateGoalSubject(ctx, tx, userID, id, goalID); err != nil {
 			return nil, err
 		}
 		changed = true
@@ -184,6 +184,7 @@ func listLiveGoalSubjects(ctx context.Context, tx *sql.Tx, userID string, goalID
          AND subject.user_id = membership.user_id
         WHERE membership.user_id = ?
           AND membership.goal_id = ?
+          AND membership.deleted_at IS NULL
           AND subject.deleted_at IS NULL
         ORDER BY subject.subject_id`, userID, goalID)
 	if err != nil {

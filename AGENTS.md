@@ -288,7 +288,7 @@ implicitly during API startup.
 * Start from the table that represents the operation’s primary relationship or entity. Choose joins for correctness and clarity; textual table order does not guarantee execution order.
 * Use descriptive aliases where they clarify each table’s role. Keep each join’s predicates together, including shared-owner conditions.
 * Avoid redundant or circular joins. Prefer INNER JOIN for required matches and LEFT JOIN when unmatched rows must remain visible. Use RIGHT JOIN only with an explicit reason.
-* Preserve meaningful distinctions when simplifying queries. An unavailable Goal differs from a valid Goal with no Subjects; a missing number reservation must not silently hide a membership.
+* Preserve meaningful distinctions when simplifying queries. An unavailable Goal differs from a valid Goal with no Subjects; a retired relationship must not appear as current membership.
 * Comment on non-obvious join semantics or integrity requirements, rather than narrating the SQL.
 * Claim query-performance improvements only with relevant query-plan or measurement evidence.
 

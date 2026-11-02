@@ -3,11 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
 )
 
 type SQLiteSubjectGoalStore struct{ db *sql.DB }
@@ -25,26 +21,26 @@ func (s *SQLiteSubjectGoalStore) AddSubjectGoal(ctx context.Context, userID stri
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, `INSERT INTO subject_goals(subject_id,goal_id,user_id)
- SELECT ?,?,? WHERE EXISTS (SELECT 1 FROM users WHERE user_id=? AND deleted_at IS NULL)
- AND EXISTS (SELECT 1 FROM subjects WHERE subject_id=? AND user_id=? AND deleted_at IS NULL)
- AND EXISTS (SELECT 1 FROM goals WHERE goal_id=? AND user_id=? AND deleted_at IS NULL)`, subjectID, goalID, userID, userID, subjectID, userID, goalID, userID)
+	// Acquire the write lock before validating or allocating a Subject-local number.
+	result, err := tx.ExecContext(ctx, `
+        UPDATE goals
+        SET version = version
+        WHERE user_id = ? AND goal_id = ? AND `+visibleGoals, userID, goalID)
 	if err != nil {
-		var cause *sqlite.Error
-		if errors.As(err, &cause) && cause.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY {
-			err = &databaseError{cause: err, kind: ErrDuplicateRecord}
-		}
-		return fmt.Errorf("add subject goal: %w", TranslateSQLiteError(err))
+		return fmt.Errorf("lock goal for association: %w", TranslateSQLiteError(err))
 	}
 	count, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("add subject goal: %w", TranslateSQLiteError(err))
+		return err
 	}
 	if count == 0 {
 		return ErrRecordNotFound
 	}
-	if err := reserveGoalNumber(ctx, tx, userID, subjectID, goalID); err != nil {
-		return fmt.Errorf("reserve goal number: %w", TranslateSQLiteError(err))
+	if err := validateGoalSubjects(ctx, tx, userID, []int64{subjectID}); err != nil {
+		return fmt.Errorf("validate goal subject: %w", TranslateSQLiteError(err))
+	}
+	if err := activateGoalSubject(ctx, tx, userID, subjectID, goalID); err != nil {
+		return fmt.Errorf("add subject goal: %w", TranslateSQLiteError(err))
 	}
 	if err := advanceGoalAssociationVersion(ctx, tx, userID, goalID); err != nil {
 		return fmt.Errorf("update goal association version: %w", TranslateSQLiteError(err))
@@ -55,8 +51,8 @@ func (s *SQLiteSubjectGoalStore) AddSubjectGoal(ctx context.Context, userID stri
 	return nil
 }
 
-// RemoveSubjectGoal removes the link and advances the Goal version once,
-// including links to retained deleted endpoints.
+// RemoveSubjectGoal retires a live relationship and advances the Goal version
+// once. Deleted endpoints and already retired relationships remain unchanged.
 func (s *SQLiteSubjectGoalStore) RemoveSubjectGoal(ctx context.Context, userID string, subjectID, goalID int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -64,8 +60,24 @@ func (s *SQLiteSubjectGoalStore) RemoveSubjectGoal(ctx context.Context, userID s
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, `DELETE FROM subject_goals WHERE user_id=? AND subject_id=? AND goal_id=?
- AND EXISTS (SELECT 1 FROM users WHERE user_id=? AND deleted_at IS NULL)`, userID, subjectID, goalID, userID)
+	result, err := tx.ExecContext(ctx, `
+        UPDATE subject_goals
+        SET deleted_at = unixepoch('now')
+        WHERE user_id = ?
+          AND subject_id = ?
+          AND goal_id = ?
+          AND deleted_at IS NULL
+          AND EXISTS (
+              SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL
+          )
+          AND EXISTS (
+              SELECT 1 FROM subjects
+              WHERE subject_id = ? AND user_id = ? AND deleted_at IS NULL
+          )
+          AND EXISTS (
+              SELECT 1 FROM goals
+              WHERE goal_id = ? AND user_id = ? AND deleted_at IS NULL
+          )`, userID, subjectID, goalID, userID, subjectID, userID, goalID, userID)
 	if err != nil {
 		return fmt.Errorf("remove subject goal: %w", TranslateSQLiteError(err))
 	}
@@ -111,6 +123,7 @@ func (s *SQLiteSubjectGoalStore) ListActiveGoalsForSubject(ctx context.Context, 
      SELECT 1 FROM subject_goals sg
      JOIN subjects s ON s.subject_id=sg.subject_id AND s.user_id=sg.user_id
      WHERE sg.subject_id=? AND sg.user_id=goals.user_id AND sg.goal_id=goals.goal_id
+       AND sg.deleted_at IS NULL
        AND s.deleted_at IS NULL
  ) ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, goal_id`, userID, subjectID)
 	if err != nil {
@@ -137,8 +150,14 @@ func (s *SQLiteSubjectGoalStore) listSubjectGoals(ctx context.Context, userID st
 			err = fmt.Errorf("list subject goal relationships: %w", TranslateSQLiteError(err))
 		}
 	}()
-	rows, err := s.db.QueryContext(ctx, `SELECT subject_id,goal_id,user_id FROM subject_goals
- WHERE user_id=? AND EXISTS (SELECT 1 FROM users WHERE user_id=? AND deleted_at IS NULL) AND `+selection, userID, userID, id)
+	rows, err := s.db.QueryContext(ctx, `
+        SELECT subject_id, goal_id, user_id, goal_number, deleted_at
+        FROM subject_goals
+        WHERE user_id = ?
+          AND EXISTS (
+              SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL
+          )
+          AND `+selection, userID, userID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -146,8 +165,13 @@ func (s *SQLiteSubjectGoalStore) listSubjectGoals(ctx context.Context, userID st
 	items := make([]SubjectGoal, 0)
 	for rows.Next() {
 		var item SubjectGoal
-		if err := rows.Scan(&item.SubjectID, &item.GoalID, &item.UserID); err != nil {
+		var deletedAt sql.NullInt64
+		if err := rows.Scan(&item.SubjectID, &item.GoalID, &item.UserID, &item.GoalNumber, &deletedAt); err != nil {
 			return nil, err
+		}
+		if deletedAt.Valid {
+			retired := TimeFromUnixSec(deletedAt.Int64)
+			item.DeletedAt = &retired
 		}
 		items = append(items, item)
 	}

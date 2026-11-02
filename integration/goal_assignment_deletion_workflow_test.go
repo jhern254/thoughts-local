@@ -121,7 +121,7 @@ func TestGoalAssignmentDeletionWorkflow_SQLite(t *testing.T) {
 		seedSubjectGoals(t, db)
 		if _, err := db.Exec(`UPDATE subjects SET subject_name='Misc' WHERE subject_id=1;
    UPDATE subjects SET subject_name='Unassigned' WHERE subject_id=2;
-   INSERT INTO subject_goals VALUES(1,1,'owner'),(2,2,'owner');
+   INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1),(2,2,'owner',2);
    INSERT INTO events(event_id,user_id,subject_id,started_at,ended_at) VALUES(1,'owner',NULL,100,200),(2,'owner',1,300,400);`); err != nil {
 			t.Fatal(err)
 		}

@@ -6,12 +6,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/jhern254/go-thoughts/internal/data"
-	"github.com/jhern254/go-thoughts/internal/goal"
-	"github.com/jhern254/go-thoughts/internal/goalassignment"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/goal"
+	"github.com/jhern254/go-thoughts/internal/goalassignment"
 )
 
 func TestGoalNumberWorkflow_SQLite(t *testing.T) {
@@ -66,20 +67,10 @@ func TestGoalNumberBoundaries_SQLite(t *testing.T) {
 			t.Fatalf("numbers: got %v, want 2 and 1", refs)
 		}
 	})
-	t.Run("missing reservations fail visibly instead of implying Misc", func(t *testing.T) {
-		db, _ := openMigratedSQLite(t)
-		seedSubjectGoals(t, db)
-		if _, err := db.Exec("INSERT INTO subject_goals VALUES(1,1,'owner')"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := data.NewSQLiteSubjectGoalStore(db).ListLiveNumberedSubjectsForGoal(t.Context(), "owner", 1); err == nil {
-			t.Fatal("got nil error, want missing reservation error")
-		}
-	})
 	t.Run("allocation failure rolls back the entire creation", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)
-		if _, err := db.Exec(`CREATE TRIGGER reject_number BEFORE INSERT ON subject_goal_numbers BEGIN SELECT RAISE(ABORT,'test failure'); END`); err != nil {
+		if _, err := db.Exec(`CREATE TRIGGER reject_number BEFORE INSERT ON subject_goals BEGIN SELECT RAISE(ABORT,'test failure'); END`); err != nil {
 			t.Fatal(err)
 		}
 		s := goalassignment.NewService(goal.NewService(data.NewSQLiteGoalStore(db)), data.NewSQLiteSubjectGoalStore(db))
@@ -100,10 +91,17 @@ func TestGoalNumberMigration_SQLite(t *testing.T) {
 	t.Run("backfills retained links without changing Goal versions", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)
-		if _, err := db.Exec(`DROP TABLE subject_goal_numbers; INSERT INTO subject_goals VALUES(1,2,'owner'),(1,1,'owner'),(2,1,'owner'); UPDATE subjects SET deleted_at=updated_at WHERE subject_id=2`); err != nil {
+		legacy, err := os.ReadFile("../migrations/000011_create_subject_goals.up.sql")
+		if err != nil {
 			t.Fatal(err)
 		}
-		migration, err := os.ReadFile("../migrations/000015_create_subject_goal_numbers.up.sql")
+		if _, err := db.Exec("DROP TABLE subject_goals;" + string(legacy)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES (1,2,'owner'),(1,1,'owner'),(2,1,'owner'); UPDATE subjects SET deleted_at=updated_at WHERE subject_id=2`); err != nil {
+			t.Fatal(err)
+		}
+		migration, err := os.ReadFile("../migrations/000015_soft_delete_subject_goals.up.sql")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +110,7 @@ func TestGoalNumberMigration_SQLite(t *testing.T) {
 		}
 		for _, tc := range []struct{ subject, goal, number int64 }{{1, 1, 1}, {1, 2, 2}, {2, 1, 1}} {
 			var got int64
-			if err := db.QueryRow("SELECT goal_number FROM subject_goal_numbers WHERE subject_id=? AND goal_id=?", tc.subject, tc.goal).Scan(&got); err != nil {
+			if err := db.QueryRow("SELECT goal_number FROM subject_goals WHERE subject_id=? AND goal_id=?", tc.subject, tc.goal).Scan(&got); err != nil {
 				t.Fatal(err)
 			}
 			if got != tc.number {
@@ -201,7 +199,7 @@ func TestGoalNumberVisibility_SQLite(t *testing.T) {
 			t.Fatalf("deleted live membership: got %v,%v, want nonnil empty", refs, err)
 		}
 		var count int
-		if err := db.QueryRow("SELECT count(*) FROM subject_goal_numbers WHERE subject_id=1").Scan(&count); err != nil {
+		if err := db.QueryRow("SELECT count(*) FROM subject_goals WHERE subject_id=1").Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 1 {
@@ -221,7 +219,7 @@ func TestGoalNumberVisibility_SQLite(t *testing.T) {
 			t.Fatalf("creation: got %v, want cancelled", err)
 		}
 		var count int
-		if err := db.QueryRow("SELECT count(*) FROM subject_goal_numbers").Scan(&count); err != nil {
+		if err := db.QueryRow("SELECT count(*) FROM subject_goals").Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 0 {
@@ -266,7 +264,7 @@ func TestGoalNumberConcurrency_SQLite(t *testing.T) {
 			}
 		}
 		var total, distinct int
-		if err := db.QueryRow("SELECT count(*),count(DISTINCT goal_number) FROM subject_goal_numbers WHERE subject_id=1").Scan(&total, &distinct); err != nil {
+		if err := db.QueryRow("SELECT count(*),count(DISTINCT goal_number) FROM subject_goals WHERE subject_id=1").Scan(&total, &distinct); err != nil {
 			t.Fatal(err)
 		}
 		if total != 2 || distinct != 2 {

@@ -95,9 +95,12 @@ type GoalParent struct {
 	UserID       string
 }
 
-// SubjectGoal links a subject and goal with the same owner.
+// SubjectGoal retains one numbered relationship per same-owner endpoint pair.
+// DeletedAt retires membership without releasing its Subject-local number.
 type SubjectGoal struct {
-	SubjectID int64
-	GoalID    int64
-	UserID    string
+	SubjectID  int64
+	GoalID     int64
+	UserID     string
+	GoalNumber int64
+	DeletedAt  *time.Time
 }

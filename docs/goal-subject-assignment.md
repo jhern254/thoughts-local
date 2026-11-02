@@ -5,7 +5,8 @@ one, or many live Subjects. **Unassigned** means zero live Subjects; the future
 Goals UI will display **Misc**. This classification is computed, not stored.
 No migration, sentinel Subject, or mandatory association is needed.
 
-Live Subjects belong to the same user and have `deleted_at IS NULL`. Names do
+Live memberships have `subject_goals.deleted_at IS NULL`, undeleted Subject and
+Goal endpoints, and an available same-owner user. Names do
 not determine classification: user Subjects named `Misc` or `Unassigned` work
 like any other Subject.
 
@@ -22,7 +23,7 @@ Standalone `runtime.Goals().Create` remains available with its existing contract
 Use `runtime.GoalAssignments().ReplaceSubjects(ctx, userID, goalID,
 expectedVersion, subjectIDs)` to replace the live set. All selected Subjects
 are validated before links are removed. Links to soft-deleted Subjects remain
-as history. An empty selection removes all live links without deleting the Goal.
+as history. An empty selection retires all live links without deleting the Goal.
 The returned Goal supplies the version for the next edit.
 
 Use `runtime.SubjectGoals().ListLiveSubjectsForGoal(ctx, userID, goalID)` for
@@ -33,8 +34,9 @@ returns `data.ErrRecordNotFound`. Inactive Goals remain accessible. The read use
 one SQLite snapshot for Goal visibility and membership.
 
 `ListForGoal`/`ListForSubject` and the store's raw `ListGoalSubjects`/
-`ListSubjectGoals` retain their historical-link behavior, including soft-deleted
-endpoints. They are not current-membership queries.
+`ListSubjectGoals` retain their historical-link behavior, including retired relationships and soft-deleted endpoints. Each raw record
+includes `GoalNumber` and nullable `DeletedAt`. They are not current-membership
+queries.
 
 ## Versions and transactions
 
@@ -45,9 +47,12 @@ both version and timestamp. Stale callers receive `data.ErrVersionConflict`
 without changing membership.
 
 Standalone Subject–Goal `Add` and `Remove` retain their signatures. Each
-successful link change now advances the Goal version once in the same
-transaction, including explicit removal of retained historical links. Failed
-or duplicate changes do not advance it. Callers must reload a Goal after these
+successful link change advances the Goal version once in the same transaction.
+`Add` inserts a new numbered relationship or reactivates a retired pair with its
+original number. An active pair returns `ErrDuplicateRecord`, retaining the
+SQLite primary-key cause. `Remove` soft-deletes a live relationship. It requires
+undeleted endpoints; already retired pairs and deleted endpoints return
+`ErrRecordNotFound`. Failed or duplicate changes do not advance the version. Callers must reload a Goal after these
 operations before editing its settings or replacing its Subjects.
 
 SQLite transactions serialize relationship writes. Replacement acquires the
@@ -76,24 +81,45 @@ within a particular Subject, not its current position or priority. One Goal can
 have different numbers in different Subjects. Unassigned Goals display `Misc`
 without a number; internal Goal IDs remain unchanged.
 
-`subject_goal_numbers` stores positive, unique reservations per Subject. It is
-not membership: `subject_goals` remains the sole membership authority. Creation,
-replacement, and standalone addition reserve a number inside the existing write
-transaction. Allocation uses the highest reserved number plus one. Unlinking,
-soft deletion, renaming, filtering, and activation changes never renumber Goals.
-Re-linking a Goal restores its previous reservation. Hard-deleting an endpoint
-cascades its reservations; permanent reservation after destructive purging is not
-guaranteed.
+`subject_goals` owns both membership state and the stable number. Its pair primary
+key retains one row per Subject–Goal pair; its unique `(subject_id, goal_number)`
+constraint includes retired rows. `deleted_at` uses nullable Unix seconds, just
+like the existing soft-deletion convention. Retiring an association does not
+release its number or change the Goal's activation.
 
-Migration 15 backfills every retained link in Goal-ID order within each Subject,
-including deleted endpoints, without modifying Goals or their versions. Links
-removed before this migration cannot be reconstructed. It applies forward to
-existing databases without resetting them.
+Creation, replacement, and standalone addition run inside their existing write
+transactions. A new pair receives `MAX(goal_number) + 1` over all retained rows
+for its Subject. Relinking clears `deleted_at` on the existing row. Allocation
+rejects integer overflow; reactivation still works at the maximum integer.
+Renaming, filtering, priority, activation, and soft-deletion changes never
+renumber existing pairs. Hard-deleting endpoints preserves foreign-key cascades.
 
-`ListLiveNumberedSubjectsForGoal` returns Subject records with their numbers using
-one read snapshot, with the same unavailable-Goal and empty-Unassigned contracts
-as the existing live query. A membership missing its reservation is an error,
-not Misc. Direct SQL importers must populate reservations transactionally; normal
-application callers use the assignment or link services. Raw relationship and
-unnumbered Subject APIs retain their existing contracts. Number allocation adds
-no extra Goal version increment and changes no progress/discovery behavior.
+Replacement compares live membership as an unordered set. Deselected pairs are
+retired, selected retired pairs are reactivated, and new pairs are inserted.
+Unchanged sets preserve Goal version/timestamp and every relationship timestamp.
+Links to soft-deleted Subjects remain untouched. Stale versions fail even for
+no-op requests. Number allocation adds no extra Goal version increment and
+changes no progress/discovery behavior.
+
+`ListLiveNumberedSubjectsForGoal` reads each number directly from the membership
+row using one read snapshot, with the existing unavailable-Goal and nonnil empty
+Unassigned contracts. All live readers and Goal discovery exclude retired rows.
+Raw relationship APIs preserve them. This is retained pair state, not an audit
+log of every transition.
+
+## Migration compatibility
+
+The final migration 15 upgrades the original relationship schema from migration
+11 without changing its deployed definition. It rebuilds only `subject_goals`,
+backfills numbers by ascending Goal ID within each Subject, and preserves all
+retained pairs, including links to deleted endpoints. Goal IDs, versions,
+settings, progress, parents, and other tables are unchanged. The existing
+SQLite golang-migrate driver wraps the migration in a transaction.
+
+There is no registry table or registry migration. Disposable databases created
+with the previous unmerged version of migration 15 must be deliberately rebuilt;
+changing a migration file does not rerun an already applied version. Meaningful
+data in such a development database requires a backup and a separately reviewed
+conversion rather than a reset. No user database is reset by this feature.
+Downgrading to the old schema preserves all endpoint pairs but cannot represent
+numbers or retirement state; retain a backup before downgrading.

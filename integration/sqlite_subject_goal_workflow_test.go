@@ -39,12 +39,12 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 		}
 		reader := data.NewSQLiteSubjectGoalStore(openSQLite(t, dsn))
 		got, err := reader.ListSubjectGoals(t.Context(), "owner", 1)
-		want := []data.SubjectGoal{{SubjectID: 1, GoalID: 1, UserID: "owner"}, {SubjectID: 1, GoalID: 2, UserID: "owner"}}
+		want := []data.SubjectGoal{{SubjectID: 1, GoalID: 1, UserID: "owner", GoalNumber: 2}, {SubjectID: 1, GoalID: 2, UserID: "owner", GoalNumber: 1}}
 		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("subject links: got %+v, %v; want %+v, nil", got, err, want)
 		}
 		got, err = reader.ListGoalSubjects(t.Context(), "owner", 1)
-		want = []data.SubjectGoal{{SubjectID: 1, GoalID: 1, UserID: "owner"}, {SubjectID: 2, GoalID: 1, UserID: "owner"}}
+		want = []data.SubjectGoal{{SubjectID: 1, GoalID: 1, UserID: "owner", GoalNumber: 2}, {SubjectID: 2, GoalID: 1, UserID: "owner", GoalNumber: 1}}
 		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("goal links: got %+v, %v; want %+v, nil", got, err, want)
 		}
@@ -52,14 +52,17 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		got, err = reader.ListGoalSubjects(t.Context(), "owner", 1)
-		if err != nil || !reflect.DeepEqual(got, want[1:]) {
-			t.Fatalf("remaining goal links: got %+v, %v; want %+v, nil", got, err, want[1:])
+		if err != nil || len(got) != 2 {
+			t.Fatalf("retained goal links: got %+v,%v, want two", got, err)
+		}
+		if got[0].SubjectID != 1 || got[0].GoalNumber != 2 || got[0].DeletedAt == nil || got[1].SubjectID != 2 || got[1].GoalNumber != 1 || got[1].DeletedAt != nil {
+			t.Fatalf("retirement state: got %+v, want retired Subject 1 #2 and live Subject 2 #1", got)
 		}
 		got, err = reader.ListSubjectGoals(t.Context(), "owner", 1)
-		want = []data.SubjectGoal{{SubjectID: 1, GoalID: 2, UserID: "owner"}}
-		if err != nil || !reflect.DeepEqual(got, want) {
-			t.Fatalf("remaining subject links: got %+v, %v; want %+v, nil", got, err, want)
+		if err != nil || len(got) != 2 || got[0].GoalID != 1 || got[0].DeletedAt == nil || got[1].GoalID != 2 || got[1].DeletedAt != nil {
+			t.Fatalf("retained Subject links: got %+v,%v, want retired Goal 1 and live Goal 2", got, err)
 		}
+
 	})
 
 	t.Run("rejects duplicate links while preserving the SQLite cause", func(t *testing.T) {
@@ -154,7 +157,7 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 		}
 	})
 
-	t.Run("retains links after endpoint soft deletion and permits explicit unlinking", func(t *testing.T) {
+	t.Run("retains unchanged links after endpoint soft deletion and rejects unlinking", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)
 		store := data.NewSQLiteSubjectGoalStore(db)
@@ -167,20 +170,21 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 		if err := data.NewSQLiteGoalStore(db).DeleteGoal(t.Context(), "owner", 1, 2); err != nil {
 			t.Fatal(err)
 		}
-		want := []data.SubjectGoal{{SubjectID: 1, GoalID: 1, UserID: "owner"}}
+		want := []data.SubjectGoal{{SubjectID: 1, GoalID: 1, UserID: "owner", GoalNumber: 1}}
 		for _, list := range []func(context.Context, string, int64) ([]data.SubjectGoal, error){store.ListSubjectGoals, store.ListGoalSubjects} {
 			got, err := list(t.Context(), "owner", 1)
 			if err != nil || !reflect.DeepEqual(got, want) {
 				t.Fatalf("retained links: got %+v, %v; want %+v, nil", got, err, want)
 			}
 		}
-		if err := store.RemoveSubjectGoal(t.Context(), "owner", 1, 1); err != nil {
-			t.Fatal(err)
+		if err := store.RemoveSubjectGoal(t.Context(), "owner", 1, 1); !errors.Is(err, data.ErrRecordNotFound) {
+			t.Fatalf("deleted endpoint removal: got %v, want not found", err)
 		}
 		got, err := store.ListSubjectGoals(t.Context(), "owner", 1)
-		if err != nil || len(got) != 0 {
-			t.Fatalf("unlinked subject: got %+v, %v; want empty, nil", got, err)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("history after rejected removal: got %+v,%v, want %+v", got, err, want)
 		}
+
 	})
 
 	t.Run("linking and unlinking preserve endpoints and progress provenance", func(t *testing.T) {
