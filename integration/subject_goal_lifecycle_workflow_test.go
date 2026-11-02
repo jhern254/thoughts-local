@@ -57,7 +57,7 @@ func TestSubjectGoalLifecycleVisibility_SQLite(t *testing.T) {
 			if err := store.AddSubjectGoal(t.Context(), "owner", 1, 1); err != nil {
 				t.Fatal(err)
 			}
-			statement := "UPDATE " + endpoint + " SET deleted_at=unixepoch('now') WHERE user_id='owner'"
+			statement := "UPDATE " + endpoint + " SET deleted_at=updated_at WHERE user_id='owner'"
 			if _, err := db.Exec(statement); err != nil {
 				t.Fatal(err)
 			}
