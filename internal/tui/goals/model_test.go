@@ -16,6 +16,9 @@ type services struct {
 	item                       data.Goal
 	subjects                   []data.Subject
 	err                        error
+	membershipErr              error
+	getIDs                     []int64
+	getContexts                []context.Context
 	creates, updates, replaces int
 	ids                        []int64
 	version                    int64
@@ -31,7 +34,9 @@ func (s *services) ListActive(ctx context.Context, user string) ([]data.Goal, er
 func (s *services) ListInactive(ctx context.Context, user string) ([]data.Goal, error) {
 	return s.List(ctx, user)
 }
-func (s *services) Get(context.Context, string, int64) (*data.Goal, error) {
+func (s *services) Get(ctx context.Context, _ string, id int64) (*data.Goal, error) {
+	s.getIDs = append(s.getIDs, id)
+	s.getContexts = append(s.getContexts, ctx)
 	item := s.item
 	return &item, s.err
 }
@@ -59,6 +64,9 @@ func (s subjectService) List(context.Context, string) ([]data.Subject, error) {
 	return s.s.subjects, s.s.err
 }
 func (s *services) ListLiveSubjectsForGoal(context.Context, string, int64) ([]data.Subject, error) {
+	if s.membershipErr != nil {
+		return nil, s.membershipErr
+	}
 	return s.subjects, s.err
 }
 func testModel(t *testing.T) (Model, *services) {
@@ -311,6 +319,104 @@ func TestModel_ExistingTargetPrecision(t *testing.T) {
 			cmd()
 			if s.input.TargetSeconds != seconds {
 				t.Fatalf("target got %d, want %d", s.input.TargetSeconds, seconds)
+			}
+		})
+	}
+}
+
+func TestModel_DetailRetry(t *testing.T) {
+	for _, stage := range []string{"Get", "memberships"} {
+		t.Run(stage+" failure retries the requested Goal without exposing old data", func(t *testing.T) {
+			m, s := testModel(t)
+			m.open = true
+			m.screen = detailView
+			m.selected = &s.item
+			fail := func() {
+				if stage == "Get" {
+					s.err = errors.New("private")
+				} else {
+					s.membershipErr = errors.New("private")
+				}
+			}
+			fail()
+			m, _ = m.Update(m.loadDetail(99)())
+			for range 2 {
+				if m.selected != nil {
+					t.Fatal("failed Details exposed a Goal snapshot")
+				}
+				m, _ = press(m, "e")
+				if m.screen != detailView {
+					t.Fatal("failed Details became editable")
+				}
+				var cmd tea.Cmd
+				m, cmd = press(m, "r")
+				if cmd == nil {
+					t.Fatal("retry missing")
+				}
+				m, _ = m.Update(cmd())
+			}
+			s.err = nil
+			s.membershipErr = nil
+			s.item.GoalID = 99
+			var cmd tea.Cmd
+			m, cmd = press(m, "r")
+			m, _ = m.Update(cmd())
+			if m.selected == nil || m.selected.GoalID != 99 || m.status != "" {
+				t.Fatal("retry did not recover the intended Goal")
+			}
+			for _, id := range s.getIDs {
+				if id != 99 {
+					t.Fatalf("Get requested %d, want 99", id)
+				}
+			}
+		})
+	}
+	t.Run("cancelling a retry cancels its context and rejects its actual reply", func(t *testing.T) {
+		m, s := testModel(t)
+		m.open = true
+		m.screen = detailView
+		s.err = errors.New("private")
+		m, _ = m.Update(m.loadDetail(42)())
+		s.err = nil
+		m, cmd := press(m, "r")
+		reply := cmd()
+		ctx := s.getContexts[len(s.getContexts)-1]
+		m, _ = press(m, "esc")
+		if ctx.Err() != context.Canceled {
+			t.Fatal("retry context was not cancelled")
+		}
+		m, _ = m.Update(reply)
+		if m.screen != listView || m.selected != nil {
+			t.Fatal("cancelled retry reopened Details")
+		}
+	})
+}
+
+func TestModel_CreateRetryGuidance(t *testing.T) {
+	for _, err := range []error{errors.New("private"), data.ErrRecordNotFound} {
+		t.Run(err.Error(), func(t *testing.T) {
+			m, s := testModel(t)
+			m.open = true
+			m.startForm(true)
+			m.fields[0].SetValue("Draft")
+			m.fields[1].SetValue("2")
+			m.selectedIDs = map[int64]bool{7: true}
+			s.err = err
+			m, _ = m.Update(m.saveProperties()())
+			if !strings.Contains(m.status, "Ctrl+S") || strings.Contains(m.status, "R:") {
+				t.Fatalf("incorrect Create retry guidance: %s", m.status)
+			}
+			if m.fields[0].Value() != "Draft" || m.fields[1].Value() != "2" || !m.selectedIDs[7] {
+				t.Fatal("failed creation discarded draft")
+			}
+			m, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+			if cmd == nil {
+				t.Fatal("Ctrl+S retry missing")
+			}
+			s.err = nil
+			m, _ = m.Update(cmd())
+			if s.creates != 2 || m.screen != detailView {
+				t.Fatal("Ctrl+S did not retry creation")
 			}
 		})
 	}

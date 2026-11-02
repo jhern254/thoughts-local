@@ -118,9 +118,11 @@ type Model struct {
 	focus   int
 	cadence int
 	// Persisted snapshot used by Details and as the expected version for edits.
-	selected  *data.Goal
-	live      []data.Subject
-	available []data.Subject
+	selected *data.Goal
+	// Requested identity survives failed reads when selected must remain nil.
+	requestedGoalID int64
+	live            []data.Subject
+	available       []data.Subject
 	// The picker edits selectedIDs locally; pickerBefore restores the draft on
 	// cancel, and pickerReturn identifies the view that opened the picker.
 	selectedIDs  map[int64]bool
@@ -265,6 +267,7 @@ func (m *Model) loadList() tea.Cmd {
 	}
 }
 func (m *Model) loadDetail(id int64) tea.Cmd {
+	m.requestedGoalID = id
 	if m.screen == detailView {
 		m.selected = nil
 		m.live = nil
@@ -345,7 +348,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			if category, emit := failure.Classify(m.operation, reply.err); emit {
 				m.logger.Failure(m.operation, category)
 			}
-			m.status = errorMessage(reply.err)
+			m.status = m.errorMessage(reply.err)
 			return m, nil
 		}
 		m.status = ""
@@ -459,7 +462,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		switch m.screen {
 		case listView:
 			return m, m.loadList()
-		case detailView, editView:
+		case detailView:
+			return m, m.loadDetail(m.requestedGoalID)
+		case editView:
 			return m, m.loadDetail(m.selected.GoalID)
 		case subjectsView:
 			return m, m.loadPicker()

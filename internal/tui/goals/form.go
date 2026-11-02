@@ -273,8 +273,8 @@ func (m *Model) saveSubjects() tea.Cmd {
 		return result{owner: owner, item: saved, err: err}
 	}
 }
-func errorMessage(err error) string {
-	if errors.Is(err, data.ErrVersionConflict) {
+func (m Model) errorMessage(err error) string {
+	if m.screen != createView && errors.Is(err, data.ErrVersionConflict) {
 		return "Goal changed. R: reload (discard edits) · Esc: cancel."
 	}
 	var validation *goal.ValidationError
@@ -285,11 +285,14 @@ func errorMessage(err error) string {
 			}
 		}
 	}
-	if errors.Is(err, data.ErrRecordNotFound) {
-		return "Goal or Subject unavailable. R: reload · Esc: cancel."
-	}
 	if errors.Is(err, data.ErrDuplicateRecord) {
 		return "A Goal with this name already exists."
+	}
+	if m.screen == createView {
+		return "Could not create Goal. Ctrl+S: retry · Esc: cancel."
+	}
+	if errors.Is(err, data.ErrRecordNotFound) {
+		return "Goal or Subject unavailable. R: reload · Esc: cancel."
 	}
 	return "Could not complete Goal operation. R: retry or reload · Esc: cancel."
 }
