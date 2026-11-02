@@ -15,9 +15,17 @@ type NumberedGoalSubject struct {
 // reserveGoalNumber runs under the membership writer's transaction. Unlinking
 // never releases a reservation, so a later link recovers the same reference.
 func reserveGoalNumber(ctx context.Context, tx *sql.Tx, userID string, subjectID, goalID int64) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO subject_goal_numbers(subject_id,goal_id,user_id,goal_number)
- SELECT ?,?,?,coalesce(max(goal_number),0)+1 FROM subject_goal_numbers WHERE subject_id=?
- ON CONFLICT(subject_id,goal_id) DO NOTHING`, subjectID, goalID, userID, subjectID)
+	_, err := tx.ExecContext(ctx, `
+        INSERT INTO subject_goal_numbers (
+            subject_id,
+            goal_id,
+            user_id,
+            goal_number
+        )
+        SELECT ?, ?, ?, COALESCE(MAX(goal_number), 0) + 1
+        FROM subject_goal_numbers
+        WHERE subject_id = ?
+        ON CONFLICT (subject_id, goal_id) DO NOTHING`, subjectID, goalID, userID, subjectID)
 	return err
 }
 
@@ -35,16 +43,41 @@ func (s *SQLiteSubjectGoalStore) ListLiveNumberedSubjectsForGoal(ctx context.Con
 	}
 	defer tx.Rollback()
 	var exists bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM goals WHERE user_id=? AND goal_id=? AND `+visibleGoals+`)`, userID, goalID).Scan(&exists); err != nil {
+	if err = tx.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT 1
+            FROM goals
+            WHERE user_id = ?
+              AND goal_id = ?
+              AND `+visibleGoals+`
+        )`, userID, goalID).Scan(&exists); err != nil {
 		return nil, err
 	}
 	if !exists {
 		return nil, ErrRecordNotFound
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT s.subject_id,s.user_id,s.subject_name,s.created_at,s.updated_at,n.goal_number
- FROM subject_goals sg JOIN subjects s ON s.subject_id=sg.subject_id AND s.user_id=sg.user_id
- LEFT JOIN subject_goal_numbers n ON n.subject_id=sg.subject_id AND n.goal_id=sg.goal_id AND n.user_id=sg.user_id
- WHERE sg.user_id=? AND sg.goal_id=? AND s.deleted_at IS NULL ORDER BY s.subject_id`, userID, goalID)
+	// Keep memberships with missing reservations visible so scanning their NULL
+	// number fails, rather than silently treating corrupt membership as Misc.
+	rows, err := tx.QueryContext(ctx, `
+        SELECT
+            subject.subject_id,
+            subject.user_id,
+            subject.subject_name,
+            subject.created_at,
+            subject.updated_at,
+            reservation.goal_number
+        FROM subject_goals AS membership
+        JOIN subjects AS subject
+          ON subject.subject_id = membership.subject_id
+         AND subject.user_id = membership.user_id
+        LEFT JOIN subject_goal_numbers AS reservation
+          ON reservation.subject_id = membership.subject_id
+         AND reservation.goal_id = membership.goal_id
+         AND reservation.user_id = membership.user_id
+        WHERE membership.user_id = ?
+          AND membership.goal_id = ?
+          AND subject.deleted_at IS NULL
+        ORDER BY subject.subject_id`, userID, goalID)
 	if err != nil {
 		return nil, err
 	}
