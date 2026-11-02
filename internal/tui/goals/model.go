@@ -94,47 +94,60 @@ func (r subjectRow) Description() string {
 func (r subjectRow) FilterValue() string { return r.item.SubjectName }
 
 type Model struct {
-	borderWeight          data.BorderWeight
-	subjectCreation       *byte
-	now                   func() time.Time
-	pickerReady           bool
-	logger                logging.Logger
-	operation             logging.Operation
-	ctx                   context.Context
-	userID                string
-	goals                 GoalService
-	assignments           Assignments
-	memberships           Memberships
-	subjects              Subjects
-	screen                view
-	list                  list.Model
-	picker                list.Model
-	filter, pickerFilter  listfilter.Scope
-	body                  viewport.Model
-	fields                [5]textinput.Model
-	focus                 int
-	cadence               int
-	selected              *data.Goal
-	live                  []data.Subject
-	available             []data.Subject
-	selectedIDs           map[int64]bool
-	pickerBefore          map[int64]bool
-	pickerReturn          view
+	borderWeight data.BorderWeight
+	// Identifies the picker visit awaiting a return from the root Subject form.
+	subjectCreation *byte
+	now             func() time.Time
+	// Membership changes are allowed only after the picker has loaded successfully.
+	pickerReady          bool
+	logger               logging.Logger
+	operation            logging.Operation
+	ctx                  context.Context
+	userID               string
+	goals                GoalService
+	assignments          Assignments
+	memberships          Memberships
+	subjects             Subjects
+	screen               view
+	list                 list.Model
+	picker               list.Model
+	filter, pickerFilter listfilter.Scope
+	body                 viewport.Model
+	// Name, hours, minutes, start date, end date. Later focus positions are form actions.
+	fields  [5]textinput.Model
+	focus   int
+	cadence int
+	// Persisted snapshot used by Details and as the expected version for edits.
+	selected  *data.Goal
+	live      []data.Subject
+	available []data.Subject
+	// The picker edits selectedIDs locally; pickerBefore restores the draft on
+	// cancel, and pickerReturn identifies the view that opened the picker.
+	selectedIDs  map[int64]bool
+	pickerBefore map[int64]bool
+	pickerReturn view
+	// Each read/save captures owner and uses a child of ctx controlled by cancel.
+	// Replacing or closing the request cancels work and invalidates late replies.
 	owner                 *byte
 	cancel                context.CancelFunc
 	loading, saving, open bool
 	status                string
 	width, height         int
-	visibility            int
-	listFocus             listControl
+	// Status filter: 0 All, 1 Active, 2 Inactive.
+	visibility int
+	listFocus  listControl
+	// Priority filter: 0 All, 1 High, 2 Normal, 3 Low; also indexes selection memory.
 	priorityFilter        int
 	lastGoalIDsByPriority [4]int64
-	subjectFilter         int
-	listRows              []list.Item
-	filterSubjects        []data.Subject
-	subjectMenu           list.Model
-	subjectMenuOpen       bool
-	subjectMenuFilter     listfilter.Scope
+	// 0 All Subjects, 1 Unassigned, otherwise filterSubjects[subjectFilter-2].
+	subjectFilter int
+	// Accepted Goals and memberships before local status/Subject/priority filtering.
+	listRows       []list.Item
+	filterSubjects []data.Subject
+	// Single-select list filter, separate from the membership-editing picker.
+	subjectMenu       list.Model
+	subjectMenuOpen   bool
+	subjectMenuFilter listfilter.Scope
 }
 
 func New(ctx context.Context, userID string, service GoalService, assignments Assignments, memberships Memberships, subjects Subjects) Model {
