@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
 	"reflect"
 	"testing"
 
@@ -87,55 +86,7 @@ func TestGoalNumberBoundaries_SQLite(t *testing.T) {
 	})
 }
 
-func TestGoalNumberMigration_SQLite(t *testing.T) {
-	t.Run("backfills retained links without changing Goal versions", func(t *testing.T) {
-		db, _ := openMigratedSQLite(t)
-		seedSubjectGoals(t, db)
-		legacy, err := os.ReadFile("../migrations/000011_create_subject_goals.up.sql")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := db.Exec("DROP TABLE subject_goals;" + string(legacy)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := db.Exec(`INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES (1,2,'owner'),(1,1,'owner'),(2,1,'owner'); UPDATE subjects SET deleted_at=updated_at WHERE subject_id=2`); err != nil {
-			t.Fatal(err)
-		}
-		migration, err := os.ReadFile("../migrations/000015_soft_delete_subject_goals.up.sql")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = db.Exec(string(migration)); err != nil {
-			t.Fatal(err)
-		}
-		for _, tc := range []struct{ subject, goal, number int64 }{{1, 1, 1}, {1, 2, 2}, {2, 1, 1}} {
-			var got int64
-			if err := db.QueryRow("SELECT goal_number FROM subject_goals WHERE subject_id=? AND goal_id=?", tc.subject, tc.goal).Scan(&got); err != nil {
-				t.Fatal(err)
-			}
-			if got != tc.number {
-				t.Fatalf("number for Subject %d Goal %d: got %d, want %d", tc.subject, tc.goal, got, tc.number)
-			}
-		}
-		var version int64
-		if err := db.QueryRow("SELECT version FROM goals WHERE goal_id=1").Scan(&version); err != nil {
-			t.Fatal(err)
-		}
-		if version != 1 {
-			t.Fatalf("version: got %d, want 1", version)
-		}
-		rows, err := db.Query("PRAGMA foreign_key_check")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer rows.Close()
-		if rows.Next() {
-			t.Fatal("foreign key violation")
-		}
-		if err := rows.Err(); err != nil {
-			t.Fatal(err)
-		}
-	})
+func TestGoalNumberReplacement_SQLite(t *testing.T) {
 	t.Run("replacement preserves reservations and no-op versions", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)

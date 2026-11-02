@@ -255,7 +255,7 @@ Table subject_goals {
     Live membership also requires undeleted endpoints and an available owner.
     Soft deletion of endpoints retains links; hard deletion cascades.
     This is retained relationship state, not a chronological audit log.
-    SQL migration 000015 is authoritative for integer checks and constraints.
+    SQL migration 000011 is authoritative for integer checks and constraints.
     Linking does not enable automatic credit or create goal progress.
   '''
 }

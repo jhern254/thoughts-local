@@ -107,24 +107,15 @@ Unassigned contracts. All live readers and Goal discovery exclude retired rows.
 Raw relationship APIs preserve them. This is retained pair state, not an audit
 log of every transition.
 
-## Migration compatibility
+## Development migrations
 
-The final migration 15 upgrades the original relationship schema from migration
-11 without changing its deployed definition. It rebuilds only `subject_goals`,
-backfills numbers by ascending Goal ID within each Subject, and preserves all
-retained pairs, including links to deleted endpoints. Goal IDs, versions,
-settings, progress, parents, and other tables are unchanged. The existing
-SQLite golang-migrate driver wraps the migration in a transaction.
+Migration 11 defines the complete numbered, soft-deletable `subject_goals` table.
+There is no separate numbering registry, upgrade/backfill migration, or legacy
+relationship schema. Its down migration drops the relationship table, matching
+the existing development migration convention.
 
-There is no registry table or registry migration. Disposable databases created
-with the previous unmerged version of migration 15 must be deliberately rebuilt;
-changing a migration file does not rerun an already applied version. Meaningful
-data in such a development database requires a backup and a separately reviewed
-conversion rather than a reset. No user database is reset by this feature.
-Downgrading is rejected when any relationship is retired, because the old schema
-would reactivate it. The migration transaction rolls back the guard and leaves
-the current schema and relationships unchanged. With no retired relationships,
-downgrading preserves all endpoint pairs but removes their numbers, which the
-old schema cannot represent.
-As with other migration failures, golang-migrate marks its version metadata
-dirty on rejection; this does not mean the schema or relationship rows changed.
+Development databases are disposable. Recreate the disposable database after
+updating to this schema; editing an already applied migration does not upgrade
+an existing database. Use `make tui/demo/stress` or
+`make tui/browser/demo/stress` for a fresh migrated, populated demo. No running
+or persistent database is reset automatically.

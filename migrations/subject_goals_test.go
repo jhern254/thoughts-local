@@ -108,5 +108,16 @@ func TestMigrations_SubjectGoals(t *testing.T) {
 		if subjects != 2 || goals != 2 || links != 0 {
 			t.Fatalf("counts after migration cycle: got subjects=%d goals=%d links=%d, want 2,2,0", subjects, goals, links)
 		}
+		if _, err := db.Exec(`INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number,deleted_at)
+            VALUES(1,1,'owner',7,17)`); err != nil {
+			t.Fatalf("migration 11 numbered retired relationship: %v", err)
+		}
+		var number, retired int64
+		if err := db.QueryRow("SELECT goal_number,deleted_at FROM subject_goals").Scan(&number, &retired); err != nil {
+			t.Fatal(err)
+		}
+		if number != 7 || retired != 17 {
+			t.Fatalf("recreated relationship: got number=%d,deleted_at=%d; want 7,17", number, retired)
+		}
 	})
 }
