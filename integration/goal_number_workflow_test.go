@@ -251,8 +251,13 @@ func TestGoalNumberConcurrency_SQLite(t *testing.T) {
 			}(int64(i+1), connection)
 		}
 		close(start)
-		for range 2 {
-			result := <-done
+		// Join both writers before retrying contention; a completed writer must
+		// not start another transaction while its peer is still committing.
+		first, second := <-done, <-done
+		for _, result := range []struct {
+			id  int64
+			err error
+		}{first, second} {
 			if errors.Is(result.err, data.ErrDatabaseBusy) {
 				result.err = data.NewSQLiteSubjectGoalStore(db).AddSubjectGoal(t.Context(), "owner", 1, result.id)
 			}
