@@ -28,18 +28,24 @@ INSERT INTO subjects(subject_id,user_id,subject_name,created_at,updated_at,delet
 
 -- Desk breaks stay unassigned; the other activities use their matching subjects.
 WITH RECURSIVE hours(n) AS (VALUES(0) UNION ALL SELECT n+1 FROM hours WHERE n<719)
-INSERT INTO events (event_id, user_id, subject_id, activity_type, started_at, ended_at, created_at, updated_at)
+INSERT INTO events (event_id, user_id, activity_type, started_at, ended_at, created_at, updated_at)
 SELECT n+1, 'demo',
-    CASE n%6 WHEN 0 THEN 1 WHEN 1 THEN 1 WHEN 2 THEN 2
-         WHEN 3 THEN 3 WHEN 4 THEN 4 ELSE NULL END,
     CASE n%6 WHEN 0 THEN 'Read my own source code' WHEN 1 THEN 'Build the thoughts app'
          WHEN 2 THEN 'Test what I confidently broke' WHEN 3 THEN 'Review a design decision'
          WHEN 4 THEN 'Write docs for future me' ELSE 'Defragment my imaginary desk' END,
     at-(721-n)*3600, at-(720-n)*3600-CASE WHEN n%6=5 THEN 600 ELSE 0 END,
     at-(721-n)*3600, at-(720-n)*3600
 FROM hours CROSS JOIN demo_clock;
-INSERT INTO events (event_id, user_id, subject_id, activity_type, started_at, created_at, updated_at)
-SELECT 721, 'demo', 1, 'Make my own timeline feel instant', at-3600, at-3600, at-3600 FROM demo_clock;
+INSERT INTO events (event_id, user_id, activity_type, started_at, created_at, updated_at)
+SELECT 721, 'demo', 'Make my own timeline feel instant', at-3600, at-3600, at-3600 FROM demo_clock;
+
+INSERT INTO event_subjects(event_id,subject_id,user_id)
+SELECT event_id,
+    CASE (event_id-1)%6 WHEN 0 THEN 1 WHEN 1 THEN 1 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 4 END,
+    user_id
+FROM events WHERE user_id='demo' AND ((event_id-1)%6<>5 OR event_id=721);
+-- Exercise multi-Subject attribution without duplicating activity intervals.
+INSERT INTO event_subjects(event_id,subject_id,user_id) VALUES (721,2,'demo'),(721,3,'demo');
 
 -- Every tenth historical event is empty. The ongoing event has 200 thoughts,
 -- so both the timeline picker and Thoughts exercise bounded cursor scrolling.

@@ -201,10 +201,11 @@ func TestModel_Layout(t *testing.T) {
 		}
 	})
 	t.Run("event expands beside its time and pushes later hours down", func(t *testing.T) {
-		m, _, _ := fixture(t)
+		m, eventStore, _ := fixture(t)
 		m.entries[0].Event.StartedAt = m.day.Add(10 * time.Hour)
 		end := m.day.Add(10*time.Hour + 30*time.Minute)
 		m.entries[0].Event.EndedAt = &end
+		eventStore.items[0] = *m.entries[0].Event
 		lines, positions, _ := m.layout()
 		top := positions[1]
 		if !strings.HasPrefix(timelineCardText(lines[top]), "10:00 AM  ╭") {

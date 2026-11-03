@@ -42,7 +42,7 @@ func (s *homeEventStub) List(_ context.Context, user string, _, _ time.Time) ([]
 func (s *homeEventStub) Get(context.Context, string, int64) (*data.Event, error) {
 	return &s.items[0], nil
 }
-func (*homeEventStub) Create(context.Context, string, string, time.Time, *int64) (*data.Event, error) {
+func (*homeEventStub) Create(context.Context, string, string, time.Time, []int64) (*data.Event, error) {
 	panic("unexpected event create")
 }
 func (*homeEventStub) End(context.Context, string, int64, int64, time.Time) (*data.Event, error) {
@@ -178,7 +178,7 @@ func TestModel_EventsHome(t *testing.T) {
 	t.Run("assigned event badge survives thought detail and disappears on collapse", func(t *testing.T) {
 		m, events := newHome(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
 		m.subjects.service.(*subjectServiceStub).get = func(ctx context.Context, userID string, subjectID int64) (*data.Subject, error) {
 			if userID != "home-user" || subjectID != id || ctx.Err() != nil {
 				t.Fatalf("got subject lookup (%q, %d, %v), want active home-user lookup for %d", userID, subjectID, ctx.Err(), id)
@@ -774,4 +774,13 @@ func TestModel_SubjectTimeHomeFocus(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (s *homeEventStub) ListWithSubjects(ctx context.Context, user string, from, until time.Time) ([]data.EventWithSubjects, error) {
+	items, err := s.List(ctx, user, from, until)
+	views := make([]data.EventWithSubjects, 0, len(items))
+	for _, item := range items {
+		views = append(views, data.EventWithSubjects{Event: item})
+	}
+	return views, err
 }

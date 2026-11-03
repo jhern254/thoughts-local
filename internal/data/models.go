@@ -47,7 +47,7 @@ type Thought struct {
 type Event struct {
 	EventID      int64
 	UserID       string
-	SubjectID    *int64
+	SubjectIDs   []int64
 	ActivityType *string
 	StartedAt    time.Time
 	EndedAt      *time.Time

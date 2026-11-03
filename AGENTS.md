@@ -49,7 +49,7 @@ Operational logging accepts only approved typed metadata and uses fixed event me
 * Prefer small interfaces that describe behavior the app actually needs.
 * Avoid giant interfaces that mechanically mirror database tables.
 
-Event updates replace the complete editable event state. A nil `SubjectID` explicitly clears the subject assignment; callers making unrelated corrections must supply the current `SubjectID` to preserve it.
+Event updates replace the complete editable event state. Nil or empty `SubjectIDs` explicitly clears all Subject assignments; callers making unrelated corrections must supply the current complete Subject set to preserve it.
 
 ### Presentation ownership and rendering efficiency
 
@@ -260,7 +260,7 @@ func TestSubjectWorkflow_SQLite(t *testing.T) {
 
 ## SQLite Principles
 
-Soft-deleting a subject retains its record and atomically clears `subject_id` on all linked thoughts and events, including already soft-deleted records. Unlinking advances affected records’ versions and keeps `updated_at` nondecreasing. This changes assignment, not historical existence: thoughts and events remain retained, along with event/thought provenance, goal progress, thought-tag associations, mindset periods, and other historical relationships.
+Soft-deleting a subject retains its record, atomically clears `thoughts.subject_id`, and retires its `event_subjects` links, including links on already soft-deleted records. Other Event–Subject links remain unchanged. Unlinking advances affected records’ versions and keeps `updated_at` nondecreasing. This changes assignment, not historical existence: thoughts and events remain retained, along with event/thought provenance, goal progress, thought-tag associations, mindset periods, and other historical relationships.
 
 * Treat SQLite as a serious persistence layer, even when development databases are disposable.
 * Use migrations for schema changes.

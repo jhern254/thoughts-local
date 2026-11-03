@@ -25,7 +25,7 @@ type eventStub struct {
 	lists, creates, ends int
 	start                time.Time
 	label                string
-	subjectID            *int64
+	subjectIDs           []int64
 	err                  error
 	listErr              error
 }
@@ -62,11 +62,11 @@ func (s *eventStub) Get(_ context.Context, _ string, id int64) (*data.Event, err
 	}
 	return nil, data.ErrRecordNotFound
 }
-func (s *eventStub) Create(_ context.Context, _ string, label string, start time.Time, subjectID *int64) (*data.Event, error) {
+func (s *eventStub) Create(_ context.Context, _ string, label string, start time.Time, subjectIDs []int64) (*data.Event, error) {
 	s.creates++
 	s.start = start
 	s.label = label
-	s.subjectID = subjectID
+	s.subjectIDs = subjectIDs
 	return &data.Event{EventID: 9, StartedAt: start}, s.err
 }
 func (s *eventStub) End(_ context.Context, _ string, id, version int64, end time.Time) (*data.Event, error) {
@@ -569,4 +569,13 @@ func (s *viewStore) SubjectTimeInRange(_ context.Context, _ string, _, _, cutoff
 	s.subjectReads++
 	s.subjectCutoff = cutoff
 	return s.subjectTimes, s.subjectTimeErr
+}
+
+func (s *eventStub) ListWithSubjects(ctx context.Context, user string, from, until time.Time) ([]data.EventWithSubjects, error) {
+	items, err := s.List(ctx, user, from, until)
+	views := make([]data.EventWithSubjects, 0, len(items))
+	for _, item := range items {
+		views = append(views, data.EventWithSubjects{Event: item})
+	}
+	return views, err
 }

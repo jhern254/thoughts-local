@@ -3,6 +3,7 @@ package event
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -199,11 +200,11 @@ func TestService_SubjectAssignment(t *testing.T) {
 	for _, operation := range []string{"create", "past", "update"} {
 		t.Run(operation+" forwards optional subject and preserves store error", func(t *testing.T) {
 			id := int64(17)
-			for _, subjectID := range []*int64{nil, &id} {
+			for _, subjectID := range [][]int64{nil, {id}, {id, 18}} {
 				want := errors.Join(data.ErrRecordNotFound, errors.New("PRIVATE_SUBJECT"))
 				write := func(_ context.Context, item *data.Event) (*data.Event, error) {
-					if item.SubjectID != subjectID {
-						t.Fatalf("got subject %v, want %v", item.SubjectID, subjectID)
+					if !slices.Equal(item.SubjectIDs, subjectID) {
+						t.Fatalf("got subject %v, want %v", item.SubjectIDs, subjectID)
 					}
 					return nil, want
 				}
@@ -217,10 +218,10 @@ func TestService_SubjectAssignment(t *testing.T) {
 					_, err = s.CreatePast(t.Context(), "u", "activity", start, end, subjectID)
 				case "update":
 					_, err = s.Update(t.Context(), "u", 1, 1, UpdateInput{
-						Activity:  "activity",
-						StartedAt: start,
-						EndedAt:   &end,
-						SubjectID: subjectID,
+						Activity:   "activity",
+						StartedAt:  start,
+						EndedAt:    &end,
+						SubjectIDs: subjectID,
 					})
 				}
 				if err != want {
@@ -229,4 +230,20 @@ func TestService_SubjectAssignment(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (s storeStub) ListEventsWithSubjects(ctx context.Context, user string, from, until time.Time) ([]data.EventWithSubjects, error) {
+	items, err := s.ListEvents(ctx, user, from, until)
+	views := make([]data.EventWithSubjects, 0, len(items))
+	for _, item := range items {
+		views = append(views, data.EventWithSubjects{Event: item})
+	}
+	return views, err
+}
+func (s storeStub) GetEventWithSubjects(ctx context.Context, user string, id int64) (*data.EventWithSubjects, error) {
+	item, err := s.GetEvent(ctx, user, id)
+	if err != nil {
+		return nil, err
+	}
+	return &data.EventWithSubjects{Event: *item}, nil
 }

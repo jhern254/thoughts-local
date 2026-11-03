@@ -3,6 +3,7 @@ package timeline
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -50,7 +51,7 @@ func TestService_ListThoughts(t *testing.T) {
 			calls := 0
 			s.now = func() time.Time { calls++; return time.Unix(100000, 999).In(time.FixedZone("offset", 3600)) }
 			got, err := s.ListThoughts(t.Context(), "u", 7)
-			if len(got) != 1 || got[0].ThoughtID != 42 || err != cause || *item != original {
+			if len(got) != 1 || got[0].ThoughtID != 42 || err != cause || !reflect.DeepEqual(*item, original) {
 				t.Fatalf("got %v, %v, want original results/error and unchanged event", got, err)
 			}
 			if scenario.end == nil && calls != 1 {
@@ -77,4 +78,8 @@ func timePointer(second int64) *time.Time {
 
 func (f eventReaderStub) List(context.Context, string, time.Time, time.Time) ([]data.Event, error) {
 	panic("unexpected event list")
+}
+
+func (f eventReaderStub) ListWithSubjects(context.Context, string, time.Time, time.Time) ([]data.EventWithSubjects, error) {
+	panic("unexpected timeline list read in a single-Event test")
 }

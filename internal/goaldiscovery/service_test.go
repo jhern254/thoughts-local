@@ -15,9 +15,9 @@ func (f eventReaderStub) Get(ctx context.Context, user string, id int64) (*data.
 	return f(ctx, user, id)
 }
 
-type candidateReaderStub func(context.Context, string, int64) ([]data.Goal, error)
+type candidateReaderStub func(context.Context, string, []int64) ([]data.Goal, error)
 
-func (f candidateReaderStub) ListActiveGoalsForSubject(ctx context.Context, user string, id int64) ([]data.Goal, error) {
+func (f candidateReaderStub) ListActiveGoalsForSubjects(ctx context.Context, user string, id []int64) ([]data.Goal, error) {
 	return f(ctx, user, id)
 }
 
@@ -62,7 +62,7 @@ func TestService_DiscoverForEvent(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			subjectID := int64(7)
-			item := &data.Event{EventID: 9, UserID: "owner", SubjectID: &subjectID}
+			item := &data.Event{EventID: 9, UserID: "owner", SubjectIDs: []int64{subjectID}}
 			original := *item
 			calls := 0
 			s := NewService(eventReaderStub(func(ctx context.Context, user string, id int64) (*data.Event, error) {
@@ -70,8 +70,8 @@ func TestService_DiscoverForEvent(t *testing.T) {
 					t.Fatal("event lookup lost request scope")
 				}
 				return item, nil
-			}), candidateReaderStub(func(ctx context.Context, user string, id int64) ([]data.Goal, error) {
-				if ctx != t.Context() || user != "owner" || id != subjectID {
+			}), candidateReaderStub(func(ctx context.Context, user string, id []int64) ([]data.Goal, error) {
+				if ctx != t.Context() || user != "owner" || !reflect.DeepEqual(id, []int64{subjectID}) {
 					t.Fatal("candidate lookup lost request scope")
 				}
 				return tc.candidates, nil
@@ -93,7 +93,7 @@ func TestService_DiscoverForEvent(t *testing.T) {
 			if err != nil || !reflect.DeepEqual(got, want) || calls != wantCalls {
 				t.Fatalf("discovery: got %+v, %v, calls=%d; want %+v, nil, calls=%d", got, err, calls, want, wantCalls)
 			}
-			if *item != original {
+			if !reflect.DeepEqual(*item, original) {
 				t.Fatalf("event: got %+v, want unchanged %+v", *item, original)
 			}
 		})
@@ -101,7 +101,7 @@ func TestService_DiscoverForEvent(t *testing.T) {
 
 	t.Run("unassigned events avoid candidate and recommendation reads", func(t *testing.T) {
 		s := NewService(eventReaderStub(func(context.Context, string, int64) (*data.Event, error) { return &data.Event{}, nil }),
-			candidateReaderStub(func(context.Context, string, int64) ([]data.Goal, error) {
+			candidateReaderStub(func(context.Context, string, []int64) ([]data.Goal, error) {
 				t.Fatal("queried candidates for unassigned event")
 				return nil, nil
 			}),
@@ -124,8 +124,8 @@ func TestService_DiscoverForEvent(t *testing.T) {
 				if stage == "event" {
 					return nil, cause
 				}
-				return &data.Event{SubjectID: &subjectID}, nil
-			}), candidateReaderStub(func(context.Context, string, int64) ([]data.Goal, error) {
+				return &data.Event{SubjectIDs: []int64{subjectID}}, nil
+			}), candidateReaderStub(func(context.Context, string, []int64) ([]data.Goal, error) {
 				if stage == "event" {
 					t.Fatal("queried candidates after event failure")
 				}
@@ -149,14 +149,34 @@ func TestService_DiscoverForEvent(t *testing.T) {
 	t.Run("normalizes an empty engine selection", func(t *testing.T) {
 		subjectID := int64(7)
 		s := NewService(eventReaderStub(func(context.Context, string, int64) (*data.Event, error) {
-			return &data.Event{SubjectID: &subjectID}, nil
+			return &data.Event{SubjectIDs: []int64{subjectID}}, nil
 		}),
-			candidateReaderStub(func(context.Context, string, int64) ([]data.Goal, error) { return []data.Goal{normal}, nil }),
+			candidateReaderStub(func(context.Context, string, []int64) ([]data.Goal, error) { return []data.Goal{normal}, nil }),
 			recommenderStub(func(context.Context, []data.Goal) ([]data.Goal, error) { return nil, nil }))
 		got, err := s.DiscoverForEvent(t.Context(), "owner", 9, true)
 		want := Result{PriorityGoals: []data.Goal{}, RecommendedGoals: []data.Goal{}}
 		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("empty engine result: got %+v, %v; want %+v, nil", got, err, want)
+		}
+	})
+}
+
+func TestService_MultipleEventSubjects(t *testing.T) {
+	t.Run("returns each Goal once across multiple matching Subjects", func(t *testing.T) {
+		s := NewService(eventReaderStub(func(context.Context, string, int64) (*data.Event, error) {
+			return &data.Event{SubjectIDs: []int64{1, 2}}, nil
+		}), candidateReaderStub(func(_ context.Context, _ string, ids []int64) ([]data.Goal, error) {
+			if !reflect.DeepEqual(ids, []int64{1, 2}) {
+				t.Fatalf("Subject IDs got %v, want [1 2]", ids)
+			}
+			return []data.Goal{{GoalID: 2, Priority: "normal"}, {GoalID: 1, Priority: "high"}, {GoalID: 1, Priority: "high"}}, nil
+		}), AllCandidatesRecommender{})
+		got, err := s.DiscoverForEvent(t.Context(), "u", 1, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got.PriorityGoals) != 1 || got.PriorityGoals[0].GoalID != 1 || len(got.RecommendedGoals) != 1 || got.RecommendedGoals[0].GoalID != 2 {
+			t.Fatalf("discovery got %+v, want Goal 1 high and Goal 2 recommended once each", got)
 		}
 	})
 }

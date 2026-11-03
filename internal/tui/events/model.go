@@ -18,7 +18,7 @@ import (
 )
 
 type Service interface {
-	Create(context.Context, string, string, time.Time, *int64) (*data.Event, error)
+	Create(context.Context, string, string, time.Time, []int64) (*data.Event, error)
 	End(context.Context, string, int64, int64, time.Time) (*data.Event, error)
 }
 type TimelineView interface {
@@ -65,7 +65,7 @@ type entryOpenedMsg struct {
 	request    uint64
 	scope      timeline.ThoughtScope
 	err        error
-	subject    *data.Subject
+	subjects   []data.Subject
 	subjectErr error
 }
 type eventSavedMsg struct {
@@ -132,8 +132,8 @@ type Model struct {
 	// expanded delegates keys and rendering to picker without replacing the day.
 	expanded timeline.EntryKey
 	opening  bool
-	// Retain the last badge during revalidation; rendering checks its subject ID.
-	expandedSubject    *data.Subject
+	// Retain the last Subject labels during revalidation; rendering checks the complete set.
+	expandedSubjects   []data.Subject
 	expandedSubjectErr error
 	picker             thoughts.Model
 	form               eventForm
@@ -327,8 +327,15 @@ func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
 			scope:   scope,
 			err:     err,
 		}
-		if err == nil && scope.Event().SubjectID != nil {
-			result.subject, result.subjectErr = subjects.Get(ctx, user, *scope.Event().SubjectID)
+		if err == nil {
+			for _, id := range scope.Event().SubjectIDs {
+				subject, readErr := subjects.Get(ctx, user, id)
+				if readErr != nil {
+					result.subjectErr = readErr
+					break
+				}
+				result.subjects = append(result.subjects, *subject)
+			}
 		}
 		if ctx.Err() != nil {
 			return nil
@@ -502,7 +509,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.opening = false
-		m.expandedSubject, m.expandedSubjectErr = reply.subject, reply.subjectErr
+
+		m.expandedSubjects, m.expandedSubjectErr = reply.subjects, reply.subjectErr
 		m.fail(logging.SubjectGet, reply.subjectErr)
 		m.load.retainedBody = ""
 		m.err = reply.err

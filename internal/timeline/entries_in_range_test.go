@@ -114,3 +114,12 @@ func TestService_OpenThoughtsOutsideEventsView(t *testing.T) {
 		}
 	})
 }
+
+func (s timelineEventReaderStub) ListWithSubjects(ctx context.Context, user string, from, until time.Time) ([]data.EventWithSubjects, error) {
+	items, err := s.list(ctx, user, from, until)
+	views := make([]data.EventWithSubjects, 0, len(items))
+	for _, item := range items {
+		views = append(views, data.EventWithSubjects{Event: item})
+	}
+	return views, err
+}

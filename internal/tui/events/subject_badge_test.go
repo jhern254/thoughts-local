@@ -17,7 +17,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("first pending frame reserves the subject row without flashing loading text", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		m, _ = m.Update(eventKey("enter"))
 		content := m.cardContent(*m.entries[0].Event)
 		if content[1] != "" || content[2] != "" || content[3] != "Loading thoughts…" {
@@ -28,7 +29,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("reopening retains the matching badge while revalidating its name", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		reader := &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}}}
 		m.subjectReader = reader
 		m = execute(t, m, m.openEvent(1))
@@ -47,13 +49,15 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("changed assignment never displays another subject's retained badge", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		m.subjectReader = &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}, {SubjectID: 8, SubjectName: "Coding"}}}
 		m = execute(t, m, m.openEvent(1))
 		m, _ = m.Update(eventKey("left"))
 		newID := int64(8)
-		events.items[0].SubjectID = &newID
-		m.entries[0].Event.SubjectID = &newID
+		events.items[0].SubjectIDs = []int64{newID}
+		m.entries[0].Event.SubjectIDs = []int64{newID}
+		m.entries[0].Event.SubjectIDs = []int64{newID}
 		m, cmd := m.Update(eventKey("enter"))
 		if got := m.cardContent(*m.entries[0].Event)[1]; got != "" {
 			t.Fatalf("pending badge: got %q, want blank row for unresolved subject", got)
@@ -67,7 +71,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("failed revalidation replaces the retained badge with safe feedback", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		reader := &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}}}
 		m.subjectReader = reader
 		m = execute(t, m, m.openEvent(1))
@@ -82,7 +87,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("places the assigned subject below the heading with a blank row before thoughts", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		reader := &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}}}
 		m.subjectReader = reader
 		before := m.card(*m.entries[0].Event, true)
@@ -144,7 +150,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("clips long Unicode subject names without wrapping the badge", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		m.subjectReader = &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: strings.Repeat("界", 70)}}}
 		m = execute(t, m, m.openEvent(1))
 		m.Resize(40, 20)
@@ -157,7 +164,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("subject lookup failures leave thoughts available and report safe feedback", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		m.subjectReader = &subjectReaderStub{err: errors.New("PRIVATE_SUBJECT_ERROR")}
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")
@@ -178,7 +186,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("late subject replies cannot restore a collapsed card", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		var lookupCtx context.Context
 		m.subjectReader = &subjectReaderStub{get: func(ctx context.Context, userID string, subjectID int64) (*data.Subject, error) {
 			lookupCtx = ctx
@@ -197,6 +206,36 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 		}
 		if cmd != nil || m.View() != before {
 			t.Fatal("late subject reply changed the collapsed view")
+		}
+	})
+}
+
+func TestModel_MultipleSubjectPreview(t *testing.T) {
+	t.Run("bounds names and preserves the Thought count while expansion lists every Subject", func(t *testing.T) {
+		m, store, _ := fixture(t)
+		subjects := []data.Subject{{SubjectID: 1, SubjectName: "Programming"}, {SubjectID: 2, SubjectName: "Research"}, {SubjectID: 3, SubjectName: "Projects"}, {SubjectID: 4, SubjectName: "Writing"}}
+		m.subjectReader = &subjectReaderStub{items: subjects}
+		store.items[0].SubjectIDs = []int64{1, 2, 3, 4}
+		m.entries[0].Event.SubjectIDs = []int64{1, 2, 3, 4}
+		for _, subject := range subjects {
+			m.entries[0].Subjects = append(m.entries[0].Subjects, data.EventSubjectView{SubjectID: subject.SubjectID, SubjectName: subject.SubjectName})
+		}
+		rows := m.entryContent(m.entries[0])
+		if !strings.Contains(ansi.Strip(rows[1]), "...") || !strings.Contains(ansi.Strip(rows[1]), "230 thoughts") || strings.Contains(ansi.Strip(rows[1]), "Writing") {
+			t.Fatalf("collapsed preview got %q, want bounded names plus Thought count", rows[1])
+		}
+		m = execute(t, m, m.openEvent(1))
+		expanded := strings.Join(m.entryContent(m.entries[0]), "\n")
+		for _, subject := range subjects {
+			if !strings.Contains(ansi.Strip(expanded), subject.SubjectName) {
+				t.Fatalf("expanded Event omitted %q", subject.SubjectName)
+			}
+		}
+		m, _ = m.Update(eventKey("left"))
+		m.Resize(40, 20)
+		rows = m.entryContent(m.entries[0])
+		if !strings.Contains(ansi.Strip(rows[1]), "230 thoughts") {
+			t.Fatalf("narrow preview hid Thought count: %q", rows[1])
 		}
 	})
 }

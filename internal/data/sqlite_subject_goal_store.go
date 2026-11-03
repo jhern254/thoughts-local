@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 )
 
@@ -111,21 +112,38 @@ func (s *SQLiteSubjectGoalStore) ListGoalSubjects(ctx context.Context, userID st
 // ListActiveGoalsForSubject returns current active goals through an undeleted,
 // same-owner subject, ordered by priority then ID. Schedule dates are not eligibility filters.
 // Retained-link listing remains available through ListSubjectGoals and ListGoalSubjects.
-func (s *SQLiteSubjectGoalStore) ListActiveGoalsForSubject(ctx context.Context, userID string, subjectID int64) (_ []Goal, err error) {
+func (s *SQLiteSubjectGoalStore) ListActiveGoalsForSubject(ctx context.Context, userID string, subjectID int64) ([]Goal, error) {
+	return s.ListActiveGoalsForSubjects(ctx, userID, []int64{subjectID})
+}
+
+func (s *SQLiteSubjectGoalStore) ListActiveGoalsForSubjects(ctx context.Context, userID string, subjectIDs []int64) (_ []Goal, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("list active goals for subject: %w", TranslateSQLiteError(err))
 		}
 	}()
-	rows, err := s.db.QueryContext(ctx, `SELECT `+goalColumns+` FROM goals
- WHERE user_id=? AND goal_is_active=1 AND `+visibleGoals+`
- AND EXISTS (
-     SELECT 1 FROM subject_goals sg
-     JOIN subjects s ON s.subject_id=sg.subject_id AND s.user_id=sg.user_id
-     WHERE sg.subject_id=? AND sg.user_id=goals.user_id AND sg.goal_id=goals.goal_id
-       AND sg.deleted_at IS NULL
-       AND s.deleted_at IS NULL
- ) ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, goal_id`, userID, subjectID)
+	// One bound JSON array avoids a per-Subject read and SQLite variable limits.
+	encoded, err := json.Marshal(subjectIDs)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+goalColumns+`
+FROM goals
+WHERE user_id = ?
+    AND goal_is_active = 1
+    AND `+visibleGoals+`
+    AND EXISTS (
+        SELECT 1
+        FROM subject_goals
+        INNER JOIN subjects ON subjects.subject_id = subject_goals.subject_id
+            AND subjects.user_id = subject_goals.user_id
+        WHERE subject_goals.subject_id IN (SELECT value FROM json_each(?))
+            AND subject_goals.user_id = goals.user_id
+            AND subject_goals.goal_id = goals.goal_id
+            AND subject_goals.deleted_at IS NULL
+            AND subjects.deleted_at IS NULL
+    )
+ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, goal_id`, userID, string(encoded))
 	if err != nil {
 		return nil, err
 	}

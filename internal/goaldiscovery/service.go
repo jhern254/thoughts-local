@@ -4,6 +4,8 @@ package goaldiscovery
 
 import (
 	"context"
+	"slices"
+	"sort"
 
 	"github.com/jhern254/go-thoughts/internal/data"
 )
@@ -13,7 +15,7 @@ type EventReader interface {
 }
 
 type CandidateReader interface {
-	ListActiveGoalsForSubject(context.Context, string, int64) ([]data.Goal, error)
+	ListActiveGoalsForSubjects(context.Context, string, []int64) ([]data.Goal, error)
 }
 
 // Recommender selects a duplicate-free subset of the supplied candidates.
@@ -48,15 +50,37 @@ func (s *Service) DiscoverForEvent(ctx context.Context, userID string, eventID i
 		return Result{}, err
 	}
 	result := Result{PriorityGoals: []data.Goal{}, RecommendedGoals: []data.Goal{}}
-	if item.SubjectID == nil {
+	if len(item.SubjectIDs) == 0 {
 		return result, nil
 	}
-	candidates, err := s.candidates.ListActiveGoalsForSubject(ctx, userID, *item.SubjectID)
+	candidates, err := s.candidates.ListActiveGoalsForSubjects(ctx, userID, item.SubjectIDs)
 	if err != nil {
 		return Result{}, err
 	}
+	candidates = slices.Clone(candidates)
+	sort.SliceStable(candidates, func(i, j int) bool {
+		rank := func(priority string) int {
+			switch priority {
+			case "high":
+				return 0
+			case "normal":
+				return 1
+			default:
+				return 2
+			}
+		}
+		if rank(candidates[i].Priority) != rank(candidates[j].Priority) {
+			return rank(candidates[i].Priority) < rank(candidates[j].Priority)
+		}
+		return candidates[i].GoalID < candidates[j].GoalID
+	})
+	seen := make(map[int64]bool)
 	var remaining []data.Goal
 	for _, candidate := range candidates {
+		if seen[candidate.GoalID] {
+			continue
+		}
+		seen[candidate.GoalID] = true
 		if candidate.Priority == "high" {
 			result.PriorityGoals = append(result.PriorityGoals, candidate)
 		} else {

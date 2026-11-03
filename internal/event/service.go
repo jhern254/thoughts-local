@@ -3,6 +3,7 @@ package event
 import (
 	"context"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -12,6 +13,8 @@ import (
 )
 
 type Store interface {
+	ListEventsWithSubjects(context.Context, string, time.Time, time.Time) ([]data.EventWithSubjects, error)
+	GetEventWithSubjects(context.Context, string, int64) (*data.EventWithSubjects, error)
 	GetEvent(context.Context, string, int64) (*data.Event, error)
 	StartEvent(context.Context, *data.Event) (*data.Event, error)
 	AddPastEvent(context.Context, *data.Event) (*data.Event, error)
@@ -67,13 +70,13 @@ func (s *Service) End(ctx context.Context, userID string, eventID, version int64
 }
 
 // UpdateInput is the complete replacement for an event's editable state.
-// A nil SubjectID explicitly clears the assignment. Callers correcting activity
-// or timestamps must supply the current SubjectID to preserve it.
+// Nil and empty SubjectIDs explicitly clear assignments. Callers correcting
+// activity or timestamps must supply the current SubjectIDs to preserve them.
 type UpdateInput struct {
-	Activity  string
-	StartedAt time.Time
-	EndedAt   *time.Time
-	SubjectID *int64
+	Activity   string
+	StartedAt  time.Time
+	EndedAt    *time.Time
+	SubjectIDs []int64
 }
 
 // Update replaces editable state without changing lifecycle state.
@@ -81,7 +84,7 @@ type UpdateInput struct {
 func (s *Service) Update(ctx context.Context, userID string, eventID, version int64, input UpdateInput) (*data.Event, error) {
 	now := s.now().UTC().Truncate(time.Second)
 	item := newEvent(userID, input.Activity, input.StartedAt, now)
-	item.SubjectID = input.SubjectID
+	item.SubjectIDs = slices.Clone(input.SubjectIDs)
 	item.EventID, item.Version = eventID, version
 	if input.EndedAt != nil {
 		end := input.EndedAt.UTC().Truncate(time.Second)
@@ -95,13 +98,13 @@ func (s *Service) Update(ctx context.Context, userID string, eventID, version in
 
 // Create starts an ongoing event, atomically closing its predecessor in the store.
 // A zero start requests the current time; supplied starts may be backdated.
-func (s *Service) Create(ctx context.Context, userID, activity string, startedAt time.Time, subjectID *int64) (*data.Event, error) {
+func (s *Service) Create(ctx context.Context, userID, activity string, startedAt time.Time, subjectIDs []int64) (*data.Event, error) {
 	now := s.now().UTC().Truncate(time.Second)
 	if startedAt.IsZero() {
 		startedAt = now
 	}
 	item := newEvent(userID, activity, startedAt, now)
-	item.SubjectID = subjectID
+	item.SubjectIDs = slices.Clone(subjectIDs)
 	if err := validateEvent(item, now); err != nil {
 		return nil, err
 	}
@@ -109,10 +112,10 @@ func (s *Service) Create(ctx context.Context, userID, activity string, startedAt
 }
 
 // CreatePast requires explicit timestamps and never changes the ongoing event.
-func (s *Service) CreatePast(ctx context.Context, userID, activity string, startedAt, endedAt time.Time, subjectID *int64) (*data.Event, error) {
+func (s *Service) CreatePast(ctx context.Context, userID, activity string, startedAt, endedAt time.Time, subjectIDs []int64) (*data.Event, error) {
 	now := s.now().UTC().Truncate(time.Second)
 	item := newEvent(userID, activity, startedAt, now)
-	item.SubjectID = subjectID
+	item.SubjectIDs = slices.Clone(subjectIDs)
 	end := endedAt.UTC().Truncate(time.Second)
 	item.EndedAt = &end
 	if err := validateEvent(item, now); err != nil {
@@ -124,12 +127,8 @@ func (s *Service) CreatePast(ctx context.Context, userID, activity string, start
 // List accepts explicit instants, not calendar dates. Future bounds are valid.
 func (s *Service) List(ctx context.Context, userID string, from, until time.Time) ([]data.Event, error) {
 	from, until = from.UTC().Truncate(time.Second), until.UTC().Truncate(time.Second)
-	v := validator.NewValidator()
-	v.Check(!from.IsZero(), "from", "must be provided")
-	v.Check(!until.IsZero(), "until", "must be provided")
-	v.Check(until.After(from), "until", "must be after from")
-	if !v.Valid() {
-		return nil, &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
+	if err := validateEventRange(from, until); err != nil {
+		return nil, err
 	}
 	return s.store.ListEvents(ctx, userID, from, until)
 }
@@ -146,6 +145,11 @@ func newEvent(userID, activity string, start, now time.Time) *data.Event {
 func validateEvent(item *data.Event, now time.Time) error {
 	v := validator.NewValidator()
 	v.Check(item.UserID != "", "user_id", "must be provided")
+	seen := make(map[int64]bool, len(item.SubjectIDs))
+	for _, id := range item.SubjectIDs {
+		v.Check(!seen[id], "subject_ids", "must not contain duplicate IDs")
+		seen[id] = true
+	}
 	v.Check(item.Version > 0, "version", "must be greater than zero")
 	v.Check(!item.StartedAt.IsZero(), "started_at", "must be provided")
 	v.Check(!item.StartedAt.After(now), "started_at", "must not be in the future")
@@ -161,6 +165,28 @@ func validateEvent(item *data.Event, now time.Time) error {
 		length := utf8.RuneCountInString(prefix)
 		v.Check(length >= 1 && length <= 4096, "activity_type", "must contain between 1 and 4096 characters")
 	}
+	if !v.Valid() {
+		return &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
+	}
+	return nil
+}
+
+func (s *Service) ListWithSubjects(ctx context.Context, userID string, from, until time.Time) ([]data.EventWithSubjects, error) {
+	from, until = from.UTC().Truncate(time.Second), until.UTC().Truncate(time.Second)
+	if err := validateEventRange(from, until); err != nil {
+		return nil, err
+	}
+	return s.store.ListEventsWithSubjects(ctx, userID, from, until)
+}
+func (s *Service) GetWithSubjects(ctx context.Context, userID string, id int64) (*data.EventWithSubjects, error) {
+	return s.store.GetEventWithSubjects(ctx, userID, id)
+}
+
+func validateEventRange(from, until time.Time) error {
+	v := validator.NewValidator()
+	v.Check(!from.IsZero(), "from", "must be provided")
+	v.Check(!until.IsZero(), "until", "must be provided")
+	v.Check(until.After(from), "until", "must be after from")
 	if !v.Valid() {
 		return &ValidationError{Fields: v.Errors, publicFields: maps.Clone(v.Errors)}
 	}

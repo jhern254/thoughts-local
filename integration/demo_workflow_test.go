@@ -5,6 +5,7 @@ package integration_test
 import (
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -64,22 +65,19 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		rows, err := db.QueryContext(t.Context(), `SELECT e.activity_type, COALESCE(s.subject_name, '')
-FROM events e LEFT JOIN subjects s ON s.subject_id=e.subject_id AND s.user_id=e.user_id
+FROM events e LEFT JOIN event_subjects es ON es.event_id=e.event_id AND es.user_id=e.user_id AND es.deleted_at IS NULL LEFT JOIN subjects s ON s.subject_id=es.subject_id AND s.user_id=es.user_id
 GROUP BY e.activity_type, s.subject_name`)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer rows.Close()
-		assignments := map[string]string{}
+		assignments := map[string][]string{}
 		for rows.Next() {
 			var activity, subject string
 			if err := rows.Scan(&activity, &subject); err != nil {
 				t.Fatal(err)
 			}
-			if _, exists := assignments[activity]; exists {
-				t.Fatalf("activity %q has inconsistent subjects", activity)
-			}
-			assignments[activity] = subject
+			assignments[activity] = append(assignments[activity], subject)
 		}
 		if err := rows.Err(); err != nil {
 			t.Fatal(err)
@@ -93,7 +91,18 @@ GROUP BY e.activity_type, s.subject_name`)
 			"Defragment my imaginary desk":      "",
 			"Make my own timeline feel instant": "Building myself",
 		}
-		if !reflect.DeepEqual(assignments, wantAssignments) {
+		expected := map[string][]string{}
+		for activity, subject := range wantAssignments {
+			expected[activity] = []string{subject}
+		}
+		expected["Make my own timeline feel instant"] = []string{"Building myself", "Testing reality", "Design decisions"}
+		for key := range assignments {
+			slices.Sort(assignments[key])
+		}
+		for key := range expected {
+			slices.Sort(expected[key])
+		}
+		if !reflect.DeepEqual(assignments, expected) {
 			t.Fatalf("event subjects: got %v, want %v", assignments, wantAssignments)
 		}
 		zone, err := time.LoadLocation("America/Los_Angeles")
@@ -108,9 +117,9 @@ GROUP BY e.activity_type, s.subject_name`)
 		// Building includes 37 minutes clipped at midnight, two completed hours, and one ongoing hour.
 		want := []data.SubjectTimeView{
 			{SubjectID: 1, SubjectName: "Building myself", TimeSpentSeconds: 13020},
-			{SubjectID: 3, SubjectName: "Design decisions", TimeSpentSeconds: 7200},
+			{SubjectID: 3, SubjectName: "Design decisions", TimeSpentSeconds: 10800},
+			{SubjectID: 2, SubjectName: "Testing reality", TimeSpentSeconds: 10800},
 			{SubjectID: 4, SubjectName: "Documentation", TimeSpentSeconds: 7200},
-			{SubjectID: 2, SubjectName: "Testing reality", TimeSpentSeconds: 7200},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("daily subject time: got %+v, want %+v", got, want)

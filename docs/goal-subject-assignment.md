@@ -69,7 +69,7 @@ versions, settings, activation, priority, progress, or parent links. Other live
 Subjects remain current; a Goal whose last live Subject was deleted becomes
 Unassigned. Existing Event/Thought unlinking and provenance retention stay intact.
 
-An ordinary Misc Event has `subject_id = NULL`. Goal discovery returns no Goals
+An ordinary Misc Event has no live `event_subjects` associations. Goal discovery returns no Goals
 for it, regardless of how many Unassigned Goals exist. Unassigned does not mean
 associated with every NULL-Subject Event. This API does not calculate or record
 automatic progress, change parent relationships, or implement a Goals screen.

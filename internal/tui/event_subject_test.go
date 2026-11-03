@@ -19,15 +19,15 @@ import (
 
 type subjectEventWriter struct {
 	homeEventStub
-	creates   int
-	subjectID *int64
-	activity  string
-	started   time.Time
+	creates    int
+	subjectIDs []int64
+	activity   string
+	started    time.Time
 }
 
-func (s *subjectEventWriter) Create(_ context.Context, _ string, activity string, at time.Time, id *int64) (*data.Event, error) {
+func (s *subjectEventWriter) Create(_ context.Context, _ string, activity string, at time.Time, ids []int64) (*data.Event, error) {
 	s.creates++
-	s.subjectID = id
+	s.subjectIDs = ids
 	s.activity = activity
 	s.started = at
 	return nil, errors.New("controlled event write failure")
@@ -63,6 +63,7 @@ func TestModel_EventSubjectCreation(t *testing.T) {
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: "2026-09-11 11:30:00 AM"})
 		m, _ = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: "New subject"})
+		m, _ = rootUpdate(m, enterKey())
 		m = runModelCommand(t, m, enterKey())
 		if m.screen != screenSubjectCreate || m.subjects.input.Value() != "New subject" || service.createCalls != 0 || writer.creates != 0 {
 			t.Fatal("creation navigation submitted or lost prefill")
@@ -77,7 +78,7 @@ func TestModel_EventSubjectCreation(t *testing.T) {
 		m, cmd = rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
 		saved := cmd()
 		m, _ = rootUpdate(m, saved)
-		if writer.subjectID == nil || *writer.subjectID != 42 || writer.activity != "preserved activity" || !writer.started.Equal(time.Date(2026, 9, 11, 18, 30, 0, 0, time.UTC)) {
+		if len(writer.subjectIDs) != 1 || writer.subjectIDs[0] != 42 || writer.activity != "preserved activity" || !writer.started.Equal(time.Date(2026, 9, 11, 18, 30, 0, 0, time.UTC)) {
 			t.Fatalf("got event write %+v, want preserved draft and subject 42", writer)
 		}
 		// A duplicate old creation result cannot navigate out of the event form.
@@ -94,6 +95,7 @@ func TestModel_EventSubjectCreation(t *testing.T) {
 		service := &subjectServiceStub{}
 		m, writer := eventSubjectModel(t, service)
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: "unchanged query"})
+		m, _ = rootUpdate(m, enterKey())
 		before := ansi.Strip(m.events.View())
 		m = runModelCommand(t, m, enterKey())
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: " edited only in creation"})
@@ -129,7 +131,9 @@ func TestModel_EventSubjectCreation(t *testing.T) {
 			}
 			m.logger = logger
 			m, _ = rootUpdate(m, tea.PasteMsg{Content: "PRIVATE_SUBJECT_NAME"})
+			m, _ = rootUpdate(m, enterKey())
 			before := ansi.Strip(m.events.View())
+
 			m = runModelCommand(t, m, enterKey())
 			m = runModelCommand(t, m, enterKey())
 			if m.screen != screenSubjectCreate || m.subjects.input.Value() != "PRIVATE_SUBJECT_NAME" || !errors.Is(m.subjects.err, failure.err) || writer.creates != 0 {
@@ -154,6 +158,7 @@ func TestModel_EventSubjectCreation(t *testing.T) {
 	t.Run("stale creation failure cannot replace a newer creation session", func(t *testing.T) {
 		service := &subjectServiceStub{create: func(context.Context, string, string) (*data.Subject, error) { return nil, data.ErrDuplicateRecord }}
 		m, _ := eventSubjectModel(t, service)
+		m, _ = rootUpdate(m, enterKey())
 		m = runModelCommand(t, m, enterKey())
 		m, cmd := rootUpdate(m, enterKey())
 		old := cmd()
@@ -174,6 +179,7 @@ func TestModel_EventSubjectAsyncOwnership(t *testing.T) {
 		}}
 		m, _ := eventSubjectModel(t, service)
 		old := m.listSubjects()()
+		m, _ = rootUpdate(m, enterKey())
 		m = runModelCommand(t, m, enterKey())
 		m, cmd := rootUpdate(m, enterKey())
 		m, _ = rootUpdate(m, old)
@@ -192,6 +198,7 @@ func TestModel_EventSubjectCreationResize(t *testing.T) {
 	t.Run("long prefilled name and cursor fit a narrow creation screen", func(t *testing.T) {
 		m, _ := eventSubjectModel(t, &subjectServiceStub{})
 		m, _ = rootUpdate(m, tea.PasteMsg{Content: strings.Repeat("界", 30)})
+		m, _ = rootUpdate(m, enterKey())
 		m = runModelCommand(t, m, enterKey())
 		cursor := m.subjects.input.Position()
 		m, _ = rootUpdate(m, tea.WindowSizeMsg{Width: 32, Height: 24})
