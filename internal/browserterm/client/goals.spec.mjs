@@ -15,13 +15,14 @@ test('Goals workflow creates a target and returns to Events without reconnecting
  await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');
  await page.keyboard.press('Control+s');
  await expect(screen(page)).toContainText(name);await expect(screen(page)).toContainText('Manage Subjects');await expect(screen(page)).toContainText('Misc');
- await expect(screen(page)).toContainText('High');await expect(screen(page)).toContainText('Inactive');
+ await expect(screen(page)).toContainText('1h 0m / week · high · Inactive');
  const connections=sockets;
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goals-${test.info().project.name}-normal.png`});
  await page.keyboard.press('e');await expect(screen(page)).toContainText('Edit Goal');await page.keyboard.press('Escape');
  // Returning from Edit reloads Details; its actions stay locked until that read finishes.
  await expect(screen(page)).toContainText('Created ');
  await expect(screen(page)).toContainText(name);await expect(screen(page)).not.toContainText('Loading');
+ await expect(screen(page)).toContainText('1h 0m / week · high · Inactive');
  await page.keyboard.press('s');await expect(screen(page)).toContainText('Select Subjects');
  await page.keyboard.press('/');await page.keyboard.type('no-subject-matches-this-query');await expect(screen(page)).toContainText('No matches');
  await page.keyboard.press('Escape');await expect(screen(page)).not.toContainText('No matches');
