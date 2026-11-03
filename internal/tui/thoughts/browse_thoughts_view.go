@@ -411,7 +411,11 @@ func (m Model) renderBrowseThoughtsView(status string) string {
 
 // SummaryPreview renders a selectable row for the Browse Thoughts view and expanded events.
 func (m Model) SummaryPreview(item data.ThoughtSummaryView, width int, selected bool) string {
-	return m.summaryPreview(item, width, selected, "Jan 2, 2006 3:04 PM MST")
+	layout := "Jan 2, 2006 3:04 PM MST"
+	if m.browseThoughts.timelineEntryScope != nil {
+		layout = "Jan 2, 2006 3:04 PM"
+	}
+	return m.summaryPreview(item, width, selected, layout)
 }
 
 // TimelinePreview renders the non-selectable latest row in a collapsed ongoing

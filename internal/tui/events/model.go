@@ -18,7 +18,7 @@ import (
 )
 
 type Service interface {
-	Create(context.Context, string, string, time.Time, *int64) (*data.Event, error)
+	Create(context.Context, string, string, time.Time, []int64) (*data.Event, error)
 	End(context.Context, string, int64, int64, time.Time) (*data.Event, error)
 }
 type TimelineView interface {
@@ -65,7 +65,7 @@ type entryOpenedMsg struct {
 	request    uint64
 	scope      timeline.ThoughtScope
 	err        error
-	subject    *data.Subject
+	subjects   []data.Subject
 	subjectErr error
 }
 type eventSavedMsg struct {
@@ -132,11 +132,13 @@ type Model struct {
 	// expanded delegates keys and rendering to picker without replacing the day.
 	expanded timeline.EntryKey
 	opening  bool
-	// Retain the last badge during revalidation; rendering checks its subject ID.
-	expandedSubject    *data.Subject
-	expandedSubjectErr error
-	picker             thoughts.Model
-	form               eventForm
+	// Retain the last Subject labels during revalidation; rendering checks the complete set.
+	expandedSubjects       []data.Subject
+	expandedSubjectErr     error
+	expandedSubjectFocused bool
+	expandedSubjectIndex   int
+	picker                 thoughts.Model
+	form                   eventForm
 
 	// blurred preserves selection while the root entity strip owns keyboard focus.
 	active  bool
@@ -213,7 +215,7 @@ func (m *Model) SetFocused(focused bool) {
 		m.load.retainedBody = ""
 	}
 	m.blurred = blurred
-	m.picker.SetFocused(focused)
+	m.picker.SetFocused(focused && !m.expandedSubjectFocused)
 }
 func (m Model) CanLeave() bool {
 	return m.TimelineVisible() && !m.picker.SavingMindset()
@@ -287,6 +289,8 @@ func (m *Model) loadDay(day time.Time) tea.Cmd {
 	}, feedback, m.loadSubjectTime(day))
 }
 func (m *Model) stopExpansion() {
+	m.expandedSubjectFocused = false
+	m.picker.SetFocused(!m.blurred)
 	if m.cancelExpansion != nil {
 		m.cancelExpansion()
 	}
@@ -295,6 +299,7 @@ func (m *Model) stopExpansion() {
 func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
 	if m.expanded != key {
 		m.picker.Reset()
+		m.expandedSubjectIndex = 0
 	}
 	m.stopExpansion()
 	m.expansion++
@@ -327,8 +332,15 @@ func (m *Model) openEntry(key timeline.EntryKey) tea.Cmd {
 			scope:   scope,
 			err:     err,
 		}
-		if err == nil && scope.Event().SubjectID != nil {
-			result.subject, result.subjectErr = subjects.Get(ctx, user, *scope.Event().SubjectID)
+		if err == nil {
+			for _, id := range scope.Event().SubjectIDs {
+				subject, readErr := subjects.Get(ctx, user, id)
+				if readErr != nil {
+					result.subjectErr = readErr
+					break
+				}
+				result.subjects = append(result.subjects, *subject)
+			}
 		}
 		if ctx.Err() != nil {
 			return nil
@@ -502,7 +514,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.opening = false
-		m.expandedSubject, m.expandedSubjectErr = reply.subject, reply.subjectErr
+
+		m.expandedSubjects, m.expandedSubjectErr = reply.subjects, reply.subjectErr
+		m.expandedSubjectIndex = min(m.expandedSubjectIndex, max(0, len(reply.subjects)-1))
 		m.fail(logging.SubjectGet, reply.subjectErr)
 		m.load.retainedBody = ""
 		m.err = reply.err
@@ -565,6 +579,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.picker, cmd = m.picker.Update(msg)
+		m.picker.SetFocused(!m.blurred && !m.expandedSubjectFocused)
 		if !m.picker.ShowingDetail() {
 			m.anchor()
 		}
@@ -633,6 +648,29 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 	}
 	if !m.expanded.IsZero() {
+		if m.expandedSubjectFocused {
+			switch key.String() {
+			case "left", "h":
+				m.expandedSubjectIndex = max(0, m.expandedSubjectIndex-1)
+			case "right", "l":
+				m.expandedSubjectIndex = min(len(m.expandedSubjects)-1, m.expandedSubjectIndex+1)
+			case "down", "j":
+				m.expandedSubjectFocused = false
+				m.picker.SetFocused(!m.blurred)
+			case "esc", "r":
+			default:
+				return m, nil
+			}
+			if key.String() != "esc" && key.String() != "r" {
+				return m, nil
+			}
+		}
+		if (key.String() == "up" || key.String() == "k") && !m.opening &&
+			m.expandedSubjectErr == nil && len(m.expandedSubjects) > 0 && m.picker.AtTimelineEntryStart() {
+			m.expandedSubjectFocused = true
+			m.picker.SetFocused(false)
+			return m, nil
+		}
 		if key.String() == "esc" || key.String() == "left" || key.String() == "h" {
 			m.stopExpansion()
 			m.expansion++

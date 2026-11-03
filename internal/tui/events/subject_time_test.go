@@ -181,7 +181,7 @@ func TestModel_SubjectTimeRefresh(t *testing.T) {
 	t.Run("refreshes ongoing time on a clock tick and retains same-day data on failure", func(t *testing.T) {
 		m, _, store := fixture(t)
 		subjectID := int64(7)
-		m.entries[0].Event.SubjectID = &subjectID
+		m.entries[0].Event.SubjectIDs = []int64{subjectID}
 		store.subjectTimes = []data.SubjectTimeView{{SubjectID: 7, SubjectName: "Coding", TimeSpentSeconds: 300}}
 		at := m.clock.Add(time.Minute)
 		m, cmd := m.Update(tickMsg{owner: m.owner, session: m.session, at: at})
@@ -231,7 +231,7 @@ func TestModel_SubjectTimeRefresh(t *testing.T) {
 				}
 				if scenario.assigned {
 					id := int64(7)
-					event.SubjectID = &id
+					event.SubjectIDs = []int64{id}
 				}
 				if scenario.completed {
 					end := m.clock

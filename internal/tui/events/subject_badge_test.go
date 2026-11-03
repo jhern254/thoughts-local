@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"charm.land/bubbles/v2/list"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
@@ -17,7 +18,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("first pending frame reserves the subject row without flashing loading text", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		m, _ = m.Update(eventKey("enter"))
 		content := m.cardContent(*m.entries[0].Event)
 		if content[1] != "" || content[2] != "" || content[3] != "Loading thoughts…" {
@@ -28,7 +30,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("reopening retains the matching badge while revalidating its name", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		reader := &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}}}
 		m.subjectReader = reader
 		m = execute(t, m, m.openEvent(1))
@@ -47,13 +50,15 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("changed assignment never displays another subject's retained badge", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		m.subjectReader = &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}, {SubjectID: 8, SubjectName: "Coding"}}}
 		m = execute(t, m, m.openEvent(1))
 		m, _ = m.Update(eventKey("left"))
 		newID := int64(8)
-		events.items[0].SubjectID = &newID
-		m.entries[0].Event.SubjectID = &newID
+		events.items[0].SubjectIDs = []int64{newID}
+		m.entries[0].Event.SubjectIDs = []int64{newID}
+		m.entries[0].Event.SubjectIDs = []int64{newID}
 		m, cmd := m.Update(eventKey("enter"))
 		if got := m.cardContent(*m.entries[0].Event)[1]; got != "" {
 			t.Fatalf("pending badge: got %q, want blank row for unresolved subject", got)
@@ -67,7 +72,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("failed revalidation replaces the retained badge with safe feedback", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		reader := &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}}}
 		m.subjectReader = reader
 		m = execute(t, m, m.openEvent(1))
@@ -82,7 +88,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("places the assigned subject below the heading with a blank row before thoughts", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		reader := &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: "Literature"}}}
 		m.subjectReader = reader
 		before := m.card(*m.entries[0].Event, true)
@@ -144,7 +151,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("clips long Unicode subject names without wrapping the badge", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		m.subjectReader = &subjectReaderStub{items: []data.Subject{{SubjectID: id, SubjectName: strings.Repeat("界", 70)}}}
 		m = execute(t, m, m.openEvent(1))
 		m.Resize(40, 20)
@@ -157,7 +165,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("subject lookup failures leave thoughts available and report safe feedback", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		m.subjectReader = &subjectReaderStub{err: errors.New("PRIVATE_SUBJECT_ERROR")}
 		var logs bytes.Buffer
 		logger, err := logging.New(&logs, "test", "info")
@@ -178,7 +187,8 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 	t.Run("late subject replies cannot restore a collapsed card", func(t *testing.T) {
 		m, events, _ := fixture(t)
 		id := int64(7)
-		events.items[0].SubjectID = &id
+		events.items[0].SubjectIDs = []int64{id}
+		m.entries[0].Event.SubjectIDs = []int64{id}
 		var lookupCtx context.Context
 		m.subjectReader = &subjectReaderStub{get: func(ctx context.Context, userID string, subjectID int64) (*data.Subject, error) {
 			lookupCtx = ctx
@@ -197,6 +207,155 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 		}
 		if cmd != nil || m.View() != before {
 			t.Fatal("late subject reply changed the collapsed view")
+		}
+	})
+}
+
+func TestModel_MultipleSubjectPreview(t *testing.T) {
+	t.Run("bounds Subject names on one row in collapsed and expanded cards", func(t *testing.T) {
+		m, store, _ := fixture(t)
+		subjects := []data.Subject{{SubjectID: 1, SubjectName: "Programming"}, {SubjectID: 2, SubjectName: "Research"}, {SubjectID: 3, SubjectName: "Projects"}, {SubjectID: 4, SubjectName: "Writing"}}
+		m.subjectReader = &subjectReaderStub{items: subjects}
+		store.items[0].SubjectIDs = []int64{1, 2, 3, 4}
+		m.entries[0].Event.SubjectIDs = []int64{1, 2, 3, 4}
+		for _, subject := range subjects {
+			m.entries[0].Subjects = append(m.entries[0].Subjects, data.EventSubjectView{SubjectID: subject.SubjectID, SubjectName: subject.SubjectName})
+		}
+		rows := m.entryContent(m.entries[0])
+		if !strings.Contains(ansi.Strip(rows[1]), "...") || !strings.Contains(ansi.Strip(rows[1]), "230 thoughts") || strings.Contains(ansi.Strip(rows[1]), "Writing") {
+			t.Fatalf("collapsed preview got %q, want bounded names plus Thought count", rows[1])
+		}
+		m = execute(t, m, m.openEvent(1))
+		content := m.entryContent(m.entries[0])
+		if got, want := strings.TrimSpace(ansi.Strip(content[1])), "Programming   Research   Projects  ..."; got != want {
+			t.Fatalf("expanded Subjects: got %q, want %q", got, want)
+		}
+		if content[2] != "" || !strings.Contains(content[3], "230 thoughts") {
+			t.Fatalf("expanded rows: got %q, want one Subject row and a separator before Thoughts", content[:4])
+		}
+		m, _ = m.Update(eventKey("left"))
+		m.Resize(40, 20)
+		rows = m.entryContent(m.entries[0])
+		if !strings.Contains(ansi.Strip(rows[1]), "230 thoughts") {
+			t.Fatalf("narrow preview hid Thought count: %q", rows[1])
+		}
+	})
+}
+
+func TestModel_ExpandedSubjectLine(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		names []string
+		want  string
+	}{
+		{"two Subjects", []string{"Go", "Research"}, "Go   Research"},
+		{"three Subjects", []string{"Go", "Research", "Projects"}, "Go   Research   Projects"},
+		{"four Subjects", []string{"Go", "Research", "Projects", "Writing"}, "Go   Research   Projects  ..."},
+		{"six Subjects", []string{"Go", "Research", "Projects", "Writing", "Reading", "Music"}, "Go   Research   Projects  ..."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, store, _ := fixture(t)
+			var subjects []data.Subject
+			for i, name := range tc.names {
+				id := int64(i + 1)
+				store.items[0].SubjectIDs = append(store.items[0].SubjectIDs, id)
+				subjects = append(subjects, data.Subject{SubjectID: id, SubjectName: name})
+			}
+			m.entries[0].Event.SubjectIDs = store.items[0].SubjectIDs
+			m.subjectReader = &subjectReaderStub{items: subjects}
+			m = execute(t, m, m.openEvent(1))
+			firstBlocks := list.DefaultStyles(true).Title.Render("Go") + " " + list.DefaultStyles(true).Title.Render("Research")
+			if got := m.entryContent(m.entries[0])[1]; !strings.HasPrefix(got, firstBlocks) {
+				t.Fatalf("Subject blocks: got %q, want separate styled blocks with one uncolored space", got)
+			}
+			if got := strings.TrimSpace(ansi.Strip(m.entryContent(m.entries[0])[1])); got != tc.want {
+				t.Fatalf("Subject row: got %q, want %q", got, tc.want)
+			}
+			m.Resize(40, 20)
+			content := m.entryContent(m.entries[0])
+			if ansi.StringWidth(content[1]) > m.cardWidth() || content[2] != "" || !strings.Contains(content[3], "230 thoughts") {
+				t.Fatalf("narrow card: got %q, want one clipped Subject row and a separator before Thoughts", content[:4])
+			}
+		})
+	}
+}
+
+func TestModel_SubjectScroller(t *testing.T) {
+	t.Run("moves from the first Thought to Subjects and browses every assignment without reads", func(t *testing.T) {
+		m, store, _ := fixture(t)
+		var subjects []data.Subject
+		for i, name := range []string{"Go", "Research", "Projects", "Writing", "Reading", "Music"} {
+			id := int64(i + 1)
+			store.items[0].SubjectIDs = append(store.items[0].SubjectIDs, id)
+			subjects = append(subjects, data.Subject{SubjectID: id, SubjectName: name})
+		}
+		m.entries[0].Event.SubjectIDs = store.items[0].SubjectIDs
+		reader := &subjectReaderStub{items: subjects}
+		m.subjectReader = reader
+		m = execute(t, m, m.openEvent(1))
+		reader.get = func(context.Context, string, int64) (*data.Subject, error) {
+			t.Fatal("browsing loaded Subjects performed another read")
+			return nil, nil
+		}
+		m, _ = m.Update(eventKey("down"))
+		m, _ = m.Update(eventKey("up"))
+		if strings.Contains(m.View(), "←/→: Subjects") {
+			t.Fatal("Up reached Subjects before reaching the first Thought")
+		}
+		m, cmd := m.Update(eventKey("up"))
+		if cmd != nil || !strings.Contains(m.View(), "←/→: Subjects") {
+			t.Fatal("Up from the first Thought did not focus the loaded Subject row")
+		}
+		selected := list.DefaultStyles(true).Title.Render("Go")
+		muted := list.DefaultStyles(true).Title.Background(lipgloss.Color("#3C344A")).Foreground(lipgloss.Color("#B7A8CD")).Render("Research")
+		if row := m.entryContent(m.entries[0])[1]; !strings.HasPrefix(row, selected+" "+muted) {
+			t.Fatalf("focused Subject row: got %q, want purple selection and muted purple neighbors", row)
+		}
+		plots, _ := m.picker.TimelineEntryThoughtPlots()
+		for _, plot := range plots {
+			if plot.Selected {
+				t.Fatal("Thought remains highlighted while Subjects own focus")
+			}
+		}
+		for range 5 {
+			m, cmd = m.Update(eventKey("right"))
+			if cmd != nil || m.expanded.IsZero() || m.picker.ShowingDetail() {
+				t.Fatal("Subject movement started work, opened a Thought, or collapsed the card")
+			}
+		}
+		if !strings.Contains(ansi.Strip(m.entryContent(m.entries[0])[1]), "Music") {
+			t.Fatal("last assigned Subject is not visible")
+		}
+		m.Resize(40, 20)
+		if row := m.entryContent(m.entries[0])[1]; !strings.Contains(ansi.Strip(row), "Music") || ansi.StringWidth(row) > m.cardWidth() {
+			t.Fatalf("narrow Subject scroller: got %q, want visible selection within card", row)
+		}
+		for range 8 {
+			m, _ = m.Update(eventKey("left"))
+		}
+		if m.expanded.IsZero() {
+			t.Fatal("Left at the first Subject collapsed the Event")
+		}
+		m, _ = m.Update(eventKey("down"))
+		if strings.Contains(m.View(), "←/→: Subjects") {
+			t.Fatal("Down did not return focus to Thoughts")
+		}
+		m, _ = m.Update(eventKey("left"))
+		if !m.expanded.IsZero() {
+			t.Fatal("Left from Thoughts no longer collapses the Event")
+		}
+	})
+
+	t.Run("Escape collapses the card while Subjects are focused", func(t *testing.T) {
+		m, store, _ := fixture(t)
+		store.items[0].SubjectIDs = []int64{1}
+		m.entries[0].Event.SubjectIDs = []int64{1}
+		m.subjectReader = &subjectReaderStub{items: []data.Subject{{SubjectID: 1, SubjectName: "Go"}}}
+		m = execute(t, m, m.openEvent(1))
+		m, _ = m.Update(eventKey("up"))
+		m, _ = m.Update(eventKey("esc"))
+		if !m.expanded.IsZero() {
+			t.Fatal("Escape did not collapse the Event")
 		}
 	})
 }

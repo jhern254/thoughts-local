@@ -10,6 +10,7 @@ import (
 )
 
 type EventReader interface {
+	ListWithSubjects(context.Context, string, time.Time, time.Time) ([]data.EventWithSubjects, error)
 	List(context.Context, string, time.Time, time.Time) ([]data.Event, error)
 	Get(context.Context, string, int64) (*data.Event, error)
 }

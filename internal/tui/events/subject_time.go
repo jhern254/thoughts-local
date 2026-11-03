@@ -135,7 +135,7 @@ func (m *Model) subjectTimeChangesOnTick(previousClock time.Time) bool {
 	}
 	for _, entry := range m.entries {
 		event := entry.Event
-		if event != nil && event.SubjectID != nil && event.EndedAt == nil && event.StartedAt.Unix() < max(previousCutoff, cutoff) {
+		if event != nil && len(event.SubjectIDs) > 0 && event.EndedAt == nil && event.StartedAt.Unix() < max(previousCutoff, cutoff) {
 			return true
 		}
 	}

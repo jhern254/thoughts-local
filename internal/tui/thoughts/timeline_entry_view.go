@@ -35,6 +35,13 @@ func (m *Model) OpenTimelineEntryView(scope timeline.ThoughtScope, reader Timeli
 	return cmd
 }
 
+// AtTimelineEntryStart distinguishes the newest row from a resident window edge
+// that still has a newer cursor batch. Events uses this boundary for focus travel.
+func (m Model) AtTimelineEntryStart() bool {
+	return m.browseThoughts.timelineEntryScope != nil && !m.loading &&
+		m.browseThoughts.index == 0 && !m.browseThoughts.moreNewer
+}
+
 // ResizeTimelineEntryView budgets complete rows, leaving detail rendering unchanged.
 func (m *Model) ResizeTimelineEntryView(width, rows int) {
 	m.browseThoughts.width, m.browseThoughts.height = max(1, width), max(1, rows)*summaryLines

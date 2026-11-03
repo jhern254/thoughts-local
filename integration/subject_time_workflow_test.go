@@ -14,9 +14,24 @@ func TestSubjectTimeWorkflow_SQLite(t *testing.T) {
 	t.Run("clips intervals groups assigned time and ranks totals", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u", "other")
-		_, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','Coding'),(2,'u','Reading'),(3,'u','Empty'),(4,'other','Private');
-INSERT INTO events(user_id,subject_id,started_at,ended_at) VALUES
-('u',1,50,150),('u',1,150,250),('u',2,200,NULL),('u',3,180,180),('u',NULL,110,160),('other',4,100,300);`)
+		_, err := db.Exec(`
+		    INSERT INTO subjects (subject_id, user_id, subject_name)
+		    VALUES (1, 'u', 'Coding'),
+		        (2, 'u', 'Reading'),
+		        (3, 'u', 'Empty'),
+		        (4, 'other', 'Private');
+		    INSERT INTO events (user_id, started_at, ended_at) VALUES ('u', 50, 150);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 1, 'u');
+		    INSERT INTO events (user_id, started_at, ended_at) VALUES ('u', 150, 250);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 1, 'u');
+		    INSERT INTO events (user_id, started_at, ended_at) VALUES ('u', 200, NULL);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 2, 'u');
+		    INSERT INTO events (user_id, started_at, ended_at) VALUES ('u', 180, 180);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 3, 'u');
+		    INSERT INTO events (user_id, started_at, ended_at) VALUES ('u', 110, 160);
+		    INSERT INTO events (user_id, started_at, ended_at) VALUES ('other', 100, 300);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 4, 'other');
+		`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -32,10 +47,22 @@ INSERT INTO events(user_id,subject_id,started_at,ended_at) VALUES
 	t.Run("excludes deleted records and orders equal totals by current name", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u")
-		_, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','Zebra'),(2,'u','Alpha'),(3,'u','Deleted');
-INSERT INTO events(user_id,subject_id,started_at,ended_at) VALUES ('u',1,100,150),('u',2,150,200),('u',3,200,250);
-UPDATE subjects SET deleted_at=unixepoch(),updated_at=unixepoch() WHERE subject_id=3;
-INSERT INTO events(user_id,subject_id,started_at,ended_at,deleted_at,updated_at) VALUES ('u',1,250,300,unixepoch(),unixepoch());`)
+		_, err := db.Exec(`
+		    INSERT INTO subjects (subject_id, user_id, subject_name)
+		    VALUES (1, 'u', 'Zebra'),
+		        (2, 'u', 'Alpha'),
+		        (3, 'u', 'Deleted');
+		    INSERT INTO events (user_id, started_at, ended_at) VALUES ('u', 100, 150);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 1, 'u');
+		    INSERT INTO events (user_id, started_at, ended_at) VALUES ('u', 150, 200);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 2, 'u');
+		    INSERT INTO events (user_id, started_at, ended_at) VALUES ('u', 200, 250);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 3, 'u');
+		    UPDATE subjects SET deleted_at=unixepoch(),updated_at=unixepoch() WHERE subject_id=3;
+		    INSERT INTO events (user_id, started_at, ended_at, deleted_at, updated_at)
+		    VALUES ('u', 250, 300, unixepoch(), unixepoch());
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 1, 'u');
+		`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,7 +102,10 @@ INSERT INTO events(user_id,subject_id,started_at,ended_at,deleted_at,updated_at)
 				t.Fatal(err)
 			}
 			until := from.AddDate(0, 0, 1)
-			if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES(1,'u','Day'); INSERT INTO events(user_id,subject_id,started_at,ended_at) VALUES('u',1,?,?)`, from.Add(-time.Hour).Unix(), until.Add(time.Hour).Unix()); err != nil {
+			if _, err := db.Exec(`
+			    INSERT INTO subjects (subject_id, user_id, subject_name) VALUES (1, 'u', 'Day'); INSERT INTO events (user_id, started_at, ended_at) VALUES ('u', ?1, ?2);
+			    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 1, 'u')
+			`, from.Add(-time.Hour).Unix(), until.Add(time.Hour).Unix()); err != nil {
 				t.Fatal(err)
 			}
 			rows, err := data.NewSQLiteMetricsStore(db).SubjectTimeInRange(t.Context(), "u", from, until, until)

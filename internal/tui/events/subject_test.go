@@ -9,22 +9,25 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
+	"maps"
 	"strings"
 	"testing"
 )
 
 func TestModel_SubjectSelection(t *testing.T) {
-	t.Run("subject follows activity and an unresolved query blocks save", func(t *testing.T) {
+	t.Run("unresolved search text never becomes an assignment", func(t *testing.T) {
 		m, service, _ := fixture(t)
 		m, _ = m.Update(eventKey("n"))
 		m, _ = m.Update(eventKey("tab"))
-		m, _ = m.Update(tea.PasteMsg{Content: "cod"})
-		if view := m.View(); !strings.Contains(view, "Subject (optional)") || !strings.Contains(view, "> Create subject…") {
-			t.Fatalf("got view:\n%s\nwant focused subject picker with creation first", view)
+		m, _ = m.Update(eventKey("enter"))
+		m, _ = m.Update(tea.PasteMsg{Content: "unresolved"})
+		m, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+		if cmd == nil {
+			t.Fatal("empty confirmed Subject set should remain valid")
 		}
-		m, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
-		if cmd != nil || service.creates != 0 || !strings.Contains(m.View(), "Choose an existing subject or create one.") {
-			t.Fatal("unresolved subject query must block saving")
+		cmd()
+		if service.creates != 1 || len(service.subjectIDs) != 0 {
+			t.Fatalf("created %d with Subjects %v, want one unassigned Event", service.creates, service.subjectIDs)
 		}
 	})
 }
@@ -55,45 +58,36 @@ func (s *subjectReaderStub) List(context.Context, string) ([]data.Subject, error
 }
 
 func TestModel_SubjectPicker(t *testing.T) {
-	t.Run("filters case insensitively selects explicitly and clears edited assignment", func(t *testing.T) {
+	t.Run("filters case insensitively and retains checks across searches", func(t *testing.T) {
 		m, s, _ := fixture(t)
 		m.subjectReader = &subjectReaderStub{items: []data.Subject{{SubjectID: 1, SubjectName: "Coding"}, {SubjectID: 2, SubjectName: "Coding practice"}, {SubjectID: 3, SubjectName: "Reading"}}}
 		m, cmd := m.Update(eventKey("n"))
 		m, _ = m.Update(cmd().(tea.BatchMsg)[1]())
 		m, _ = m.Update(eventKey("tab"))
+		m, _ = m.Update(eventKey("enter"))
 		m, _ = m.Update(tea.PasteMsg{Content: "OD"})
 		view := ansi.Strip(m.View())
-		if strings.Contains(view, "Reading") || strings.Index(view, "Create subject…") > strings.Index(view, "Coding") || !strings.Contains(view, "Coding practice") {
-			t.Fatalf("got filtered view:\n%s", view)
+		if strings.Contains(view, "Reading") || !strings.Contains(view, "Coding practice") {
+			t.Fatalf("incorrect filtered view: %s", view)
 		}
 		m, _ = m.Update(eventKey("down"))
+		m, _ = m.Update(eventKey("space"))
 		m, _ = m.Update(eventKey("down"))
-		m, _ = m.Update(eventKey("enter"))
-		if m.form.index != 2 || !m.form.fields[2].Focused() || m.form.subjects.selected == nil || *m.form.subjects.selected != 2 || m.form.fields[1].Value() != "Coding practice" {
-			t.Fatal("selection lost ID, display name, or time focus")
+		m, _ = m.Update(eventKey("space"))
+		if !m.form.subjects.selected[1] || !m.form.subjects.selected[2] {
+			t.Fatal("multi-selection lost a check")
 		}
-		m, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
-		cmd()
-		if s.subjectID == nil || *s.subjectID != 2 {
-			t.Fatalf("got saved subject %v, want 2", s.subjectID)
-		}
-		m.form.saving = false
-		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 		m, _ = m.Update(tea.PasteMsg{Content: " changed"})
-		if m.form.subjects.selected != nil {
-			t.Fatal("query edit retained stale subject ID")
+		if !m.form.subjects.selected[1] || !m.form.subjects.selected[2] {
+			t.Fatal("query change lost checked Subjects")
 		}
-		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'a', Mod: tea.ModCtrl}))
-		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'k', Mod: tea.ModCtrl}))
-		if m.form.fields[1].Value() != "" {
-			t.Fatalf("got query %q, want cleared", m.form.fields[1].Value())
-		}
-		m, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
+		m, cmd = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 		cmd()
-		if s.subjectID != nil {
-			t.Fatalf("got saved subject %v, want nil", s.subjectID)
+		if len(s.subjectIDs) != 2 || s.subjectIDs[0] != 1 || s.subjectIDs[1] != 2 {
+			t.Fatalf("saved Subjects got %v, want [1 2]", s.subjectIDs)
 		}
 	})
+
 	for _, state := range []string{"loading", "empty", "no match", "error"} {
 		t.Run("creation remains first and available during "+state, func(t *testing.T) {
 			m, _, _ := fixture(t)
@@ -116,6 +110,7 @@ func TestModel_SubjectPicker(t *testing.T) {
 				m, _ = m.Update(cmd().(tea.BatchMsg)[1]())
 			}
 			m, _ = m.Update(eventKey("tab"))
+			m, _ = m.Update(eventKey("enter"))
 			m, _ = m.Update(tea.PasteMsg{Content: "cod"})
 			view := ansi.Strip(m.View())
 			if !strings.Contains(view, "> Create subject…") || strings.Contains(view, "PRIVATE_SUBJECT_LIST") || strings.Contains(logs.String(), "PRIVATE_SUBJECT_LIST") {
@@ -141,6 +136,7 @@ func TestModel_SubjectPicker(t *testing.T) {
 		m, cmd := m.Update(eventKey("n"))
 		m, _ = m.Update(cmd().(tea.BatchMsg)[1]())
 		m, _ = m.Update(eventKey("tab"))
+		m, _ = m.Update(eventKey("enter"))
 		m, _ = m.Update(tea.PasteMsg{Content: "界"})
 		for i := 0; i < 15; i++ {
 			m, _ = m.Update(eventKey("down"))
@@ -148,12 +144,11 @@ func TestModel_SubjectPicker(t *testing.T) {
 		for _, size := range [][2]int{{80, 27}, {32, 18}, {60, 22}} {
 			m.form.message = ""
 			m.Resize(size[0], size[1])
-			m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 's', Mod: tea.ModCtrl}))
 			view := ansi.Strip(m.View())
 			if !strings.Contains(view, "Esc: cancel") || !strings.Contains(view, "Ctrl+S: save") {
 				t.Fatalf("missing narrow form help: %s", view)
 			}
-			if !strings.Contains(view, "> 界 15") || strings.Contains(view, "界 01") {
+			if !strings.Contains(view, "> [ ] 界 15") || strings.Contains(view, "界 01") {
 				t.Fatalf("selection not visible after resize: %s", view)
 			}
 			if len(strings.Split(view, "\n")) > size[1] {
@@ -173,9 +168,12 @@ func TestModel_SubjectPicker(t *testing.T) {
 		m, _ = m.Update(cmd().(tea.BatchMsg)[1]())
 		m, _ = m.Update(tea.PasteMsg{Content: "draft activity"})
 		m, _ = m.Update(eventKey("tab"))
-		m, _ = m.Update(eventKey("down"))
 		m, _ = m.Update(eventKey("enter"))
-		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+		m, _ = m.Update(eventKey("down"))
+		m, _ = m.Update(eventKey("space"))
+		m, _ = m.Update(eventKey("enter"))
+		m, _ = m.Update(eventKey("enter"))
+		m.form.subjects.row = 0
 		before := m.form
 		position := m.position
 		m, cmd = m.Update(eventKey("enter"))
@@ -186,7 +184,7 @@ func TestModel_SubjectPicker(t *testing.T) {
 				t.Fatalf("field %d changed after cancellation", i)
 			}
 		}
-		if m.form.subjects.selected != before.subjects.selected || m.form.subjects.row != before.subjects.row || m.form.subjects.top != before.subjects.top || m.form.index != 1 || !m.form.fields[1].Focused() || m.position != position {
+		if !maps.Equal(m.form.subjects.selected, before.subjects.selected) || m.form.subjects.row != before.subjects.row || m.form.subjects.top != before.subjects.top || m.form.index != 1 || !m.form.fields[1].Focused() || m.position != position {
 			t.Fatal("cancel changed selection or navigation")
 		}
 	})
@@ -196,13 +194,15 @@ func TestModel_SubjectPicker(t *testing.T) {
 		m, _ = m.Update(eventKey("n"))
 		old := m.loadSubjects()()
 		m, _ = m.Update(eventKey("tab"))
+		m, _ = m.Update(eventKey("enter"))
 		m, cmd := m.Update(eventKey("enter"))
 		request := cmd().(CreateSubjectRequest)
 		m.ReturnFromSubjectCreation(request, &data.Subject{SubjectID: 42, SubjectName: "Created"})
 		m, _ = m.Update(old)
-		if m.form.subjects.selected == nil || *m.form.subjects.selected != 42 || len(m.form.subjects.items) != 1 {
+		if m.form.subjects.selected == nil || !m.form.subjects.selected[42] || len(m.form.subjects.items) != 1 {
 			t.Fatal("old list replaced created selection")
 		}
+		m, _ = m.Update(eventKey("esc"))
 		m, _ = m.Update(eventKey("esc"))
 		m, _ = m.Update(eventKey("n"))
 		before := m.form.fields[1].Value()

@@ -15,16 +15,32 @@ type SubjectTimeView struct {
 
 func (s *SQLiteMetricsStore) SubjectTimeInRange(ctx context.Context, userID string, from, until, ongoingUntil time.Time) ([]SubjectTimeView, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT s.subject_id, s.subject_name,
- SUM(max(0, min(COALESCE(e.ended_at, ?), ?) - max(e.started_at, ?))) AS seconds
-FROM events e
-JOIN subjects s ON s.subject_id=e.subject_id AND s.user_id=e.user_id
-JOIN users u ON u.user_id=e.user_id
-WHERE e.user_id=? AND e.deleted_at IS NULL AND s.deleted_at IS NULL AND u.deleted_at IS NULL
- AND e.started_at < ? AND COALESCE(e.ended_at, ?) > ?
-GROUP BY s.subject_id, s.subject_name
-HAVING seconds > 0
-ORDER BY seconds DESC, s.subject_name, s.subject_id`, ongoingUntil.Unix(), until.Unix(), from.Unix(), userID, until.Unix(), ongoingUntil.Unix(), from.Unix())
+	    SELECT
+	        subjects.subject_id,
+	        subjects.subject_name,
+	        SUM(max(0, min(COALESCE(events.ended_at, ?), ?) - max(events.started_at, ?))) AS seconds
+	    FROM event_subjects
+	    JOIN events ON events.event_id = event_subjects.event_id
+	        AND events.user_id = event_subjects.user_id
+	    JOIN subjects ON subjects.subject_id = event_subjects.subject_id
+	        AND subjects.user_id = event_subjects.user_id
+	    JOIN users ON users.user_id = events.user_id
+	    WHERE events.user_id = ?
+	        AND event_subjects.deleted_at IS NULL
+	        AND events.deleted_at IS NULL
+	        AND subjects.deleted_at IS NULL
+	        AND users.deleted_at IS NULL
+	        AND events.started_at < ?
+	        AND COALESCE(events.ended_at, ?) > ?
+	    GROUP BY
+	        subjects.subject_id,
+	        subjects.subject_name
+	    HAVING seconds > 0
+	    ORDER BY
+	        seconds DESC,
+	        subjects.subject_name,
+	        subjects.subject_id
+	`, ongoingUntil.Unix(), until.Unix(), from.Unix(), userID, until.Unix(), ongoingUntil.Unix(), from.Unix())
 	if err != nil {
 		return nil, fmt.Errorf("read subject time: %w", TranslateSQLiteError(err))
 	}

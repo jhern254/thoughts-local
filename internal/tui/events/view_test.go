@@ -201,10 +201,11 @@ func TestModel_Layout(t *testing.T) {
 		}
 	})
 	t.Run("event expands beside its time and pushes later hours down", func(t *testing.T) {
-		m, _, _ := fixture(t)
+		m, eventStore, _ := fixture(t)
 		m.entries[0].Event.StartedAt = m.day.Add(10 * time.Hour)
 		end := m.day.Add(10*time.Hour + 30*time.Minute)
 		m.entries[0].Event.EndedAt = &end
+		eventStore.items[0] = *m.entries[0].Event
 		lines, positions, _ := m.layout()
 		top := positions[1]
 		if !strings.HasPrefix(timelineCardText(lines[top]), "10:00 AM  ╭") {
@@ -397,4 +398,20 @@ func TestModel_EventStartLabel(t *testing.T) {
 		}
 	})
 
+}
+
+func TestModel_ExpandedThoughtTime(t *testing.T) {
+	t.Run("omits timezone in expanded cards and retains it in Thought details", func(t *testing.T) {
+		m, _, _ := fixture(t)
+		m = execute(t, m, m.openEvent(1))
+		content := strings.Join(m.cardContent(*m.entries[0].Event), "\n")
+		if !strings.Contains(content, "Sep 11, 2026") || strings.Contains(content, "PDT") || strings.Contains(content, "PST") {
+			t.Fatalf("expanded Thought timestamps: got %q, want dates and times without timezone suffixes", content)
+		}
+		next, cmd := m.Update(eventKey("right"))
+		m = execute(t, next, cmd)
+		if !strings.Contains(m.picker.View(), "PDT") {
+			t.Fatal("Thought details lost their timezone suffix")
+		}
+	})
 }

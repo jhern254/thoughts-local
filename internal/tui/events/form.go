@@ -86,7 +86,7 @@ func (m *Model) startForm(ending bool) tea.Cmd {
 func (m *Model) resizeForm() {
 	m.anchorSubjects()
 	for i := range m.form.fields {
-		m.form.fields[i].SetWidth(max(1, m.width-4))
+		m.form.fields[i].SetWidth(max(1, m.width-6))
 		m.form.fields[i].SetCursor(m.form.fields[i].Position())
 	}
 }
@@ -119,11 +119,19 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 	case tea.KeyPressMsg:
 		switch input.String() {
 		case "esc":
+			if m.form.subjects.open {
+				m.form.subjects.selected = m.form.subjects.before
+				m.form.subjects.open = false
+				return m.focusForm()
+			}
 			m.save++
 			m.form.stopReads()
 			m.form = eventForm{}
 			return nil
 		case "tab", "shift+tab":
+			if m.form.subjects.open {
+				return nil
+			}
 			if !m.form.ending {
 				step := 1
 				if input.String() == "shift+tab" {
@@ -135,8 +143,17 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 				return m.focusForm()
 			}
 			return nil
+		case "/":
+			if m.form.subjects.open {
+				m.form.subjects.searching = true
+				return m.form.fields[1].Focus()
+			}
+		case "space":
+			if m.form.subjects.open && !m.form.subjects.searching {
+				return m.activateSubject()
+			}
 		case "up", "down":
-			if !m.form.ending && m.form.index == 1 {
+			if !m.form.ending && m.form.index == 1 && m.form.subjects.open && !m.form.subjects.searching {
 				if input.String() == "up" {
 					m.form.subjects.row--
 				} else {
@@ -147,12 +164,19 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 			}
 		case "ctrl+s", "enter":
 			if input.String() == "enter" && !m.form.ending && m.form.index == 1 {
-				return m.activateSubject()
-			}
-			if !m.form.ending && m.form.fields[1].Value() != "" && m.form.subjects.selected == nil {
-				m.form.message = "Choose an existing subject or create one."
-				m.anchorSubjects()
-				return nil
+				if !m.form.subjects.open {
+					m.openSubjectPicker()
+					return nil
+				}
+				if m.form.subjects.searching {
+					m.form.subjects.searching = false
+					return nil
+				}
+				if m.form.subjects.row == 0 {
+					return m.activateSubject()
+				}
+				m.form.subjects.open = false
+				return m.focusForm()
 			}
 			at, err := displaytime.ParseInput(m.form.fields[2].Value())
 			if err != nil {
@@ -179,12 +203,12 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 					return eventSavedMsg{owner, save, saved, true, err}
 				}
 			}
-			subjectID := m.form.subjects.selected
+			subjectIDs := m.selectedSubjectIDs()
 			return func() tea.Msg {
 				if ctx.Err() != nil {
 					return nil
 				}
-				saved, err := service.Create(ctx, user, label, at, subjectID)
+				saved, err := service.Create(ctx, user, label, at, subjectIDs)
 				if ctx.Err() != nil {
 					return nil
 				}
@@ -228,13 +252,16 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	m.form.fields[m.form.index], cmd = m.form.fields[m.form.index].Update(msg)
 	if m.form.fields[1].Value() != before {
-		m.form.subjects.selected = nil
+		// Search text never changes checkbox selection.
 		m.form.subjects.row, m.form.subjects.top = 0, 0
 		m.form.message = ""
 	}
 	return cmd
 }
 func (m Model) formView() string {
+	if m.form.subjects.open {
+		return ansi.Wrap("Select Subjects\n\n"+m.subjectView()+"\n\n↑/↓: move · Space: toggle/create · /: search\nEnter: confirm · Ctrl+S: save Event · Esc: cancel selection", m.width, "")
+	}
 	title := "Start event"
 	body := "Activity\n" + m.form.fields[0].View() + "\n" + m.subjectView() + "\nStart time"
 	if m.form.ending {

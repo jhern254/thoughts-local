@@ -2,6 +2,8 @@ package events
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -33,13 +35,16 @@ type subjectsLoaded struct {
 func (subjectsLoaded) eventMessage() {}
 
 type subjectPicker struct {
-	cancel   context.CancelFunc
-	items    []data.Subject
-	selected *int64
-	row, top int
-	loading  bool
-	err      error
-	revision uint64
+	cancel    context.CancelFunc
+	items     []data.Subject
+	selected  map[int64]bool
+	before    map[int64]bool
+	open      bool
+	searching bool
+	row, top  int
+	loading   bool
+	err       error
+	revision  uint64
 }
 
 func (m *Model) loadSubjects() tea.Cmd {
@@ -117,14 +122,32 @@ func (m *Model) activateSubject() tea.Cmd {
 	return m.focusForm()
 }
 func (m *Model) selectSubject(item data.Subject) {
-	m.form.subjects.selected = &item.SubjectID
-	m.form.fields[1].SetValue(item.SubjectName)
-	m.form.fields[1].CursorEnd()
-	m.form.subjects.row, m.form.subjects.top = 0, 0
-	m.form.index = 2
+	if m.form.subjects.selected == nil {
+		m.form.subjects.selected = make(map[int64]bool)
+	}
+	m.form.subjects.selected[item.SubjectID] = !m.form.subjects.selected[item.SubjectID]
 	m.form.stopClipboard()
 	m.form.revision++
 	m.form.message = ""
+}
+func (m Model) selectedSubjectIDs() []int64 {
+	ids := []int64{}
+	for id, selected := range m.form.subjects.selected {
+		if selected {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+func (m *Model) openSubjectPicker() {
+	p := &m.form.subjects
+	p.before = make(map[int64]bool, len(p.selected))
+	for id, selected := range p.selected {
+		p.before[id] = selected
+	}
+	p.open = true
+	p.searching = false
 }
 
 func (m Model) AwaitingSubject(request CreateSubjectRequest) bool {
@@ -148,12 +171,17 @@ func (m *Model) ReturnFromSubjectCreation(request CreateSubjectRequest, subject 
 		m.form.subjects.err = nil
 		m.form.subjects.items = append(m.form.subjects.items, *subject)
 		m.selectSubject(*subject)
+		m.form.subjects.selected[subject.SubjectID] = true
 	}
 	return m.focusForm()
 }
 
 func (m Model) subjectView() string {
-	body := "Subject (optional)\n" + m.form.fields[1].View()
+	body := fmt.Sprintf("Subjects (%d selected)", len(m.selectedSubjectIDs()))
+	if !m.form.subjects.open {
+		return ansi.Truncate(body+" · Enter: choose", max(1, m.width), "…")
+	}
+	body += "\n/ " + m.form.fields[1].View()
 	if m.form.index != 1 {
 		return body
 	}
@@ -163,7 +191,11 @@ func (m Model) subjectView() string {
 	for row := p.top; row < end; row++ {
 		label := "Create subject…"
 		if row > 0 {
-			label = singleLine(items[row-1].SubjectName)
+			mark := "[ ] "
+			if p.selected[items[row-1].SubjectID] {
+				mark = "[x] "
+			}
+			label = mark + singleLine(items[row-1].SubjectName)
 		}
 		prefix := "    "
 		if row == p.row {

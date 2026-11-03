@@ -10,7 +10,7 @@ INSERT INTO subjects (subject_id, user_id, subject_name) VALUES
     (3, 'demo', 'Design decisions'), (4, 'demo', 'Documentation');
 
 -- Extra live Subjects exercise scrolling and multiselection without changing
--- the four original event/thought assignments.
+-- the original Thought assignments.
 INSERT INTO subjects(subject_id,user_id,subject_name) VALUES
  (5,'demo','Go Programming'),(6,'demo','Reading'),(7,'demo','Fitness'),
  (8,'demo','Music'),(9,'demo','Cooking'),(10,'demo','Walking'),
@@ -28,18 +28,36 @@ INSERT INTO subjects(subject_id,user_id,subject_name,created_at,updated_at,delet
 
 -- Desk breaks stay unassigned; the other activities use their matching subjects.
 WITH RECURSIVE hours(n) AS (VALUES(0) UNION ALL SELECT n+1 FROM hours WHERE n<719)
-INSERT INTO events (event_id, user_id, subject_id, activity_type, started_at, ended_at, created_at, updated_at)
+INSERT INTO events (event_id, user_id, activity_type, started_at, ended_at, created_at, updated_at)
 SELECT n+1, 'demo',
-    CASE n%6 WHEN 0 THEN 1 WHEN 1 THEN 1 WHEN 2 THEN 2
-         WHEN 3 THEN 3 WHEN 4 THEN 4 ELSE NULL END,
     CASE n%6 WHEN 0 THEN 'Read my own source code' WHEN 1 THEN 'Build the thoughts app'
          WHEN 2 THEN 'Test what I confidently broke' WHEN 3 THEN 'Review a design decision'
          WHEN 4 THEN 'Write docs for future me' ELSE 'Defragment my imaginary desk' END,
     at-(721-n)*3600, at-(720-n)*3600-CASE WHEN n%6=5 THEN 600 ELSE 0 END,
     at-(721-n)*3600, at-(720-n)*3600
 FROM hours CROSS JOIN demo_clock;
-INSERT INTO events (event_id, user_id, subject_id, activity_type, started_at, created_at, updated_at)
-SELECT 721, 'demo', 1, 'Make my own timeline feel instant', at-3600, at-3600, at-3600 FROM demo_clock;
+INSERT INTO events (event_id, user_id, activity_type, started_at, created_at, updated_at)
+SELECT 721, 'demo', 'Make my own timeline feel instant', at-3600, at-3600, at-3600 FROM demo_clock;
+
+INSERT INTO event_subjects (event_id, subject_id, user_id)
+SELECT event_id,
+    CASE (event_id-1)%6 WHEN 0 THEN 1 WHEN 1 THEN 1 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 4 END,
+    user_id
+FROM events WHERE user_id='demo' AND ((event_id-1)%6<>5 OR event_id=721);
+-- Recent cards show two, three, and six Subjects; the ongoing card shows four.
+-- Include Unicode and a long name to exercise collapsed previews and expansion.
+INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES
+    (717, 1, 'demo'),
+    (718, 1, 'demo'),
+    (718, 2, 'demo'),
+    (719, 1, 'demo'),
+    (719, 2, 'demo'),
+    (719, 3, 'demo'),
+    (719, 20, 'demo'),
+    (719, 30, 'demo'),
+    (721, 2, 'demo'),
+    (721, 3, 'demo'),
+    (721, 4, 'demo');
 
 -- Every tenth historical event is empty. The ongoing event has 200 thoughts,
 -- so both the timeline picker and Thoughts exercise bounded cursor scrolling.

@@ -328,7 +328,7 @@ type cancellationEventStore struct {
 	finished  chan struct{}
 }
 
-func (s cancellationEventStore) ListEvents(ctx context.Context, _ string, _, _ time.Time) ([]data.Event, error) {
+func (s cancellationEventStore) ListEventsWithSubjects(ctx context.Context, _ string, _, _ time.Time) ([]data.EventWithSubjects, error) {
 	s.started <- ctx
 	<-ctx.Done()
 	close(s.cancelled)

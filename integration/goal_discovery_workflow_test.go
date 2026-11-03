@@ -128,7 +128,7 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		now := time.Now().UTC().Truncate(time.Second)
-		item, err := runtime.Events().CreatePast(t.Context(), owner, "Coding", now.Add(-2*time.Hour), now.Add(-time.Hour), &subject.SubjectID)
+		item, err := runtime.Events().CreatePast(t.Context(), owner, "Coding", now.Add(-2*time.Hour), now.Add(-time.Hour), []int64{subject.SubjectID})
 		if err != nil {
 			t.Fatal(err)
 		}

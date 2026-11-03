@@ -179,10 +179,14 @@ SELECT s.*, d.midnight,
     unixepoch(d.midnight,'unixepoch','localtime',printf('+%d hours',hour),'utc') AS started_at
 FROM spider_schedule s JOIN spider_dates d USING(day_number)
 WHERE slot<>2 OR day_number%3<>0;
-INSERT INTO events(event_id,user_id,subject_id,activity_type,started_at,ended_at,created_at,updated_at)
-SELECT day_number*8+slot+1,'spider-demo',subject_id,activity,
+INSERT INTO events(event_id,user_id,activity_type,started_at,ended_at,created_at,updated_at)
+SELECT day_number*8+slot+1,'spider-demo',activity,
     started_at,started_at+3000,started_at,started_at+3000
 FROM spider_activities CROSS JOIN spider_seed WHERE enabled;
+
+INSERT INTO event_subjects (event_id, subject_id, user_id)
+SELECT day_number*8+slot+1,subject_id,'spider-demo'
+FROM spider_activities CROSS JOIN spider_seed WHERE enabled AND subject_id IS NOT NULL;
 
 CREATE TEMP TABLE spider_notes(id INTEGER,subject_id INTEGER,body TEXT,observed INTEGER,mindset_end INTEGER);
 INSERT INTO spider_notes
@@ -196,10 +200,11 @@ SELECT day_number*16+3,intention_subject,intention,
     unixepoch(midnight,'unixepoch','localtime','+23 hours','+20 minutes','utc'),next_midnight FROM spider_dates;
 INSERT INTO spider_notes
 SELECT day_number*16+slot+4,subject_id,note,started_at+1800,NULL FROM spider_activities;
-INSERT INTO events(event_id,user_id,subject_id,activity_type,started_at,created_at,updated_at)
-SELECT 200,'spider-demo',1,'Recovery, rent, and a very loud spider-sense',
+INSERT INTO events(event_id,user_id,activity_type,started_at,created_at,updated_at)
+SELECT 200,'spider-demo','Recovery, rent, and a very loud spider-sense',
     max(midnight,at-2700),max(midnight,at-2700),max(midnight,at-2700)
 FROM spider_clock CROSS JOIN spider_seed WHERE enabled;
+INSERT INTO event_subjects (event_id, subject_id, user_id) SELECT 200,1,'spider-demo' FROM spider_seed WHERE enabled;
 INSERT INTO spider_notes
 SELECT 225,6,'My wrists make their own webs now. Great. Rent remains external. New senses report every pigeon and siren. Evolution forgot the volume control.',max(midnight,at-2400),NULL FROM spider_clock
 UNION ALL

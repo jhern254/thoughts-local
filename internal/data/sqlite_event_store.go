@@ -3,8 +3,10 @@ package data
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -16,13 +18,45 @@ type SQLiteEventStore struct{ db *sql.DB }
 
 func NewSQLiteEventStore(db *sql.DB) *SQLiteEventStore { return &SQLiteEventStore{db: db} }
 
-const eventColumns = `event_id, user_id, subject_id, activity_type, started_at, ended_at, version, created_at, updated_at`
-const activeEvents = ` FROM events WHERE deleted_at IS NULL
-	AND EXISTS (SELECT 1 FROM users WHERE users.user_id = events.user_id AND users.deleted_at IS NULL)`
+const eventColumns = `
+    event_id,
+    user_id,
+    COALESCE((
+        SELECT json_group_array(subject_id)
+        FROM (
+            SELECT event_subjects.subject_id
+            FROM event_subjects
+            JOIN subjects ON subjects.subject_id = event_subjects.subject_id
+                AND subjects.user_id = event_subjects.user_id
+            WHERE event_subjects.event_id = events.event_id
+                AND event_subjects.user_id = events.user_id
+                AND event_subjects.deleted_at IS NULL
+                AND subjects.deleted_at IS NULL
+            ORDER BY event_subjects.subject_id
+        )
+    ), '[]'),
+    activity_type,
+    started_at,
+    ended_at,
+    version,
+    created_at,
+    updated_at`
+
+const activeEvents = `
+FROM events
+WHERE deleted_at IS NULL
+    AND EXISTS (
+        SELECT 1
+        FROM users
+        WHERE users.user_id = events.user_id
+            AND users.deleted_at IS NULL
+    )`
 
 func (s *SQLiteEventStore) GetEvent(ctx context.Context, userID string, id int64) (*Event, error) {
 	item, err := scanEvent(s.db.QueryRowContext(ctx, `SELECT `+eventColumns+activeEvents+
-		` AND user_id = ? AND event_id = ?`, userID, id))
+		`
+    AND user_id = ?
+    AND event_id = ?`, userID, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrRecordNotFound
 	}
@@ -51,11 +85,13 @@ func (s *SQLiteEventStore) StartEvent(ctx context.Context, item *Event) (_ *Even
 	if err := requireEventOwner(ctx, tx, item.UserID); err != nil {
 		return nil, err
 	}
-	if err := requireEventSubject(ctx, tx, item); err != nil {
+	if err := validateEventSubjects(ctx, tx, item.UserID, item.SubjectIDs); err != nil {
 		return nil, err
 	}
 	previous, err := scanEvent(tx.QueryRowContext(ctx, `SELECT `+eventColumns+activeEvents+
-		` AND user_id = ? AND ended_at IS NULL`, item.UserID))
+		`
+    AND user_id = ?
+    AND ended_at IS NULL`, item.UserID))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -63,8 +99,13 @@ func (s *SQLiteEventStore) StartEvent(ctx context.Context, item *Event) (_ *Even
 		if item.StartedAt.Unix() < previous.StartedAt.Unix() {
 			return nil, ErrEventOverlap
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE events SET ended_at = ?, version = version + 1,
-			updated_at = max(updated_at, ?) WHERE event_id = ? AND user_id = ?`,
+		if _, err := tx.ExecContext(ctx, `
+            UPDATE events
+            SET ended_at = ?,
+                version = version + 1,
+                updated_at = max(updated_at, ?)
+            WHERE event_id = ?
+                AND user_id = ?`,
 			item.StartedAt.Unix(), item.UpdatedAt.Unix(), previous.EventID, item.UserID); err != nil {
 			return nil, err
 		}
@@ -100,7 +141,7 @@ func (s *SQLiteEventStore) AddPastEvent(ctx context.Context, item *Event) (_ *Ev
 	if err := requireEventOwner(ctx, tx, item.UserID); err != nil {
 		return nil, err
 	}
-	if err := requireEventSubject(ctx, tx, item); err != nil {
+	if err := validateEventSubjects(ctx, tx, item.UserID, item.SubjectIDs); err != nil {
 		return nil, err
 	}
 	if err := checkEventOverlap(ctx, tx, item, nil); err != nil {
@@ -117,21 +158,48 @@ func (s *SQLiteEventStore) AddPastEvent(ctx context.Context, item *Event) (_ *Ev
 }
 
 func insertEvent(ctx context.Context, tx *sql.Tx, item *Event) (*Event, error) {
-	created, err := scanEvent(tx.QueryRowContext(ctx, `INSERT INTO events
-		(user_id, subject_id, activity_type, started_at, ended_at, created_at, updated_at)
-		SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS
-		(SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL)
-		RETURNING `+eventColumns, item.UserID, item.SubjectID, item.ActivityType, item.StartedAt.Unix(),
+	created, err := scanEvent(tx.QueryRowContext(ctx, `
+	    INSERT INTO events (
+	                user_id,
+	                activity_type,
+	                started_at,
+	                ended_at,
+	                created_at,
+	                updated_at
+	            )
+	            SELECT ?, ?, ?, ?, ?, ?
+	            WHERE EXISTS (
+	                SELECT 1
+	                FROM users
+	                WHERE user_id = ?
+	                    AND deleted_at IS NULL
+	            )
+	            RETURNING
+	`+eventColumns, item.UserID, item.ActivityType, item.StartedAt.Unix(),
 		eventEndSeconds(item.EndedAt), item.CreatedAt.Unix(), item.UpdatedAt.Unix(), item.UserID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrRecordNotFound
 	}
-	return created, err
+	if err != nil {
+		return nil, err
+	}
+	if err := replaceEventSubjects(ctx, tx, item.UserID, created.EventID, item.SubjectIDs, item.UpdatedAt.Unix()); err != nil {
+		return nil, err
+	}
+	created.SubjectIDs = append([]int64{}, item.SubjectIDs...)
+	slices.Sort(created.SubjectIDs)
+	return created, nil
 }
 
 func requireEventOwner(ctx context.Context, tx *sql.Tx, userID string) error {
 	var active bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL)`, userID).Scan(&active); err != nil {
+	if err := tx.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT 1
+            FROM users
+            WHERE user_id = ?
+                AND deleted_at IS NULL
+        )`, userID).Scan(&active); err != nil {
 		return err
 	}
 	if !active {
@@ -153,9 +221,14 @@ func (s *SQLiteEventStore) ListEvents(ctx context.Context, userID string, from, 
 		return nil, ErrInvalidEventInterval
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT `+eventColumns+activeEvents+`
-		AND user_id = ? AND started_at < ?
-		AND (ended_at IS NULL OR ended_at > ? OR (ended_at = started_at AND started_at >= ?))
-		ORDER BY started_at, event_id`, userID, until.Unix(), from.Unix(), from.Unix())
+    AND user_id = ?
+    AND started_at < ?
+    AND (
+        ended_at IS NULL
+        OR ended_at > ?
+        OR (ended_at = started_at AND started_at >= ?)
+    )
+ORDER BY started_at, event_id`, userID, until.Unix(), from.Unix(), from.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +276,7 @@ func (s *SQLiteEventStore) EndEvent(ctx context.Context, userID string, id, vers
 	return result, nil
 }
 
-// UpdateEvent edits label/times without changing lifecycle state. Use EndEvent
+// UpdateEvent replaces label, times, and Subjects without changing lifecycle state. Use EndEvent
 // to finish an ongoing event; reopening completed events is not supported.
 func (s *SQLiteEventStore) UpdateEvent(ctx context.Context, item *Event) (_ *Event, err error) {
 	defer func() {
@@ -220,7 +293,7 @@ func (s *SQLiteEventStore) UpdateEvent(ctx context.Context, item *Event) (_ *Eve
 	if err != nil {
 		return nil, err
 	}
-	if err := requireEventSubject(ctx, tx, item); err != nil {
+	if err := validateEventSubjects(ctx, tx, item.UserID, item.SubjectIDs); err != nil {
 		return nil, err
 	}
 	if (current.EndedAt == nil) != (item.EndedAt == nil) {
@@ -230,6 +303,11 @@ func (s *SQLiteEventStore) UpdateEvent(ctx context.Context, item *Event) (_ *Eve
 	if err != nil {
 		return nil, err
 	}
+	if err := replaceEventSubjects(ctx, tx, item.UserID, item.EventID, item.SubjectIDs, item.UpdatedAt.Unix()); err != nil {
+		return nil, err
+	}
+	result.SubjectIDs = append([]int64{}, item.SubjectIDs...)
+	slices.Sort(result.SubjectIDs)
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -238,7 +316,9 @@ func (s *SQLiteEventStore) UpdateEvent(ctx context.Context, item *Event) (_ *Eve
 
 func eventForEdit(ctx context.Context, tx *sql.Tx, userID string, id, version int64) (*Event, error) {
 	item, err := scanEvent(tx.QueryRowContext(ctx, `SELECT `+eventColumns+activeEvents+
-		` AND user_id = ? AND event_id = ?`, userID, id))
+		`
+    AND user_id = ?
+    AND event_id = ?`, userID, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrRecordNotFound
 	}
@@ -255,10 +335,18 @@ func updateEvent(ctx context.Context, tx *sql.Tx, item *Event) (*Event, error) {
 	if err := checkEventOverlap(ctx, tx, item, &item.EventID); err != nil {
 		return nil, err
 	}
-	updated, err := scanEvent(tx.QueryRowContext(ctx, `UPDATE events SET subject_id = ?, activity_type = ?, started_at = ?, ended_at = ?,
-		version = version + 1, updated_at = max(updated_at, ?)
-		WHERE user_id = ? AND event_id = ? AND version = ? AND deleted_at IS NULL
-		RETURNING `+eventColumns, item.SubjectID, item.ActivityType, item.StartedAt.Unix(), eventEndSeconds(item.EndedAt),
+	updated, err := scanEvent(tx.QueryRowContext(ctx, `
+        UPDATE events
+        SET activity_type = ?,
+            started_at = ?,
+            ended_at = ?,
+            version = version + 1,
+            updated_at = max(updated_at, ?)
+        WHERE user_id = ?
+            AND event_id = ?
+            AND version = ?
+            AND deleted_at IS NULL
+        RETURNING `+eventColumns, item.ActivityType, item.StartedAt.Unix(), eventEndSeconds(item.EndedAt),
 		item.UpdatedAt.Unix(), item.UserID, item.EventID, item.Version))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrRecordNotFound
@@ -279,10 +367,17 @@ func checkEventOverlap(ctx context.Context, tx *sql.Tx, item *Event, excludeID *
 		}
 	}
 	var overlap bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM events
-		WHERE user_id = ? AND deleted_at IS NULL AND (? IS NULL OR event_id <> ?)
-		AND (ended_at IS NULL OR ended_at > started_at)
-		AND (? IS NULL OR started_at < ?) AND (ended_at IS NULL OR ended_at > ?))`,
+	err := tx.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT 1
+            FROM events
+            WHERE user_id = ?
+                AND deleted_at IS NULL
+                AND (? IS NULL OR event_id <> ?)
+                AND (ended_at IS NULL OR ended_at > started_at)
+                AND (? IS NULL OR started_at < ?)
+                AND (ended_at IS NULL OR ended_at > ?)
+        )`,
 		item.UserID, excludeID, excludeID, end, end, start).Scan(&overlap)
 	if err != nil {
 		return err
@@ -307,8 +402,12 @@ func scanEvent(row eventScanner) (*Event, error) {
 	var item Event
 	var start, created, updated int64
 	var end sql.NullInt64
-	if err := row.Scan(&item.EventID, &item.UserID, &item.SubjectID, &item.ActivityType, &start, &end,
+	var subjectIDs string
+	if err := row.Scan(&item.EventID, &item.UserID, &subjectIDs, &item.ActivityType, &start, &end,
 		&item.Version, &created, &updated); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(subjectIDs), &item.SubjectIDs); err != nil {
 		return nil, err
 	}
 	item.StartedAt, item.CreatedAt, item.UpdatedAt = TimeFromUnixSec(start), TimeFromUnixSec(created), TimeFromUnixSec(updated)
@@ -317,19 +416,4 @@ func scanEvent(row eventScanner) (*Event, error) {
 		item.EndedAt = &ended
 	}
 	return &item, nil
-}
-
-// Validate optional assignments in the same transaction as the event write.
-func requireEventSubject(ctx context.Context, tx *sql.Tx, item *Event) error {
-	if item.SubjectID == nil {
-		return nil
-	}
-	var available bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subjects WHERE subject_id = ? AND user_id = ? AND deleted_at IS NULL)`, item.SubjectID, item.UserID).Scan(&available); err != nil {
-		return err
-	}
-	if !available {
-		return ErrRecordNotFound
-	}
-	return nil
 }

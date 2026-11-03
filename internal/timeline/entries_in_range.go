@@ -21,6 +21,7 @@ func (k EntryKey) IsZero() bool { return k == (EntryKey{}) }
 // outside events carry no event ID, activity, or duration and must never be passed
 // to event mutation operations.
 type Entry struct {
+	Subjects              []data.EventSubjectView
 	Event                 *data.Event
 	ThoughtsOutsideEvents *data.ThoughtGroupOutsideEvents
 }
@@ -42,7 +43,7 @@ func (e Entry) StartedAt() time.Time {
 // ListEntriesInRange returns real events and thoughts outside event intervals
 // in chronological order. The two reads do not form a transactional snapshot.
 func (s *Service) ListEntriesInRange(ctx context.Context, userID string, from, until time.Time) ([]Entry, error) {
-	events, err := s.events.List(ctx, userID, from, until)
+	events, err := s.events.ListWithSubjects(ctx, userID, from, until)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func (s *Service) ListEntriesInRange(ctx context.Context, userID string, from, u
 	}
 	entries := make([]Entry, 0, len(events)+len(thoughtGroupsOutsideEvents))
 	for i := range events {
-		entries = append(entries, Entry{Event: &events[i]})
+		entries = append(entries, Entry{Event: &events[i].Event, Subjects: events[i].Subjects})
 	}
 	for i := range thoughtGroupsOutsideEvents {
 		entries = append(entries, Entry{ThoughtsOutsideEvents: &thoughtGroupsOutsideEvents[i]})

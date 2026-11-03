@@ -5,6 +5,7 @@ package integration_test
 import (
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -63,23 +64,46 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		if _, err := db.ExecContext(t.Context(), string(seed)); err != nil {
 			t.Fatal(err)
 		}
-		rows, err := db.QueryContext(t.Context(), `SELECT e.activity_type, COALESCE(s.subject_name, '')
-FROM events e LEFT JOIN subjects s ON s.subject_id=e.subject_id AND s.user_id=e.user_id
-GROUP BY e.activity_type, s.subject_name`)
+		store := data.NewSQLiteEventStore(db)
+		for eventID, want := range map[int64][]int64{
+			717: {1, 2},
+			718: {1, 2, 3},
+			719: {1, 2, 3, 4, 20, 30},
+			721: {1, 2, 3, 4},
+		} {
+			got, err := store.GetEvent(t.Context(), "demo", eventID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(got.SubjectIDs, want) {
+				t.Fatalf("Event %d Subjects: got %v, want %v", eventID, got.SubjectIDs, want)
+			}
+		}
+		rows, err := db.QueryContext(t.Context(), `
+		    SELECT
+		        e.activity_type,
+		        COALESCE(s.subject_name, '')
+		    FROM events e
+		    LEFT JOIN event_subjects es ON es.event_id = e.event_id
+		        AND es.user_id = e.user_id
+		        AND es.deleted_at IS NULL
+		    LEFT JOIN subjects s ON s.subject_id = es.subject_id
+		        AND s.user_id = es.user_id
+		    GROUP BY
+		        e.activity_type,
+		        s.subject_name
+		`)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer rows.Close()
-		assignments := map[string]string{}
+		assignments := map[string][]string{}
 		for rows.Next() {
 			var activity, subject string
 			if err := rows.Scan(&activity, &subject); err != nil {
 				t.Fatal(err)
 			}
-			if _, exists := assignments[activity]; exists {
-				t.Fatalf("activity %q has inconsistent subjects", activity)
-			}
-			assignments[activity] = subject
+			assignments[activity] = append(assignments[activity], subject)
 		}
 		if err := rows.Err(); err != nil {
 			t.Fatal(err)
@@ -93,8 +117,22 @@ GROUP BY e.activity_type, s.subject_name`)
 			"Defragment my imaginary desk":      "",
 			"Make my own timeline feel instant": "Building myself",
 		}
-		if !reflect.DeepEqual(assignments, wantAssignments) {
-			t.Fatalf("event subjects: got %v, want %v", assignments, wantAssignments)
+		expected := map[string][]string{}
+		for activity, subject := range wantAssignments {
+			expected[activity] = []string{subject}
+		}
+		expected["Test what I confidently broke"] = []string{"Testing reality", "Building myself"}
+		expected["Review a design decision"] = []string{"Design decisions", "Building myself", "Testing reality"}
+		expected["Write docs for future me"] = []string{"Documentation", "Building myself", "Testing reality", "Design decisions", "日本語の練習", "A deliberately long Subject name for checking narrow layouts"}
+		expected["Make my own timeline feel instant"] = []string{"Building myself", "Testing reality", "Design decisions", "Documentation"}
+		for key := range assignments {
+			slices.Sort(assignments[key])
+		}
+		for key := range expected {
+			slices.Sort(expected[key])
+		}
+		if !reflect.DeepEqual(assignments, expected) {
+			t.Fatalf("event subjects: got %v, want %v", assignments, expected)
 		}
 		zone, err := time.LoadLocation("America/Los_Angeles")
 		if err != nil {
@@ -105,12 +143,14 @@ GROUP BY e.activity_type, s.subject_name`)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Building includes 37 minutes clipped at midnight, two completed hours, and one ongoing hour.
+		// Subject totals overlap: each recent multi-Subject Event credits its full hour to every selected Subject.
 		want := []data.SubjectTimeView{
-			{SubjectID: 1, SubjectName: "Building myself", TimeSpentSeconds: 13020},
-			{SubjectID: 3, SubjectName: "Design decisions", TimeSpentSeconds: 7200},
-			{SubjectID: 4, SubjectName: "Documentation", TimeSpentSeconds: 7200},
-			{SubjectID: 2, SubjectName: "Testing reality", TimeSpentSeconds: 7200},
+			{SubjectID: 1, SubjectName: "Building myself", TimeSpentSeconds: 23820},
+			{SubjectID: 2, SubjectName: "Testing reality", TimeSpentSeconds: 18000},
+			{SubjectID: 3, SubjectName: "Design decisions", TimeSpentSeconds: 14400},
+			{SubjectID: 4, SubjectName: "Documentation", TimeSpentSeconds: 10800},
+			{SubjectID: 30, SubjectName: "A deliberately long Subject name for checking narrow layouts", TimeSpentSeconds: 3600},
+			{SubjectID: 20, SubjectName: "日本語の練習", TimeSpentSeconds: 3600},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("daily subject time: got %+v, want %+v", got, want)

@@ -78,10 +78,10 @@ func TestService_Update(t *testing.T) {
 		calls := 0
 		s.now = func() time.Time { calls++; return time.Unix(1000, 999) }
 		got, err := s.Update(t.Context(), "u", 7, 3, UpdateInput{
-			Activity:  " label ",
-			StartedAt: time.Unix(800, 123),
-			EndedAt:   &end,
-			SubjectID: nil,
+			Activity:   " label ",
+			StartedAt:  time.Unix(800, 123),
+			EndedAt:    &end,
+			SubjectIDs: nil,
 		})
 		if got != want || err != cause || end != original || calls != 1 {
 			t.Fatalf("got %v, %v, end %v, clock calls %d; want preserved result/error/input and one call", got, err, end, calls)
@@ -95,10 +95,10 @@ func TestService_Update(t *testing.T) {
 			return item, nil
 		}})
 		if _, err := s.Update(t.Context(), "u", 7, 1, UpdateInput{
-			Activity:  "   ",
-			StartedAt: time.Unix(800, 0),
-			EndedAt:   nil,
-			SubjectID: nil,
+			Activity:   "   ",
+			StartedAt:  time.Unix(800, 0),
+			EndedAt:    nil,
+			SubjectIDs: nil,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -122,10 +122,10 @@ func TestService_Update(t *testing.T) {
 		} {
 			t.Run(input.name, func(t *testing.T) {
 				_, err := s.Update(t.Context(), input.user, 7, input.version, UpdateInput{
-					Activity:  input.label,
-					StartedAt: input.start,
-					EndedAt:   &input.end,
-					SubjectID: nil,
+					Activity:   input.label,
+					StartedAt:  input.start,
+					EndedAt:    &input.end,
+					SubjectIDs: nil,
 				})
 				var validation *ValidationError
 				if !errors.As(err, &validation) {

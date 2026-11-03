@@ -116,7 +116,32 @@ func (m *Model) cardContent(item data.Event) []string {
 
 func (m *Model) entryContent(entry timeline.Entry) []string {
 	if entry.Event != nil {
-		return m.cardContent(*entry.Event)
+		rows := m.cardContent(*entry.Event)
+		if entry.Key() != m.expanded {
+			names := []string{}
+			for _, subject := range entry.Subjects {
+				names = append(names, singleLine(subject.SubjectName))
+			}
+			more := len(names) > 3
+			if more {
+				names = names[:3]
+			}
+			label := strings.Join(names, " · ")
+			if len(names) == 0 {
+				label = "Misc"
+			}
+			if more {
+				label += " ..."
+			}
+			if len(rows) > 1 {
+				count := rows[1]
+				available := m.cardWidth() - ansi.StringWidth(count) - 3
+				if available > 3 {
+					rows[1] = ansi.Truncate(label, available, "...") + " · " + count
+				}
+			}
+		}
+		return rows
 	}
 	heading := list.DefaultStyles(true).Title.Render("Misc")
 	count := "1 thought"
@@ -130,7 +155,7 @@ func (m *Model) cardRows(heading string, key timeline.EntryKey, count string, on
 	width := m.cardWidth()
 	content := ansi.Truncate(heading, width, "…") + "\n"
 	if key == m.expanded {
-		if subject, assigned := m.expandedSubjectRow(); assigned {
+		if subject, assigned := m.expandedSubjectRows(); assigned {
 			content += subject + "\n"
 		}
 		content += "\n"
@@ -165,13 +190,41 @@ func (m *Model) cardRows(heading string, key timeline.EntryKey, count string, on
 	return lines
 }
 
-func (m *Model) expandedSubjectRow() (string, bool) {
+func (m *Model) expandedSubjectRows() (string, bool) {
 	for _, entry := range m.entries {
-		if entry.Key() != m.expanded || entry.Event == nil || entry.Event.SubjectID == nil {
+		if entry.Key() != m.expanded || entry.Event == nil || len(entry.Event.SubjectIDs) == 0 {
 			continue
 		}
-		if m.expandedSubjectErr == nil && m.expandedSubject != nil && m.expandedSubject.SubjectID == *entry.Event.SubjectID {
-			return list.DefaultStyles(true).Title.Render(singleLine(m.expandedSubject.SubjectName)), true
+		matching := len(m.expandedSubjects) == len(entry.Event.SubjectIDs)
+		for _, subject := range m.expandedSubjects {
+			found := false
+			for _, id := range entry.Event.SubjectIDs {
+				if id == subject.SubjectID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				matching = false
+			}
+		}
+		if m.expandedSubjectErr == nil && matching && len(m.expandedSubjects) > 0 {
+			// Keep the selected block first so it remains visible at narrow widths.
+			start := m.expandedSubjectIndex
+			end := min(start+3, len(m.expandedSubjects))
+			var badges []string
+			for index := start; index < end; index++ {
+				style := list.DefaultStyles(true).Title
+				if m.expandedSubjectFocused && (m.blurred || index != start) {
+					style = style.Background(lipgloss.Color("#3C344A")).Foreground(lipgloss.Color("#B7A8CD"))
+				}
+				badges = append(badges, style.Render(singleLine(m.expandedSubjects[index].SubjectName)))
+			}
+			label := strings.Join(badges, " ")
+			if end < len(m.expandedSubjects) {
+				label += " ..."
+			}
+			return ansi.Truncate(label, m.cardWidth(), "…"), true
 		}
 		if m.opening {
 			// Reserve the badge row without flashing feedback for a short read.
@@ -185,8 +238,8 @@ func (m *Model) expandedSubjectRow() (string, bool) {
 func (m *Model) expandedThoughtsRow() int {
 	// The top border, heading and blank separator precede the picker.
 	row := 3
-	if _, assigned := m.expandedSubjectRow(); assigned {
-		row++
+	if subjects, assigned := m.expandedSubjectRows(); assigned {
+		row += 1 + strings.Count(subjects, "\n")
 	}
 	return row
 }
@@ -509,6 +562,9 @@ func (m Model) View() string {
 	}
 	if !m.expanded.IsZero() {
 		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
+		if m.expandedSubjectFocused {
+			status = "←/→: Subjects • ↓: Thoughts • Q/Esc: collapse"
+		}
 	}
 	help := "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end"
 	if m.day.Equal(displaytime.Day(m.clock)) {
