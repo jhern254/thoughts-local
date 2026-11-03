@@ -6,10 +6,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/jhern254/go-thoughts/internal/data"
-	"github.com/jhern254/go-thoughts/internal/event"
 	"testing"
 	"time"
+
+	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/event"
 )
 
 func attributionFixture(t *testing.T) (*sql.DB, *event.Service) {

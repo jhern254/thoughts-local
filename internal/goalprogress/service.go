@@ -4,6 +4,7 @@ package goalprogress
 
 import (
 	"context"
+
 	"github.com/jhern254/go-thoughts/internal/data"
 )
 

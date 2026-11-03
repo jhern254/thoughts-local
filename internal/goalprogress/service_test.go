@@ -3,8 +3,9 @@ package goalprogress
 import (
 	"context"
 	"errors"
-	"github.com/jhern254/go-thoughts/internal/data"
 	"testing"
+
+	"github.com/jhern254/go-thoughts/internal/data"
 )
 
 type summaryReaderStub func(context.Context, string, int64) (data.GoalProgressSummary, error)
