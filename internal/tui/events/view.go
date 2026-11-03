@@ -209,11 +209,15 @@ func (m *Model) expandedSubjectRows() (string, bool) {
 			}
 		}
 		if m.expandedSubjectErr == nil && matching && len(m.expandedSubjects) > 0 {
-			var badges []string
-			for _, subject := range m.expandedSubjects {
-				badges = append(badges, ansi.Truncate(list.DefaultStyles(true).Title.Render(singleLine(subject.SubjectName)), m.cardWidth(), "…"))
+			var names []string
+			for _, subject := range m.expandedSubjects[:min(3, len(m.expandedSubjects))] {
+				names = append(names, singleLine(subject.SubjectName))
 			}
-			return strings.Join(badges, "\n"), true
+			label := strings.Join(names, " · ")
+			if len(m.expandedSubjects) > 3 {
+				label += " ..."
+			}
+			return ansi.Truncate(list.DefaultStyles(true).Title.Render(label), m.cardWidth(), "…"), true
 		}
 		if m.opening {
 			// Reserve the badge row without flashing feedback for a short read.

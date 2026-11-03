@@ -211,7 +211,7 @@ func TestModel_EventSubjectBadge(t *testing.T) {
 }
 
 func TestModel_MultipleSubjectPreview(t *testing.T) {
-	t.Run("bounds names and preserves the Thought count while expansion lists every Subject", func(t *testing.T) {
+	t.Run("bounds Subject names on one row in collapsed and expanded cards", func(t *testing.T) {
 		m, store, _ := fixture(t)
 		subjects := []data.Subject{{SubjectID: 1, SubjectName: "Programming"}, {SubjectID: 2, SubjectName: "Research"}, {SubjectID: 3, SubjectName: "Projects"}, {SubjectID: 4, SubjectName: "Writing"}}
 		m.subjectReader = &subjectReaderStub{items: subjects}
@@ -225,11 +225,12 @@ func TestModel_MultipleSubjectPreview(t *testing.T) {
 			t.Fatalf("collapsed preview got %q, want bounded names plus Thought count", rows[1])
 		}
 		m = execute(t, m, m.openEvent(1))
-		expanded := strings.Join(m.entryContent(m.entries[0]), "\n")
-		for _, subject := range subjects {
-			if !strings.Contains(ansi.Strip(expanded), subject.SubjectName) {
-				t.Fatalf("expanded Event omitted %q", subject.SubjectName)
-			}
+		content := m.entryContent(m.entries[0])
+		if got, want := strings.TrimSpace(ansi.Strip(content[1])), "Programming · Research · Projects ..."; got != want {
+			t.Fatalf("expanded Subjects: got %q, want %q", got, want)
+		}
+		if content[2] != "" || !strings.Contains(content[3], "230 thoughts") {
+			t.Fatalf("expanded rows: got %q, want one Subject row and a separator before Thoughts", content[:4])
 		}
 		m, _ = m.Update(eventKey("left"))
 		m.Resize(40, 20)
@@ -238,4 +239,38 @@ func TestModel_MultipleSubjectPreview(t *testing.T) {
 			t.Fatalf("narrow preview hid Thought count: %q", rows[1])
 		}
 	})
+}
+
+func TestModel_ExpandedSubjectLine(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		names []string
+		want  string
+	}{
+		{"two Subjects", []string{"Go", "Research"}, "Go · Research"},
+		{"three Subjects", []string{"Go", "Research", "Projects"}, "Go · Research · Projects"},
+		{"four Subjects", []string{"Go", "Research", "Projects", "Writing"}, "Go · Research · Projects ..."},
+		{"six Subjects", []string{"Go", "Research", "Projects", "Writing", "Reading", "Music"}, "Go · Research · Projects ..."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, store, _ := fixture(t)
+			var subjects []data.Subject
+			for i, name := range tc.names {
+				id := int64(i + 1)
+				store.items[0].SubjectIDs = append(store.items[0].SubjectIDs, id)
+				subjects = append(subjects, data.Subject{SubjectID: id, SubjectName: name})
+			}
+			m.entries[0].Event.SubjectIDs = store.items[0].SubjectIDs
+			m.subjectReader = &subjectReaderStub{items: subjects}
+			m = execute(t, m, m.openEvent(1))
+			if got := strings.TrimSpace(ansi.Strip(m.entryContent(m.entries[0])[1])); got != tc.want {
+				t.Fatalf("Subject row: got %q, want %q", got, tc.want)
+			}
+			m.Resize(40, 20)
+			content := m.entryContent(m.entries[0])
+			if ansi.StringWidth(content[1]) > m.cardWidth() || content[2] != "" || !strings.Contains(content[3], "230 thoughts") {
+				t.Fatalf("narrow card: got %q, want one clipped Subject row and a separator before Thoughts", content[:4])
+			}
+		})
+	}
 }

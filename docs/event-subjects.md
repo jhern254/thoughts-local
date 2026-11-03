@@ -50,7 +50,7 @@ selection. Existing Event editing and historical creation remain service APIs.
 
 Collapsed cards keep a single compact Subject preview alongside the Thought
 count, showing up to three names and `...` for additional Subjects or clipped
-names. Expansion shows every live Subject on its own width-bounded row. The
+names. Expansion uses the same three-name limit on one width-bounded row, followed by `...` when more Subjects are assigned. The
 preview reuses the existing row to preserve card height and the timestamp rail.
 Subject display reads use a single SQLite statement per day, rather than a
 Subject lookup for each Event. Expanded cards revalidate their live Subjects
