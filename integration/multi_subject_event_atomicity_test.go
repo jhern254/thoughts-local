@@ -19,10 +19,19 @@ func multiSubjectEventFixture(t *testing.T) (*sql.DB, *event.Service) {
 	db, _ := openMigratedSQLite(t)
 	insertUsers(t, db, "u", "other")
 	if _, err := db.Exec(`
-  INSERT INTO subjects(subject_id,user_id,subject_name) VALUES
-   (1,'u','Coding'),(2,'u','Research'),(3,'u','Projects'),(4,'other','Foreign');
-  INSERT INTO subjects(subject_id,user_id,subject_name,deleted_at) VALUES (5,'u','Deleted',unixepoch());
- `); err != nil {
+	    INSERT INTO
+	        subjects (subject_id, user_id, subject_name)
+	    VALUES
+	        (1, 'u', 'Coding'),
+	        (2, 'u', 'Research'),
+	        (3, 'u', 'Projects'),
+	        (4, 'other', 'Foreign');
+
+	    INSERT INTO
+	        subjects (subject_id, user_id, subject_name, deleted_at)
+	    VALUES
+	        (5, 'u', 'Deleted', unixepoch());
+	`); err != nil {
 		t.Fatal(err)
 	}
 	return db, event.NewService(data.NewSQLiteEventStore(db))
@@ -46,7 +55,11 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("Subjects got %+v, %v; want %v", read, err, want)
 			}
 			var count int
-			if err := db.QueryRow(`SELECT count(*) FROM events`).Scan(&count); err != nil {
+			if err := db.QueryRow(`
+			    SELECT
+			        count(*)
+			    FROM events
+			`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 1 {
@@ -79,7 +92,11 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("Event changed: got %+v, %v; want %+v", after, err, before)
 			}
 			var count int
-			if err := db.QueryRow(`SELECT count(*) FROM events`).Scan(&count); err != nil {
+			if err := db.QueryRow(`
+			    SELECT
+			        count(*)
+			    FROM events
+			`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 1 {
@@ -93,7 +110,13 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`CREATE TRIGGER reject_second_subject BEFORE INSERT ON event_subjects WHEN NEW.subject_id=2 BEGIN SELECT RAISE(ABORT,'synthetic association failure'); END`); err != nil {
+		if _, err := db.Exec(`
+		    CREATE TRIGGER reject_second_subject BEFORE INSERT ON event_subjects WHEN NEW.subject_id = 2 BEGIN
+		    SELECT
+		        RAISE (ABORT, 'synthetic association failure');
+
+		    END
+		`); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := service.Create(t.Context(), "u", "Reject", eventTime(200), []int64{1, 2}); err == nil {
@@ -104,7 +127,19 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("predecessor got %+v,%v; want unchanged %+v", after, err, before)
 		}
 		var events, links int
-		if err := db.QueryRow(`SELECT (SELECT count(*) FROM events),(SELECT count(*) FROM event_subjects)`).Scan(&events, &links); err != nil {
+		if err := db.QueryRow(`
+		    SELECT
+		        (
+		            SELECT
+		                count(*)
+		            FROM events
+		        ),
+		        (
+		            SELECT
+		                count(*)
+		            FROM event_subjects
+		        )
+		`).Scan(&events, &links); err != nil {
 			t.Fatal(err)
 		}
 		if events != 1 || links != 1 {
@@ -160,7 +195,13 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 			}
 		}
 		var retained int
-		if err := db.QueryRow(`SELECT count(*) FROM event_subjects WHERE event_id=? AND deleted_at IS NOT NULL`, before.EventID).Scan(&retained); err != nil {
+		if err := db.QueryRow(`
+		    SELECT
+		        count(*)
+		    FROM event_subjects
+		    WHERE event_id = ?
+		        AND deleted_at IS NOT NULL
+		`, before.EventID).Scan(&retained); err != nil {
 			t.Fatal(err)
 		}
 		if retained != 3 {
@@ -176,7 +217,14 @@ func TestMultiSubjectEventNoOp_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`CREATE TRIGGER reject_relationship_rewrite BEFORE UPDATE ON event_subjects BEGIN SELECT RAISE(ABORT,'relationship row rewritten'); END`); err != nil {
+		if _, err := db.Exec(`
+		    CREATE TRIGGER reject_relationship_rewrite BEFORE
+		    UPDATE ON event_subjects BEGIN
+		    SELECT
+		        RAISE (ABORT, 'relationship row rewritten');
+
+		    END
+		`); err != nil {
 			t.Fatal(err)
 		}
 		selected := []int64{2, 1}

@@ -16,7 +16,11 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 	t.Run("stress diary has valid intervals and enough thoughts for bounded browsing", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		const anchor = 1789151820
-		if _, err := db.Exec(`CREATE TEMP TABLE demo_clock AS SELECT ? AS at`, anchor); err != nil {
+		if _, err := db.Exec(`
+		    CREATE TEMP TABLE demo_clock AS
+		    SELECT
+		        ? AS at
+		`, anchor); err != nil {
 			t.Fatal(err)
 		}
 		seed, err := os.ReadFile("../scripts/demo_stress.sql")
@@ -27,15 +31,62 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		var events, ongoing, thoughts, misc, current, invalid int
-		err = db.QueryRow(`SELECT
-			(SELECT COUNT(*) FROM events),
-			(SELECT COUNT(*) FROM events WHERE ended_at IS NULL),
-			(SELECT COUNT(*) FROM thoughts),
-			(SELECT COUNT(*) FROM thoughts WHERE subject_id IS NULL),
-			(SELECT COUNT(*) FROM thoughts WHERE observed_at >= (SELECT started_at FROM events WHERE ended_at IS NULL)),
-			(SELECT COUNT(*) FROM events e WHERE e.started_at > ? OR e.ended_at > ?
-			 OR EXISTS (SELECT 1 FROM events p WHERE p.event_id < e.event_id AND p.ended_at > e.started_at))
-			 + (SELECT COUNT(*) FROM thoughts WHERE observed_at > ? OR user_id <> 'demo')`, anchor, anchor, anchor).
+		err = db.QueryRow(`
+		    SELECT
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM events
+		        ),
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM events
+		            WHERE ended_at IS NULL
+		        ),
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM thoughts
+		        ),
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM thoughts
+		            WHERE subject_id IS NULL
+		        ),
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM thoughts
+		            WHERE observed_at >= (
+		                    SELECT
+		                        started_at
+		                    FROM events
+		                    WHERE ended_at IS NULL
+		                )
+		        ),
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM events e
+		            WHERE e.started_at > ?
+		                OR e.ended_at > ?
+		                OR EXISTS (
+		                    SELECT
+		                        1
+		                    FROM events p
+		                    WHERE p.event_id < e.event_id
+		                        AND p.ended_at > e.started_at
+		                )
+		        ) + (
+		            SELECT
+		                COUNT(*)
+		            FROM thoughts
+		            WHERE observed_at > ?
+		                OR user_id <> 'demo'
+		        )
+		`, anchor, anchor, anchor).
 			Scan(&events, &ongoing, &thoughts, &misc, &current, &invalid)
 		if err != nil {
 			t.Fatal(err)
@@ -44,7 +95,9 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("got events/ongoing/thoughts/Misc/current/invalid %v, want %v", got, want)
 		}
 		var integrity string
-		if err := db.QueryRow("PRAGMA integrity_check").Scan(&integrity); err != nil {
+		if err := db.QueryRow(`
+		    PRAGMA integrity_check
+		`).Scan(&integrity); err != nil {
 			t.Fatal(err)
 		}
 		if integrity != "ok" {
@@ -54,7 +107,11 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 	t.Run("stress diary assigns matching event subjects and supplies daily time metrics", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		const anchor = 1789151820
-		if _, err := db.Exec(`CREATE TEMP TABLE demo_clock AS SELECT ? AS at`, anchor); err != nil {
+		if _, err := db.Exec(`
+		    CREATE TEMP TABLE demo_clock AS
+		    SELECT
+		        ? AS at
+		`, anchor); err != nil {
 			t.Fatal(err)
 		}
 		seed, err := os.ReadFile("../scripts/demo_stress.sql")
@@ -64,9 +121,20 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		if _, err := db.ExecContext(t.Context(), string(seed)); err != nil {
 			t.Fatal(err)
 		}
-		rows, err := db.QueryContext(t.Context(), `SELECT e.activity_type, COALESCE(s.subject_name, '')
-FROM events e LEFT JOIN event_subjects es ON es.event_id=e.event_id AND es.user_id=e.user_id AND es.deleted_at IS NULL LEFT JOIN subjects s ON s.subject_id=es.subject_id AND s.user_id=es.user_id
-GROUP BY e.activity_type, s.subject_name`)
+		rows, err := db.QueryContext(t.Context(), `
+		    SELECT
+		        e.activity_type,
+		        COALESCE(s.subject_name, '')
+		    FROM events e
+		    LEFT JOIN event_subjects es ON es.event_id = e.event_id
+		        AND es.user_id = e.user_id
+		        AND es.deleted_at IS NULL
+		    LEFT JOIN subjects s ON s.subject_id = es.subject_id
+		        AND s.user_id = es.user_id
+		    GROUP BY
+		        e.activity_type,
+		        s.subject_name
+		`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,7 +197,11 @@ GROUP BY e.activity_type, s.subject_name`)
 	t.Run("stress diary supplies three mindsets per populated day without accumulating active history", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		const anchor = 1789151820
-		if _, err := db.Exec(`CREATE TEMP TABLE demo_clock AS SELECT ? AS at`, anchor); err != nil {
+		if _, err := db.Exec(`
+		    CREATE TEMP TABLE demo_clock AS
+		    SELECT
+		        ? AS at
+		`, anchor); err != nil {
 			t.Fatal(err)
 		}
 		seed, err := os.ReadFile("../scripts/demo_stress.sql")
@@ -139,9 +211,13 @@ GROUP BY e.activity_type, s.subject_name`)
 		if _, err := db.ExecContext(t.Context(), string(seed)); err != nil {
 			t.Fatal(err)
 		}
-		rows, err := db.QueryContext(t.Context(), `SELECT DISTINCT
-			unixepoch(observed_at, 'unixepoch', 'localtime', 'start of day', 'utc')
-			FROM thoughts ORDER BY 1`)
+		rows, err := db.QueryContext(t.Context(), `
+		    SELECT DISTINCT
+		        unixepoch(observed_at, 'unixepoch', 'localtime', 'start of day', 'utc')
+		    FROM thoughts
+		    ORDER BY
+		        1
+		`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,14 +266,46 @@ GROUP BY e.activity_type, s.subject_name`)
 			t.Fatal(err)
 		}
 		var subjects, thoughts, misc, completed, currentThoughts int
-		err = db.QueryRow(`SELECT
-			(SELECT COUNT(*) FROM subjects WHERE user_id = u.user_id),
-			(SELECT COUNT(*) FROM thoughts WHERE user_id = u.user_id),
-			(SELECT COUNT(*) FROM thoughts WHERE user_id = u.user_id AND subject_id IS NULL),
-			(SELECT COUNT(*) FROM events WHERE user_id = u.user_id AND ended_at IS NOT NULL),
-			(SELECT COUNT(*) FROM thoughts t JOIN events e ON e.user_id = t.user_id
-			 WHERE t.user_id = u.user_id AND e.ended_at IS NULL AND t.observed_at >= e.started_at)
-			FROM users u WHERE handle = 'local'`).Scan(&subjects, &thoughts, &misc, &completed, &currentThoughts)
+		err = db.QueryRow(`
+		    SELECT
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM subjects
+		            WHERE user_id = u.user_id
+		        ),
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM thoughts
+		            WHERE user_id = u.user_id
+		        ),
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM thoughts
+		            WHERE user_id = u.user_id
+		                AND subject_id IS NULL
+		        ),
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM events
+		            WHERE user_id = u.user_id
+		                AND ended_at IS NOT NULL
+		        ),
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM thoughts t
+		            JOIN events e ON e.user_id = t.user_id
+		            WHERE t.user_id = u.user_id
+		                AND e.ended_at IS NULL
+		                AND t.observed_at >= e.started_at
+		        )
+		    FROM users u
+		    WHERE handle = 'local'
+		`).Scan(&subjects, &thoughts, &misc, &completed, &currentThoughts)
 		if err != nil {
 			t.Fatal(err)
 		}

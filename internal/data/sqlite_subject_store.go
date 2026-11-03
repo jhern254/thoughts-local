@@ -23,9 +23,21 @@ func NewSQLiteSubjectStore(db *sql.DB) *SQLiteSubjectStore {
 
 func (s *SQLiteSubjectStore) CreateSubject(ctx context.Context, subject *Subject) (*Subject, error) {
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO subjects (user_id, subject_name, created_at, updated_at)
-		SELECT ?, ?, ?, ?
-		WHERE EXISTS (SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL)`,
+	    INSERT INTO
+	        subjects (user_id, subject_name, created_at, updated_at)
+	    SELECT
+	        ?,
+	        ?,
+	        ?,
+	        ?
+	    WHERE EXISTS (
+	            SELECT
+	                1
+	            FROM users
+	            WHERE user_id = ?
+	                AND deleted_at IS NULL
+	        )
+	`,
 		subject.UserID,
 		subject.SubjectName,
 		UnixSec(subject.CreatedAt),
@@ -57,10 +69,24 @@ func (s *SQLiteSubjectStore) CreateSubject(ctx context.Context, subject *Subject
 
 func (s *SQLiteSubjectStore) GetSubject(ctx context.Context, userID string, subjectID int64) (*Subject, error) {
 	subject, err := scanSubject(s.db.QueryRowContext(ctx, `
-		SELECT subject_id, user_id, subject_name, created_at, updated_at
-		FROM subjects
-		WHERE user_id = ? AND subject_id = ? AND deleted_at IS NULL
-		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)`,
+	    SELECT
+	        subject_id,
+	        user_id,
+	        subject_name,
+	        created_at,
+	        updated_at
+	    FROM subjects
+	    WHERE user_id = ?
+	        AND subject_id = ?
+	        AND deleted_at IS NULL
+	        AND EXISTS (
+	            SELECT
+	                1
+	            FROM users
+	            WHERE users.user_id = subjects.user_id
+	                AND users.deleted_at IS NULL
+	        )
+	`,
 		userID,
 		subjectID,
 	))
@@ -76,11 +102,25 @@ func (s *SQLiteSubjectStore) GetSubject(ctx context.Context, userID string, subj
 
 func (s *SQLiteSubjectStore) ListSubjects(ctx context.Context, userID string) ([]Subject, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT subject_id, user_id, subject_name, created_at, updated_at
-		FROM subjects
-		WHERE user_id = ? AND deleted_at IS NULL
-		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)
-		ORDER BY subject_id`,
+	    SELECT
+	        subject_id,
+	        user_id,
+	        subject_name,
+	        created_at,
+	        updated_at
+	    FROM subjects
+	    WHERE user_id = ?
+	        AND deleted_at IS NULL
+	        AND EXISTS (
+	            SELECT
+	                1
+	            FROM users
+	            WHERE users.user_id = subjects.user_id
+	                AND users.deleted_at IS NULL
+	        )
+	    ORDER BY
+	        subject_id
+	`,
 		userID,
 	)
 	if err != nil {
@@ -104,10 +144,20 @@ func (s *SQLiteSubjectStore) ListSubjects(ctx context.Context, userID string) ([
 
 func (s *SQLiteSubjectStore) UpdateSubject(ctx context.Context, userID string, subjectID int64, name string, updatedAt time.Time) (*Subject, error) {
 	result, err := s.db.ExecContext(ctx, `
-		UPDATE subjects
-		SET subject_name = ?, updated_at = ?
-		WHERE user_id = ? AND subject_id = ? AND deleted_at IS NULL
-		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)`,
+	    UPDATE subjects
+	    SET subject_name = ?,
+	        updated_at = ?
+	    WHERE user_id = ?
+	        AND subject_id = ?
+	        AND deleted_at IS NULL
+	        AND EXISTS (
+	            SELECT
+	                1
+	            FROM users
+	            WHERE users.user_id = subjects.user_id
+	                AND users.deleted_at IS NULL
+	        )
+	`,
 		name,
 		UnixSec(updatedAt),
 		userID,
@@ -134,11 +184,20 @@ func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, s
 	defer tx.Rollback()
 
 	result, err := tx.ExecContext(ctx, `
-		UPDATE subjects
-		SET deleted_at = max(unixepoch('now'), updated_at),
-		    updated_at = max(unixepoch('now'), updated_at)
-		WHERE user_id = ? AND subject_id = ? AND deleted_at IS NULL
-		  AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)`,
+	    UPDATE subjects
+	    SET deleted_at = max(unixepoch('now'), updated_at),
+	        updated_at = max(unixepoch('now'), updated_at)
+	    WHERE user_id = ?
+	        AND subject_id = ?
+	        AND deleted_at IS NULL
+	        AND EXISTS (
+	            SELECT
+	                1
+	            FROM users
+	            WHERE users.user_id = subjects.user_id
+	                AND users.deleted_at IS NULL
+	        )
+	`,
 		userID,
 		subjectID,
 	)
@@ -152,42 +211,53 @@ func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, s
 	if deleted == 0 {
 		return ErrRecordNotFound
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE subject_aliases
- SET deleted_at=max(unixepoch('now'),updated_at), updated_at=max(unixepoch('now'),updated_at)
- WHERE user_id=? AND subject_id=? AND deleted_at IS NULL`, userID, subjectID)
+	_, err = tx.ExecContext(ctx, `
+	    UPDATE subject_aliases
+	    SET deleted_at = max(unixepoch('now'), updated_at),
+	        updated_at = max(unixepoch('now'), updated_at)
+	    WHERE user_id = ?
+	        AND subject_id = ?
+	        AND deleted_at IS NULL
+	`, userID, subjectID)
 	if err != nil {
 		return fmt.Errorf("retire subject aliases: %w", TranslateSQLiteError(err))
 	}
 	_, err = tx.ExecContext(ctx, `
-		UPDATE thoughts
-		SET subject_id = NULL, version = version + 1,
-		    updated_at = max(unixepoch('now'), updated_at)
-		WHERE user_id = ? AND subject_id = ?`, userID, subjectID)
+	    UPDATE thoughts
+	    SET subject_id = NULL,
+	        version = version + 1,
+	        updated_at = max(unixepoch('now'), updated_at)
+	    WHERE user_id = ?
+	        AND subject_id = ?
+	`, userID, subjectID)
 	if err != nil {
 		return fmt.Errorf("unlink subject thoughts: %w", TranslateSQLiteError(err))
 	}
 	_, err = tx.ExecContext(ctx, `
-        UPDATE events
-        SET version = version + 1,
-            updated_at = max(unixepoch('now'), updated_at)
-        WHERE user_id = ?
-            AND EXISTS (
-                SELECT 1
-                FROM event_subjects
-                WHERE event_subjects.event_id = events.event_id
-                    AND event_subjects.user_id = events.user_id
-                    AND event_subjects.subject_id = ?
-                    AND event_subjects.deleted_at IS NULL
-            )`, userID, subjectID)
+	    UPDATE events
+	    SET version = version + 1,
+	        updated_at = max(unixepoch('now'), updated_at)
+	    WHERE user_id = ?
+	        AND EXISTS (
+	            SELECT
+	                1
+	            FROM event_subjects
+	            WHERE event_subjects.event_id = events.event_id
+	                AND event_subjects.user_id = events.user_id
+	                AND event_subjects.subject_id = ?
+	                AND event_subjects.deleted_at IS NULL
+	        )
+	`, userID, subjectID)
 	if err != nil {
 		return fmt.Errorf("unlink subject events: %w", TranslateSQLiteError(err))
 	}
 	if _, err := tx.ExecContext(ctx, `
-        UPDATE event_subjects
-        SET deleted_at = unixepoch('now')
-        WHERE user_id = ?
-            AND subject_id = ?
-            AND deleted_at IS NULL`, userID, subjectID); err != nil {
+	    UPDATE event_subjects
+	    SET deleted_at = unixepoch('now')
+	    WHERE user_id = ?
+	        AND subject_id = ?
+	        AND deleted_at IS NULL
+	`, userID, subjectID); err != nil {
 		return fmt.Errorf("retire subject event relationships: %w", TranslateSQLiteError(err))
 	}
 

@@ -26,7 +26,9 @@ func (s *SQLiteSubjectGoalStore) AddSubjectGoal(ctx context.Context, userID stri
 	result, err := tx.ExecContext(ctx, `
         UPDATE goals
         SET version = version
-        WHERE user_id = ? AND goal_id = ? AND `+visibleGoals, userID, goalID)
+        WHERE user_id = ?
+            AND goal_id = ?
+            AND `+visibleGoals, userID, goalID)
 	if err != nil {
 		return fmt.Errorf("lock goal for association: %w", TranslateSQLiteError(err))
 	}
@@ -62,23 +64,36 @@ func (s *SQLiteSubjectGoalStore) RemoveSubjectGoal(ctx context.Context, userID s
 	defer tx.Rollback()
 
 	result, err := tx.ExecContext(ctx, `
-        UPDATE subject_goals
-        SET deleted_at = unixepoch('now')
-        WHERE user_id = ?
-          AND subject_id = ?
-          AND goal_id = ?
-          AND deleted_at IS NULL
-          AND EXISTS (
-              SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL
-          )
-          AND EXISTS (
-              SELECT 1 FROM subjects
-              WHERE subject_id = ? AND user_id = ? AND deleted_at IS NULL
-          )
-          AND EXISTS (
-              SELECT 1 FROM goals
-              WHERE goal_id = ? AND user_id = ? AND deleted_at IS NULL
-          )`, userID, subjectID, goalID, userID, subjectID, userID, goalID, userID)
+	    UPDATE subject_goals
+	    SET deleted_at = unixepoch('now')
+	    WHERE user_id = ?
+	        AND subject_id = ?
+	        AND goal_id = ?
+	        AND deleted_at IS NULL
+	        AND EXISTS (
+	            SELECT
+	                1
+	            FROM users
+	            WHERE user_id = ?
+	                AND deleted_at IS NULL
+	        )
+	        AND EXISTS (
+	            SELECT
+	                1
+	            FROM subjects
+	            WHERE subject_id = ?
+	                AND user_id = ?
+	                AND deleted_at IS NULL
+	        )
+	        AND EXISTS (
+	            SELECT
+	                1
+	            FROM goals
+	            WHERE goal_id = ?
+	                AND user_id = ?
+	                AND deleted_at IS NULL
+	        )
+	`, userID, subjectID, goalID, userID, subjectID, userID, goalID, userID)
 	if err != nil {
 		return fmt.Errorf("remove subject goal: %w", TranslateSQLiteError(err))
 	}
@@ -169,11 +184,19 @@ func (s *SQLiteSubjectGoalStore) listSubjectGoals(ctx context.Context, userID st
 		}
 	}()
 	rows, err := s.db.QueryContext(ctx, `
-        SELECT subject_id, goal_id, user_id, goal_number, deleted_at
+        SELECT
+            subject_id,
+            goal_id,
+            user_id,
+            goal_number,
+            deleted_at
         FROM subject_goals
         WHERE user_id = ?
           AND EXISTS (
-              SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL
+              SELECT 1
+              FROM users
+              WHERE user_id = ?
+                  AND deleted_at IS NULL
           )
           AND `+selection, userID, userID, id)
 	if err != nil {

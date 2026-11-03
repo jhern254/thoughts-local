@@ -12,7 +12,18 @@ import (
 func TestSQLiteEventStore_MultipleSubjects(t *testing.T) {
 	t.Run("creates retires reactivates and preserves Subjects when ending", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
-		if _, err := db.Exec(`INSERT INTO users(user_id) VALUES ('u');INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','One'),(2,'u','Two');`); err != nil {
+		if _, err := db.Exec(`
+		    INSERT INTO
+		        users (user_id)
+		    VALUES
+		        ('u');
+
+		    INSERT INTO
+		        subjects (subject_id, user_id, subject_name)
+		    VALUES
+		        (1, 'u', 'One'),
+		        (2, 'u', 'Two');
+		`); err != nil {
 			t.Fatal(err)
 		}
 		store := data.NewSQLiteEventStore(db)
@@ -54,7 +65,12 @@ func TestSQLiteEventStore_MultipleSubjects(t *testing.T) {
 			t.Fatalf("ended Subjects got %v, want [1 2]", ended.SubjectIDs)
 		}
 		var count int
-		if err := db.QueryRow(`SELECT count(*) FROM event_subjects WHERE event_id=?`, created.EventID).Scan(&count); err != nil {
+		if err := db.QueryRow(`
+		    SELECT
+		        count(*)
+		    FROM event_subjects
+		    WHERE event_id = ?
+		`, created.EventID).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 2 {

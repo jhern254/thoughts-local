@@ -100,12 +100,13 @@ func (s *SQLiteEventStore) StartEvent(ctx context.Context, item *Event) (_ *Even
 			return nil, ErrEventOverlap
 		}
 		if _, err := tx.ExecContext(ctx, `
-            UPDATE events
-            SET ended_at = ?,
-                version = version + 1,
-                updated_at = max(updated_at, ?)
-            WHERE event_id = ?
-                AND user_id = ?`,
+		    UPDATE events
+		    SET ended_at = ?,
+		        version = version + 1,
+		        updated_at = max(updated_at, ?)
+		    WHERE event_id = ?
+		        AND user_id = ?
+		`,
 			item.StartedAt.Unix(), item.UpdatedAt.Unix(), previous.EventID, item.UserID); err != nil {
 			return nil, err
 		}
@@ -193,12 +194,15 @@ func insertEvent(ctx context.Context, tx *sql.Tx, item *Event) (*Event, error) {
 func requireEventOwner(ctx context.Context, tx *sql.Tx, userID string) error {
 	var active bool
 	if err := tx.QueryRowContext(ctx, `
-        SELECT EXISTS (
-            SELECT 1
-            FROM users
-            WHERE user_id = ?
-                AND deleted_at IS NULL
-        )`, userID).Scan(&active); err != nil {
+	    SELECT
+	        EXISTS (
+	            SELECT
+	                1
+	            FROM users
+	            WHERE user_id = ?
+	                AND deleted_at IS NULL
+	        )
+	`, userID).Scan(&active); err != nil {
 		return err
 	}
 	if !active {
@@ -367,16 +371,31 @@ func checkEventOverlap(ctx context.Context, tx *sql.Tx, item *Event, excludeID *
 	}
 	var overlap bool
 	err := tx.QueryRowContext(ctx, `
-        SELECT EXISTS (
-            SELECT 1
-            FROM events
-            WHERE user_id = ?
-                AND deleted_at IS NULL
-                AND (? IS NULL OR event_id <> ?)
-                AND (ended_at IS NULL OR ended_at > started_at)
-                AND (? IS NULL OR started_at < ?)
-                AND (ended_at IS NULL OR ended_at > ?)
-        )`,
+	    SELECT
+	        EXISTS (
+	            SELECT
+	                1
+	            FROM events
+	            WHERE user_id = ?
+	                AND deleted_at IS NULL
+	                AND (
+	                    ? IS NULL
+	                    OR event_id <> ?
+	                )
+	                AND (
+	                    ended_at IS NULL
+	                    OR ended_at > started_at
+	                )
+	                AND (
+	                    ? IS NULL
+	                    OR started_at < ?
+	                )
+	                AND (
+	                    ended_at IS NULL
+	                    OR ended_at > ?
+	                )
+	        )
+	`,
 		item.UserID, excludeID, excludeID, end, end, start).Scan(&overlap)
 	if err != nil {
 		return err

@@ -16,15 +16,18 @@ func validateEventSubjects(ctx context.Context, tx *sql.Tx, userID string, subje
 		seen[subjectID] = struct{}{}
 		var available bool
 		err := tx.QueryRowContext(ctx, `
-        SELECT EXISTS (
-            SELECT 1
-            FROM subjects
-            JOIN users ON users.user_id = subjects.user_id
-            WHERE subjects.subject_id = ?
-                AND subjects.user_id = ?
-                AND subjects.deleted_at IS NULL
-                AND users.deleted_at IS NULL
-        )`, subjectID, userID).Scan(&available)
+		    SELECT
+		        EXISTS (
+		            SELECT
+		                1
+		            FROM subjects
+		            JOIN users ON users.user_id = subjects.user_id
+		            WHERE subjects.subject_id = ?
+		                AND subjects.user_id = ?
+		                AND subjects.deleted_at IS NULL
+		                AND users.deleted_at IS NULL
+		        )
+		`, subjectID, userID).Scan(&available)
 		if err != nil {
 			return err
 		}
@@ -44,12 +47,15 @@ func replaceEventSubjects(ctx context.Context, tx *sql.Tx, userID string, eventI
 		selected[subjectID] = true
 	}
 	rows, err := tx.QueryContext(ctx, `
-        SELECT subject_id
-        FROM event_subjects
-        WHERE user_id = ?
-            AND event_id = ?
-            AND deleted_at IS NULL
-        ORDER BY subject_id`, userID, eventID)
+	    SELECT
+	        subject_id
+	    FROM event_subjects
+	    WHERE user_id = ?
+	        AND event_id = ?
+	        AND deleted_at IS NULL
+	    ORDER BY
+	        subject_id
+	`, userID, eventID)
 	if err != nil {
 		return err
 	}
@@ -75,12 +81,13 @@ func replaceEventSubjects(ctx context.Context, tx *sql.Tx, userID string, eventI
 	}
 	for _, subjectID := range removed {
 		if _, err := tx.ExecContext(ctx, `
-            UPDATE event_subjects
-            SET deleted_at = ?
-            WHERE user_id = ?
-                AND event_id = ?
-                AND subject_id = ?
-                AND deleted_at IS NULL`, retiredAt, userID, eventID, subjectID); err != nil {
+		    UPDATE event_subjects
+		    SET deleted_at = ?
+		    WHERE user_id = ?
+		        AND event_id = ?
+		        AND subject_id = ?
+		        AND deleted_at IS NULL
+		`, retiredAt, userID, eventID, subjectID); err != nil {
 			return err
 		}
 	}
@@ -89,12 +96,15 @@ func replaceEventSubjects(ctx context.Context, tx *sql.Tx, userID string, eventI
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `
-            INSERT INTO event_subjects (event_id, subject_id, user_id)
-            VALUES (?, ?, ?)
-            ON CONFLICT (event_id, subject_id)
-            DO UPDATE SET deleted_at = NULL
-            WHERE event_subjects.user_id = excluded.user_id
-                AND event_subjects.deleted_at IS NOT NULL`, eventID, subjectID, userID); err != nil {
+		    INSERT INTO
+		        event_subjects (event_id, subject_id, user_id)
+		    VALUES
+		        (?, ?, ?)
+		    ON CONFLICT (event_id, subject_id) DO UPDATE
+		    SET deleted_at = NULL
+		    WHERE event_subjects.user_id = excluded.user_id
+		        AND event_subjects.deleted_at IS NOT NULL
+		`, eventID, subjectID, userID); err != nil {
 			return err
 		}
 	}

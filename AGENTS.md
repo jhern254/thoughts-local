@@ -284,6 +284,7 @@ implicitly during API startup.
 ### SQL readability
 
 * Treat SQL embedded in Go as maintained source code. Inline placement is not a reason to compress a query into one line.
+* Apply SQL formatting equally to production code, tests, and fixtures. `gofmt` preserves raw-string contents; it does not format the SQL inside them.
 * Format nontrivial queries as multiline raw strings. Put major clauses on separate lines, list selected columns individually, and space operators consistently.
 * Start from the table that represents the operation’s primary relationship or entity. Choose joins for correctness and clarity; textual table order does not guarantee execution order.
 * Use descriptive aliases where they clarify each table’s role. Keep each join’s predicates together, including shared-owner conditions.

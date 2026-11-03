@@ -18,12 +18,36 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 	t.Run("candidates are active visible linked goals in priority and ID order", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)
-		_, err := db.Exec(`INSERT INTO goals(goal_id,user_id,goal_name,target_seconds,priority) VALUES
- (4,'owner','High first',60,'high'),(5,'owner','Low',60,'low'),(6,'owner','High second',60,'high'),
- (7,'owner','Deleted',60,'high'),(8,'owner','Unlinked',60,'high');
- UPDATE goals SET deleted_at=updated_at WHERE goal_id=7;
- UPDATE goals SET goal_start_date='2099-01-01',goal_end_date='2099-12-31' WHERE goal_id=4;
- INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,6,'owner',6),(1,5,'owner',5),(1,4,'owner',4),(1,2,'owner',2),(1,1,'owner',1),(1,7,'owner',7),(3,3,'other',3);`)
+		_, err := db.Exec(`
+		    INSERT INTO
+		        goals (goal_id, user_id, goal_name, target_seconds, priority)
+		    VALUES
+		        (4, 'owner', 'High first', 60, 'high'),
+		        (5, 'owner', 'Low', 60, 'low'),
+		        (6, 'owner', 'High second', 60, 'high'),
+		        (7, 'owner', 'Deleted', 60, 'high'),
+		        (8, 'owner', 'Unlinked', 60, 'high');
+
+		    UPDATE goals
+		    SET deleted_at = updated_at
+		    WHERE goal_id = 7;
+
+		    UPDATE goals
+		    SET goal_start_date = '2099-01-01',
+		        goal_end_date = '2099-12-31'
+		    WHERE goal_id = 4;
+
+		    INSERT INTO
+		        subject_goals (subject_id, goal_id, user_id, goal_number)
+		    VALUES
+		        (1, 6, 'owner', 6),
+		        (1, 5, 'owner', 5),
+		        (1, 4, 'owner', 4),
+		        (1, 2, 'owner', 2),
+		        (1, 1, 'owner', 1),
+		        (1, 7, 'owner', 7),
+		        (3, 3, 'other', 3);
+		`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,13 +80,27 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 		{"foreign subject", "", 3},
 		{"missing subject", "", 99},
 		{"unlinked subject", "", 2},
-		{"deleted subject", "UPDATE subjects SET deleted_at=updated_at WHERE subject_id=1", 1},
-		{"deleted owner", "UPDATE users SET deleted_at=updated_at WHERE user_id='owner'", 1},
+		{"deleted subject", `
+		    UPDATE subjects
+		    SET deleted_at = updated_at
+		    WHERE subject_id = 1
+		`, 1},
+		{"deleted owner", `
+		    UPDATE users
+		    SET deleted_at = updated_at
+		    WHERE user_id = 'owner'
+		`, 1},
 	} {
 		t.Run("no candidates for "+tc.name, func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			seedSubjectGoals(t, db)
-			if _, err := db.Exec("INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1),(3,3,'other',3)"); err != nil {
+			if _, err := db.Exec(`
+			    INSERT INTO
+			        subject_goals (subject_id, goal_id, user_id, goal_number)
+			    VALUES
+			        (1, 1, 'owner', 1),
+			        (3, 3, 'other', 3)
+			`); err != nil {
 				t.Fatal(err)
 			}
 			if tc.setup != "" {
@@ -162,7 +200,11 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("event after discovery: got %+v, %v; want %+v, nil", unchanged, err, item)
 		}
 		var count int
-		if err := db.QueryRow("SELECT count(*) FROM goal_progress").Scan(&count); err != nil {
+		if err := db.QueryRow(`
+		    SELECT
+		        count(*)
+		    FROM goal_progress
+		`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 0 {

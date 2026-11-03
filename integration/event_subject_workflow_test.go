@@ -16,14 +16,47 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 	t.Run("subject deletion unlinks active and deleted events and thoughts together", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u")
-		_, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','coding');
-   INSERT INTO events (event_id, user_id, started_at, ended_at, created_at, updated_at, deleted_at) VALUES (1, 'u', 1, 2, 1, 2, NULL);
-INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (1, 1, 'u');
-INSERT INTO events (event_id, user_id, started_at, ended_at, created_at, updated_at, deleted_at) VALUES (2, 'u', 3, 4, 1, 4102444800, 2);
-INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (2, 1, 'u');
-   INSERT INTO thoughts(user_id,subject_id,event_id,thought) VALUES ('u',1,1,'synthetic');
-   INSERT INTO goals(goal_id,user_id,goal_name,target_seconds) VALUES (1,'u','goal',60);
-   INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,event_id) VALUES (1,'u',60,1);`)
+		_, err := db.Exec(`
+		    INSERT INTO
+		        subjects (subject_id, user_id, subject_name)
+		    VALUES
+		        (1, 'u', 'coding');
+
+		    INSERT INTO
+		        events (event_id, user_id, started_at, ended_at, created_at, updated_at, deleted_at)
+		    VALUES
+		        (1, 'u', 1, 2, 1, 2, NULL);
+
+		    INSERT INTO
+		        event_subjects (event_id, subject_id, user_id)
+		    VALUES
+		        (1, 1, 'u');
+
+		    INSERT INTO
+		        events (event_id, user_id, started_at, ended_at, created_at, updated_at, deleted_at)
+		    VALUES
+		        (2, 'u', 3, 4, 1, 4102444800, 2);
+
+		    INSERT INTO
+		        event_subjects (event_id, subject_id, user_id)
+		    VALUES
+		        (2, 1, 'u');
+
+		    INSERT INTO
+		        thoughts (user_id, subject_id, event_id, thought)
+		    VALUES
+		        ('u', 1, 1, 'synthetic');
+
+		    INSERT INTO
+		        goals (goal_id, user_id, goal_name, target_seconds)
+		    VALUES
+		        (1, 'u', 'goal', 60);
+
+		    INSERT INTO
+		        goal_progress (goal_id, user_id, time_spent_sec, event_id)
+		    VALUES
+		        (1, 'u', 60, 1);
+		`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -37,10 +70,39 @@ INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (2, 1, 'u');
 			query string
 			want  int64
 		}{
-			{`SELECT count(*) FROM events WHERE version=2 AND NOT EXISTS (SELECT 1 FROM event_subjects es WHERE es.event_id=events.event_id AND es.deleted_at IS NULL)`, 2},
-			{`SELECT updated_at FROM events WHERE event_id=2`, 4102444800},
-			{`SELECT count(*) FROM thoughts WHERE subject_id IS NULL AND event_id=1 AND version=2`, 1},
-			{`SELECT sum(time_spent_sec) FROM goal_progress WHERE event_id=1`, 60},
+			{`
+			    SELECT
+			        count(*)
+			    FROM events
+			    WHERE version = 2
+			        AND NOT EXISTS (
+			            SELECT
+			                1
+			            FROM event_subjects es
+			            WHERE es.event_id = events.event_id
+			                AND es.deleted_at IS NULL
+			        )
+			`, 2},
+			{`
+			    SELECT
+			        updated_at
+			    FROM events
+			    WHERE event_id = 2
+			`, 4102444800},
+			{`
+			    SELECT
+			        count(*)
+			    FROM thoughts
+			    WHERE subject_id IS NULL
+			        AND event_id = 1
+			        AND version = 2
+			`, 1},
+			{`
+			    SELECT
+			        sum(time_spent_sec)
+			    FROM goal_progress
+			    WHERE event_id = 1
+			`, 60},
 		} {
 			var got int64
 			if err := db.QueryRow(check.query).Scan(&got); err != nil {
@@ -55,7 +117,13 @@ INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (2, 1, 'u');
 	t.Run("round trips reassigns clears and preserves subject on end", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u")
-		if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','coding'),(2,'u','reading')`); err != nil {
+		if _, err := db.Exec(`
+		    INSERT INTO
+		        subjects (subject_id, user_id, subject_name)
+		    VALUES
+		        (1, 'u', 'coding'),
+		        (2, 'u', 'reading')
+		`); err != nil {
 			t.Fatal(err)
 		}
 		service := event.NewService(data.NewSQLiteEventStore(db))
@@ -121,7 +189,14 @@ INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (2, 1, 'u');
 		t.Run(fmt.Sprintf("unavailable subject %d leaves predecessor unchanged", id), func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			insertUsers(t, db, "u", "other")
-			if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name,deleted_at) VALUES (1,'u','keep',NULL),(2,'other','private',NULL),(3,'u','deleted',unixepoch('now'))`); err != nil {
+			if _, err := db.Exec(`
+			    INSERT INTO
+			        subjects (subject_id, user_id, subject_name, deleted_at)
+			    VALUES
+			        (1, 'u', 'keep', NULL),
+			        (2, 'other', 'private', NULL),
+			        (3, 'u', 'deleted', unixepoch('now'))
+			`); err != nil {
 				t.Fatal(err)
 			}
 			service := event.NewService(data.NewSQLiteEventStore(db))
@@ -156,19 +231,57 @@ INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (2, 1, 'u');
 	t.Run("database enforces ownership and hard deletion clears only the reference", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u", "other")
-		if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','coding')`); err != nil {
+		if _, err := db.Exec(`
+		    INSERT INTO
+		        subjects (subject_id, user_id, subject_name)
+		    VALUES
+		        (1, 'u', 'coding')
+		`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`INSERT INTO events (user_id) VALUES ('other');
-INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 1, 'other')`); err == nil {
+		if _, err := db.Exec(`
+		    INSERT INTO
+		        events (user_id)
+		    VALUES
+		        ('other');
+
+		    INSERT INTO
+		        event_subjects (event_id, subject_id, user_id)
+		    VALUES
+		        (last_insert_rowid(), 1, 'other')
+		`); err == nil {
 			t.Fatal("got nil ownership error, want constraint")
 		}
-		if _, err := db.Exec(`INSERT INTO events (user_id) VALUES ('u');
-INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 1, 'u'); DELETE FROM subjects WHERE subject_id=1`); err != nil {
+		if _, err := db.Exec(`
+		    INSERT INTO
+		        events (user_id)
+		    VALUES
+		        ('u');
+
+		    INSERT INTO
+		        event_subjects (event_id, subject_id, user_id)
+		    VALUES
+		        (last_insert_rowid(), 1, 'u');
+
+		    DELETE FROM subjects
+		    WHERE subject_id = 1
+		`); err != nil {
 			t.Fatal(err)
 		}
 		var count int
-		if err := db.QueryRow(`SELECT count(*) FROM events WHERE user_id='u' AND NOT EXISTS (SELECT 1 FROM event_subjects es WHERE es.event_id=events.event_id AND es.deleted_at IS NULL)`).Scan(&count); err != nil {
+		if err := db.QueryRow(`
+		    SELECT
+		        count(*)
+		    FROM events
+		    WHERE user_id = 'u'
+		        AND NOT EXISTS (
+		            SELECT
+		                1
+		            FROM event_subjects es
+		            WHERE es.event_id = events.event_id
+		                AND es.deleted_at IS NULL
+		        )
+		`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 1 {
@@ -178,11 +291,34 @@ INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_r
 	t.Run("event unlink failure rolls back subject and thought unlinking", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		insertUsers(t, db, "u")
-		if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','coding');
-   INSERT INTO events (user_id) VALUES ('u');
-INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_rowid(), 1, 'u');
-   INSERT INTO thoughts(user_id,subject_id,thought) VALUES ('u',1,'keep');
-   CREATE TRIGGER reject_event_unlink BEFORE UPDATE OF deleted_at ON event_subjects BEGIN SELECT RAISE(ABORT,'synthetic failure'); END`); err != nil {
+		if _, err := db.Exec(`
+		    INSERT INTO
+		        subjects (subject_id, user_id, subject_name)
+		    VALUES
+		        (1, 'u', 'coding');
+
+		    INSERT INTO
+		        events (user_id)
+		    VALUES
+		        ('u');
+
+		    INSERT INTO
+		        event_subjects (event_id, subject_id, user_id)
+		    VALUES
+		        (last_insert_rowid(), 1, 'u');
+
+		    INSERT INTO
+		        thoughts (user_id, subject_id, thought)
+		    VALUES
+		        ('u', 1, 'keep');
+
+		    CREATE TRIGGER reject_event_unlink BEFORE
+		    UPDATE OF deleted_at ON event_subjects BEGIN
+		    SELECT
+		        RAISE (ABORT, 'synthetic failure');
+
+		    END
+		`); err != nil {
 			t.Fatal(err)
 		}
 		err := data.NewSQLiteSubjectStore(db).DeleteSubject(t.Context(), "u", 1)
@@ -191,7 +327,19 @@ INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (last_insert_r
 			t.Fatalf("got error %v, want wrapped SQLite cause", err)
 		}
 		var count int
-		if err := db.QueryRow(`SELECT count(*) FROM subjects s JOIN event_subjects es ON es.subject_id=s.subject_id AND es.deleted_at IS NULL JOIN events e ON e.event_id=es.event_id AND e.user_id=es.user_id JOIN thoughts t ON t.subject_id=s.subject_id WHERE s.deleted_at IS NULL AND e.version=1 AND t.version=1`).Scan(&count); err != nil {
+		if err := db.QueryRow(`
+		    SELECT
+		        count(*)
+		    FROM subjects s
+		    JOIN event_subjects es ON es.subject_id = s.subject_id
+		        AND es.deleted_at IS NULL
+		    JOIN events e ON e.event_id = es.event_id
+		        AND e.user_id = es.user_id
+		    JOIN thoughts t ON t.subject_id = s.subject_id
+		    WHERE s.deleted_at IS NULL
+		        AND e.version = 1
+		        AND t.version = 1
+		`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 1 {
@@ -209,7 +357,13 @@ func TestEventUpdateSubjectWorkflow_SQLite(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			insertUsers(t, db, "u")
-			if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','coding'),(2,'u','reading')`); err != nil {
+			if _, err := db.Exec(`
+			    INSERT INTO
+			        subjects (subject_id, user_id, subject_name)
+			    VALUES
+			        (1, 'u', 'coding'),
+			        (2, 'u', 'reading')
+			`); err != nil {
 				t.Fatal(err)
 			}
 			service := event.NewService(data.NewSQLiteEventStore(db))

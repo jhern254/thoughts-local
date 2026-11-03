@@ -18,12 +18,37 @@ func TestSubjectFromAliasWorkflow_SQLite(t *testing.T) {
 	t.Run("creates an empty independent Subject and retains the original relationships", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		service := seedAliasSubjects(t, db)
-		if _, err := db.Exec(`INSERT INTO events (event_id, user_id, started_at, ended_at) VALUES (1, 'owner', 100, 200);
-INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (1, 1, 'owner');
-INSERT INTO thoughts(thought_id,user_id,subject_id,event_id,thought) VALUES(1,'owner',1,1,'Retain this thought');
-INSERT INTO goals(goal_id,user_id,goal_name,target_seconds) VALUES(1,'owner','Practice',60);
-INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1);
-INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,event_id,thought_id) VALUES(1,'owner',60,1,1)`); err != nil {
+		if _, err := db.Exec(`
+		    INSERT INTO
+		        events (event_id, user_id, started_at, ended_at)
+		    VALUES
+		        (1, 'owner', 100, 200);
+
+		    INSERT INTO
+		        event_subjects (event_id, subject_id, user_id)
+		    VALUES
+		        (1, 1, 'owner');
+
+		    INSERT INTO
+		        thoughts (thought_id, user_id, subject_id, event_id, thought)
+		    VALUES
+		        (1, 'owner', 1, 1, 'Retain this thought');
+
+		    INSERT INTO
+		        goals (goal_id, user_id, goal_name, target_seconds)
+		    VALUES
+		        (1, 'owner', 'Practice', 60);
+
+		    INSERT INTO
+		        subject_goals (subject_id, goal_id, user_id, goal_number)
+		    VALUES
+		        (1, 1, 'owner', 1);
+
+		    INSERT INTO
+		        goal_progress (goal_id, user_id, time_spent_sec, event_id, thought_id)
+		    VALUES
+		        (1, 'owner', 60, 1, 1)
+		`); err != nil {
 			t.Fatal(err)
 		}
 		original, err := service.Get(t.Context(), "owner", 1)
@@ -58,11 +83,58 @@ INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,event_id,thought_id) VA
 			t.Fatalf("unrelated aliases: got %+v,%v, want Go development", aliases, err)
 		}
 		for _, query := range []string{
-			`SELECT COUNT(*) FROM thoughts WHERE subject_id=1 AND thought_id=1 AND event_id=1 AND thought='Retain this thought' AND version=1 AND created_at=updated_at`,
-			`SELECT COUNT(*) FROM events WHERE event_id=1 AND EXISTS (SELECT 1 FROM event_subjects es WHERE es.event_id=events.event_id AND es.subject_id=1 AND es.deleted_at IS NULL) AND started_at=100 AND ended_at=200 AND version=1 AND created_at=updated_at`,
-			`SELECT COUNT(*) FROM subject_goals WHERE subject_id=1 AND goal_id=1`,
-			`SELECT COUNT(*) FROM goal_progress WHERE goal_id=1 AND event_id=1 AND thought_id=1 AND time_spent_sec=60`,
-			`SELECT COUNT(*) FROM subject_aliases WHERE alias_id=1 AND deleted_at IS NOT NULL`,
+			`
+			    SELECT
+			        COUNT(*)
+			    FROM thoughts
+			    WHERE subject_id = 1
+			        AND thought_id = 1
+			        AND event_id = 1
+			        AND thought = 'Retain this thought'
+			        AND version = 1
+			        AND created_at = updated_at
+			`,
+			`
+			    SELECT
+			        COUNT(*)
+			    FROM events
+			    WHERE event_id = 1
+			        AND EXISTS (
+			            SELECT
+			                1
+			            FROM event_subjects es
+			            WHERE es.event_id = events.event_id
+			                AND es.subject_id = 1
+			                AND es.deleted_at IS NULL
+			        )
+			        AND started_at = 100
+			        AND ended_at = 200
+			        AND version = 1
+			        AND created_at = updated_at
+			`,
+			`
+			    SELECT
+			        COUNT(*)
+			    FROM subject_goals
+			    WHERE subject_id = 1
+			        AND goal_id = 1
+			`,
+			`
+			    SELECT
+			        COUNT(*)
+			    FROM goal_progress
+			    WHERE goal_id = 1
+			        AND event_id = 1
+			        AND thought_id = 1
+			        AND time_spent_sec = 60
+			`,
+			`
+			    SELECT
+			        COUNT(*)
+			    FROM subject_aliases
+			    WHERE alias_id = 1
+			        AND deleted_at IS NOT NULL
+			`,
 		} {
 			var count int
 			if err := db.QueryRow(query).Scan(&count); err != nil {
@@ -73,7 +145,26 @@ INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,event_id,thought_id) VA
 			}
 		}
 		var linked int
-		if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM thoughts WHERE subject_id=?)+(SELECT COUNT(*) FROM event_subjects WHERE subject_id=? AND deleted_at IS NULL)+(SELECT COUNT(*) FROM subject_goals WHERE subject_id=?)`, created.SubjectID, created.SubjectID, created.SubjectID).Scan(&linked); err != nil {
+		if err := db.QueryRow(`
+		    SELECT
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM thoughts
+		            WHERE subject_id = ?
+		        ) + (
+		            SELECT
+		                COUNT(*)
+		            FROM event_subjects
+		            WHERE subject_id = ?
+		                AND deleted_at IS NULL
+		        ) + (
+		            SELECT
+		                COUNT(*)
+		            FROM subject_goals
+		            WHERE subject_id = ?
+		        )
+		`, created.SubjectID, created.SubjectID, created.SubjectID).Scan(&linked); err != nil {
 			t.Fatal(err)
 		}
 		if linked != 0 {
@@ -119,10 +210,31 @@ INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,event_id,thought_id) VA
 		{name: "wrong Subject", user: "owner", nameInput: "Golang", subjectID: 2, aliasID: 1},
 		{name: "wrong alias", user: "owner", nameInput: "Golang", subjectID: 1, aliasID: 99},
 		{name: "different case", user: "owner", nameInput: "golang", subjectID: 1, aliasID: 1},
-		{name: "renamed alias", sql: `UPDATE subject_aliases SET alias_name='Changed' WHERE alias_id=1`, user: "owner", nameInput: "Golang", subjectID: 1, aliasID: 1},
-		{name: "removed and recreated alias", sql: `UPDATE subject_aliases SET deleted_at=updated_at WHERE alias_id=1; INSERT INTO subject_aliases(subject_id,user_id,alias_name) VALUES(1,'owner','Golang')`, user: "owner", nameInput: "Golang", subjectID: 1, aliasID: 1},
-		{name: "deleted Subject", sql: `UPDATE subjects SET deleted_at=updated_at WHERE subject_id=1`, user: "owner", nameInput: "Golang", subjectID: 1, aliasID: 1},
-		{name: "deleted owner", sql: `UPDATE users SET deleted_at=updated_at WHERE user_id='owner'`, user: "owner", nameInput: "Golang", subjectID: 1, aliasID: 1},
+		{name: "renamed alias", sql: `
+		    UPDATE subject_aliases
+		    SET alias_name = 'Changed'
+		    WHERE alias_id = 1
+		`, user: "owner", nameInput: "Golang", subjectID: 1, aliasID: 1},
+		{name: "removed and recreated alias", sql: `
+		    UPDATE subject_aliases
+		    SET deleted_at = updated_at
+		    WHERE alias_id = 1;
+
+		    INSERT INTO
+		        subject_aliases (subject_id, user_id, alias_name)
+		    VALUES
+		        (1, 'owner', 'Golang')
+		`, user: "owner", nameInput: "Golang", subjectID: 1, aliasID: 1},
+		{name: "deleted Subject", sql: `
+		    UPDATE subjects
+		    SET deleted_at = updated_at
+		    WHERE subject_id = 1
+		`, user: "owner", nameInput: "Golang", subjectID: 1, aliasID: 1},
+		{name: "deleted owner", sql: `
+		    UPDATE users
+		    SET deleted_at = updated_at
+		    WHERE user_id = 'owner'
+		`, user: "owner", nameInput: "Golang", subjectID: 1, aliasID: 1},
 	} {
 		t.Run("rejects "+scenario.name+" without changing aliases", func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
@@ -140,7 +252,12 @@ INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,event_id,thought_id) VA
 				t.Fatalf("create: got %v, want not found", err)
 			}
 			var count int
-			if err := db.QueryRow(`SELECT COUNT(*) FROM subjects WHERE subject_name='Golang'`).Scan(&count); err != nil {
+			if err := db.QueryRow(`
+			    SELECT
+			        COUNT(*)
+			    FROM subjects
+			    WHERE subject_name = 'Golang'
+			`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 0 {
@@ -155,7 +272,13 @@ INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,event_id,thought_id) VA
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`CREATE TRIGGER reject_new_subject BEFORE INSERT ON subjects BEGIN SELECT RAISE(ABORT,'private write failure'); END`); err != nil {
+		if _, err := db.Exec(`
+		    CREATE TRIGGER reject_new_subject BEFORE INSERT ON subjects BEGIN
+		    SELECT
+		        RAISE (ABORT, 'private write failure');
+
+		    END
+		`); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := service.CreateFromAlias(t.Context(), "owner", 1, alias.AliasID, "Golang"); err == nil {
@@ -195,7 +318,9 @@ func TestSubjectFromAliasConcurrencyWorkflow_SQLite(t *testing.T) {
 		}
 		otherDB := openSQLite(t, dsn)
 		for _, connection := range []*sql.DB{db, otherDB} {
-			if _, err := connection.Exec(`PRAGMA busy_timeout=2000`); err != nil {
+			if _, err := connection.Exec(`
+			    PRAGMA busy_timeout = 2000
+			`); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -227,7 +352,24 @@ func TestSubjectFromAliasConcurrencyWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("successful confirmations: got %d, want 1", successes)
 		}
 		var names int
-		if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM subjects WHERE user_id='owner' AND subject_name='Golang' AND deleted_at IS NULL)+(SELECT COUNT(*) FROM subject_aliases WHERE user_id='owner' AND alias_name='Golang' AND deleted_at IS NULL)`).Scan(&names); err != nil {
+		if err := db.QueryRow(`
+		    SELECT
+		        (
+		            SELECT
+		                COUNT(*)
+		            FROM subjects
+		            WHERE user_id = 'owner'
+		                AND subject_name = 'Golang'
+		                AND deleted_at IS NULL
+		        ) + (
+		            SELECT
+		                COUNT(*)
+		            FROM subject_aliases
+		            WHERE user_id = 'owner'
+		                AND alias_name = 'Golang'
+		                AND deleted_at IS NULL
+		        )
+		`).Scan(&names); err != nil {
 			t.Fatal(err)
 		}
 		if names != 1 {
