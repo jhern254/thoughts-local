@@ -18,8 +18,7 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		const anchor = 1789151820
 		if _, err := db.Exec(`
 		    CREATE TEMP TABLE demo_clock AS
-		    SELECT
-		        ? AS at
+		    SELECT ? AS at
 		`, anchor); err != nil {
 			t.Fatal(err)
 		}
@@ -33,55 +32,19 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		var events, ongoing, thoughts, misc, current, invalid int
 		err = db.QueryRow(`
 		    SELECT
+		        (SELECT COUNT(*) FROM events),
+		        (SELECT COUNT(*) FROM events WHERE ended_at IS NULL),
+		        (SELECT COUNT(*) FROM thoughts),
+		        (SELECT COUNT(*) FROM thoughts WHERE subject_id IS NULL),
+		        (SELECT COUNT(*) FROM thoughts WHERE observed_at >= (SELECT started_at FROM events WHERE ended_at IS NULL)),
 		        (
-		            SELECT
-		                COUNT(*)
-		            FROM events
-		        ),
-		        (
-		            SELECT
-		                COUNT(*)
-		            FROM events
-		            WHERE ended_at IS NULL
-		        ),
-		        (
-		            SELECT
-		                COUNT(*)
-		            FROM thoughts
-		        ),
-		        (
-		            SELECT
-		                COUNT(*)
-		            FROM thoughts
-		            WHERE subject_id IS NULL
-		        ),
-		        (
-		            SELECT
-		                COUNT(*)
-		            FROM thoughts
-		            WHERE observed_at >= (
-		                    SELECT
-		                        started_at
-		                    FROM events
-		                    WHERE ended_at IS NULL
-		                )
-		        ),
-		        (
-		            SELECT
-		                COUNT(*)
+		            SELECT COUNT(*)
 		            FROM events e
 		            WHERE e.started_at > ?
 		                OR e.ended_at > ?
-		                OR EXISTS (
-		                    SELECT
-		                        1
-		                    FROM events p
-		                    WHERE p.event_id < e.event_id
-		                        AND p.ended_at > e.started_at
-		                )
+		                OR EXISTS (SELECT 1 FROM events p WHERE p.event_id < e.event_id AND p.ended_at > e.started_at)
 		        ) + (
-		            SELECT
-		                COUNT(*)
+		            SELECT COUNT(*)
 		            FROM thoughts
 		            WHERE observed_at > ?
 		                OR user_id <> 'demo'
@@ -109,8 +72,7 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		const anchor = 1789151820
 		if _, err := db.Exec(`
 		    CREATE TEMP TABLE demo_clock AS
-		    SELECT
-		        ? AS at
+		    SELECT ? AS at
 		`, anchor); err != nil {
 			t.Fatal(err)
 		}
@@ -199,8 +161,7 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		const anchor = 1789151820
 		if _, err := db.Exec(`
 		    CREATE TEMP TABLE demo_clock AS
-		    SELECT
-		        ? AS at
+		    SELECT ? AS at
 		`, anchor); err != nil {
 			t.Fatal(err)
 		}
@@ -268,35 +229,12 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		var subjects, thoughts, misc, completed, currentThoughts int
 		err = db.QueryRow(`
 		    SELECT
+		        (SELECT COUNT(*) FROM subjects WHERE user_id = u.user_id),
+		        (SELECT COUNT(*) FROM thoughts WHERE user_id = u.user_id),
+		        (SELECT COUNT(*) FROM thoughts WHERE user_id = u.user_id AND subject_id IS NULL),
+		        (SELECT COUNT(*) FROM events WHERE user_id = u.user_id AND ended_at IS NOT NULL),
 		        (
-		            SELECT
-		                COUNT(*)
-		            FROM subjects
-		            WHERE user_id = u.user_id
-		        ),
-		        (
-		            SELECT
-		                COUNT(*)
-		            FROM thoughts
-		            WHERE user_id = u.user_id
-		        ),
-		        (
-		            SELECT
-		                COUNT(*)
-		            FROM thoughts
-		            WHERE user_id = u.user_id
-		                AND subject_id IS NULL
-		        ),
-		        (
-		            SELECT
-		                COUNT(*)
-		            FROM events
-		            WHERE user_id = u.user_id
-		                AND ended_at IS NOT NULL
-		        ),
-		        (
-		            SELECT
-		                COUNT(*)
+		            SELECT COUNT(*)
 		            FROM thoughts t
 		            JOIN events e ON e.user_id = t.user_id
 		            WHERE t.user_id = u.user_id

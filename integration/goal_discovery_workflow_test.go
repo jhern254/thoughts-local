@@ -200,11 +200,7 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("event after discovery: got %+v, %v; want %+v, nil", unchanged, err, item)
 		}
 		var count int
-		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
-		    FROM goal_progress
-		`).Scan(&count); err != nil {
+		if err := db.QueryRow(`SELECT count(*) FROM goal_progress`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 0 {

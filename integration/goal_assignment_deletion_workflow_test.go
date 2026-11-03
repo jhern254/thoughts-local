@@ -114,13 +114,7 @@ func TestGoalAssignmentDeletionWorkflow_SQLite(t *testing.T) {
 		var eventSubject, thoughtSubject *int64
 		if err := db.QueryRow(`
 		    SELECT
-		        (
-		            SELECT
-		                es.subject_id
-		            FROM event_subjects es
-		            WHERE es.event_id = e.event_id
-		                AND es.deleted_at IS NULL
-		        ),
+		        (SELECT es.subject_id FROM event_subjects es WHERE es.event_id = e.event_id AND es.deleted_at IS NULL),
 		        t.subject_id
 		    FROM events e
 		    JOIN thoughts t ON t.event_id = e.event_id

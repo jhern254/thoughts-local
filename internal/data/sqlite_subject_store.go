@@ -30,13 +30,7 @@ func (s *SQLiteSubjectStore) CreateSubject(ctx context.Context, subject *Subject
 	        ?,
 	        ?,
 	        ?
-	    WHERE EXISTS (
-	            SELECT
-	                1
-	            FROM users
-	            WHERE user_id = ?
-	                AND deleted_at IS NULL
-	        )
+	    WHERE EXISTS (SELECT 1 FROM users WHERE user_id = ? AND deleted_at IS NULL)
 	`,
 		subject.UserID,
 		subject.SubjectName,
@@ -79,13 +73,7 @@ func (s *SQLiteSubjectStore) GetSubject(ctx context.Context, userID string, subj
 	    WHERE user_id = ?
 	        AND subject_id = ?
 	        AND deleted_at IS NULL
-	        AND EXISTS (
-	            SELECT
-	                1
-	            FROM users
-	            WHERE users.user_id = subjects.user_id
-	                AND users.deleted_at IS NULL
-	        )
+	        AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)
 	`,
 		userID,
 		subjectID,
@@ -111,13 +99,7 @@ func (s *SQLiteSubjectStore) ListSubjects(ctx context.Context, userID string) ([
 	    FROM subjects
 	    WHERE user_id = ?
 	        AND deleted_at IS NULL
-	        AND EXISTS (
-	            SELECT
-	                1
-	            FROM users
-	            WHERE users.user_id = subjects.user_id
-	                AND users.deleted_at IS NULL
-	        )
+	        AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)
 	    ORDER BY
 	        subject_id
 	`,
@@ -150,13 +132,7 @@ func (s *SQLiteSubjectStore) UpdateSubject(ctx context.Context, userID string, s
 	    WHERE user_id = ?
 	        AND subject_id = ?
 	        AND deleted_at IS NULL
-	        AND EXISTS (
-	            SELECT
-	                1
-	            FROM users
-	            WHERE users.user_id = subjects.user_id
-	                AND users.deleted_at IS NULL
-	        )
+	        AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)
 	`,
 		name,
 		UnixSec(updatedAt),
@@ -190,13 +166,7 @@ func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, s
 	    WHERE user_id = ?
 	        AND subject_id = ?
 	        AND deleted_at IS NULL
-	        AND EXISTS (
-	            SELECT
-	                1
-	            FROM users
-	            WHERE users.user_id = subjects.user_id
-	                AND users.deleted_at IS NULL
-	        )
+	        AND EXISTS (SELECT 1 FROM users WHERE users.user_id = subjects.user_id AND users.deleted_at IS NULL)
 	`,
 		userID,
 		subjectID,
@@ -239,8 +209,7 @@ func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, s
 	        updated_at = max(unixepoch('now'), updated_at)
 	    WHERE user_id = ?
 	        AND EXISTS (
-	            SELECT
-	                1
+	            SELECT 1
 	            FROM event_subjects
 	            WHERE event_subjects.event_id = events.event_id
 	                AND event_subjects.user_id = events.user_id

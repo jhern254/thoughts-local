@@ -55,11 +55,7 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("Subjects got %+v, %v; want %v", read, err, want)
 			}
 			var count int
-			if err := db.QueryRow(`
-			    SELECT
-			        count(*)
-			    FROM events
-			`).Scan(&count); err != nil {
+			if err := db.QueryRow(`SELECT count(*) FROM events`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 1 {
@@ -92,11 +88,7 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("Event changed: got %+v, %v; want %+v", after, err, before)
 			}
 			var count int
-			if err := db.QueryRow(`
-			    SELECT
-			        count(*)
-			    FROM events
-			`).Scan(&count); err != nil {
+			if err := db.QueryRow(`SELECT count(*) FROM events`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 1 {
@@ -112,8 +104,7 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 		}
 		if _, err := db.Exec(`
 		    CREATE TRIGGER reject_second_subject BEFORE INSERT ON event_subjects WHEN NEW.subject_id = 2 BEGIN
-		    SELECT
-		        RAISE (ABORT, 'synthetic association failure');
+		    SELECT RAISE (ABORT, 'synthetic association failure');
 
 		    END
 		`); err != nil {
@@ -129,16 +120,8 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 		var events, links int
 		if err := db.QueryRow(`
 		    SELECT
-		        (
-		            SELECT
-		                count(*)
-		            FROM events
-		        ),
-		        (
-		            SELECT
-		                count(*)
-		            FROM event_subjects
-		        )
+		        (SELECT count(*) FROM events),
+		        (SELECT count(*) FROM event_subjects)
 		`).Scan(&events, &links); err != nil {
 			t.Fatal(err)
 		}
@@ -195,13 +178,7 @@ func TestMultiSubjectEventWorkflow_SQLite(t *testing.T) {
 			}
 		}
 		var retained int
-		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
-		    FROM event_subjects
-		    WHERE event_id = ?
-		        AND deleted_at IS NOT NULL
-		`, before.EventID).Scan(&retained); err != nil {
+		if err := db.QueryRow(`SELECT count(*) FROM event_subjects WHERE event_id = ? AND deleted_at IS NOT NULL`, before.EventID).Scan(&retained); err != nil {
 			t.Fatal(err)
 		}
 		if retained != 3 {
@@ -220,8 +197,7 @@ func TestMultiSubjectEventNoOp_SQLite(t *testing.T) {
 		if _, err := db.Exec(`
 		    CREATE TRIGGER reject_relationship_rewrite BEFORE
 		    UPDATE ON event_subjects BEGIN
-		    SELECT
-		        RAISE (ABORT, 'relationship row rewritten');
+		    SELECT RAISE (ABORT, 'relationship row rewritten');
 
 		    END
 		`); err != nil {

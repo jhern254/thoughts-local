@@ -65,12 +65,7 @@ func TestSQLiteEventStore_MultipleSubjects(t *testing.T) {
 			t.Fatalf("ended Subjects got %v, want [1 2]", ended.SubjectIDs)
 		}
 		var count int
-		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
-		    FROM event_subjects
-		    WHERE event_id = ?
-		`, created.EventID).Scan(&count); err != nil {
+		if err := db.QueryRow(`SELECT count(*) FROM event_subjects WHERE event_id = ?`, created.EventID).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 2 {

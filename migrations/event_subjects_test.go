@@ -37,24 +37,9 @@ func TestMigrations_EventSubjects(t *testing.T) {
 		var events, subjects, relationships int
 		if err := db.QueryRow(`
 		    SELECT
-		        (
-		            SELECT
-		                count(*)
-		            FROM events
-		            WHERE event_id = 1
-		        ),
-		        (
-		            SELECT
-		                count(*)
-		            FROM subjects
-		            WHERE subject_id = 1
-		        ),
-		        (
-		            SELECT
-		                count(*)
-		            FROM sqlite_schema
-		            WHERE name = 'event_subjects'
-		        )
+		        (SELECT count(*) FROM events WHERE event_id = 1),
+		        (SELECT count(*) FROM subjects WHERE subject_id = 1),
+		        (SELECT count(*) FROM sqlite_schema WHERE name = 'event_subjects')
 		`).Scan(&events, &subjects, &relationships); err != nil {
 			t.Fatal(err)
 		}
@@ -79,11 +64,7 @@ func TestMigrations_EventSubjects(t *testing.T) {
 		if _, err := db.Exec(string(up)); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
-		    FROM event_subjects
-		`).Scan(&relationships); err != nil {
+		if err := db.QueryRow(`SELECT count(*) FROM event_subjects`).Scan(&relationships); err != nil {
 			t.Fatal(err)
 		}
 		if relationships != 1 {

@@ -55,11 +55,7 @@ func TestMultiSubjectEventDiscovery_SQLite(t *testing.T) {
 			t.Fatalf("Misc candidates got %+v,%v; want empty", result, err)
 		}
 		var count int
-		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
-		    FROM goal_progress
-		`).Scan(&count); err != nil {
+		if err := db.QueryRow(`SELECT count(*) FROM goal_progress`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 0 {

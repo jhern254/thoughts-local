@@ -129,11 +129,7 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("add error: got %v, want ErrRecordNotFound", err)
 			}
 			var count int
-			if err := db.QueryRow(`
-			    SELECT
-			        count(*)
-			    FROM subject_goals
-			`).Scan(&count); err != nil {
+			if err := db.QueryRow(`SELECT count(*) FROM subject_goals`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 0 {
@@ -180,11 +176,7 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("deleted owner removal: got %v, want ErrRecordNotFound", err)
 		}
 		var count int
-		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
-		    FROM subject_goals
-		`).Scan(&count); err != nil {
+		if err := db.QueryRow(`SELECT count(*) FROM subject_goals`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 1 {
@@ -256,13 +248,7 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 		        g.version,
 		        e.version,
 		        t.version,
-		        (
-		            SELECT
-		                subject_id
-		            FROM event_subjects es
-		            WHERE es.event_id = e.event_id
-		                AND es.deleted_at IS NULL
-		        ),
+		        (SELECT subject_id FROM event_subjects es WHERE es.event_id = e.event_id AND es.deleted_at IS NULL),
 		        t.subject_id,
 		        p.event_id,
 		        p.thought_id,

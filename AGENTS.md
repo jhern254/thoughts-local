@@ -283,15 +283,45 @@ implicitly during API startup.
 
 ### SQL readability
 
-* Treat SQL embedded in Go as maintained source code. Inline placement is not a reason to compress a query into one line.
-* Apply SQL formatting equally to production code, tests, and fixtures. `gofmt` preserves raw-string contents; it does not format the SQL inside them.
-* Format nontrivial queries as multiline raw strings. Put major clauses on separate lines, list selected columns individually, and space operators consistently.
+* Apply the same readability standards to production code, tests, fixtures, and migration files. `gofmt` preserves SQL raw strings; it does not format their contents.
+* Keep simple queries and scalar subqueries compact when they are easy to scan. A short `SELECT ... FROM ... WHERE ...` may remain on one line.
+* In a multiline `SELECT`, put each selected expression on its own line. A simple scalar subquery counts as one expression and may remain compact.
+* Expand queries with joins, CTEs, complex conditions, or substantial nested queries. Put major clauses and each join on separate lines, keeping each join's predicates together.
+* Keep clause keywords with their contents where practical: `FROM events e`, `WHERE user_id = ?`, and `SELECT COUNT(*)`. Avoid placing every keyword on a line by itself.
+* Use four-space SQL indentation, uppercase keywords, spaces around operators, and trailing commas in multiline lists. Use `JOIN`, rather than `INNER JOIN`; preserve meaningful `LEFT JOIN` behavior.
+* Use approximately 120 characters as a soft SQL line-length guideline, excluding surrounding Go indentation. Break at logical boundaries; never alter quoted values merely to wrap a line.
+* Preserve an existing compact layout when it is already clear. Formatter output requires review; formatting tools do not override these guidelines.
+* Formatting-only changes must preserve query semantics, parameters, quoted values, and behavior.
 * Start from the table that represents the operation’s primary relationship or entity. Choose joins for correctness and clarity; textual table order does not guarantee execution order.
 * Use descriptive aliases where they clarify each table’s role. Keep each join’s predicates together, including shared-owner conditions.
-* Avoid redundant or circular joins. Prefer JOIN for required matches and LEFT JOIN when unmatched rows must remain visible. Use RIGHT JOIN only with an explicit reason.
+* Avoid redundant or circular joins. Use `RIGHT JOIN` only with an explicit reason.
 * Preserve meaningful distinctions when simplifying queries. An unavailable Goal differs from a valid Goal with no Subjects; a retired relationship must not appear as current membership.
 * Comment on non-obvious join semantics or integrity requirements, rather than narrating the SQL.
 * Claim query-performance improvements only with relevant query-plan or measurement evidence.
+
+Keep short scalar subqueries together when each is one selected expression:
+
+```sql
+SELECT
+    (SELECT COUNT(*) FROM events),
+    (SELECT COUNT(*) FROM events WHERE ended_at IS NULL),
+    (SELECT COUNT(*) FROM thoughts WHERE subject_id IS NULL)
+```
+
+Expand joins so their ownership and lifecycle conditions are easy to review:
+
+```sql
+SELECT
+    e.event_id,
+    s.subject_name
+FROM events e
+LEFT JOIN event_subjects es ON es.event_id = e.event_id
+    AND es.user_id = e.user_id
+    AND es.deleted_at IS NULL
+LEFT JOIN subjects s ON s.subject_id = es.subject_id
+    AND s.user_id = es.user_id
+    AND s.deleted_at IS NULL
+```
 
 ## Markdown Principles
 

@@ -16,17 +16,15 @@ func validateEventSubjects(ctx context.Context, tx *sql.Tx, userID string, subje
 		seen[subjectID] = struct{}{}
 		var available bool
 		err := tx.QueryRowContext(ctx, `
-		    SELECT
-		        EXISTS (
-		            SELECT
-		                1
-		            FROM subjects
-		            JOIN users ON users.user_id = subjects.user_id
-		            WHERE subjects.subject_id = ?
-		                AND subjects.user_id = ?
-		                AND subjects.deleted_at IS NULL
-		                AND users.deleted_at IS NULL
-		        )
+		    SELECT EXISTS (
+		        SELECT 1
+		        FROM subjects
+		        JOIN users ON users.user_id = subjects.user_id
+		        WHERE subjects.subject_id = ?
+		            AND subjects.user_id = ?
+		            AND subjects.deleted_at IS NULL
+		            AND users.deleted_at IS NULL
+		    )
 		`, subjectID, userID).Scan(&available)
 		if err != nil {
 			return err
@@ -47,8 +45,7 @@ func replaceEventSubjects(ctx context.Context, tx *sql.Tx, userID string, eventI
 		selected[subjectID] = true
 	}
 	rows, err := tx.QueryContext(ctx, `
-	    SELECT
-	        subject_id
+	    SELECT subject_id
 	    FROM event_subjects
 	    WHERE user_id = ?
 	        AND event_id = ?

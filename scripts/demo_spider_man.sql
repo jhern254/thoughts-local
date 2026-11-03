@@ -14,12 +14,7 @@ PRAGMA foreign_keys = ON;
 BEGIN IMMEDIATE;
 
 CREATE TEMP TABLE spider_seed AS
-SELECT
-    NOT EXISTS (
-        SELECT
-            1
-        FROM users
-    ) AS enabled;
+SELECT NOT EXISTS (SELECT 1 FROM users) AS enabled;
 
 CREATE TEMP TABLE spider_clock AS
 SELECT

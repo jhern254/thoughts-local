@@ -59,8 +59,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 		service := seedAliasSubjects(t, db)
 		if _, err := db.Exec(`
 		    CREATE TRIGGER reject_alias_insert BEFORE INSERT ON subject_aliases BEGIN
-		    SELECT
-		        RAISE (ABORT, 'synthetic subject name conflict failure');
+		    SELECT RAISE (ABORT, 'synthetic subject name conflict failure');
 
 		    END
 		`); err != nil {
@@ -223,8 +222,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 		}
 		for _, query := range []string{
 			`
-			    SELECT
-			        COUNT(*)
+			    SELECT COUNT(*)
 			    FROM subjects
 			    WHERE subject_id = 1
 			        AND subject_name = 'Go Programming'
@@ -232,8 +230,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 			        AND deleted_at IS NULL
 			`,
 			`
-			    SELECT
-			        COUNT(*)
+			    SELECT COUNT(*)
 			    FROM thoughts
 			    WHERE thought_id = 1
 			        AND subject_id = 1
@@ -243,55 +240,19 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 			        AND updated_at = created_at
 			`,
 			`
-			    SELECT
-			        COUNT(*)
+			    SELECT COUNT(*)
 			    FROM events
 			    WHERE event_id = 1
-			        AND EXISTS (
-			            SELECT
-			                1
-			            FROM event_subjects es
-			            WHERE es.event_id = events.event_id
-			                AND es.subject_id = 1
-			                AND es.deleted_at IS NULL
-			        )
+			        AND EXISTS (SELECT 1 FROM event_subjects es WHERE es.event_id = events.event_id AND es.subject_id = 1 AND es.deleted_at IS NULL)
 			        AND started_at = 100
 			        AND ended_at = 200
 			        AND version = 1
 			        AND updated_at = created_at
 			`,
-			`
-			    SELECT
-			        COUNT(*)
-			    FROM goals
-			    WHERE goal_id = 1
-			        AND goal_name = 'Practice'
-			        AND version = 1
-			        AND updated_at = created_at
-			`,
-			`
-			    SELECT
-			        COUNT(*)
-			    FROM subject_goals
-			    WHERE subject_id = 1
-			        AND goal_id = 1
-			`,
-			`
-			    SELECT
-			        COUNT(*)
-			    FROM goal_progress
-			    WHERE goal_id = 1
-			        AND time_spent_sec = 60
-			        AND thought_id = 1
-			        AND event_id = 1
-			`,
-			`
-			    SELECT
-			        COUNT(*)
-			    FROM subject_aliases
-			    WHERE alias_id = 1
-			        AND deleted_at IS NOT NULL
-			`,
+			`SELECT COUNT(*) FROM goals WHERE goal_id = 1 AND goal_name = 'Practice' AND version = 1 AND updated_at = created_at`,
+			`SELECT COUNT(*) FROM subject_goals WHERE subject_id = 1 AND goal_id = 1`,
+			`SELECT COUNT(*) FROM goal_progress WHERE goal_id = 1 AND time_spent_sec = 60 AND thought_id = 1 AND event_id = 1`,
+			`SELECT COUNT(*) FROM subject_aliases WHERE alias_id = 1 AND deleted_at IS NOT NULL`,
 		} {
 			var got int
 			if err := db.QueryRow(query).Scan(&got); err != nil {
@@ -410,8 +371,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 			}
 			var retained int
 			if err := db.QueryRow(`
-			    SELECT
-			        COUNT(*)
+			    SELECT COUNT(*)
 			    FROM subjects s
 			    JOIN subject_aliases a ON a.subject_id = s.subject_id
 			    JOIN thoughts t ON t.subject_id = s.subject_id
@@ -531,24 +491,7 @@ func TestSubjectAliasConcurrencyWorkflow_SQLite(t *testing.T) {
 					t.Fatalf("success/conflict: got %d/%d, want 1/1", succeeded, conflicted)
 				}
 				var count int
-				if err := db.QueryRow(`
-				    SELECT
-				        (
-				            SELECT
-				                COUNT(*)
-				            FROM subjects
-				            WHERE user_id = 'owner'
-				                AND subject_name = 'Shared'
-				                AND deleted_at IS NULL
-				        ) + (
-				            SELECT
-				                COUNT(*)
-				            FROM subject_aliases
-				            WHERE user_id = 'owner'
-				                AND alias_name = 'Shared'
-				                AND deleted_at IS NULL
-				        )
-				`).Scan(&count); err != nil {
+				if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM subjects WHERE user_id = 'owner' AND subject_name = 'Shared' AND deleted_at IS NULL) + (SELECT COUNT(*) FROM subject_aliases WHERE user_id = 'owner' AND alias_name = 'Shared' AND deleted_at IS NULL)`).Scan(&count); err != nil {
 					t.Fatal(err)
 				}
 				if count != 1 {

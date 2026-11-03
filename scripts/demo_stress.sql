@@ -7,13 +7,8 @@ BEGIN;
 CREATE TEMP TABLE IF NOT EXISTS demo_clock (at INTEGER NOT NULL);
 
 INSERT INTO demo_clock
-SELECT
-    unixepoch('now')
-WHERE NOT EXISTS (
-        SELECT
-            1
-        FROM demo_clock
-    );
+SELECT unixepoch('now')
+WHERE NOT EXISTS (SELECT 1 FROM demo_clock);
 
 INSERT INTO users (user_id, handle)
 VALUES
@@ -75,8 +70,7 @@ WITH RECURSIVE
         VALUES
             (0)
         UNION ALL
-        SELECT
-            n + 1
+        SELECT n + 1
         FROM hours
         WHERE n < 719
     )
@@ -143,8 +137,7 @@ WITH RECURSIVE
         VALUES
             (1)
         UNION ALL
-        SELECT
-            n + 1
+        SELECT n + 1
         FROM samples
         WHERE n < 20000
     ),
@@ -217,8 +210,7 @@ WITH RECURSIVE
         VALUES
             (1)
         UNION ALL
-        SELECT
-            n + 1
+        SELECT n + 1
         FROM samples
         WHERE n < 48
     )

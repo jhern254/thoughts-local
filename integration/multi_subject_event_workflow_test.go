@@ -83,11 +83,7 @@ func TestMultiSubjectEventSchema_SQLite(t *testing.T) {
 		`); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
-		    FROM event_subjects
-		`).Scan(&retained); err != nil {
+		if err := db.QueryRow(`SELECT count(*) FROM event_subjects`).Scan(&retained); err != nil {
 			t.Fatal(err)
 		}
 		if retained != 0 {
@@ -97,12 +93,7 @@ func TestMultiSubjectEventSchema_SQLite(t *testing.T) {
 	t.Run("removes the obsolete single Subject column", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		var count int
-		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
-		    FROM pragma_table_info ('events')
-		    WHERE name = 'subject_id'
-		`).Scan(&count); err != nil {
+		if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info ('events') WHERE name = 'subject_id'`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 0 {

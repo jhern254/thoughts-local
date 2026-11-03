@@ -71,38 +71,14 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 			want  int64
 		}{
 			{`
-			    SELECT
-			        count(*)
+			    SELECT count(*)
 			    FROM events
 			    WHERE version = 2
-			        AND NOT EXISTS (
-			            SELECT
-			                1
-			            FROM event_subjects es
-			            WHERE es.event_id = events.event_id
-			                AND es.deleted_at IS NULL
-			        )
+			        AND NOT EXISTS (SELECT 1 FROM event_subjects es WHERE es.event_id = events.event_id AND es.deleted_at IS NULL)
 			`, 2},
-			{`
-			    SELECT
-			        updated_at
-			    FROM events
-			    WHERE event_id = 2
-			`, 4102444800},
-			{`
-			    SELECT
-			        count(*)
-			    FROM thoughts
-			    WHERE subject_id IS NULL
-			        AND event_id = 1
-			        AND version = 2
-			`, 1},
-			{`
-			    SELECT
-			        sum(time_spent_sec)
-			    FROM goal_progress
-			    WHERE event_id = 1
-			`, 60},
+			{`SELECT updated_at FROM events WHERE event_id = 2`, 4102444800},
+			{`SELECT count(*) FROM thoughts WHERE subject_id IS NULL AND event_id = 1 AND version = 2`, 1},
+			{`SELECT sum(time_spent_sec) FROM goal_progress WHERE event_id = 1`, 60},
 		} {
 			var got int64
 			if err := db.QueryRow(check.query).Scan(&got); err != nil {
@@ -270,17 +246,10 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 		}
 		var count int
 		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
+		    SELECT count(*)
 		    FROM events
 		    WHERE user_id = 'u'
-		        AND NOT EXISTS (
-		            SELECT
-		                1
-		            FROM event_subjects es
-		            WHERE es.event_id = events.event_id
-		                AND es.deleted_at IS NULL
-		        )
+		        AND NOT EXISTS (SELECT 1 FROM event_subjects es WHERE es.event_id = events.event_id AND es.deleted_at IS NULL)
 		`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
@@ -314,8 +283,7 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 
 		    CREATE TRIGGER reject_event_unlink BEFORE
 		    UPDATE OF deleted_at ON event_subjects BEGIN
-		    SELECT
-		        RAISE (ABORT, 'synthetic failure');
+		    SELECT RAISE (ABORT, 'synthetic failure');
 
 		    END
 		`); err != nil {
@@ -328,8 +296,7 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 		}
 		var count int
 		if err := db.QueryRow(`
-		    SELECT
-		        count(*)
+		    SELECT count(*)
 		    FROM subjects s
 		    JOIN event_subjects es ON es.subject_id = s.subject_id
 		        AND es.deleted_at IS NULL
