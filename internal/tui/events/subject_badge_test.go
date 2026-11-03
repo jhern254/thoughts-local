@@ -226,7 +226,7 @@ func TestModel_MultipleSubjectPreview(t *testing.T) {
 		}
 		m = execute(t, m, m.openEvent(1))
 		content := m.entryContent(m.entries[0])
-		if got, want := strings.TrimSpace(ansi.Strip(content[1])), "Programming · Research · Projects ..."; got != want {
+		if got, want := strings.TrimSpace(ansi.Strip(content[1])), "Programming   Research   Projects  ..."; got != want {
 			t.Fatalf("expanded Subjects: got %q, want %q", got, want)
 		}
 		if content[2] != "" || !strings.Contains(content[3], "230 thoughts") {
@@ -247,10 +247,10 @@ func TestModel_ExpandedSubjectLine(t *testing.T) {
 		names []string
 		want  string
 	}{
-		{"two Subjects", []string{"Go", "Research"}, "Go · Research"},
-		{"three Subjects", []string{"Go", "Research", "Projects"}, "Go · Research · Projects"},
-		{"four Subjects", []string{"Go", "Research", "Projects", "Writing"}, "Go · Research · Projects ..."},
-		{"six Subjects", []string{"Go", "Research", "Projects", "Writing", "Reading", "Music"}, "Go · Research · Projects ..."},
+		{"two Subjects", []string{"Go", "Research"}, "Go   Research"},
+		{"three Subjects", []string{"Go", "Research", "Projects"}, "Go   Research   Projects"},
+		{"four Subjects", []string{"Go", "Research", "Projects", "Writing"}, "Go   Research   Projects  ..."},
+		{"six Subjects", []string{"Go", "Research", "Projects", "Writing", "Reading", "Music"}, "Go   Research   Projects  ..."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, store, _ := fixture(t)
@@ -263,6 +263,10 @@ func TestModel_ExpandedSubjectLine(t *testing.T) {
 			m.entries[0].Event.SubjectIDs = store.items[0].SubjectIDs
 			m.subjectReader = &subjectReaderStub{items: subjects}
 			m = execute(t, m, m.openEvent(1))
+			firstBlocks := list.DefaultStyles(true).Title.Render("Go") + " " + list.DefaultStyles(true).Title.Render("Research")
+			if got := m.entryContent(m.entries[0])[1]; !strings.HasPrefix(got, firstBlocks) {
+				t.Fatalf("Subject blocks: got %q, want separate styled blocks with one uncolored space", got)
+			}
 			if got := strings.TrimSpace(ansi.Strip(m.entryContent(m.entries[0])[1])); got != tc.want {
 				t.Fatalf("Subject row: got %q, want %q", got, tc.want)
 			}
