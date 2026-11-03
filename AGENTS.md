@@ -265,7 +265,7 @@ Soft-deleting a subject retains its record, atomically clears `thoughts.subject_
 * Treat SQLite as a serious persistence layer, even when development databases are disposable.
 * Use migrations for schema changes.
 * Keep schema changes intentional and reviewable.
-* Current development databases are disposable. Consolidate schema changes for a feature into one final migration pair, including all new tables needed by that feature. Amend the relevant existing migration instead of adding incremental ALTER migrations for development-only changes, and recreate the development DB. Keep SQL migrations authoritative and update schema docs and tests. Once databases must be preserved, use forward migrations instead; do not rewrite deployed migration history.
+* Current development databases are disposable. Give each new table its own migration pair. Consolidate development-only changes to an existing table into its relevant migration. Amend the relevant existing migration instead of adding incremental ALTER migrations for development-only changes, and recreate the development DB. Keep SQL migrations authoritative and update schema docs and tests. Once databases must be preserved, use forward migrations instead; do not rewrite deployed migration history.
 * Preserve foreign keys, constraints, indexes, and timestamp conventions already established in the project.
 * Do not make broad schema redesigns inside a small feature PR unless explicitly requested.
 
@@ -287,7 +287,7 @@ implicitly during API startup.
 * Format nontrivial queries as multiline raw strings. Put major clauses on separate lines, list selected columns individually, and space operators consistently.
 * Start from the table that represents the operation’s primary relationship or entity. Choose joins for correctness and clarity; textual table order does not guarantee execution order.
 * Use descriptive aliases where they clarify each table’s role. Keep each join’s predicates together, including shared-owner conditions.
-* Avoid redundant or circular joins. Prefer INNER JOIN for required matches and LEFT JOIN when unmatched rows must remain visible. Use RIGHT JOIN only with an explicit reason.
+* Avoid redundant or circular joins. Prefer JOIN for required matches and LEFT JOIN when unmatched rows must remain visible. Use RIGHT JOIN only with an explicit reason.
 * Preserve meaningful distinctions when simplifying queries. An unavailable Goal differs from a valid Goal with no Subjects; a retired relationship must not appear as current membership.
 * Comment on non-obvious join semantics or integrity requirements, rather than narrating the SQL.
 * Claim query-performance improvements only with relevant query-plan or measurement evidence.

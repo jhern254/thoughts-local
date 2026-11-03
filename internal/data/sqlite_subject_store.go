@@ -171,20 +171,23 @@ func (s *SQLiteSubjectStore) DeleteSubject(ctx context.Context, userID string, s
         SET version = version + 1,
             updated_at = max(unixepoch('now'), updated_at)
         WHERE user_id = ?
-          AND EXISTS (
-              SELECT 1 FROM event_subjects
-              WHERE event_subjects.event_id = events.event_id
-                AND event_subjects.user_id = events.user_id
-                AND event_subjects.subject_id = ?
-                AND event_subjects.deleted_at IS NULL
-          )`, userID, subjectID)
+            AND EXISTS (
+                SELECT 1
+                FROM event_subjects
+                WHERE event_subjects.event_id = events.event_id
+                    AND event_subjects.user_id = events.user_id
+                    AND event_subjects.subject_id = ?
+                    AND event_subjects.deleted_at IS NULL
+            )`, userID, subjectID)
 	if err != nil {
 		return fmt.Errorf("unlink subject events: %w", TranslateSQLiteError(err))
 	}
 	if _, err := tx.ExecContext(ctx, `
-     UPDATE event_subjects
-     SET deleted_at = unixepoch('now')
-     WHERE user_id = ? AND subject_id = ? AND deleted_at IS NULL`, userID, subjectID); err != nil {
+        UPDATE event_subjects
+        SET deleted_at = unixepoch('now')
+        WHERE user_id = ?
+            AND subject_id = ?
+            AND deleted_at IS NULL`, userID, subjectID); err != nil {
 		return fmt.Errorf("retire subject event relationships: %w", TranslateSQLiteError(err))
 	}
 

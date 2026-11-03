@@ -27,6 +27,7 @@ on:
       - 'internal/data/sqlite_subject_store.go'
       - 'internal/browserterm/client/events.spec.mjs'
       - 'migrations/000003*'
+      - 'migrations/000015*'
       - 'internal/tui/speech_setup*'
       - 'internal/tui/options*'
       - 'internal/browserterm/client/speech-setup.spec.mjs'

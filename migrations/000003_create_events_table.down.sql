@@ -1,4 +1,3 @@
-DROP TABLE IF EXISTS event_subjects;
 -- Drop events table.
 DROP INDEX IF EXISTS uq_events_id_user;
 DROP INDEX IF EXISTS uq_events_ongoing_user;

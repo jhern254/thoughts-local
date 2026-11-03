@@ -135,7 +135,7 @@ WHERE user_id = ?
     AND EXISTS (
         SELECT 1
         FROM subject_goals
-        INNER JOIN subjects ON subjects.subject_id = subject_goals.subject_id
+        JOIN subjects ON subjects.subject_id = subject_goals.subject_id
             AND subjects.user_id = subject_goals.user_id
         WHERE subject_goals.subject_id IN (SELECT value FROM json_each(?))
             AND subject_goals.user_id = goals.user_id

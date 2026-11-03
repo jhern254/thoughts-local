@@ -31,8 +31,9 @@ including parent Goals reached through several child paths. Matching the same
 Goal through two Subjects must not credit it twice; summing child credits must
 not multiply a parent's elapsed time.
 
-Development databases are disposable. Migration 3 defines the final schema;
-there is no compatibility column or automatic conversion of older databases.
+Development databases are disposable. Migration 3 defines Events without the
+old Subject column; migration 15 separately creates `event_subjects`. There is
+no compatibility column or automatic conversion of older databases.
 Recreate disposable databases using the normal migration/demo commands. Startup
 does not run migrations implicitly. SQL migrations remain authoritative.
 
