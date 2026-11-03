@@ -315,7 +315,7 @@ Table subject_time_rollups {
   Derivation choice:
    A) Sum goal_progress.time_spent_sec for rows linked to thoughts with subject_id
       (recommended: precise "time towards subject" when progress references thoughts).
-   B) Or, if you later classify events by subject, roll up event durations.
+   B) Or roll up Event durations through live event_subjects; Subject totals overlap.
   Pick one rule; stay consistent.
   '''
 }
