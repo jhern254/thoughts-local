@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"charm.land/bubbles/v2/list"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/logging"
@@ -304,6 +305,11 @@ func TestModel_SubjectScroller(t *testing.T) {
 		m, cmd := m.Update(eventKey("up"))
 		if cmd != nil || !strings.Contains(m.View(), "←/→: Subjects") {
 			t.Fatal("Up from the first Thought did not focus the loaded Subject row")
+		}
+		selected := list.DefaultStyles(true).Title.Render("Go")
+		muted := list.DefaultStyles(true).Title.Background(lipgloss.Color("#3C344A")).Foreground(lipgloss.Color("#B7A8CD")).Render("Research")
+		if row := m.entryContent(m.entries[0])[1]; !strings.HasPrefix(row, selected+" "+muted) {
+			t.Fatalf("focused Subject row: got %q, want purple selection and muted purple neighbors", row)
 		}
 		plots, _ := m.picker.TimelineEntryThoughtPlots()
 		for _, plot := range plots {

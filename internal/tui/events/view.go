@@ -215,8 +215,8 @@ func (m *Model) expandedSubjectRows() (string, bool) {
 			var badges []string
 			for index := start; index < end; index++ {
 				style := list.DefaultStyles(true).Title
-				if m.expandedSubjectFocused && !m.blurred && index == start {
-					style = style.Reverse(true)
+				if m.expandedSubjectFocused && (m.blurred || index != start) {
+					style = style.Background(lipgloss.Color("#3C344A")).Foreground(lipgloss.Color("#B7A8CD"))
 				}
 				badges = append(badges, style.Render(singleLine(m.expandedSubjects[index].SubjectName)))
 			}
