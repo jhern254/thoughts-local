@@ -32,7 +32,7 @@ func (s *SQLiteSubjectGoalStore) CreateGoalWithSubjects(ctx context.Context, ite
 		return nil, err
 	}
 	for _, id := range subjectIDs {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES(?,?,?)`, id, created.GoalID, item.UserID); err != nil {
+		if err := activateGoalSubject(ctx, tx, item.UserID, id, created.GoalID); err != nil {
 			return nil, err
 		}
 	}
@@ -93,7 +93,13 @@ func (s *SQLiteSubjectGoalStore) ReplaceGoalSubjects(ctx context.Context, userID
 			delete(selected, subject.SubjectID)
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM subject_goals WHERE user_id=? AND goal_id=? AND subject_id=?`, userID, goalID, subject.SubjectID); err != nil {
+		if _, err := tx.ExecContext(ctx, `
+            UPDATE subject_goals
+            SET deleted_at = unixepoch('now')
+            WHERE user_id = ?
+              AND goal_id = ?
+              AND subject_id = ?
+              AND deleted_at IS NULL`, userID, goalID, subject.SubjectID); err != nil {
 			return nil, err
 		}
 		changed = true
@@ -102,7 +108,7 @@ func (s *SQLiteSubjectGoalStore) ReplaceGoalSubjects(ctx context.Context, userID
 		if !selected[id] {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES(?,?,?)`, id, goalID, userID); err != nil {
+		if err := activateGoalSubject(ctx, tx, userID, id, goalID); err != nil {
 			return nil, err
 		}
 		changed = true
@@ -141,7 +147,14 @@ func (s *SQLiteSubjectGoalStore) ListLiveSubjectsForGoal(ctx context.Context, us
 	}
 	defer tx.Rollback()
 	var exists bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM goals WHERE user_id=? AND goal_id=? AND `+visibleGoals+`)`, userID, goalID).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT 1
+            FROM goals
+            WHERE user_id = ?
+              AND goal_id = ?
+              AND `+visibleGoals+`
+        )`, userID, goalID).Scan(&exists); err != nil {
 		return nil, err
 	}
 	if !exists {
@@ -158,9 +171,22 @@ func (s *SQLiteSubjectGoalStore) ListLiveSubjectsForGoal(ctx context.Context, us
 }
 
 func listLiveGoalSubjects(ctx context.Context, tx *sql.Tx, userID string, goalID int64) ([]Subject, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT s.subject_id,s.user_id,s.subject_name,s.created_at,s.updated_at
- FROM subjects s JOIN subject_goals sg ON s.subject_id=sg.subject_id AND s.user_id=sg.user_id
- WHERE sg.user_id=? AND sg.goal_id=? AND s.deleted_at IS NULL ORDER BY s.subject_id`, userID, goalID)
+	rows, err := tx.QueryContext(ctx, `
+        SELECT
+            subject.subject_id,
+            subject.user_id,
+            subject.subject_name,
+            subject.created_at,
+            subject.updated_at
+        FROM subject_goals AS membership
+        JOIN subjects AS subject
+          ON subject.subject_id = membership.subject_id
+         AND subject.user_id = membership.user_id
+        WHERE membership.user_id = ?
+          AND membership.goal_id = ?
+          AND membership.deleted_at IS NULL
+          AND subject.deleted_at IS NULL
+        ORDER BY subject.subject_id`, userID, goalID)
 	if err != nil {
 		return nil, err
 	}

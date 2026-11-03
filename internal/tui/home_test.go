@@ -493,7 +493,8 @@ func TestModel_EventsHome(t *testing.T) {
 	})
 	t.Run("previous day arrives at its first event in calendar navigation", func(t *testing.T) {
 		m, service := newHome(t)
-		start := displaytime.Day(time.Now()).AddDate(0, 0, -1).Add(21 * time.Hour)
+		day := displaytime.Day(time.Now()).AddDate(0, 0, -1)
+		start := time.Date(day.Year(), day.Month(), day.Day(), 21, 0, 0, 0, day.Location())
 		end := start.Add(time.Hour)
 		service.items = []data.Event{{EventID: 2, StartedAt: start, EndedAt: &end}}
 		m, cmd := rootUpdate(m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))

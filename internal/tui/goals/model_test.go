@@ -421,3 +421,37 @@ func TestModel_CreateRetryGuidance(t *testing.T) {
 		})
 	}
 }
+
+func (s *services) ListLiveNumberedSubjectsForGoal(ctx context.Context, userID string, goalID int64) ([]data.NumberedGoalSubject, error) {
+	subjects, err := s.ListLiveSubjectsForGoal(ctx, userID, goalID)
+	refs := make([]data.NumberedGoalSubject, 0, len(subjects))
+	for i, subject := range subjects {
+		refs = append(refs, data.NumberedGoalSubject{Subject: subject, GoalNumber: int64(i + 1)})
+	}
+	return refs, err
+}
+
+func TestModel_SubjectNumbers(t *testing.T) {
+	t.Run("details show each Subject reference and hide the internal Goal ID", func(t *testing.T) {
+		m, s := testModel(t)
+		s.subjects = []data.Subject{{SubjectID: 1, SubjectName: "Programming"}, {SubjectID: 2, SubjectName: "Fitness"}}
+		m.Open()
+		m.screen = detailView
+		reply := m.loadDetail(42)()
+		m, _ = m.Update(reply)
+		got := m.View()
+		for _, want := range []string{"Programming 1", "Fitness 2"} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("view missing %q: %s", want, got)
+			}
+		}
+		if strings.Contains(got, "Goal 42") {
+			t.Fatal("internal ID visible")
+		}
+	})
+	t.Run("Misc has no number", func(t *testing.T) {
+		if got := strings.Join(numberedSubjectNames(nil, nil), ","); got != "Misc" {
+			t.Fatalf("got %q, want Misc", got)
+		}
+	})
+}

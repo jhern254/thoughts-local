@@ -1,9 +1,15 @@
--- Classification links are retained when either endpoint is soft-deleted.
--- Linking does not enable automatic credit or create goal progress.
+-- One retained numbered relationship per same-owner Subject–Goal pair.
+-- Retirement preserves the number; linking does not create Goal progress.
 CREATE TABLE IF NOT EXISTS subject_goals (
     subject_id INTEGER NOT NULL,
     goal_id    INTEGER NOT NULL,
     user_id    TEXT NOT NULL,
+    goal_number INTEGER NOT NULL
+        CHECK (typeof(goal_number) = 'integer' AND goal_number > 0),
+    deleted_at INTEGER
+        CHECK (deleted_at IS NULL OR typeof(deleted_at) = 'integer'),
+
+    CONSTRAINT uq_subject_goals_number UNIQUE (subject_id, goal_number),
 
     CONSTRAINT pk_subject_goals PRIMARY KEY (subject_id, goal_id),
     CONSTRAINT fk_subject_goals_subject

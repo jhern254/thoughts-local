@@ -1,6 +1,7 @@
 package goals
 
 import (
+	"github.com/jhern254/go-thoughts/internal/data"
 	"sort"
 	"strings"
 
@@ -97,6 +98,17 @@ func (m *Model) applyListControls() tea.Cmd {
 		}
 		if !m.matchesSubject(row) || m.priorityFilter > 0 && row.item.Priority != priorities[m.priorityFilter] {
 			continue
+		}
+		if m.subjectFilter >= 2 {
+			id := m.filterSubjects[m.subjectFilter-2].SubjectID
+			row.subjects = append([]data.Subject(nil), row.subjects...)
+			for i, subject := range row.subjects {
+				if subject.SubjectID == id {
+					copy(row.subjects[1:i+1], row.subjects[:i])
+					row.subjects[0] = subject
+					break
+				}
+			}
 		}
 		rows = append(rows, row)
 	}

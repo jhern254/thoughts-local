@@ -23,8 +23,7 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
  (7,'owner','Deleted',60,'high'),(8,'owner','Unlinked',60,'high');
  UPDATE goals SET deleted_at=updated_at WHERE goal_id=7;
  UPDATE goals SET goal_start_date='2099-01-01',goal_end_date='2099-12-31' WHERE goal_id=4;
- INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES
- (1,6,'owner'),(1,5,'owner'),(1,4,'owner'),(1,2,'owner'),(1,1,'owner'),(1,7,'owner'),(3,3,'other');`)
+ INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,6,'owner',6),(1,5,'owner',5),(1,4,'owner',4),(1,2,'owner',2),(1,1,'owner',1),(1,7,'owner',7),(3,3,'other',3);`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,7 +62,7 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 		t.Run("no candidates for "+tc.name, func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			seedSubjectGoals(t, db)
-			if _, err := db.Exec("INSERT INTO subject_goals VALUES (1,1,'owner'),(3,3,'other')"); err != nil {
+			if _, err := db.Exec("INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1),(3,3,'other',3)"); err != nil {
 				t.Fatal(err)
 			}
 			if tc.setup != "" {
@@ -112,7 +111,7 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("duplicate link: got %v, want ErrDuplicateRecord", err)
 		}
 		bySubject, err := links.ListForSubject(t.Context(), owner, subject.SubjectID)
-		wantLinks := []data.SubjectGoal{{SubjectID: subject.SubjectID, GoalID: high.GoalID, UserID: owner}, {SubjectID: subject.SubjectID, GoalID: normal.GoalID, UserID: owner}}
+		wantLinks := []data.SubjectGoal{{SubjectID: subject.SubjectID, GoalID: high.GoalID, UserID: owner, GoalNumber: 1}, {SubjectID: subject.SubjectID, GoalID: normal.GoalID, UserID: owner, GoalNumber: 2}}
 		if err != nil || !reflect.DeepEqual(bySubject, wantLinks) {
 			t.Fatalf("subject links: got %+v, %v; want %+v, nil", bySubject, err, wantLinks)
 		}

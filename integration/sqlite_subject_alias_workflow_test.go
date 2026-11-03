@@ -159,7 +159,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 		if _, err := db.Exec(`INSERT INTO events(event_id,user_id,subject_id,started_at,ended_at) VALUES(1,'owner',1,100,200);
  INSERT INTO thoughts(thought_id,user_id,subject_id,event_id,thought) VALUES(1,'owner',1,1,'Retain text');
  INSERT INTO goals(goal_id,user_id,goal_name,target_seconds) VALUES(1,'owner','Practice',60);
- INSERT INTO subject_goals(subject_id,goal_id,user_id) VALUES(1,1,'owner');
+ INSERT INTO subject_goals(subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1);
  INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,thought_id,event_id) VALUES(1,'owner',60,1,1)`); err != nil {
 			t.Fatal(err)
 		}
