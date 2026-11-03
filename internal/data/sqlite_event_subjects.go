@@ -50,8 +50,7 @@ func replaceEventSubjects(ctx context.Context, tx *sql.Tx, userID string, eventI
 	    WHERE user_id = ?
 	        AND event_id = ?
 	        AND deleted_at IS NULL
-	    ORDER BY
-	        subject_id
+	    ORDER BY subject_id
 	`, userID, eventID)
 	if err != nil {
 		return err
@@ -93,12 +92,9 @@ func replaceEventSubjects(ctx context.Context, tx *sql.Tx, userID string, eventI
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `
-		    INSERT INTO
-		        event_subjects (event_id, subject_id, user_id)
-		    VALUES
-		        (?, ?, ?)
-		    ON CONFLICT (event_id, subject_id) DO UPDATE
-		    SET deleted_at = NULL
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (?, ?, ?)
+		    ON CONFLICT (event_id, subject_id)
+		    DO UPDATE SET deleted_at = NULL
 		    WHERE event_subjects.user_id = excluded.user_id
 		        AND event_subjects.deleted_at IS NOT NULL
 		`, eventID, subjectID, userID); err != nil {

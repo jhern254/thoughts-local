@@ -122,12 +122,7 @@ func TestEventCompletionWorkflow_SQLite(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
 			insertUsers(t, db, "u", "other")
 			s := event.NewService(data.NewSQLiteEventStore(db))
-			if _, err := db.Exec(`
-			    INSERT INTO
-			        subjects (subject_id, user_id, subject_name)
-			    VALUES
-			        (1, 'u', 'coding')
-			`); err != nil {
+			if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES (1,'u','coding')`); err != nil {
 				t.Fatal(err)
 			}
 			subjectID := int64(1)
@@ -194,35 +189,21 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`
-		    INSERT INTO
-		        subjects (subject_id, user_id, subject_name)
-		    VALUES
-		        (1, 'u', 'one'),
-		        (2, 'u', 'two')
-		`); err != nil {
+		if _, err := db.Exec(`INSERT INTO subjects (subject_id,user_id,subject_name) VALUES (1,'u','one'),(2,'u','two')`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`
-		    INSERT INTO
-		        thoughts (thought_id, user_id, subject_id, event_id, thought, observed_at)
-		    VALUES
-		        (1, 'u', NULL, ?, 'before start', 79999),
-		        (2, 'u', 1, NULL, 'at start', 80000),
-		        (3, 'u', 2, ?, 'different link', 85000),
-		        (4, 'u', NULL, NULL, 'same second', 85000),
-		        (5, 'u', NULL, NULL, 'next day', 89999),
-		        (6, 'u', NULL, ?, 'at end', 90000),
-		        (7, 'other', NULL, NULL, 'other user', 85000),
-		        (8, 'u', NULL, NULL, 'deleted', 85000)
-		`, item.EventID, next.EventID, item.EventID); err != nil {
+		if _, err := db.Exec(`INSERT INTO thoughts (thought_id,user_id,subject_id,event_id,thought,observed_at) VALUES
+			(1,'u',NULL,?,'before start',79999),
+			(2,'u',1,NULL,'at start',80000),
+			(3,'u',2,?,'different link',85000),
+			(4,'u',NULL,NULL,'same second',85000),
+			(5,'u',NULL,NULL,'next day',89999),
+			(6,'u',NULL,?,'at end',90000),
+			(7,'other',NULL,NULL,'other user',85000),
+			(8,'u',NULL,NULL,'deleted',85000)`, item.EventID, next.EventID, item.EventID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`
-		    UPDATE thoughts
-		    SET deleted_at = updated_at
-		    WHERE thought_id = 8
-		`); err != nil {
+		if _, err := db.Exec(`UPDATE thoughts SET deleted_at=updated_at WHERE thought_id=8`); err != nil {
 			t.Fatal(err)
 		}
 		got, err := view.ListThoughts(t.Context(), "u", item.EventID)
@@ -261,12 +242,7 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.Exec(`
-			    INSERT INTO
-			        thoughts (user_id, thought, observed_at)
-			    VALUES
-			        ('u', 'at start', 100)
-			`); err != nil {
+			if _, err := db.Exec(`INSERT INTO thoughts (user_id,thought,observed_at) VALUES ('u','at start',100)`); err != nil {
 				t.Fatal(err)
 			}
 			user := "u"
@@ -274,18 +250,11 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 			case "other user":
 				user = "other"
 			case "deleted event":
-				if _, err := db.Exec(`
-				    UPDATE events
-				    SET deleted_at = updated_at
-				`); err != nil {
+				if _, err := db.Exec(`UPDATE events SET deleted_at=updated_at`); err != nil {
 					t.Fatal(err)
 				}
 			case "deleted user":
-				if _, err := db.Exec(`
-				    UPDATE users
-				    SET deleted_at = updated_at
-				    WHERE user_id = 'u'
-				`); err != nil {
+				if _, err := db.Exec(`UPDATE users SET deleted_at=updated_at WHERE user_id='u'`); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -320,13 +289,7 @@ func TestEventThoughtsWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`
-		    INSERT INTO
-		        thoughts (thought_id, user_id, thought, observed_at)
-		    VALUES
-		        (1, 'u', 'past', 100),
-		        (2, 'u', 'future', ?)
-		`, time.Now().Add(24*time.Hour).Unix()); err != nil {
+		if _, err := db.Exec(`INSERT INTO thoughts (thought_id,user_id,thought,observed_at) VALUES (1,'u','past',100),(2,'u','future',?)`, time.Now().Add(24*time.Hour).Unix()); err != nil {
 			t.Fatal(err)
 		}
 		got, err := view.ListThoughts(t.Context(), "u", item.EventID)

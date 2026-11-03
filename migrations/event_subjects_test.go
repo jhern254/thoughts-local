@@ -10,20 +10,9 @@ func TestMigrations_EventSubjects(t *testing.T) {
 		db := openMigratedDatabase(t)
 		insertUsers(t, db)
 		if _, err := db.Exec(`
-		    INSERT INTO
-		        subjects (subject_id, user_id, subject_name)
-		    VALUES
-		        (1, 'user-1', 'Coding');
-
-		    INSERT INTO
-		        events (event_id, user_id, started_at, ended_at)
-		    VALUES
-		        (1, 'user-1', 100, 200);
-
-		    INSERT INTO
-		        event_subjects (event_id, subject_id, user_id)
-		    VALUES
-		        (1, 1, 'user-1');
+		    INSERT INTO subjects (subject_id, user_id, subject_name) VALUES (1, 'user-1', 'Coding');
+		    INSERT INTO events (event_id, user_id, started_at, ended_at) VALUES (1, 'user-1', 100, 200);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (1, 1, 'user-1');
 		`); err != nil {
 			t.Fatal(err)
 		}
@@ -36,11 +25,11 @@ func TestMigrations_EventSubjects(t *testing.T) {
 		}
 		var events, subjects, relationships int
 		if err := db.QueryRow(`
-		    SELECT
-		        (SELECT count(*) FROM events WHERE event_id = 1),
-		        (SELECT count(*) FROM subjects WHERE subject_id = 1),
-		        (SELECT count(*) FROM sqlite_schema WHERE name = 'event_subjects')
-		`).Scan(&events, &subjects, &relationships); err != nil {
+      SELECT
+          (SELECT count(*) FROM events WHERE event_id = 1),
+          (SELECT count(*) FROM subjects WHERE subject_id = 1),
+          (SELECT count(*) FROM sqlite_schema WHERE name = 'event_subjects')
+  `).Scan(&events, &subjects, &relationships); err != nil {
 			t.Fatal(err)
 		}
 		if events != 1 || subjects != 1 || relationships != 0 {
@@ -53,12 +42,7 @@ func TestMigrations_EventSubjects(t *testing.T) {
 		if _, err := db.Exec(string(up)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`
-		    INSERT INTO
-		        event_subjects (event_id, subject_id, user_id)
-		    VALUES
-		        (1, 1, 'user-1')
-		`); err != nil {
+		if _, err := db.Exec(`INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (1, 1, 'user-1')`); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := db.Exec(string(up)); err != nil {
@@ -70,9 +54,7 @@ func TestMigrations_EventSubjects(t *testing.T) {
 		if relationships != 1 {
 			t.Fatalf("repeat setup relationships got %d, want 1", relationships)
 		}
-		rows, err := db.Query(`
-		    PRAGMA foreign_key_check
-		`)
+		rows, err := db.Query("PRAGMA foreign_key_check")
 		if err != nil {
 			t.Fatal(err)
 		}

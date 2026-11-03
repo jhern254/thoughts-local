@@ -285,12 +285,14 @@ implicitly during API startup.
 
 * Apply the same readability standards to production code, tests, fixtures, and migration files. `gofmt` preserves SQL raw strings; it does not format their contents.
 * Keep simple queries and scalar subqueries compact when they are easy to scan. A short `SELECT ... FROM ... WHERE ...` may remain on one line.
+* Keep small `INSERT`, `UPDATE`, and `DELETE` statements compact too. Keep `INSERT INTO` with its table and short column list, and `VALUES` with its tuple; a short insert may fit on one line. For multi-row inserts, use one tuple per line. Do not expand short column lists or tuple values vertically.
 * In a multiline `SELECT`, put each selected expression on its own line. A simple scalar subquery counts as one expression and may remain compact.
 * Expand queries with joins, CTEs, complex conditions, or substantial nested queries. Put major clauses and each join on separate lines, keeping each join's predicates together.
 * Keep clause keywords with their contents where practical: `FROM events e`, `WHERE user_id = ?`, and `SELECT COUNT(*)`. Avoid placing every keyword on a line by itself.
 * Use four-space SQL indentation, uppercase keywords, spaces around operators, and trailing commas in multiline lists. Use `JOIN`, rather than `INNER JOIN`; preserve meaningful `LEFT JOIN` behavior.
 * Use approximately 120 characters as a soft SQL line-length guideline, excluding surrounding Go indentation. Break at logical boundaries; never alter quoted values merely to wrap a line.
 * Preserve an existing compact layout when it is already clear. Formatter output requires review; formatting tools do not override these guidelines.
+* Limit formatting changes to SQL added or changed by the task. Do not reformat entire existing files or fixtures merely because a nearby statement changed.
 * Formatting-only changes must preserve query semantics, parameters, quoted values, and behavior.
 * Start from the table that represents the operation’s primary relationship or entity. Choose joins for correctness and clarity; textual table order does not guarantee execution order.
 * Use descriptive aliases where they clarify each table’s role. Keep each join’s predicates together, including shared-owner conditions.

@@ -19,14 +19,8 @@ import (
 func seedAliasSubjects(t *testing.T, db *sql.DB) *subject.Service {
 	t.Helper()
 	insertUsers(t, db, "owner", "other")
-	if _, err := db.Exec(`
-	    INSERT INTO
-	        subjects (subject_id, user_id, subject_name)
-	    VALUES
-	        (1, 'owner', 'Go Programming'),
-	        (2, 'owner', 'Writing'),
-	        (3, 'other', 'Go Programming')
-	`); err != nil {
+	if _, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES
+ (1,'owner','Go Programming'),(2,'owner','Writing'),(3,'other','Go Programming')`); err != nil {
 		t.Fatal(err)
 	}
 	return subject.NewService(data.NewSQLiteSubjectStore(db))
@@ -57,12 +51,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 	t.Run("unrelated trigger failures are not mislabeled as namespace conflicts", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		service := seedAliasSubjects(t, db)
-		if _, err := db.Exec(`
-		    CREATE TRIGGER reject_alias_insert BEFORE INSERT ON subject_aliases BEGIN
-		    SELECT RAISE (ABORT, 'synthetic subject name conflict failure');
-
-		    END
-		`); err != nil {
+		if _, err := db.Exec(`CREATE TRIGGER reject_alias_insert BEFORE INSERT ON subject_aliases BEGIN SELECT RAISE(ABORT,'synthetic subject name conflict failure'); END`); err != nil {
 			t.Fatal(err)
 		}
 		_, err := service.CreateAlias(t.Context(), "owner", 1, "Golang")
@@ -168,35 +157,12 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		service := seedAliasSubjects(t, db)
 		if _, err := db.Exec(`
-		    INSERT INTO
-		        events (event_id, user_id, started_at, ended_at)
-		    VALUES
-		        (1, 'owner', 100, 200);
-
-		    INSERT INTO
-		        event_subjects (event_id, subject_id, user_id)
-		    VALUES
-		        (1, 1, 'owner');
-
-		    INSERT INTO
-		        thoughts (thought_id, user_id, subject_id, event_id, thought)
-		    VALUES
-		        (1, 'owner', 1, 1, 'Retain text');
-
-		    INSERT INTO
-		        goals (goal_id, user_id, goal_name, target_seconds)
-		    VALUES
-		        (1, 'owner', 'Practice', 60);
-
-		    INSERT INTO
-		        subject_goals (subject_id, goal_id, user_id, goal_number)
-		    VALUES
-		        (1, 1, 'owner', 1);
-
-		    INSERT INTO
-		        goal_progress (goal_id, user_id, time_spent_sec, thought_id, event_id)
-		    VALUES
-		        (1, 'owner', 60, 1, 1)
+		    INSERT INTO events (event_id, user_id, started_at, ended_at) VALUES (1, 'owner', 100, 200);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (1, 1, 'owner');
+		    INSERT INTO thoughts (thought_id, user_id, subject_id, event_id, thought) VALUES (1, 'owner', 1, 1, 'Retain text');
+		    INSERT INTO goals (goal_id, user_id, goal_name, target_seconds) VALUES (1, 'owner', 'Practice', 60);
+		    INSERT INTO subject_goals (subject_id, goal_id, user_id, goal_number) VALUES (1, 1, 'owner', 1);
+		    INSERT INTO goal_progress (goal_id, user_id, time_spent_sec, thought_id, event_id) VALUES (1, 'owner', 60, 1, 1)
 		`); err != nil {
 			t.Fatal(err)
 		}
@@ -221,38 +187,30 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, query := range []string{
+			`SELECT COUNT(*) FROM subjects WHERE subject_id=1 AND subject_name='Go Programming' AND created_at=updated_at AND deleted_at IS NULL`,
+			`SELECT COUNT(*) FROM thoughts WHERE thought_id=1 AND subject_id=1 AND event_id=1 AND thought='Retain text' AND version=1 AND updated_at=created_at`,
 			`
-			    SELECT COUNT(*)
-			    FROM subjects
-			    WHERE subject_id = 1
-			        AND subject_name = 'Go Programming'
-			        AND created_at = updated_at
-			        AND deleted_at IS NULL
-			`,
-			`
-			    SELECT COUNT(*)
-			    FROM thoughts
-			    WHERE thought_id = 1
-			        AND subject_id = 1
-			        AND event_id = 1
-			        AND thought = 'Retain text'
-			        AND version = 1
-			        AND updated_at = created_at
-			`,
-			`
-			    SELECT COUNT(*)
+			    SELECT
+			        COUNT(*)
 			    FROM events
 			    WHERE event_id = 1
-			        AND EXISTS (SELECT 1 FROM event_subjects es WHERE es.event_id = events.event_id AND es.subject_id = 1 AND es.deleted_at IS NULL)
+			        AND EXISTS (
+			            SELECT
+			                1
+			            FROM event_subjects es
+			            WHERE es.event_id = events.event_id
+			                AND es.subject_id = 1
+			                AND es.deleted_at IS NULL
+			        )
 			        AND started_at = 100
 			        AND ended_at = 200
 			        AND version = 1
 			        AND updated_at = created_at
 			`,
-			`SELECT COUNT(*) FROM goals WHERE goal_id = 1 AND goal_name = 'Practice' AND version = 1 AND updated_at = created_at`,
-			`SELECT COUNT(*) FROM subject_goals WHERE subject_id = 1 AND goal_id = 1`,
-			`SELECT COUNT(*) FROM goal_progress WHERE goal_id = 1 AND time_spent_sec = 60 AND thought_id = 1 AND event_id = 1`,
-			`SELECT COUNT(*) FROM subject_aliases WHERE alias_id = 1 AND deleted_at IS NOT NULL`,
+			`SELECT COUNT(*) FROM goals WHERE goal_id=1 AND goal_name='Practice' AND version=1 AND updated_at=created_at`,
+			`SELECT COUNT(*) FROM subject_goals WHERE subject_id=1 AND goal_id=1`,
+			`SELECT COUNT(*) FROM goal_progress WHERE goal_id=1 AND time_spent_sec=60 AND thought_id=1 AND event_id=1`,
+			`SELECT COUNT(*) FROM subject_aliases WHERE alias_id=1 AND deleted_at IS NOT NULL`,
 		} {
 			var got int
 			if err := db.QueryRow(query).Scan(&got); err != nil {
@@ -271,16 +229,8 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 		{"foreign owner", "", "other", 1},
 		{"wrong canonical subject", "", "owner", 2},
 		{"missing subject", "", "owner", 99},
-		{"deleted subject", `
-		    UPDATE subjects
-		    SET deleted_at = updated_at
-		    WHERE subject_id = 1
-		`, "owner", 1},
-		{"deleted user", `
-		    UPDATE users
-		    SET deleted_at = updated_at
-		    WHERE user_id = 'owner'
-		`, "owner", 1},
+		{"deleted subject", `UPDATE subjects SET deleted_at=updated_at WHERE subject_id=1`, "owner", 1},
+		{"deleted user", `UPDATE users SET deleted_at=updated_at WHERE user_id='owner'`, "owner", 1},
 	} {
 		t.Run("rejects alias operations for "+scenario.name, func(t *testing.T) {
 			db, _ := openMigratedSQLite(t)
@@ -322,13 +272,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		var active, retained int
-		if err := db.QueryRow(`
-		    SELECT
-		        COUNT(*),
-		        COUNT(deleted_at)
-		    FROM subject_aliases
-		    WHERE subject_id = 1
-		`).Scan(&retained, &active); err != nil {
+		if err := db.QueryRow(`SELECT COUNT(*),COUNT(deleted_at) FROM subject_aliases WHERE subject_id=1`).Scan(&retained, &active); err != nil {
 			t.Fatal(err)
 		}
 		if retained != 1 || active != 1 {
@@ -352,16 +296,8 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 			if _, err := service.CreateAlias(t.Context(), "owner", 1, "Golang"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.Exec(`
-                INSERT INTO thoughts (user_id, subject_id, thought)
-                VALUES ('owner', 1, 'Unchanged');
-
-                CREATE TRIGGER reject_alias_workflow
-                BEFORE UPDATE ON ` + table + `
-                BEGIN
-                    SELECT RAISE(ABORT, 'synthetic write failure');
-                END
-            `); err != nil {
+			if _, err := db.Exec(`INSERT INTO thoughts(user_id,subject_id,thought) VALUES('owner',1,'Unchanged');
+ CREATE TRIGGER reject_alias_workflow BEFORE UPDATE ON ` + table + ` BEGIN SELECT RAISE(ABORT,'synthetic write failure'); END`); err != nil {
 				t.Fatal(err)
 			}
 			err := service.Delete(t.Context(), "owner", 1)
@@ -370,16 +306,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("delete failure: got %v, want original SQLite failure", err)
 			}
 			var retained int
-			if err := db.QueryRow(`
-			    SELECT COUNT(*)
-			    FROM subjects s
-			    JOIN subject_aliases a ON a.subject_id = s.subject_id
-			    JOIN thoughts t ON t.subject_id = s.subject_id
-			    WHERE s.subject_id = 1
-			        AND s.deleted_at IS NULL
-			        AND a.deleted_at IS NULL
-			        AND t.version = 1
-			`).Scan(&retained); err != nil {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM subjects s JOIN subject_aliases a ON a.subject_id=s.subject_id JOIN thoughts t ON t.subject_id=s.subject_id WHERE s.subject_id=1 AND s.deleted_at IS NULL AND a.deleted_at IS NULL AND t.version=1`).Scan(&retained); err != nil {
 				t.Fatal(err)
 			}
 			if retained != 1 {
@@ -412,11 +339,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 		if _, err := service.CreateAlias(ctx, "owner", 1, "Canceled"); !errors.Is(err, context.Canceled) {
 			t.Fatalf("canceled create: got %v, want canceled", err)
 		}
-		if _, err := db.Exec(`
-		    UPDATE users
-		    SET deleted_at = updated_at
-		    WHERE user_id = 'owner'
-		`); err != nil {
+		if _, err := db.Exec(`UPDATE users SET deleted_at=updated_at WHERE user_id='owner'`); err != nil {
 			t.Fatal(err)
 		}
 		got, err = service.ListAliasesForUser(t.Context(), "owner")
@@ -441,9 +364,7 @@ func TestSubjectAliasConcurrencyWorkflow_SQLite(t *testing.T) {
 				}
 				otherDB := openSQLite(t, dsn)
 				for _, connection := range []*sql.DB{db, otherDB} {
-					if _, err := connection.Exec(`
-					    PRAGMA busy_timeout = 2000
-					`); err != nil {
+					if _, err := connection.Exec(`PRAGMA busy_timeout=2000`); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -491,7 +412,7 @@ func TestSubjectAliasConcurrencyWorkflow_SQLite(t *testing.T) {
 					t.Fatalf("success/conflict: got %d/%d, want 1/1", succeeded, conflicted)
 				}
 				var count int
-				if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM subjects WHERE user_id = 'owner' AND subject_name = 'Shared' AND deleted_at IS NULL) + (SELECT COUNT(*) FROM subject_aliases WHERE user_id = 'owner' AND alias_name = 'Shared' AND deleted_at IS NULL)`).Scan(&count); err != nil {
+				if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM subjects WHERE user_id='owner' AND subject_name='Shared' AND deleted_at IS NULL)+(SELECT COUNT(*) FROM subject_aliases WHERE user_id='owner' AND alias_name='Shared' AND deleted_at IS NULL)`).Scan(&count); err != nil {
 					t.Fatal(err)
 				}
 				if count != 1 {

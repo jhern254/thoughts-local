@@ -40,20 +40,9 @@ func TestGoalAssignmentDeletionWorkflow_SQLite(t *testing.T) {
 			before = append(before, item)
 		}
 		if _, err := db.Exec(`
-		    INSERT INTO
-		        events (event_id, user_id, started_at, ended_at)
-		    VALUES
-		        (1, 'owner', 100, 200);
-
-		    INSERT INTO
-		        event_subjects (event_id, subject_id, user_id)
-		    VALUES
-		        (1, 1, 'owner');
-
-		    INSERT INTO
-		        thoughts (thought_id, user_id, subject_id, event_id, thought)
-		    VALUES
-		        (1, 'owner', 1, 1, 'Synthetic');
+		    INSERT INTO events (event_id, user_id, started_at, ended_at) VALUES (1, 'owner', 100, 200);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (1, 1, 'owner');
+		    INSERT INTO thoughts (thought_id, user_id, subject_id, event_id, thought) VALUES (1, 'owner', 1, 1, 'Synthetic');
 		`); err != nil {
 			t.Fatal(err)
 		}
@@ -112,22 +101,13 @@ func TestGoalAssignmentDeletionWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("parents after deletion: got %+v, %v; want %+v", afterParents, err, parentLinks)
 		}
 		var eventSubject, thoughtSubject *int64
-		if err := db.QueryRow(`
-		    SELECT
-		        (SELECT es.subject_id FROM event_subjects es WHERE es.event_id = e.event_id AND es.deleted_at IS NULL),
-		        t.subject_id
-		    FROM events e
-		    JOIN thoughts t ON t.event_id = e.event_id
-		    WHERE e.event_id = 1
-		`).Scan(&eventSubject, &thoughtSubject); err != nil {
+		if err := db.QueryRow("SELECT (SELECT es.subject_id FROM event_subjects es WHERE es.event_id=e.event_id AND es.deleted_at IS NULL),t.subject_id FROM events e JOIN thoughts t ON t.event_id=e.event_id WHERE e.event_id=1").Scan(&eventSubject, &thoughtSubject); err != nil {
 			t.Fatal(err)
 		}
 		if eventSubject != nil || thoughtSubject != nil {
 			t.Fatalf("unlinked subjects: got %v, %v; want NULL, NULL", eventSubject, thoughtSubject)
 		}
-		rows, err := db.Query(`
-		    PRAGMA foreign_key_check
-		`)
+		rows, err := db.Query("PRAGMA foreign_key_check")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,34 +123,14 @@ func TestGoalAssignmentDeletionWorkflow_SQLite(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)
 		if _, err := db.Exec(`
-		    UPDATE subjects
-		    SET subject_name = 'Misc'
-		    WHERE subject_id = 1;
-
-		    UPDATE subjects
-		    SET subject_name = 'Unassigned'
-		    WHERE subject_id = 2;
-
-		    INSERT INTO
-		        subject_goals (subject_id, goal_id, user_id, goal_number)
-		    VALUES
-		        (1, 1, 'owner', 1),
+		    UPDATE subjects SET subject_name='Misc' WHERE subject_id=1;
+		    UPDATE subjects SET subject_name='Unassigned' WHERE subject_id=2;
+		    INSERT INTO subject_goals (subject_id, goal_id, user_id, goal_number)
+		    VALUES (1, 1, 'owner', 1),
 		        (2, 2, 'owner', 2);
-
-		    INSERT INTO
-		        events (event_id, user_id, started_at, ended_at)
-		    VALUES
-		        (1, 'owner', 100, 200);
-
-		    INSERT INTO
-		        events (event_id, user_id, started_at, ended_at)
-		    VALUES
-		        (2, 'owner', 300, 400);
-
-		    INSERT INTO
-		        event_subjects (event_id, subject_id, user_id)
-		    VALUES
-		        (2, 1, 'owner');
+		    INSERT INTO events (event_id, user_id, started_at, ended_at) VALUES (1, 'owner', 100, 200);
+		    INSERT INTO events (event_id, user_id, started_at, ended_at) VALUES (2, 'owner', 300, 400);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (2, 1, 'owner');
 		`); err != nil {
 			t.Fatal(err)
 		}

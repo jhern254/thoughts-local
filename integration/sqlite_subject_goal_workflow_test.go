@@ -17,21 +17,10 @@ import (
 func seedSubjectGoals(t *testing.T, db *sql.DB) {
 	t.Helper()
 	insertUsers(t, db, "owner", "other")
-	_, err := db.Exec(`
-	    INSERT INTO
-	        subjects (subject_id, user_id, subject_name)
-	    VALUES
-	        (1, 'owner', 'Coding'),
-	        (2, 'owner', 'Learning'),
-	        (3, 'other', 'Other');
-
-	    INSERT INTO
-	        goals (goal_id, user_id, goal_name, target_seconds, goal_is_active)
-	    VALUES
-	        (1, 'owner', 'Practice', 60, 1),
-	        (2, 'owner', 'Project', 60, 0),
-	        (3, 'other', 'Other', 60, 1);
-	`)
+	_, err := db.Exec(`INSERT INTO subjects(subject_id,user_id,subject_name) VALUES
+ (1,'owner','Coding'),(2,'owner','Learning'),(3,'other','Other');
+ INSERT INTO goals(goal_id,user_id,goal_name,target_seconds,goal_is_active) VALUES
+ (1,'owner','Practice',60,1),(2,'owner','Project',60,0),(3,'other','Other',60,1);`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,21 +88,9 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 		{"foreign subject", "", "owner", 3, 1},
 		{"foreign goal", "", "owner", 1, 3},
 		{"foreign pair", "", "other", 1, 1},
-		{"deleted subject", `
-		    UPDATE subjects
-		    SET deleted_at = updated_at
-		    WHERE subject_id = 1
-		`, "owner", 1, 1},
-		{"deleted goal", `
-		    UPDATE goals
-		    SET deleted_at = updated_at
-		    WHERE goal_id = 1
-		`, "owner", 1, 1},
-		{"deleted owner", `
-		    UPDATE users
-		    SET deleted_at = updated_at
-		    WHERE user_id = 'owner'
-		`, "owner", 1, 1},
+		{"deleted subject", "UPDATE subjects SET deleted_at=updated_at WHERE subject_id=1", "owner", 1, 1},
+		{"deleted goal", "UPDATE goals SET deleted_at=updated_at WHERE goal_id=1", "owner", 1, 1},
+		{"deleted owner", "UPDATE users SET deleted_at=updated_at WHERE user_id='owner'", "owner", 1, 1},
 		{"missing owner", "", "missing", 1, 1},
 	} {
 		t.Run("rejects adding with "+tc.name, func(t *testing.T) {
@@ -129,7 +106,7 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("add error: got %v, want ErrRecordNotFound", err)
 			}
 			var count int
-			if err := db.QueryRow(`SELECT count(*) FROM subject_goals`).Scan(&count); err != nil {
+			if err := db.QueryRow("SELECT count(*) FROM subject_goals").Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 0 {
@@ -159,11 +136,7 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("remove error: got %v, want ErrRecordNotFound", err)
 			}
 		}
-		if _, err := db.Exec(`
-		    UPDATE users
-		    SET deleted_at = updated_at
-		    WHERE user_id = 'owner'
-		`); err != nil {
+		if _, err := db.Exec("UPDATE users SET deleted_at=updated_at WHERE user_id='owner'"); err != nil {
 			t.Fatal(err)
 		}
 		for _, list := range []func(context.Context, string, int64) ([]data.SubjectGoal, error){store.ListSubjectGoals, store.ListGoalSubjects} {
@@ -176,7 +149,7 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("deleted owner removal: got %v, want ErrRecordNotFound", err)
 		}
 		var count int
-		if err := db.QueryRow(`SELECT count(*) FROM subject_goals`).Scan(&count); err != nil {
+		if err := db.QueryRow("SELECT count(*) FROM subject_goals").Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 1 {
@@ -218,49 +191,16 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)
 		_, err := db.Exec(`
-		    INSERT INTO
-		        events (event_id, user_id, started_at)
-		    VALUES
-		        (1, 'owner', 100);
-
-		    INSERT INTO
-		        event_subjects (event_id, subject_id, user_id)
-		    VALUES
-		        (1, 1, 'owner');
-
-		    INSERT INTO
-		        thoughts (thought_id, user_id, subject_id, event_id, thought)
-		    VALUES
-		        (1, 'owner', 1, 1, 'Context');
-
-		    INSERT INTO
-		        goal_progress (goal_id, user_id, event_id, thought_id, time_spent_sec)
-		    VALUES
-		        (1, 'owner', 1, 1, 60);
+		    INSERT INTO events (event_id, user_id, started_at) VALUES (1, 'owner', 100);
+		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (1, 1, 'owner');
+		    INSERT INTO thoughts (thought_id, user_id, subject_id, event_id, thought) VALUES (1, 'owner', 1, 1, 'Context');
+		    INSERT INTO goal_progress (goal_id, user_id, event_id, thought_id, time_spent_sec) VALUES (1, 'owner', 1, 1, 60);
 		`)
 		if err != nil {
 			t.Fatal(err)
 		}
-		const snapshot = `
-		    SELECT
-		        s.updated_at,
-		        g.updated_at,
-		        g.version,
-		        e.version,
-		        t.version,
-		        (SELECT subject_id FROM event_subjects es WHERE es.event_id = e.event_id AND es.deleted_at IS NULL),
-		        t.subject_id,
-		        p.event_id,
-		        p.thought_id,
-		        p.time_spent_sec
-		    FROM subjects s,
-		        goals g,
-		        events e,
-		        thoughts t,
-		        goal_progress p
-		    WHERE s.subject_id = 1
-		        AND g.goal_id = 1
-		`
+		const snapshot = `SELECT s.updated_at,g.updated_at,g.version,e.version,t.version,(SELECT subject_id FROM event_subjects es WHERE es.event_id=e.event_id AND es.deleted_at IS NULL),t.subject_id,p.event_id,p.thought_id,p.time_spent_sec
+ FROM subjects s,goals g,events e,thoughts t,goal_progress p WHERE s.subject_id=1 AND g.goal_id=1`
 		var before, after [10]int64
 		if err := db.QueryRow(snapshot).Scan(&before[0], &before[1], &before[2], &before[3], &before[4], &before[5], &before[6], &before[7], &before[8], &before[9]); err != nil {
 			t.Fatal(err)
