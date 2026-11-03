@@ -79,6 +79,7 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 		text("Practice")
 		key(tea.KeyTab)
 		text("1")
+		// From Hours, pass Minutes, Start date, End date, and Cadence to reach Priority.
 		for range 5 {
 			key(tea.KeyTab)
 		}
@@ -111,6 +112,7 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 		send(tea.KeyPressMsg{Code: 'e', Text: "e"})
 		key(tea.KeyTab)
 		text("0")
+		// From Hours, pass Minutes, Start date, End date, and Cadence to reach Priority.
 		for range 5 {
 			key(tea.KeyTab)
 		}

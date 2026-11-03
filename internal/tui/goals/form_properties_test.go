@@ -66,7 +66,7 @@ func TestModel_FormSelectorNavigation(t *testing.T) {
 			m.selected = &s.item
 			m.startForm(create)
 			m.Resize(32, 12)
-			for range 6 {
+			for range formPriority - formName {
 				m, _ = press(m, "tab")
 			}
 			m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
@@ -84,7 +84,7 @@ func TestModel_FormSelectorNavigation(t *testing.T) {
 				t.Fatal("Status did not toggle")
 			}
 			m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-			if m.focus != 6 {
+			if m.focus != formPriority {
 				t.Fatal("Shift+Tab did not return to Priority")
 			}
 			m, _ = press(m, "esc")

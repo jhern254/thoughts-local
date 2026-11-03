@@ -16,6 +16,27 @@ import (
 
 const cadenceCount = 6
 
+// Text inputs precede selectors and actions in keyboard navigation order.
+const (
+	formName = iota
+	formHours
+	formMinutes
+	formStartDate
+	formEndDate
+	formCadence
+	formPriority
+	formStatus
+	formSubjects
+	formCreateSave
+)
+
+func (m Model) formSaveFocus() int {
+	if m.screen == createView {
+		return formCreateSave
+	}
+	return formSubjects // Editing has no Subjects action; Save occupies its position.
+}
+
 func cadenceAt(index int) string {
 	return [...]string{"daily", "weekly", "monthly", "mtd", "quarterly", "yearly"}[index]
 }
@@ -73,7 +94,7 @@ func (m *Model) startForm(create bool) {
 	for i := range m.fields {
 		m.fields[i].Blur()
 	}
-	m.focus = 0
+	m.focus = formName
 	if create {
 		m.screen = createView
 		m.selected = nil
@@ -84,7 +105,7 @@ func (m *Model) startForm(create bool) {
 		for i := range m.fields {
 			m.fields[i].SetValue("")
 		}
-		m.fields[3].SetValue(m.now().Format(time.DateOnly))
+		m.fields[formStartDate].SetValue(m.now().Format(time.DateOnly))
 	} else {
 		m.screen = editView
 		m.populateForm()
@@ -95,16 +116,16 @@ func (m *Model) populateForm() {
 	item := m.selected
 	m.priority = item.Priority
 	m.isActive = item.IsActive
-	m.fields[0].SetValue(item.GoalName)
-	m.fields[1].SetValue(strconv.FormatInt(item.TargetSeconds/3600, 10))
-	m.fields[2].SetValue(strconv.FormatInt(item.TargetSeconds%3600/60, 10))
-	m.fields[3].SetValue("")
-	m.fields[4].SetValue("")
+	m.fields[formName].SetValue(item.GoalName)
+	m.fields[formHours].SetValue(strconv.FormatInt(item.TargetSeconds/3600, 10))
+	m.fields[formMinutes].SetValue(strconv.FormatInt(item.TargetSeconds%3600/60, 10))
+	m.fields[formStartDate].SetValue("")
+	m.fields[formEndDate].SetValue("")
 	if item.StartDate != nil {
-		m.fields[3].SetValue(*item.StartDate)
+		m.fields[formStartDate].SetValue(*item.StartDate)
 	}
 	if item.EndDate != nil {
-		m.fields[4].SetValue(*item.EndDate)
+		m.fields[formEndDate].SetValue(*item.EndDate)
 	}
 	for i := range cadenceCount {
 		value := cadenceAt(i)
@@ -121,20 +142,17 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 			if key.String() == "shift+tab" {
 				step = -1
 			}
-			count := 9
-			if m.screen == createView {
-				count = 10
-			}
+			count := m.formSaveFocus() + 1
 			m.focus = (m.focus + step + count) % count
 			for i := range m.fields {
 				m.fields[i].Blur()
 			}
-			if m.focus < 5 {
+			if m.focus < len(m.fields) {
 				return m.fields[m.focus].Focus()
 			}
 			return nil
 		case "left", "right":
-			if m.focus >= 5 && m.focus <= 7 {
+			if m.focus >= formCadence && m.focus <= formStatus {
 				step := 1
 				if key.String() == "left" {
 					step = -1
@@ -143,11 +161,11 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 		case "enter":
-			if m.focus >= 5 && m.focus <= 7 {
+			if m.focus >= formCadence && m.focus <= formStatus {
 				m.changeFormSelector(1)
 				return nil
 			}
-			if m.screen == createView && m.focus == 8 {
+			if m.screen == createView && m.focus == formSubjects {
 				m.pickerBefore = cloneSelection(m.selectedIDs)
 				m.pickerReturn = createView
 				m.screen = subjectsView
@@ -158,7 +176,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 			return m.saveProperties()
 		}
 	}
-	if m.focus < 5 {
+	if m.focus < len(m.fields) {
 		var cmd tea.Cmd
 		m.fields[m.focus], cmd = m.fields[m.focus].Update(msg)
 		return cmd
@@ -174,17 +192,16 @@ func (m Model) formContent() string {
 	labels := []string{"Name", "Hours", "Minutes", "Start date", "End date"}
 	for i, label := range labels {
 		heading := m.formHeading(i, label)
-		if i == 3 || i == 4 {
+		if i == formStartDate || i == formEndDate {
 			heading += " (optional; e.g. 2026-10-29)"
 		}
 		lines = append(lines, heading, m.fields[i].View(), "")
 	}
-	lines = append(lines, m.formHeading(5, "Cadence:")+" "+cadenceLabel(cadenceAt(m.cadence)), "")
-	lines = append(lines, m.formHeading(6, "Priority:")+" "+map[string]string{"high": "High", "normal": "Normal", "low": "Low"}[m.priority], "", m.formHeading(7, "Status:")+" "+map[bool]string{true: "Active", false: "Inactive"}[m.isActive], "")
-	saveFocus := 8
+	lines = append(lines, m.formHeading(formCadence, "Cadence:")+" "+cadenceLabel(cadenceAt(m.cadence)), "")
+	lines = append(lines, m.formHeading(formPriority, "Priority:")+" "+map[string]string{"high": "High", "normal": "Normal", "low": "Low"}[m.priority], "", m.formHeading(formStatus, "Status:")+" "+map[bool]string{true: "Active", false: "Inactive"}[m.isActive], "")
+	saveFocus := m.formSaveFocus()
 	if m.screen == createView {
-		lines = append(lines, m.formHeading(8, "Subjects:")+fmt.Sprintf(" %d selected (Enter to choose)", len(m.ids())), "")
-		saveFocus = 9
+		lines = append(lines, m.formHeading(formSubjects, "Subjects:")+fmt.Sprintf(" %d selected (Enter to choose)", len(m.ids())), "")
 	}
 	lines = append(lines, m.formHeading(saveFocus, "Save"))
 
@@ -212,11 +229,11 @@ func (m Model) ids() []int64 {
 func (m *Model) saveProperties() tea.Cmd {
 	create := m.screen == createView
 	var target int64
-	if !create && m.fields[1].Value() == strconv.FormatInt(m.selected.TargetSeconds/3600, 10) && m.fields[2].Value() == strconv.FormatInt(m.selected.TargetSeconds%3600/60, 10) {
+	if !create && m.fields[formHours].Value() == strconv.FormatInt(m.selected.TargetSeconds/3600, 10) && m.fields[formMinutes].Value() == strconv.FormatInt(m.selected.TargetSeconds%3600/60, 10) {
 		target = m.selected.TargetSeconds
 	} else {
 		var err error
-		target, err = targetSeconds(m.fields[1].Value(), m.fields[2].Value())
+		target, err = targetSeconds(m.fields[formHours].Value(), m.fields[formMinutes].Value())
 		if err != nil {
 			m.status = err.Error()
 			return nil
@@ -228,11 +245,11 @@ func (m *Model) saveProperties() tea.Cmd {
 	input := goal.CreateGoalInput{
 		Priority:      priority,
 		IsActive:      &active,
-		Name:          m.fields[0].Value(),
+		Name:          m.fields[formName].Value(),
 		TargetSeconds: target,
 		Cadence:       cadenceAt(m.cadence),
-		StartDate:     m.fields[3].Value(),
-		EndDate:       m.fields[4].Value(),
+		StartDate:     m.fields[formStartDate].Value(),
+		EndDate:       m.fields[formEndDate].Value(),
 	}
 	operation := logging.GoalUpdate
 	if create {
@@ -310,9 +327,9 @@ func (m Model) errorMessage(err error) string {
 
 func (m *Model) changeFormSelector(step int) {
 	switch m.focus {
-	case 5:
+	case formCadence:
 		m.cadence = (m.cadence + step + cadenceCount) % cadenceCount
-	case 6:
+	case formPriority:
 		priorities := [...]string{"high", "normal", "low"}
 		for index, priority := range priorities {
 			if priority == m.priority {
@@ -320,7 +337,7 @@ func (m *Model) changeFormSelector(step int) {
 				break
 			}
 		}
-	case 7:
+	case formStatus:
 		m.isActive = !m.isActive
 	}
 }

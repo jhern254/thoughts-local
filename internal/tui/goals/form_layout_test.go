@@ -65,10 +65,10 @@ func TestModel_FormPresentation(t *testing.T) {
 		m.open = true
 		m.Resize(48, 16)
 		m.startForm(true)
-		for i := range 10 {
+		for i := range formCreateSave + 1 {
 			m.refreshBody()
 			view := ansi.Strip(m.View())
-			if i < 5 {
+			if i < len(m.fields) {
 				value := []string{"Name sample", "2", "30", "2026-10-29", "2027-01-01"}[i]
 				m.fields[i].SetValue(value)
 				m.refreshBody()
@@ -77,7 +77,7 @@ func TestModel_FormPresentation(t *testing.T) {
 					t.Errorf("focused input %d not visible: %s", i, view)
 				}
 			} else {
-				label := []string{"Cadence:", "Priority:", "Status:", "Subjects:", "Save"}[i-5]
+				label := []string{"Cadence:", "Priority:", "Status:", "Subjects:", "Save"}[i-len(m.fields)]
 				if !strings.Contains(view, label) {
 					t.Errorf("focused action %s not visible: %s", label, view)
 				}
@@ -92,11 +92,11 @@ func TestModel_FormFocusHighlight(t *testing.T) {
 		for _, tc := range []struct {
 			focus int
 			label string
-		}{{0, "Name"}, {1, "Hours"}, {2, "Minutes"}, {3, "Start date"}, {4, "End date"}, {5, "Cadence:"}, {6, "Priority:"}, {7, "Status:"}, {8, "Subjects:"}, {9, "Save"}} {
-			if !create && tc.focus == 8 {
+		}{{formName, "Name"}, {formHours, "Hours"}, {formMinutes, "Minutes"}, {formStartDate, "Start date"}, {formEndDate, "End date"}, {formCadence, "Cadence:"}, {formPriority, "Priority:"}, {formStatus, "Status:"}, {formSubjects, "Subjects:"}, {formCreateSave, "Save"}} {
+			if !create && tc.focus == formSubjects {
 				tc.label = "Save"
 			}
-			if !create && tc.focus == 9 {
+			if !create && tc.focus == formCreateSave {
 				continue
 			}
 			t.Run(fmt.Sprintf("create=%t/%s", create, tc.label), func(t *testing.T) {
@@ -110,7 +110,7 @@ func TestModel_FormFocusHighlight(t *testing.T) {
 				if !strings.Contains(rendered, highlighted) {
 					t.Fatalf("focused %s lacks the standard highlight: %q", tc.label, rendered)
 				}
-				if tc.focus == 3 || tc.focus == 4 {
+				if tc.focus == formStartDate || tc.focus == formEndDate {
 					if !strings.Contains(rendered, highlighted+" (optional; e.g. 2026-10-29)") {
 						t.Fatalf("date guidance must follow the highlight as plain text: %q", rendered)
 					}

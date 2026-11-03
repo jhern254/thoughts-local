@@ -10,6 +10,7 @@ test('Goals workflow creates a target and returns to Events without reconnecting
  await page.keyboard.press('n');await expect(screen(page)).toContainText('Create Goal');
  const name=`Goal browser ${Date.now()}`;await page.keyboard.type(name);
  await page.keyboard.press('Tab');await page.keyboard.type('1');
+ // Hours → Minutes → Start date → End date → Cadence → Priority.
  for(let i=0;i<5;i++)await page.keyboard.press('Tab');
  await page.keyboard.press('ArrowLeft');await page.keyboard.press('Tab');await page.keyboard.press('ArrowRight');
  await page.keyboard.press('Control+s');
@@ -40,6 +41,7 @@ test('Goal Subject picker creates through the existing form and retains its draf
  await page.keyboard.press('Tab');await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('Goals');await expect(screen(page)).not.toContainText('Loading');await page.keyboard.press('n');
  const goalName=`Draft Goal ${Date.now()}`;await page.keyboard.type(goalName);await page.keyboard.press('Tab');await page.keyboard.type('1');
+ // Hours → Minutes → Start date → End date → Cadence → Priority → Status → Subjects.
  for(let i=0;i<7;i++)await page.keyboard.press('Tab');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('Select Subjects');await expect(screen(page)).not.toContainText('Loading');await expect(screen(page)).toContainText('Create subject…');
  await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Subject name:');

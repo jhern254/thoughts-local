@@ -183,7 +183,7 @@ func TestModel_NarrowForm(t *testing.T) {
 	m.open = true
 	m.startForm(true)
 	m.Resize(48, 16)
-	for range 9 {
+	for range formCreateSave - formName {
 		m, _ = press(m, "tab")
 	}
 	if m.body.YOffset() == 0 {
@@ -255,7 +255,7 @@ func TestModel_ResizeFocus(t *testing.T) {
 	m.open = true
 	m.Resize(100, 40)
 	m.startForm(true)
-	for range 9 {
+	for range formCreateSave - formName {
 		m, _ = press(m, "tab")
 	}
 	m.Resize(48, 16)
