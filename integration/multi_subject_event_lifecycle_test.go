@@ -10,7 +10,7 @@ import (
 )
 
 func TestSQLiteEventStore_MultipleSubjects(t *testing.T) {
-	t.Run("creates retires reactivates and preserves Subjects when ending", func(t *testing.T) {
+	t.Run("restores a removed Subject link and keeps all Subjects when the Event ends", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		if _, err := db.Exec(`
 		    INSERT INTO users (user_id) VALUES ('u');INSERT INTO subjects (subject_id, user_id, subject_name)
