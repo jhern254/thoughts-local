@@ -49,6 +49,7 @@ func TestGoalEventLedgerMaintenance_SQLite(t *testing.T) {
     INSERT INTO events (event_id,user_id,started_at,ended_at) VALUES (1,'u',100,200);
     INSERT INTO event_subjects (event_id,subject_id,user_id) VALUES (1,1,'u');
     INSERT INTO subject_goals (subject_id,goal_id,user_id,goal_number) VALUES (1,1,'u',1);
+    INSERT INTO goal_progress (goal_id,user_id,event_id,time_spent_sec) VALUES (1,'u',1,30);
     INSERT INTO event_credit_revisions (event_id,event_version,user_id,credited_start_at,credited_end_at,reason) VALUES (1,1,'u',100,200,'completion');
     INSERT INTO goal_event_credits (event_id,event_version,goal_id,user_id) VALUES (1,1,1,'u');
     INSERT INTO goal_event_credit_subjects (event_id,event_version,goal_id,user_id,recorded_subject_id,subject_id,attributed_at) VALUES (1,1,1,'u',1,1,100);
