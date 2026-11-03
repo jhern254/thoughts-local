@@ -77,16 +77,16 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatal("Goal form retained list mouse capture")
 		}
 		text("Practice")
-		key(tea.KeyTab)
+		key(tea.KeyDown)
 		text("1")
 		// From Hours, pass Minutes, Start date, End date, and Cadence to reach Priority.
 		for range 5 {
-			key(tea.KeyTab)
+			key(tea.KeyDown)
 		}
 		key(tea.KeyLeft) // Normal -> High.
-		key(tea.KeyTab)
+		key(tea.KeyDown)
 		key(tea.KeyRight) // Active -> Inactive.
-		key(tea.KeyTab)
+		key(tea.KeyDown)
 		key(tea.KeyEnter)
 		if m.View().MouseMode != tea.MouseModeCellMotion {
 			t.Fatal("Subject picker did not enable terminal wheel input")
@@ -110,14 +110,14 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("created membership: got %+v, %v; want two", live, err)
 		}
 		send(tea.KeyPressMsg{Code: 'e', Text: "e"})
-		key(tea.KeyTab)
+		key(tea.KeyDown)
 		text("0")
 		// From Hours, pass Minutes, Start date, End date, and Cadence to reach Priority.
 		for range 5 {
-			key(tea.KeyTab)
+			key(tea.KeyDown)
 		}
 		key(tea.KeyRight) // High -> Normal.
-		key(tea.KeyTab)
+		key(tea.KeyDown)
 		key(tea.KeyRight) // Inactive -> Active.
 		send(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 		after, err := runtime.Goals().Get(t.Context(), user, item.GoalID)

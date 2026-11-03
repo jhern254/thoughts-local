@@ -1,6 +1,7 @@
 package goals
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"fmt"
 	"strings"
@@ -82,7 +83,7 @@ func TestModel_FormPresentation(t *testing.T) {
 					t.Errorf("focused action %s not visible: %s", label, view)
 				}
 			}
-			m, _ = press(m, "tab")
+			m, _ = press(m, "down")
 		}
 	})
 }
@@ -106,7 +107,7 @@ func TestModel_FormFocusHighlight(t *testing.T) {
 				m.focus = tc.focus
 				m.list.Styles.Title = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230"))
 				rendered := m.formContent()
-				highlighted := m.list.Styles.Title.Render("› " + tc.label)
+				highlighted := m.list.Styles.Title.Background(lipgloss.Color("#FFB000")).Foreground(lipgloss.Color("#1A1A1A")).Render("› " + tc.label)
 				if !strings.Contains(rendered, highlighted) {
 					t.Fatalf("focused %s lacks the standard highlight: %q", tc.label, rendered)
 				}
@@ -117,5 +118,36 @@ func TestModel_FormFocusHighlight(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestModel_FormTitleAndNavigation(t *testing.T) {
+	for _, create := range []bool{true, false} {
+		t.Run(fmt.Sprintf("create=%t", create), func(t *testing.T) {
+			m, s := testModel(t)
+			m.open = true
+			m.selected = &s.item
+			m.startForm(create)
+			m.list.Styles.Title = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230"))
+			title := "Create Goal"
+			if !create {
+				title = "Edit Goal"
+			}
+			if !strings.HasPrefix(m.formContent(), m.list.Styles.Title.Render(title)+"\n\n") {
+				t.Fatal("form lacks standard colored title block")
+			}
+			m, _ = press(m, "tab")
+			if m.focus != formName {
+				t.Fatal("Tab moved between form fields")
+			}
+			m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+			if m.focus != m.formSaveFocus() {
+				t.Fatal("Up did not wrap to Save")
+			}
+			m, _ = press(m, "down")
+			if m.focus != formName {
+				t.Fatal("Down did not wrap to Name")
+			}
+		})
 	}
 }

@@ -82,6 +82,8 @@ func press(m Model, key string) (Model, tea.Cmd) {
 		return m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	case "esc":
 		return m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	case "down":
+		return m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	case "tab":
 		return m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	case "space":
@@ -184,7 +186,7 @@ func TestModel_NarrowForm(t *testing.T) {
 	m.startForm(true)
 	m.Resize(48, 16)
 	for range formCreateSave - formName {
-		m, _ = press(m, "tab")
+		m, _ = press(m, "down")
 	}
 	if m.body.YOffset() == 0 {
 		t.Fatal("focused Save action was not scrolled into view")
@@ -256,7 +258,7 @@ func TestModel_ResizeFocus(t *testing.T) {
 	m.Resize(100, 40)
 	m.startForm(true)
 	for range formCreateSave - formName {
-		m, _ = press(m, "tab")
+		m, _ = press(m, "down")
 	}
 	m.Resize(48, 16)
 	if !strings.Contains(m.View(), "Save") {

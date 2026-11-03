@@ -678,7 +678,7 @@ func (m Model) View() string {
 		}
 	default:
 		content = m.formContent()
-		help = "Tab: next · Ctrl+S: save · Esc: cancel"
+		help = "↑/↓: field · ←/→: adjust · Ctrl+S: save · Esc: cancel"
 	}
 	if m.screen != listView && m.screen != subjectsView {
 		m.body.SetContent(ansi.Hardwrap(content, m.width, true))

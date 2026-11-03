@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/goal"
 	"github.com/jhern254/go-thoughts/internal/logging"
@@ -137,9 +138,9 @@ func (m *Model) populateForm() {
 func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 	if key, ok := msg.(tea.KeyPressMsg); ok {
 		switch key.String() {
-		case "tab", "shift+tab":
+		case "up", "down":
 			step := 1
-			if key.String() == "shift+tab" {
+			if key.String() == "up" {
 				step = -1
 			}
 			count := m.formSaveFocus() + 1
@@ -188,7 +189,7 @@ func (m Model) formContent() string {
 	if m.screen == editView {
 		title = "Edit Goal"
 	}
-	lines := []string{title, ""}
+	lines := []string{m.list.Styles.Title.Render(title), ""}
 	labels := []string{"Name", "Hours", "Minutes", "Start date", "End date"}
 	for i, label := range labels {
 		heading := m.formHeading(i, label)
@@ -212,7 +213,7 @@ func (m Model) formContent() string {
 }
 func (m Model) formHeading(index int, label string) string {
 	if m.focus == index {
-		return m.list.Styles.Title.Render("› " + label)
+		return m.list.Styles.Title.Background(lipgloss.Color("#FFB000")).Foreground(lipgloss.Color("#1A1A1A")).Render("› " + label)
 	}
 	return "  " + label
 }
