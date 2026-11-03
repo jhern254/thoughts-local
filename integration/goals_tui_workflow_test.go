@@ -77,11 +77,16 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatal("Goal form retained list mouse capture")
 		}
 		text("Practice")
-		key(tea.KeyTab)
+		key(tea.KeyDown)
 		text("1")
+		// From Hours, pass Minutes, Start date, End date, and Cadence to reach Priority.
 		for range 5 {
-			key(tea.KeyTab)
+			key(tea.KeyDown)
 		}
+		key(tea.KeyLeft) // Normal -> High.
+		key(tea.KeyDown)
+		key(tea.KeyRight) // Active -> Inactive.
+		key(tea.KeyDown)
 		key(tea.KeyEnter)
 		if m.View().MouseMode != tea.MouseModeCellMotion {
 			t.Fatal("Subject picker did not enable terminal wheel input")
@@ -97,17 +102,39 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("created Goals: got %+v, %v; want one", items, err)
 		}
 		item := items[0]
+		if item.Priority != "high" || item.IsActive {
+			t.Fatalf("created properties: got %s/%t, want high/inactive", item.Priority, item.IsActive)
+		}
 		live, err := runtime.SubjectGoals().ListLiveSubjectsForGoal(t.Context(), user, item.GoalID)
 		if err != nil || len(live) != 2 {
 			t.Fatalf("created membership: got %+v, %v; want two", live, err)
 		}
 		send(tea.KeyPressMsg{Code: 'e', Text: "e"})
-		key(tea.KeyTab)
+		key(tea.KeyDown)
 		text("0")
+		// From Hours, pass Minutes, Start date, End date, and Cadence to reach Priority.
+		for range 5 {
+			key(tea.KeyDown)
+		}
+		key(tea.KeyRight) // High -> Normal.
+		key(tea.KeyDown)
+		key(tea.KeyRight) // Inactive -> Active.
 		send(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 		after, err := runtime.Goals().Get(t.Context(), user, item.GoalID)
 		if err != nil || after.Version != item.Version+1 || after.TargetSeconds != 36000 {
 			t.Fatalf("edited Goal: got %+v, %v; want version increment and 10 hours", after, err)
+		}
+		if after.Priority != "normal" || !after.IsActive {
+			t.Fatalf("edited properties: got %s/%t, want normal/active", after.Priority, after.IsActive)
+		}
+		reopened, err := application.Open(t.Context(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, err := reopened.Goals().Get(t.Context(), user, item.GoalID)
+		reopened.Close()
+		if err != nil || stored.Priority != "normal" || !stored.IsActive {
+			t.Fatalf("reopened Goal: got %+v, %v", stored, err)
 		}
 		send(tea.KeyPressMsg{Code: 's', Text: "s"})
 		key(tea.KeyDown)

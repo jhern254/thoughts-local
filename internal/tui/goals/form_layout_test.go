@@ -1,6 +1,7 @@
 package goals
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"fmt"
 	"strings"
@@ -22,7 +23,7 @@ func TestModel_FormPresentation(t *testing.T) {
 			t.Fatalf("end date got %q, want empty", got)
 		}
 		rows := strings.Split(ansi.Strip(m.formContent()), "\n")
-		labels := []string{"Hours", "Minutes", "Start date", "End date", "Cadence:", "Subjects:", "Save"}
+		labels := []string{"Hours", "Minutes", "Start date", "End date", "Cadence:", "Priority:", "Status:", "Subjects:", "Save"}
 		for _, label := range labels {
 			found := false
 			for i, row := range rows {
@@ -65,10 +66,10 @@ func TestModel_FormPresentation(t *testing.T) {
 		m.open = true
 		m.Resize(48, 16)
 		m.startForm(true)
-		for i := range 8 {
+		for i := range formCreateSave + 1 {
 			m.refreshBody()
 			view := ansi.Strip(m.View())
-			if i < 5 {
+			if i < len(m.fields) {
 				value := []string{"Name sample", "2", "30", "2026-10-29", "2027-01-01"}[i]
 				m.fields[i].SetValue(value)
 				m.refreshBody()
@@ -77,12 +78,12 @@ func TestModel_FormPresentation(t *testing.T) {
 					t.Errorf("focused input %d not visible: %s", i, view)
 				}
 			} else {
-				label := []string{"Cadence:", "Subjects:", "Save"}[i-5]
+				label := []string{"Cadence:", "Priority:", "Status:", "Subjects:", "Save"}[i-len(m.fields)]
 				if !strings.Contains(view, label) {
 					t.Errorf("focused action %s not visible: %s", label, view)
 				}
 			}
-			m, _ = press(m, "tab")
+			m, _ = press(m, "down")
 		}
 	})
 }
@@ -92,11 +93,11 @@ func TestModel_FormFocusHighlight(t *testing.T) {
 		for _, tc := range []struct {
 			focus int
 			label string
-		}{{0, "Name"}, {1, "Hours"}, {2, "Minutes"}, {3, "Start date"}, {4, "End date"}, {5, "Cadence:"}, {6, "Subjects:"}, {7, "Save"}} {
-			if !create && tc.focus == 6 {
+		}{{formName, "Name"}, {formHours, "Hours"}, {formMinutes, "Minutes"}, {formStartDate, "Start date"}, {formEndDate, "End date"}, {formCadence, "Cadence:"}, {formPriority, "Priority:"}, {formStatus, "Status:"}, {formSubjects, "Subjects:"}, {formCreateSave, "Save"}} {
+			if !create && tc.focus == formSubjects {
 				tc.label = "Save"
 			}
-			if !create && tc.focus == 7 {
+			if !create && tc.focus == formCreateSave {
 				continue
 			}
 			t.Run(fmt.Sprintf("create=%t/%s", create, tc.label), func(t *testing.T) {
@@ -106,16 +107,47 @@ func TestModel_FormFocusHighlight(t *testing.T) {
 				m.focus = tc.focus
 				m.list.Styles.Title = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230"))
 				rendered := m.formContent()
-				highlighted := m.list.Styles.Title.Render("› " + tc.label)
+				highlighted := m.list.Styles.Title.Background(lipgloss.Color("#FFB000")).Foreground(lipgloss.Color("#1A1A1A")).Render("› " + tc.label)
 				if !strings.Contains(rendered, highlighted) {
 					t.Fatalf("focused %s lacks the standard highlight: %q", tc.label, rendered)
 				}
-				if tc.focus == 3 || tc.focus == 4 {
+				if tc.focus == formStartDate || tc.focus == formEndDate {
 					if !strings.Contains(rendered, highlighted+" (optional; e.g. 2026-10-29)") {
 						t.Fatalf("date guidance must follow the highlight as plain text: %q", rendered)
 					}
 				}
 			})
 		}
+	}
+}
+
+func TestModel_FormTitleAndNavigation(t *testing.T) {
+	for _, create := range []bool{true, false} {
+		t.Run(fmt.Sprintf("create=%t", create), func(t *testing.T) {
+			m, s := testModel(t)
+			m.open = true
+			m.selected = &s.item
+			m.startForm(create)
+			m.list.Styles.Title = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230"))
+			title := "Create Goal"
+			if !create {
+				title = "Edit Goal"
+			}
+			if !strings.HasPrefix(m.formContent(), m.list.Styles.Title.Render("Goal")+"\n"+title+"\n\n") {
+				t.Fatal("form lacks colored Goal heading above plain form title")
+			}
+			m, _ = press(m, "tab")
+			if m.focus != formName {
+				t.Fatal("Tab moved between form fields")
+			}
+			m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+			if m.focus != m.formSaveFocus() {
+				t.Fatal("Up did not wrap to Save")
+			}
+			m, _ = press(m, "down")
+			if m.focus != formName {
+				t.Fatal("Down did not wrap to Name")
+			}
+		})
 	}
 }

@@ -3,16 +3,22 @@ const screen = page => page.locator('.xterm-rows');
 test('Goals workflow creates a target and returns to Events without reconnecting', async ({page}) => {
  let sockets=0;page.on('websocket',()=>sockets++);
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await expect(screen(page)).toContainText('Tab/Shift+Tab: panels');
  await page.locator('.xterm-helper-textarea').focus();
  await page.keyboard.press('Tab');await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('Goals');await expect(screen(page)).not.toContainText('Loading');
  await page.keyboard.press('n');await expect(screen(page)).toContainText('Create Goal');
  const name=`Goal browser ${Date.now()}`;await page.keyboard.type(name);
- await page.keyboard.press('Tab');await page.keyboard.type('1');await page.keyboard.press('Control+s');
+ await page.keyboard.press('ArrowDown');await page.keyboard.type('1');
+ // Hours → Minutes → Start date → End date → Cadence → Priority.
+ for(let i=0;i<5;i++)await page.keyboard.press('ArrowDown');
+ await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');
+ await page.keyboard.press('Control+s');
  await expect(screen(page)).toContainText(name);await expect(screen(page)).toContainText('Manage Subjects');await expect(screen(page)).toContainText('Misc');
+ await expect(screen(page)).toContainText('High');await expect(screen(page)).toContainText('Inactive');
  const connections=sockets;
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goals-${test.info().project.name}-normal.png`});
- await page.keyboard.press('e');await expect(screen(page).getByText('Edit Goal',{exact:true})).toBeVisible();await page.keyboard.press('Escape');
+ await page.keyboard.press('e');await expect(screen(page)).toContainText('Edit Goal');await page.keyboard.press('Escape');
  // Returning from Edit reloads Details; its actions stay locked until that read finishes.
  await expect(screen(page)).toContainText('Created ');
  await expect(screen(page)).toContainText(name);await expect(screen(page)).not.toContainText('Loading');
@@ -30,11 +36,13 @@ test('Goals workflow creates a target and returns to Events without reconnecting
 
 test('Goal Subject picker creates through the existing form and retains its draft', async ({page}, testInfo) => {
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await expect(screen(page)).toContainText('Tab/Shift+Tab: panels');
  await page.locator('.xterm-helper-textarea').focus();
  await page.keyboard.press('Tab');await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('Goals');await expect(screen(page)).not.toContainText('Loading');await page.keyboard.press('n');
- const goalName=`Draft Goal ${Date.now()}`;await page.keyboard.type(goalName);await page.keyboard.press('Tab');await page.keyboard.type('1');
- for(let i=0;i<5;i++)await page.keyboard.press('Tab');await page.keyboard.press('Enter');
+ const goalName=`Draft Goal ${Date.now()}`;await page.keyboard.type(goalName);await page.keyboard.press('ArrowDown');await page.keyboard.type('1');
+ // Hours → Minutes → Start date → End date → Cadence → Priority → Status → Subjects.
+ for(let i=0;i<7;i++)await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('Select Subjects');await expect(screen(page)).not.toContainText('Loading');await expect(screen(page)).toContainText('Create subject…');
  await page.keyboard.press('Enter');await expect(screen(page)).toContainText('Subject name:');
  await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Select Subjects');
@@ -68,6 +76,7 @@ test('Goal Subject picker creates through the existing form and retains its draf
 test('Goal panels navigate vertically and held Left stops before leaving the Goals list', async ({page}) => {
  let sockets=0;page.on('websocket',()=>sockets++);
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await expect(screen(page)).toContainText('Tab/Shift+Tab: panels');
  await page.locator('.xterm-helper-textarea').focus();
  for(const key of ['Tab','ArrowLeft','ArrowLeft','Enter'])await page.keyboard.press(key);
  await expect(screen(page)).toContainText('Priority:');
@@ -83,7 +92,7 @@ test('Goal panels navigate vertically and held Left stops before leaving the Goa
  await page.keyboard.press('ArrowDown');await page.keyboard.press('Tab');
  for(let i=0;i<3;i++) {
   await page.keyboard.press('n');await expect(screen(page)).toContainText('Create Goal');
-  await page.keyboard.type(`Paging Goal ${Date.now()} ${i}`);await page.keyboard.press('Tab');await page.keyboard.type('1');
+  await page.keyboard.type(`Paging Goal ${Date.now()} ${i}`);await page.keyboard.press('ArrowDown');await page.keyboard.type('1');
   await page.keyboard.press('Control+s');await expect(screen(page)).toContainText('Manage Subjects');
   await page.keyboard.press('Escape');await expect(screen(page)).toContainText('p: priority');await expect(screen(page)).not.toContainText('Loading');
  }

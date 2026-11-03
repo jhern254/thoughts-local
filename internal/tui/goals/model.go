@@ -117,9 +117,11 @@ type Model struct {
 	filter, pickerFilter listfilter.Scope
 	body                 viewport.Model
 	// Name, hours, minutes, start date, end date. Later focus positions are form actions.
-	fields  [5]textinput.Model
-	focus   int
-	cadence int
+	fields   [5]textinput.Model
+	focus    int
+	cadence  int
+	priority string
+	isActive bool
 	// Persisted snapshot used by Details and as the expected version for edits.
 	selected *data.Goal
 	// Requested identity survives failed reads when selected must remain nil.
@@ -321,12 +323,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 func (m *Model) refreshBody() {
 	if m.screen == createView || m.screen == editView {
 		m.body.SetContent(ansi.Hardwrap(m.formContent(), m.width, true))
-		firstRow := 2 + m.focus*3
+		// Forms start after the Goal heading, form title, and blank row. Text inputs occupy a
+		// heading, input, and spacer; selectors/actions occupy two rows.
+		const titleRows, textInputRows, actionRows = 3, 3, 2
+		firstRow := titleRows + m.focus*textInputRows
 		lastRow := firstRow + 1
-		if m.focus >= 5 {
-			firstRow = 17 + (m.focus-5)*2
+		if m.focus >= len(m.fields) {
+			firstRow = titleRows + len(m.fields)*textInputRows + (m.focus-len(m.fields))*actionRows
 			lastRow = firstRow
 		}
+		rows := strings.Split(m.formContent(), "\n")
+		wrappedFirst, wrappedLast := 0, 0
+		for index, row := range rows {
+			rowHeight := len(strings.Split(ansi.Hardwrap(row, m.width, true), "\n"))
+			if index < firstRow {
+				wrappedFirst += rowHeight
+			}
+			if index <= lastRow {
+				wrappedLast += rowHeight
+			}
+		}
+		firstRow, lastRow = wrappedFirst, wrappedLast-1
 		if firstRow < m.body.YOffset() {
 			m.body.SetYOffset(firstRow)
 		}
@@ -661,7 +678,7 @@ func (m Model) View() string {
 		}
 	default:
 		content = m.formContent()
-		help = "Tab: next · Ctrl+S: save · Esc: cancel"
+		help = "↑/↓: field · ←/→: adjust · Ctrl+S: save · Esc: cancel"
 	}
 	if m.screen != listView && m.screen != subjectsView {
 		m.body.SetContent(ansi.Hardwrap(content, m.width, true))

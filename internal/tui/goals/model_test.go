@@ -23,6 +23,7 @@ type services struct {
 	ids                        []int64
 	version                    int64
 	input                      goal.UpdateGoalInput
+	createInput                goal.CreateGoalInput
 }
 
 func (s *services) List(context.Context, string) ([]data.Goal, error) {
@@ -46,8 +47,9 @@ func (s *services) Update(_ context.Context, _ string, _ int64, v int64, input g
 	s.version = v
 	return &s.item, s.err
 }
-func (s *services) Create(_ context.Context, _ string, _ goal.CreateGoalInput, ids []int64) (*data.Goal, error) {
+func (s *services) Create(_ context.Context, _ string, input goal.CreateGoalInput, ids []int64) (*data.Goal, error) {
 	s.creates++
+	s.createInput = input
 	s.ids = ids
 	return &s.item, s.err
 }
@@ -80,6 +82,8 @@ func press(m Model, key string) (Model, tea.Cmd) {
 		return m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	case "esc":
 		return m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	case "down":
+		return m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	case "tab":
 		return m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	case "space":
@@ -130,7 +134,7 @@ func TestModel_Editors(t *testing.T) {
 		m.fields[0].SetValue("Updated")
 		cmd := m.saveProperties()
 		cmd()
-		if s.version != 7 || s.input.TZ != s.item.TZ || s.input.WeekStart != "sun" || s.input.Priority != nil || s.input.IsActive != nil || s.replaces != 0 {
+		if s.version != 7 || s.input.TZ != s.item.TZ || s.input.WeekStart != "sun" || s.input.Priority == nil || *s.input.Priority != s.item.Priority || s.input.IsActive == nil || *s.input.IsActive != s.item.IsActive || s.replaces != 0 {
 			t.Fatalf("update input %+v, version %d", s.input, s.version)
 		}
 	})
@@ -181,8 +185,8 @@ func TestModel_NarrowForm(t *testing.T) {
 	m.open = true
 	m.startForm(true)
 	m.Resize(48, 16)
-	for range 7 {
-		m, _ = press(m, "tab")
+	for range formCreateSave - formName {
+		m, _ = press(m, "down")
 	}
 	if m.body.YOffset() == 0 {
 		t.Fatal("focused Save action was not scrolled into view")
@@ -253,8 +257,8 @@ func TestModel_ResizeFocus(t *testing.T) {
 	m.open = true
 	m.Resize(100, 40)
 	m.startForm(true)
-	for range 7 {
-		m, _ = press(m, "tab")
+	for range formCreateSave - formName {
+		m, _ = press(m, "down")
 	}
 	m.Resize(48, 16)
 	if !strings.Contains(m.View(), "Save") {
