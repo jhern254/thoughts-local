@@ -189,7 +189,7 @@ func (m Model) formContent() string {
 	if m.screen == editView {
 		title = "Edit Goal"
 	}
-	lines := []string{m.list.Styles.Title.Render(title), ""}
+	lines := []string{m.list.Styles.Title.Render("Goal"), title, ""}
 	labels := []string{"Name", "Hours", "Minutes", "Start date", "End date"}
 	for i, label := range labels {
 		heading := m.formHeading(i, label)

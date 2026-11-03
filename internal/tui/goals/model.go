@@ -323,9 +323,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 func (m *Model) refreshBody() {
 	if m.screen == createView || m.screen == editView {
 		m.body.SetContent(ansi.Hardwrap(m.formContent(), m.width, true))
-		// Forms start after the title and blank row. Text inputs occupy a
+		// Forms start after the Goal heading, form title, and blank row. Text inputs occupy a
 		// heading, input, and spacer; selectors/actions occupy two rows.
-		const titleRows, textInputRows, actionRows = 2, 3, 2
+		const titleRows, textInputRows, actionRows = 3, 3, 2
 		firstRow := titleRows + m.focus*textInputRows
 		lastRow := firstRow + 1
 		if m.focus >= len(m.fields) {

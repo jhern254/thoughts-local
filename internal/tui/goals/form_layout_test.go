@@ -133,8 +133,8 @@ func TestModel_FormTitleAndNavigation(t *testing.T) {
 			if !create {
 				title = "Edit Goal"
 			}
-			if !strings.HasPrefix(m.formContent(), m.list.Styles.Title.Render(title)+"\n\n") {
-				t.Fatal("form lacks standard colored title block")
+			if !strings.HasPrefix(m.formContent(), m.list.Styles.Title.Render("Goal")+"\n"+title+"\n\n") {
+				t.Fatal("form lacks colored Goal heading above plain form title")
 			}
 			m, _ = press(m, "tab")
 			if m.focus != formName {

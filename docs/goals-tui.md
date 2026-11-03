@@ -33,7 +33,7 @@ followed by live membership reads. There is no membership cache or bulk API.
 
 Up/Down moves between Name, Hours, Minutes, optional start/end dates,
 Cadence, Priority, Status, and actions. Enter activates a control or saves from a text field;
-Ctrl+S saves. Dates use YYYY-MM-DD. Create/Edit use the standard colored title block; the
+Ctrl+S saves. Dates use YYYY-MM-DD. A colored Goal heading appears above the plain Create Goal/Edit Goal title; the
 focused field or action label is orange. Tab no longer moves between form fields. Cadence, Priority, and Status cycle using Left/Right or Enter.
 Creation defaults to weekly and today’s local start date, which can be cleared.
 Priority defaults to Normal and Status to Active; both can be changed before
