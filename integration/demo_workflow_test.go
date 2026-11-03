@@ -64,6 +64,21 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		if _, err := db.ExecContext(t.Context(), string(seed)); err != nil {
 			t.Fatal(err)
 		}
+		store := data.NewSQLiteEventStore(db)
+		for eventID, want := range map[int64][]int64{
+			717: {1, 2},
+			718: {1, 2, 3},
+			719: {1, 2, 3, 4, 20, 30},
+			721: {1, 2, 3, 4},
+		} {
+			got, err := store.GetEvent(t.Context(), "demo", eventID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(got.SubjectIDs, want) {
+				t.Fatalf("Event %d Subjects: got %v, want %v", eventID, got.SubjectIDs, want)
+			}
+		}
 		rows, err := db.QueryContext(t.Context(), `
 		    SELECT
 		        e.activity_type,
@@ -106,7 +121,10 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		for activity, subject := range wantAssignments {
 			expected[activity] = []string{subject}
 		}
-		expected["Make my own timeline feel instant"] = []string{"Building myself", "Testing reality", "Design decisions"}
+		expected["Test what I confidently broke"] = []string{"Testing reality", "Building myself"}
+		expected["Review a design decision"] = []string{"Design decisions", "Building myself", "Testing reality"}
+		expected["Write docs for future me"] = []string{"Documentation", "Building myself", "Testing reality", "Design decisions", "日本語の練習", "A deliberately long Subject name for checking narrow layouts"}
+		expected["Make my own timeline feel instant"] = []string{"Building myself", "Testing reality", "Design decisions", "Documentation"}
 		for key := range assignments {
 			slices.Sort(assignments[key])
 		}
@@ -114,7 +132,7 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 			slices.Sort(expected[key])
 		}
 		if !reflect.DeepEqual(assignments, expected) {
-			t.Fatalf("event subjects: got %v, want %v", assignments, wantAssignments)
+			t.Fatalf("event subjects: got %v, want %v", assignments, expected)
 		}
 		zone, err := time.LoadLocation("America/Los_Angeles")
 		if err != nil {
@@ -125,12 +143,14 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Building includes 37 minutes clipped at midnight, two completed hours, and one ongoing hour.
+		// Subject totals overlap: each recent multi-Subject Event credits its full hour to every selected Subject.
 		want := []data.SubjectTimeView{
-			{SubjectID: 1, SubjectName: "Building myself", TimeSpentSeconds: 13020},
-			{SubjectID: 3, SubjectName: "Design decisions", TimeSpentSeconds: 10800},
-			{SubjectID: 2, SubjectName: "Testing reality", TimeSpentSeconds: 10800},
-			{SubjectID: 4, SubjectName: "Documentation", TimeSpentSeconds: 7200},
+			{SubjectID: 1, SubjectName: "Building myself", TimeSpentSeconds: 23820},
+			{SubjectID: 2, SubjectName: "Testing reality", TimeSpentSeconds: 18000},
+			{SubjectID: 3, SubjectName: "Design decisions", TimeSpentSeconds: 14400},
+			{SubjectID: 4, SubjectName: "Documentation", TimeSpentSeconds: 10800},
+			{SubjectID: 30, SubjectName: "A deliberately long Subject name for checking narrow layouts", TimeSpentSeconds: 3600},
+			{SubjectID: 20, SubjectName: "日本語の練習", TimeSpentSeconds: 3600},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("daily subject time: got %+v, want %+v", got, want)
