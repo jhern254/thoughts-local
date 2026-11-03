@@ -32,10 +32,11 @@ followed by live membership reads. There is no membership cache or bulk API.
 ## Create and edit
 
 Tab/Shift+Tab moves between Name, Hours, Minutes, optional start/end dates,
-Cadence, and actions. Enter activates a control or saves from a text field;
-Ctrl+S saves. Dates use YYYY-MM-DD. Cadence cycles using arrows or Enter.
+Cadence, Priority, Status, and actions. Enter activates a control or saves from a text field;
+Ctrl+S saves. Dates use YYYY-MM-DD. Cadence, Priority, and Status cycle using Left/Right or Enter.
 Creation defaults to weekly and today’s local start date, which can be cleared.
-The end date stays empty. Both date labels show an example; form controls have
+Priority defaults to Normal and Status to Active; both can be changed before
+creation. The end date stays empty. Both date labels show an example; form controls have
 a blank line between them. An empty Subject selection is valid.
 
 Hours and Minutes accept nonnegative whole numbers, including 90 minutes. A
@@ -48,8 +49,9 @@ Creation's Subjects action opens a multiselect. Arrows navigate, Space toggles,
 Confirming this picker only changes the creation draft.
 
 From Details, `e` edits properties; `s` independently manages Subjects. Property
-edits retain timezone, week start, default cadence, priority, and activation.
-These internal settings and later priority/activation controls are not exposed.
+edits include Priority (High, Normal, Low) and Status (Active, Inactive).
+Timezone, week start, and default cadence remain hidden and retain their persisted
+values. Subject membership is edited independently.
 Subject management preselects current live membership and saves the complete
 selection. Historical links remain managed by PR #97's persistence contract.
 
@@ -69,8 +71,8 @@ with multiple Subjects, property updates, Subject replacement, and return Home.
 Browser acceptance uses the existing harness. Native terminal captures and browser
 screenshots are transient artifacts outside the source tree.
 
-This interface does not record progress, manage parents, toggle activation, or
-change priority. Very long Details and forms use Bubbles viewport scrolling;
+This interface does not record progress or manage parents. Priority and Status
+are changed through Create/Edit; the list’s `p` shortcut only filters. Very long Details and forms use Bubbles viewport scrolling;
 filtering and pagination use Bubbles lists. No schema changes are needed.
 
 ## Shared Subject layout and creation

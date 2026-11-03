@@ -22,7 +22,7 @@ func TestModel_FormPresentation(t *testing.T) {
 			t.Fatalf("end date got %q, want empty", got)
 		}
 		rows := strings.Split(ansi.Strip(m.formContent()), "\n")
-		labels := []string{"Hours", "Minutes", "Start date", "End date", "Cadence:", "Subjects:", "Save"}
+		labels := []string{"Hours", "Minutes", "Start date", "End date", "Cadence:", "Priority:", "Status:", "Subjects:", "Save"}
 		for _, label := range labels {
 			found := false
 			for i, row := range rows {
@@ -65,7 +65,7 @@ func TestModel_FormPresentation(t *testing.T) {
 		m.open = true
 		m.Resize(48, 16)
 		m.startForm(true)
-		for i := range 8 {
+		for i := range 10 {
 			m.refreshBody()
 			view := ansi.Strip(m.View())
 			if i < 5 {
@@ -77,7 +77,7 @@ func TestModel_FormPresentation(t *testing.T) {
 					t.Errorf("focused input %d not visible: %s", i, view)
 				}
 			} else {
-				label := []string{"Cadence:", "Subjects:", "Save"}[i-5]
+				label := []string{"Cadence:", "Priority:", "Status:", "Subjects:", "Save"}[i-5]
 				if !strings.Contains(view, label) {
 					t.Errorf("focused action %s not visible: %s", label, view)
 				}
@@ -92,11 +92,11 @@ func TestModel_FormFocusHighlight(t *testing.T) {
 		for _, tc := range []struct {
 			focus int
 			label string
-		}{{0, "Name"}, {1, "Hours"}, {2, "Minutes"}, {3, "Start date"}, {4, "End date"}, {5, "Cadence:"}, {6, "Subjects:"}, {7, "Save"}} {
-			if !create && tc.focus == 6 {
+		}{{0, "Name"}, {1, "Hours"}, {2, "Minutes"}, {3, "Start date"}, {4, "End date"}, {5, "Cadence:"}, {6, "Priority:"}, {7, "Status:"}, {8, "Subjects:"}, {9, "Save"}} {
+			if !create && tc.focus == 8 {
 				tc.label = "Save"
 			}
-			if !create && tc.focus == 7 {
+			if !create && tc.focus == 9 {
 				continue
 			}
 			t.Run(fmt.Sprintf("create=%t/%s", create, tc.label), func(t *testing.T) {

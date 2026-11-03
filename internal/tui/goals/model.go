@@ -117,9 +117,11 @@ type Model struct {
 	filter, pickerFilter listfilter.Scope
 	body                 viewport.Model
 	// Name, hours, minutes, start date, end date. Later focus positions are form actions.
-	fields  [5]textinput.Model
-	focus   int
-	cadence int
+	fields   [5]textinput.Model
+	focus    int
+	cadence  int
+	priority string
+	isActive bool
 	// Persisted snapshot used by Details and as the expected version for edits.
 	selected *data.Goal
 	// Requested identity survives failed reads when selected must remain nil.
@@ -327,6 +329,18 @@ func (m *Model) refreshBody() {
 			firstRow = 17 + (m.focus-5)*2
 			lastRow = firstRow
 		}
+		rows := strings.Split(m.formContent(), "\n")
+		wrappedFirst, wrappedLast := 0, 0
+		for index, row := range rows {
+			rowHeight := len(strings.Split(ansi.Hardwrap(row, m.width, true), "\n"))
+			if index < firstRow {
+				wrappedFirst += rowHeight
+			}
+			if index <= lastRow {
+				wrappedLast += rowHeight
+			}
+		}
+		firstRow, lastRow = wrappedFirst, wrappedLast-1
 		if firstRow < m.body.YOffset() {
 			m.body.SetYOffset(firstRow)
 		}
