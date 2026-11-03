@@ -58,6 +58,13 @@ test('Event multiselect retains filtered selections and cancels picker edits wit
   await expect(screen(page)).toContainText(activity);
   await page.keyboard.press('Enter');
   for (const name of names) await expect(screen(page)).toContainText(name);
+  await page.keyboard.press('ArrowUp');
+  await expect(screen(page)).toContainText('←/→: Subjects');
+  await page.keyboard.press('ArrowRight');
+  await expect(screen(page)).toContainText('←/→: Subjects');
+  await expect(screen(page)).toContainText(activity);
+  await page.keyboard.press('ArrowDown');
+  await expect(screen(page)).not.toContainText('←/→: Subjects');
   expect(connections).toBe(connected);
   await page.screenshot({path: `${process.env.THOUGHTS_BROWSER_ARTIFACTS}/event-subjects-${test.info().project.name}.png`});
 });

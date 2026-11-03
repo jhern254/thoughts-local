@@ -209,12 +209,19 @@ func (m *Model) expandedSubjectRows() (string, bool) {
 			}
 		}
 		if m.expandedSubjectErr == nil && matching && len(m.expandedSubjects) > 0 {
+			// Keep the selected block first so it remains visible at narrow widths.
+			start := m.expandedSubjectIndex
+			end := min(start+3, len(m.expandedSubjects))
 			var badges []string
-			for _, subject := range m.expandedSubjects[:min(3, len(m.expandedSubjects))] {
-				badges = append(badges, list.DefaultStyles(true).Title.Render(singleLine(subject.SubjectName)))
+			for index := start; index < end; index++ {
+				style := list.DefaultStyles(true).Title
+				if m.expandedSubjectFocused && !m.blurred && index == start {
+					style = style.Reverse(true)
+				}
+				badges = append(badges, style.Render(singleLine(m.expandedSubjects[index].SubjectName)))
 			}
 			label := strings.Join(badges, " ")
-			if len(m.expandedSubjects) > 3 {
+			if end < len(m.expandedSubjects) {
 				label += " ..."
 			}
 			return ansi.Truncate(label, m.cardWidth(), "…"), true
@@ -555,6 +562,9 @@ func (m Model) View() string {
 	}
 	if !m.expanded.IsZero() {
 		status = "←: collapse • →: open • ↑/↓: thoughts • PgUp/PgDn: scroll"
+		if m.expandedSubjectFocused {
+			status = "←/→: Subjects • ↓: Thoughts • Q/Esc: collapse"
+		}
 	}
 	help := "Home: first • End: now • ←/→: day • r: refresh • n: start • e: end"
 	if m.day.Equal(displaytime.Day(m.clock)) {

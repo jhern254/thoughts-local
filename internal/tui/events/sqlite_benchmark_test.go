@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -382,7 +383,7 @@ func BenchmarkTimelineExpansion(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	if current.SubjectID == nil || *current.SubjectID != 1 {
+	if !slices.Contains(current.SubjectIDs, 1) {
 		b.Fatal("reseed the stress database: event 721 must have subject 1")
 	}
 	b.Run("EventScope", func(b *testing.B) {
@@ -396,9 +397,35 @@ func BenchmarkTimelineExpansion(b *testing.B) {
 	b.Run("SubjectLookup", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := runtime.Subjects().Get(b.Context(), "demo", 1); err != nil {
-				b.Fatal(err)
+			for _, subjectID := range current.SubjectIDs {
+				if _, err := runtime.Subjects().Get(b.Context(), "demo", subjectID); err != nil {
+					b.Fatal(err)
+				}
 			}
+		}
+	})
+	b.Run("SubjectNavigation", func(b *testing.B) {
+		m := New(b.Context(), "demo", runtime.Events(), runtime.TimelineView(), runtime.Thoughts(), runtime.Subjects(), logging.Nop())
+		m.active = true
+		m.Resize(80, 27)
+		m.entries = eventEntries([]data.Event{*current})
+		m = execute(b, m, m.openEvent(current.EventID))
+		m, _ = m.Update(eventKey("up"))
+		defer m.Close()
+		if !m.expandedSubjectFocused {
+			b.Fatal("Subject row did not receive focus")
+		}
+		keys := [2]string{"right", "left"}
+		index := 0
+		b.ReportAllocs()
+		for b.Loop() {
+			var cmd tea.Cmd
+			m, cmd = m.Update(eventKey(keys[index]))
+			if cmd != nil {
+				b.Fatal("Subject navigation started asynchronous work")
+			}
+			index = 1 - index
+			_ = m.View()
 		}
 	})
 	b.Run("ExpandCollapse", func(b *testing.B) {

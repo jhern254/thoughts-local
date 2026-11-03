@@ -198,13 +198,13 @@ func TestService_List(t *testing.T) {
 
 func TestService_SubjectAssignment(t *testing.T) {
 	for _, operation := range []string{"create", "past", "update"} {
-		t.Run(operation+" forwards optional subject and preserves store error", func(t *testing.T) {
+		t.Run(operation+" forwards the complete Subject set and preserves store error", func(t *testing.T) {
 			id := int64(17)
-			for _, subjectID := range [][]int64{nil, {id}, {id, 18}} {
+			for _, subjectIDs := range [][]int64{nil, {id}, {id, 18}} {
 				want := errors.Join(data.ErrRecordNotFound, errors.New("PRIVATE_SUBJECT"))
 				write := func(_ context.Context, item *data.Event) (*data.Event, error) {
-					if !slices.Equal(item.SubjectIDs, subjectID) {
-						t.Fatalf("got subject %v, want %v", item.SubjectIDs, subjectID)
+					if !slices.Equal(item.SubjectIDs, subjectIDs) {
+						t.Fatalf("got Subjects %v, want %v", item.SubjectIDs, subjectIDs)
 					}
 					return nil, want
 				}
@@ -213,15 +213,15 @@ func TestService_SubjectAssignment(t *testing.T) {
 				var err error
 				switch operation {
 				case "create":
-					_, err = s.Create(t.Context(), "u", "activity", start, subjectID)
+					_, err = s.Create(t.Context(), "u", "activity", start, subjectIDs)
 				case "past":
-					_, err = s.CreatePast(t.Context(), "u", "activity", start, end, subjectID)
+					_, err = s.CreatePast(t.Context(), "u", "activity", start, end, subjectIDs)
 				case "update":
 					_, err = s.Update(t.Context(), "u", 1, 1, UpdateInput{
 						Activity:   "activity",
 						StartedAt:  start,
 						EndedAt:    &end,
-						SubjectIDs: subjectID,
+						SubjectIDs: subjectIDs,
 					})
 				}
 				if err != want {

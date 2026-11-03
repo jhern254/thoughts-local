@@ -1,4 +1,4 @@
-// Package goaldiscovery finds current goal candidates through an event's subject.
+// Package goaldiscovery finds current goal candidates through an Event's live Subjects.
 // Discovery does not assign goals or record progress.
 package goaldiscovery
 

@@ -276,7 +276,7 @@ func (s *SQLiteEventStore) EndEvent(ctx context.Context, userID string, id, vers
 	return result, nil
 }
 
-// UpdateEvent edits label/times without changing lifecycle state. Use EndEvent
+// UpdateEvent replaces label, times, and Subjects without changing lifecycle state. Use EndEvent
 // to finish an ongoing event; reopening completed events is not supported.
 func (s *SQLiteEventStore) UpdateEvent(ctx context.Context, item *Event) (_ *Event, err error) {
 	defer func() {

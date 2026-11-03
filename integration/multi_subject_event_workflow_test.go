@@ -50,14 +50,14 @@ func TestMultiSubjectEventSchema_SQLite(t *testing.T) {
 			t.Fatalf("hard-delete retained %d relationships, want zero", retained)
 		}
 	})
-	t.Run("removes the obsolete single Subject column", func(t *testing.T) {
+	t.Run("Events schema has no single-Subject column", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		var count int
 		if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('events') WHERE name='subject_id'`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 0 {
-			t.Fatalf("legacy Subject columns got %d, want zero", count)
+			t.Fatalf("single-Subject columns got %d, want zero", count)
 		}
 	})
 }

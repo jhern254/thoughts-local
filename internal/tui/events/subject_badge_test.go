@@ -278,3 +278,78 @@ func TestModel_ExpandedSubjectLine(t *testing.T) {
 		})
 	}
 }
+
+func TestModel_SubjectScroller(t *testing.T) {
+	t.Run("moves from the first Thought to Subjects and browses every assignment without reads", func(t *testing.T) {
+		m, store, _ := fixture(t)
+		var subjects []data.Subject
+		for i, name := range []string{"Go", "Research", "Projects", "Writing", "Reading", "Music"} {
+			id := int64(i + 1)
+			store.items[0].SubjectIDs = append(store.items[0].SubjectIDs, id)
+			subjects = append(subjects, data.Subject{SubjectID: id, SubjectName: name})
+		}
+		m.entries[0].Event.SubjectIDs = store.items[0].SubjectIDs
+		reader := &subjectReaderStub{items: subjects}
+		m.subjectReader = reader
+		m = execute(t, m, m.openEvent(1))
+		reader.get = func(context.Context, string, int64) (*data.Subject, error) {
+			t.Fatal("browsing loaded Subjects performed another read")
+			return nil, nil
+		}
+		m, _ = m.Update(eventKey("down"))
+		m, _ = m.Update(eventKey("up"))
+		if strings.Contains(m.View(), "←/→: Subjects") {
+			t.Fatal("Up reached Subjects before reaching the first Thought")
+		}
+		m, cmd := m.Update(eventKey("up"))
+		if cmd != nil || !strings.Contains(m.View(), "←/→: Subjects") {
+			t.Fatal("Up from the first Thought did not focus the loaded Subject row")
+		}
+		plots, _ := m.picker.TimelineEntryThoughtPlots()
+		for _, plot := range plots {
+			if plot.Selected {
+				t.Fatal("Thought remains highlighted while Subjects own focus")
+			}
+		}
+		for range 5 {
+			m, cmd = m.Update(eventKey("right"))
+			if cmd != nil || m.expanded.IsZero() || m.picker.ShowingDetail() {
+				t.Fatal("Subject movement started work, opened a Thought, or collapsed the card")
+			}
+		}
+		if !strings.Contains(ansi.Strip(m.entryContent(m.entries[0])[1]), "Music") {
+			t.Fatal("last assigned Subject is not visible")
+		}
+		m.Resize(40, 20)
+		if row := m.entryContent(m.entries[0])[1]; !strings.Contains(ansi.Strip(row), "Music") || ansi.StringWidth(row) > m.cardWidth() {
+			t.Fatalf("narrow Subject scroller: got %q, want visible selection within card", row)
+		}
+		for range 8 {
+			m, _ = m.Update(eventKey("left"))
+		}
+		if m.expanded.IsZero() {
+			t.Fatal("Left at the first Subject collapsed the Event")
+		}
+		m, _ = m.Update(eventKey("down"))
+		if strings.Contains(m.View(), "←/→: Subjects") {
+			t.Fatal("Down did not return focus to Thoughts")
+		}
+		m, _ = m.Update(eventKey("left"))
+		if !m.expanded.IsZero() {
+			t.Fatal("Left from Thoughts no longer collapses the Event")
+		}
+	})
+
+	t.Run("Escape collapses the card while Subjects are focused", func(t *testing.T) {
+		m, store, _ := fixture(t)
+		store.items[0].SubjectIDs = []int64{1}
+		m.entries[0].Event.SubjectIDs = []int64{1}
+		m.subjectReader = &subjectReaderStub{items: []data.Subject{{SubjectID: 1, SubjectName: "Go"}}}
+		m = execute(t, m, m.openEvent(1))
+		m, _ = m.Update(eventKey("up"))
+		m, _ = m.Update(eventKey("esc"))
+		if !m.expanded.IsZero() {
+			t.Fatal("Escape did not collapse the Event")
+		}
+	})
+}
