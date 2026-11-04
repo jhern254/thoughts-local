@@ -97,7 +97,9 @@ parent includes; no copied progress records need updating. Invalid intervals
 and totals too large for a signed 64-bit integer return an error rather than an
 inaccurate or partial total.
 
-This is a lifetime metric, with no progress UI or cadence engine. Future period
+This is a lifetime metric, with no progress bars or cadence engine.
+[Goal Activity Lineage](goal-activity-lineage.md) reads these same contributions
+to browse earned Events and their Subject-matched Thoughts without new attribution writes. Future period
 calculations must use the requested Goal's own timezone/cadence boundaries and
 clip each unique Event interval once, rather than summing child-period totals.
 

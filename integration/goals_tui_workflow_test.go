@@ -29,7 +29,7 @@ func TestGoalsTUIWorkflow_SQLite(t *testing.T) {
 			}
 		}
 		m := tui.NewModel(t.Context(), runtime.LocalUser(), runtime.Subjects(), runtime.Thoughts(), runtime.Metrics(), runtime.Events(), runtime.TimelineView(), logging.Nop())
-		m.ConfigureGoals(runtime.Goals(), runtime.GoalAssignments(), runtime.SubjectGoals())
+		m.ConfigureGoals(runtime.Goals(), runtime.GoalAssignments(), runtime.SubjectGoals(), runtime.GoalProgress())
 		var deliver func(tea.Cmd)
 		deliver = func(cmd tea.Cmd) {
 			if cmd == nil {
