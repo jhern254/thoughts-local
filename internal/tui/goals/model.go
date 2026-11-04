@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	keybinding "charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
@@ -534,6 +535,15 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case subjectsView:
 		if !m.pickerReady || m.subjectCreation != nil {
 			return m, nil
+		}
+		if ok && m.picker.SettingFilter() && keybinding.Matches(key, m.picker.KeyMap.AcceptWhileFiltering) {
+			// Confirmation must use the complete query, even if its asynchronous
+			// search reply has not arrived. Otherwise Space can act on the old
+			// Create subject row instead of the Subject the user searched for.
+			m.picker.SetFilterText(m.picker.FilterValue())
+			m.picker.SetFilterState(list.Filtering)
+			m.pickerFilter.Invalidate()
+			return m, m.pickerFilter.Update(&m.picker, msg)
 		}
 		if ok && !m.picker.SettingFilter() {
 			switch key.String() {
