@@ -40,9 +40,9 @@ func TestMultiSubjectEventDiscovery_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		earnedSupport := eventSupportRows(t, db)
-		if len(earnedSupport) != 3 {
-			t.Fatalf("completed Event support: got %v, want three support rows", earnedSupport)
+		earnedContributions := readEventGoalContributions(t, db)
+		if len(earnedContributions) != 3 {
+			t.Fatalf("completed Event contribution: got %v, want three contribution rows", earnedContributions)
 		}
 		discovery := goaldiscovery.NewService(events, linkStore, goaldiscovery.AllCandidatesRecommender{})
 		result, err := discovery.DiscoverForEvent(t.Context(), "u", item.EventID, true)
@@ -65,10 +65,10 @@ func TestMultiSubjectEventDiscovery_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if count != 0 {
-			t.Fatalf("Misc Event support: got %d, want zero", count)
+			t.Fatalf("Misc Event contribution: got %d, want zero", count)
 		}
-		if after := eventSupportRows(t, db); !reflect.DeepEqual(after, earnedSupport) {
-			t.Fatalf("earned support after discovery and Misc creation: got %v, want %v", after, earnedSupport)
+		if after := readEventGoalContributions(t, db); !reflect.DeepEqual(after, earnedContributions) {
+			t.Fatalf("earned contribution after discovery and Misc creation: got %v, want %v", after, earnedContributions)
 		}
 	})
 }

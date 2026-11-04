@@ -16,29 +16,29 @@ func reconcileEventGoalContributions(ctx context.Context, tx *sql.Tx, current, p
 	if current.EndedAt == nil {
 		return nil
 	}
-	var added, removed []int64
+	var addedSubjectIDs, removedSubjectIDs []int64
 	if previous == nil {
-		added = current.SubjectIDs
+		addedSubjectIDs = current.SubjectIDs
 	} else {
 		for _, id := range current.SubjectIDs {
 			if !slices.Contains(previous.SubjectIDs, id) {
-				added = append(added, id)
+				addedSubjectIDs = append(addedSubjectIDs, id)
 			}
 		}
 		for _, id := range previous.SubjectIDs {
 			if !slices.Contains(current.SubjectIDs, id) {
-				removed = append(removed, id)
+				removedSubjectIDs = append(removedSubjectIDs, id)
 			}
 		}
 	}
-	for _, subjectID := range removed {
+	for _, subjectID := range removedSubjectIDs {
 		// NULL live references and automatically retired Subjects are absent from
 		// the previous live set, so ordinary edits cannot retract their earned contributions.
 		if _, err := tx.ExecContext(ctx, `DELETE FROM goal_progress WHERE user_id = ? AND event_id = ? AND subject_id = ?`, current.UserID, current.EventID, subjectID); err != nil {
 			return err
 		}
 	}
-	for _, subjectID := range added {
+	for _, subjectID := range addedSubjectIDs {
 		_, err := tx.ExecContext(ctx, `
     INSERT INTO goal_progress (event_id, goal_id, user_id, recorded_subject_id, subject_id)
     SELECT

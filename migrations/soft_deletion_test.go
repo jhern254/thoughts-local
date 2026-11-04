@@ -59,7 +59,7 @@ func TestSoftDeletionWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("got retained thought ID %d, want %d", got, want)
 			}
 			if got, want := recordedSubjectID, int64(1); got != want {
-				t.Fatalf("got recorded support Subject %d, want %d", got, want)
+				t.Fatalf("got recorded contribution Subject %d, want %d", got, want)
 			}
 			var count int
 			if err := db.QueryRow("SELECT count(*) FROM pragma_foreign_key_check").Scan(&count); err != nil {

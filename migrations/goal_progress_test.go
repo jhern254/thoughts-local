@@ -18,12 +18,12 @@ func TestGoalProgressOwnershipWorkflow_SQLite(t *testing.T) {
 		{"rejects transferring an Event", "UPDATE events SET user_id = 'other' WHERE event_id = 1"},
 		{"rejects transferring a Goal", "UPDATE goals SET user_id = 'other' WHERE goal_id = 1"},
 		{"rejects transferring a Subject", "UPDATE subjects SET user_id = 'other' WHERE subject_id = 1"},
-		{"rejects duplicate live support", "INSERT INTO goal_progress (event_id,goal_id,user_id,recorded_subject_id,subject_id) VALUES (1,1,'owner',1,1)"},
+		{"rejects duplicate live contribution", "INSERT INTO goal_progress (event_id,goal_id,user_id,recorded_subject_id,subject_id) VALUES (1,1,'owner',1,1)"},
 		{"requires an Event", "UPDATE goal_progress SET event_id = NULL WHERE progress_id = 1"},
 		{"rejects a missing Event", "UPDATE goal_progress SET event_id = 99 WHERE progress_id = 1"},
 		{"rejects a missing Goal", "UPDATE goal_progress SET goal_id = 99 WHERE progress_id = 1"},
 		{"rejects a missing Subject", "UPDATE goal_progress SET subject_id = 99 WHERE progress_id = 1"},
-		{"rejects changing support owner", "UPDATE goal_progress SET user_id = 'other' WHERE progress_id = 1"},
+		{"rejects changing contribution owner", "UPDATE goal_progress SET user_id = 'other' WHERE progress_id = 1"},
 		{"requires recorded identity", "UPDATE goal_progress SET recorded_subject_id = NULL WHERE progress_id = 1"},
 		{"requires integer recorded identity", "UPDATE goal_progress SET recorded_subject_id = 1.5 WHERE progress_id = 1"},
 	} {
@@ -33,7 +33,7 @@ func TestGoalProgressOwnershipWorkflow_SQLite(t *testing.T) {
 				t.Fatal(err)
 			}
 			if _, err := db.Exec(tc.statement); err == nil {
-				t.Fatal("invalid support mutation: got nil, want constraint error")
+				t.Fatal("invalid contribution mutation: got nil, want constraint error")
 			}
 			var count int
 			if err := db.QueryRow(`
@@ -43,7 +43,7 @@ func TestGoalProgressOwnershipWorkflow_SQLite(t *testing.T) {
 				t.Fatal(err)
 			}
 			if count != 1 {
-				t.Fatalf("preserved support: got %d, want 1", count)
+				t.Fatalf("preserved contribution: got %d, want 1", count)
 			}
 		})
 	}
@@ -80,7 +80,7 @@ func TestGoalProgressLifecycleWorkflow_SQLite(t *testing.T) {
 				t.Fatal(err)
 			}
 			if count != tc.rows {
-				t.Fatalf("support rows: got %d, want %d", count, tc.rows)
+				t.Fatalf("contribution rows: got %d, want %d", count, tc.rows)
 			}
 			if count > 0 {
 				var subject, recorded, event, goal int64
@@ -89,7 +89,7 @@ func TestGoalProgressLifecycleWorkflow_SQLite(t *testing.T) {
 					t.Fatal(err)
 				}
 				if subject != tc.subject || recorded != tc.recorded || owner != tc.owner || event != tc.event || goal != tc.goal {
-					t.Fatalf("support: got %d/%d/%s/%d/%d, want %+v", subject, recorded, owner, event, goal, tc)
+					t.Fatalf("contribution: got %d/%d/%s/%d/%d, want %+v", subject, recorded, owner, event, goal, tc)
 				}
 			}
 			if err := db.QueryRow("SELECT COUNT(*) FROM pragma_foreign_key_check").Scan(&count); err != nil {

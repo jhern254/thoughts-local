@@ -397,7 +397,7 @@ func TestGoalWorkflow_SQLite(t *testing.T) {
 			name, query string
 			want        int
 		}{
-			{"earned Event support", `SELECT count(*) FROM goal_progress WHERE goal_id=1 AND user_id='owner' AND event_id=1 AND recorded_subject_id=1 AND subject_id=1`, 1},
+			{"earned Event contributions", `SELECT count(*) FROM goal_progress WHERE goal_id=1 AND user_id='owner' AND event_id=1 AND recorded_subject_id=1 AND subject_id=1`, 1},
 			{"incident links", `SELECT count(*) FROM goal_parents WHERE user_id='owner' AND (goal_id,parent_goal_id) IN ((1,2),(3,1))`, 2},
 			{"unchanged neighbors", `SELECT count(*) FROM goals WHERE goal_id IN (2,3) AND deleted_at IS NULL AND goal_is_active=1 AND version=1`, 2},
 			{"foreign-key violations", `SELECT count(*) FROM pragma_foreign_key_check`, 0},

@@ -50,15 +50,15 @@ func TestEventGoalAttributionWorkflow_SQLite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var recipients, supports int
+			var recipients, contributions int
 			if err := db.QueryRow(`SELECT COUNT(DISTINCT goal_id) FROM goal_progress`).Scan(&recipients); err != nil {
 				t.Fatal(err)
 			}
-			if err := db.QueryRow(`SELECT COUNT(*) FROM goal_progress`).Scan(&supports); err != nil {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM goal_progress`).Scan(&contributions); err != nil {
 				t.Fatal(err)
 			}
-			if recipients != 2 || supports != 3 {
-				t.Fatalf("recipients/supports: got %d/%d, want 2/3", recipients, supports)
+			if recipients != 2 || contributions != 3 {
+				t.Fatalf("recipients/contributions: got %d/%d, want 2/3", recipients, contributions)
 			}
 			var versions int64
 			if err := db.QueryRow(`SELECT SUM(version) FROM goals WHERE user_id='owner'`).Scan(&versions); err != nil {
@@ -101,7 +101,7 @@ func TestGoalProgressSummaryWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("retained diamond: got %+v,%v, want earned 200", got, err)
 		}
 	})
-	t.Run("removing final support retracts credit after label and interval corrections", func(t *testing.T) {
+	t.Run("removing final contribution retracts credit after label and interval corrections", func(t *testing.T) {
 		db, service := attributionFixture(t)
 		item, err := service.CreatePast(t.Context(), "owner", "Work", time.Unix(100, 0), time.Unix(200, 0), []int64{1, 2})
 		if err != nil {
@@ -121,10 +121,10 @@ func TestGoalProgressSummaryWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if count != 0 {
-			t.Fatalf("remaining supports: got %d, want zero", count)
+			t.Fatalf("remaining contributions: got %d, want zero", count)
 		}
 	})
-	t.Run("Subject deletion and duration edits retain earned support", func(t *testing.T) {
+	t.Run("Subject deletion and duration edits retain earned contributions", func(t *testing.T) {
 		db, service := attributionFixture(t)
 		item, err := service.CreatePast(t.Context(), "owner", "Work", time.Unix(100, 0), time.Unix(200, 0), []int64{1})
 		if err != nil {
@@ -157,7 +157,7 @@ func TestEventGoalRetentionWorkflow_SQLite(t *testing.T) {
 		{"inactive recipients retain earned credit", `UPDATE goals SET goal_is_active=0 WHERE goal_id=1`, 100},
 		{"unlinked recipients retain earned credit", `UPDATE subject_goals SET deleted_at=1 WHERE goal_id=1`, 100},
 		{"soft deleted Event stops counting", `UPDATE events SET deleted_at=updated_at`, 0},
-		{"hard deleted Subject retains detached support", `DELETE FROM subjects WHERE subject_id=1`, 100},
+		{"hard deleted Subject retains detached contribution", `DELETE FROM subjects WHERE subject_id=1`, 100},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, service := attributionFixture(t)
@@ -206,7 +206,7 @@ func TestEventGoalRetentionWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("no-recipient completion retention: got %+v,%v, want 50", got, err)
 		}
 	})
-	t.Run("shared support survives removing one Subject even after Goal deactivation", func(t *testing.T) {
+	t.Run("remaining contributions survive removing another Subject after Goal deactivation", func(t *testing.T) {
 		db, service := attributionFixture(t)
 		item, err := service.CreatePast(t.Context(), "owner", "Work", time.Unix(100, 0), time.Unix(200, 0), []int64{1, 2})
 		if err != nil {
@@ -221,7 +221,7 @@ func TestEventGoalRetentionWorkflow_SQLite(t *testing.T) {
 		}
 		got, err := data.NewSQLiteGoalProgressStore(db).GetGoalProgressSummary(t.Context(), "owner", 1)
 		if err != nil || got.LifetimeEarnedSeconds != 100 {
-			t.Fatalf("remaining earned support: got %+v,%v, want 100", got, err)
+			t.Fatalf("remaining earned contributions: got %+v,%v, want 100", got, err)
 		}
 	})
 	t.Run("legacy edits establish credit only through additions", func(t *testing.T) {
@@ -239,7 +239,7 @@ func TestEventGoalRetentionWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if n != 0 {
-			t.Fatalf("legacy unchanged Subject supports: got %d, want zero", n)
+			t.Fatalf("legacy unchanged Subject contributions: got %d, want zero", n)
 		}
 	})
 }
@@ -261,7 +261,7 @@ func TestEventGoalRollbackWorkflow_SQLite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			beforeSupport := eventSupportRows(t, db)
+			contributionsBefore := readEventGoalContributions(t, db)
 			if _, err := db.Exec(`CREATE TRIGGER reject_credit BEFORE INSERT ON goal_progress BEGIN SELECT RAISE(ABORT,'controlled attribution failure'); END`); err != nil {
 				t.Fatal(err)
 			}
@@ -284,8 +284,8 @@ func TestEventGoalRollbackWorkflow_SQLite(t *testing.T) {
 					t.Fatalf("rollback: got %+v,%v, want original %+v", got, err, item)
 				}
 			}
-			if after := eventSupportRows(t, db); !reflect.DeepEqual(after, beforeSupport) {
-				t.Fatalf("support after rollback: got %v, want %v", after, beforeSupport)
+			if after := readEventGoalContributions(t, db); !reflect.DeepEqual(after, contributionsBefore) {
+				t.Fatalf("contribution after rollback: got %v, want %v", after, contributionsBefore)
 			}
 			var count int
 			if err := db.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&count); err != nil {
@@ -321,7 +321,7 @@ func TestEventGoalBoundariesWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if count != 0 {
-			t.Fatalf("canceled supports: got %d, want zero", count)
+			t.Fatalf("canceled contributions: got %d, want zero", count)
 		}
 	})
 	t.Run("reports integer overflow without rounded or partial totals", func(t *testing.T) {
@@ -336,7 +336,7 @@ func TestEventGoalBoundariesWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("overflow: got %+v,%v, want error without partial totals", got, err)
 		}
 	})
-	t.Run("old detached support is not confused with a reused Subject identifier", func(t *testing.T) {
+	t.Run("old detached contribution is not confused with a reused Subject identifier", func(t *testing.T) {
 		db, service := attributionFixture(t)
 		item, err := service.CreatePast(t.Context(), "owner", "Work", time.Unix(100, 0), time.Unix(200, 0), []int64{1})
 		if err != nil {
@@ -352,24 +352,24 @@ func TestEventGoalBoundariesWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		originalSupport := eventSupportRows(t, db)
+		originalContributions := readEventGoalContributions(t, db)
 		for _, ids := range [][]int64{{1}, nil} {
 			item, err = service.Update(t.Context(), "owner", item.EventID, item.Version, event.UpdateInput{Activity: "Corrected", StartedAt: item.StartedAt, EndedAt: item.EndedAt, SubjectIDs: ids})
 			if err != nil {
 				t.Fatal(err)
 			}
-			supports := eventSupportRows(t, db)
+			contributions := readEventGoalContributions(t, db)
 			wantCount := 1
 			if len(ids) > 0 {
 				wantCount = 2
 			}
-			if len(supports) != wantCount || supports[0] != originalSupport[0] {
-				t.Fatalf("detached and new support: got %v, want %d rows retaining %v", supports, wantCount, originalSupport[0])
+			if len(contributions) != wantCount || contributions[0] != originalContributions[0] {
+				t.Fatalf("detached and new contribution: got %v, want %d rows retaining %v", contributions, wantCount, originalContributions[0])
 			}
 		}
 		got, err := data.NewSQLiteGoalProgressStore(db).GetGoalProgressSummary(t.Context(), "owner", 1)
 		if err != nil || got.LifetimeEarnedSeconds != 100 {
-			t.Fatalf("detached historical support: got %+v,%v, want 100", got, err)
+			t.Fatalf("detached historical contribution: got %+v,%v, want 100", got, err)
 		}
 	})
 	t.Run("credits three Subjects while excluding retired and inactive recipients", func(t *testing.T) {
@@ -386,15 +386,15 @@ func TestEventGoalBoundariesWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var recipients, supports int
+		var recipients, contributions int
 		if err := db.QueryRow(`SELECT COUNT(DISTINCT goal_id) FROM goal_progress WHERE event_id=?`, item.EventID).Scan(&recipients); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.QueryRow(`SELECT COUNT(*) FROM goal_progress WHERE goal_id=1`).Scan(&supports); err != nil {
+		if err := db.QueryRow(`SELECT COUNT(*) FROM goal_progress WHERE goal_id=1`).Scan(&contributions); err != nil {
 			t.Fatal(err)
 		}
-		if recipients != 2 || supports != 3 {
-			t.Fatalf("three-Subject union: got %d recipients/%d supports, want 2/3", recipients, supports)
+		if recipients != 2 || contributions != 3 {
+			t.Fatalf("three-Subject union: got %d recipients/%d contributions, want 2/3", recipients, contributions)
 		}
 	})
 }
@@ -491,7 +491,7 @@ func TestEventGoalTransactionBoundaries_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		if count != 0 {
-			t.Fatalf("contended supports: got %d, want zero", count)
+			t.Fatalf("contended contributions: got %d, want zero", count)
 		}
 	})
 	t.Run("fall back uses elapsed UTC time instead of repeated wall-clock labels", func(t *testing.T) {

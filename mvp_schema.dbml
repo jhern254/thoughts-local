@@ -186,7 +186,7 @@ Table goal_progress {
     (subject_id, user_id) [name: 'idx_goal_progress_subject']
   }
   Note: '''
-    Earned support per Event × Goal × Subject; Events own all time intervals.
+    One contribution per Event × Goal × Subject; Events own all time intervals.
     Hard Subject deletion detaches subject_id while retaining recorded identity.
     Nullable live references permit distinct detached historical identities.
     Summaries deduplicate Event IDs across current descendants.
@@ -255,7 +255,7 @@ Table subject_goals {
     Soft deletion of endpoints retains links; hard deletion cascades.
     This is retained relationship state, not a chronological audit log.
     SQL migration 000011 is authoritative for integer checks and constraints.
-    Linking does not retroactively credit completed Events; completion establishes support.
+    Linking does not retroactively credit completed Events; completion establishes contributions.
   '''
 }
 
@@ -311,7 +311,7 @@ Table subject_time_rollups {
 
   Note: '''
   Derive from Event durations through live event_subjects; Subject totals overlap.
-  Goal support is not a source of Subject totals.
+  Goal contributions are not a source of Subject totals.
   '''
 }
 
@@ -354,7 +354,7 @@ Ref: goals.goal_id < goal_progress.goal_id [delete: cascade, update: cascade]
 Ref: subjects.subject_id < subject_goals.subject_id [delete: cascade, update: cascade]
 Ref: goals.goal_id < subject_goals.goal_id [delete: cascade, update: cascade]
 
-/* Earned Event support and same-owner checks */
+/* Earned Event contribution and same-owner checks */
 Ref: events.event_id < goal_progress.event_id [delete: cascade, update: cascade]
 Ref: subjects.subject_id < goal_progress.subject_id [delete: set null, update: cascade]
 Ref: events.(event_id, user_id) < goal_progress.(event_id, user_id)

@@ -23,40 +23,40 @@ func assertEarnedSeconds(t *testing.T, db *sql.DB, goalID, want int64) {
 }
 
 // IDs and references must survive unrelated edits, not just the final totals.
-func eventSupportRows(t *testing.T, db *sql.DB) [][5]int64 {
+func readEventGoalContributions(t *testing.T, db *sql.DB) [][5]int64 {
 	t.Helper()
 	rows, err := db.Query(`SELECT progress_id,event_id,goal_id,recorded_subject_id,COALESCE(subject_id,0) FROM goal_progress ORDER BY progress_id`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
-	supports := make([][5]int64, 0)
+	contributions := make([][5]int64, 0)
 	for rows.Next() {
 		var row [5]int64
 		if err := rows.Scan(&row[0], &row[1], &row[2], &row[3], &row[4]); err != nil {
 			t.Fatal(err)
 		}
-		supports = append(supports, row)
+		contributions = append(contributions, row)
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	return supports
+	return contributions
 }
 
-func TestEventGoalSupportWorkflow_SQLite(t *testing.T) {
-	t.Run("label and time corrections use current Event intervals without rewriting support", func(t *testing.T) {
+func TestEventGoalContributionWorkflow_SQLite(t *testing.T) {
+	t.Run("label and time corrections use current Event intervals without rewriting contributions", func(t *testing.T) {
 		db, service := attributionFixture(t)
 		item, err := service.CreatePast(t.Context(), "owner", "Work", time.Unix(100, 0), time.Unix(200, 0), []int64{1, 2})
 		if err != nil {
 			t.Fatal(err)
 		}
-		before := eventSupportRows(t, db)
+		before := readEventGoalContributions(t, db)
 		// Any unexpected rewrite fails the actual Event transaction.
 		if _, err := db.Exec(`
-    CREATE TRIGGER reject_support_update BEFORE UPDATE ON goal_progress BEGIN SELECT RAISE(ABORT,'unexpected support rewrite'); END;
-    CREATE TRIGGER reject_support_delete BEFORE DELETE ON goal_progress BEGIN SELECT RAISE(ABORT,'unexpected support rewrite'); END;
-    CREATE TRIGGER reject_support_insert BEFORE INSERT ON goal_progress BEGIN SELECT RAISE(ABORT,'unexpected support rewrite'); END;`); err != nil {
+    CREATE TRIGGER reject_contribution_update BEFORE UPDATE ON goal_progress BEGIN SELECT RAISE(ABORT,'unexpected contribution rewrite'); END;
+    CREATE TRIGGER reject_contribution_delete BEFORE DELETE ON goal_progress BEGIN SELECT RAISE(ABORT,'unexpected contribution rewrite'); END;
+    CREATE TRIGGER reject_contribution_insert BEFORE INSERT ON goal_progress BEGIN SELECT RAISE(ABORT,'unexpected contribution rewrite'); END;`); err != nil {
 			t.Fatal(err)
 		}
 		for _, cut := range []struct{ start, end int64 }{{100, 200}, {100, 150}, {50, 200}, {75, 225}, {75, 75}} {
@@ -67,12 +67,12 @@ func TestEventGoalSupportWorkflow_SQLite(t *testing.T) {
 			for _, id := range []int64{1, 2} {
 				assertEarnedSeconds(t, db, id, cut.end-cut.start)
 			}
-			if after := eventSupportRows(t, db); !reflect.DeepEqual(after, before) {
-				t.Fatalf("support after interval edit: got %v, want %v", after, before)
+			if after := readEventGoalContributions(t, db); !reflect.DeepEqual(after, before) {
+				t.Fatalf("contribution after interval edit: got %v, want %v", after, before)
 			}
 		}
 	})
-	t.Run("explicit additions discover only new support and removals retract only that Subject", func(t *testing.T) {
+	t.Run("explicit additions discover only new contributions and removals retract only that Subject", func(t *testing.T) {
 		db, service := attributionFixture(t)
 		item, err := service.CreatePast(t.Context(), "owner", "Work", time.Unix(100, 0), time.Unix(200, 0), []int64{1})
 		if err != nil {
@@ -103,24 +103,24 @@ func TestEventGoalSupportWorkflow_SQLite(t *testing.T) {
 			assertEarnedSeconds(t, db, 4, tc.later)
 		}
 	})
-	t.Run("ongoing Events never establish support and stale completion cannot duplicate it", func(t *testing.T) {
+	t.Run("ongoing Events never establish contributions and stale completion cannot duplicate it", func(t *testing.T) {
 		db, service := attributionFixture(t)
 		item, err := service.Create(t.Context(), "owner", "Work", time.Unix(100, 0), []int64{1, 2})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := eventSupportRows(t, db); len(got) != 0 {
-			t.Fatalf("ongoing support: got %v, want empty", got)
+		if got := readEventGoalContributions(t, db); len(got) != 0 {
+			t.Fatalf("ongoing contribution: got %v, want empty", got)
 		}
 		if _, err := service.End(t.Context(), "owner", item.EventID, item.Version, time.Unix(200, 0)); err != nil {
 			t.Fatal(err)
 		}
-		before := eventSupportRows(t, db)
+		before := readEventGoalContributions(t, db)
 		if _, err := service.End(t.Context(), "owner", item.EventID, item.Version, time.Unix(200, 0)); !errors.Is(err, data.ErrEventVersionConflict) {
 			t.Fatalf("stale completion: got %v, want version conflict", err)
 		}
-		if after := eventSupportRows(t, db); !reflect.DeepEqual(after, before) {
-			t.Fatalf("stale support: got %v, want %v", after, before)
+		if after := readEventGoalContributions(t, db); !reflect.DeepEqual(after, before) {
+			t.Fatalf("stale contribution: got %v, want %v", after, before)
 		}
 	})
 	t.Run("a canceled summary returns no partial total", func(t *testing.T) {

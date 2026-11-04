@@ -187,7 +187,7 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 
 	})
 
-	t.Run("linking and unlinking preserve endpoints and earned support", func(t *testing.T) {
+	t.Run("linking and unlinking preserve endpoints and earned contributions", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)
 		_, err := db.Exec(`

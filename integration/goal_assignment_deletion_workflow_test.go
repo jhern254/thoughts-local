@@ -46,13 +46,13 @@ func TestGoalAssignmentDeletionWorkflow_SQLite(t *testing.T) {
 		`); err != nil {
 			t.Fatal(err)
 		}
-		supportIDs := make([]int64, 0, 7)
+		contributionIDs := make([]int64, 0, 7)
 		for _, item := range before {
 			var id int64
 			if err := db.QueryRow(`INSERT INTO goal_progress (event_id,goal_id,user_id,recorded_subject_id,subject_id) VALUES (1,?,'owner',1,1) RETURNING progress_id`, item.GoalID).Scan(&id); err != nil {
 				t.Fatal(err)
 			}
-			supportIDs = append(supportIDs, id)
+			contributionIDs = append(contributionIDs, id)
 		}
 		parents := data.NewSQLiteGoalParentStore(db)
 		if err := parents.AddGoalParent(t.Context(), "owner", before[1].GoalID, before[0].GoalID); err != nil {
@@ -86,11 +86,11 @@ func TestGoalAssignmentDeletionWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("Goal %d history: got %+v, %v; want retained links", item.GoalID, raw, err)
 			}
 			var count int
-			if err := db.QueryRow(`SELECT COUNT(*) FROM goal_progress WHERE progress_id=? AND goal_id=? AND event_id=1 AND recorded_subject_id=1 AND subject_id=1`, supportIDs[i], item.GoalID).Scan(&count); err != nil {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM goal_progress WHERE progress_id=? AND goal_id=? AND event_id=1 AND recorded_subject_id=1 AND subject_id=1`, contributionIDs[i], item.GoalID).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 1 {
-				t.Fatalf("retained earned support: got %d, want 1", count)
+				t.Fatalf("retained earned contributions: got %d, want 1", count)
 			}
 		}
 		afterParents, err := parents.ListGoalParents(t.Context(), "owner", before[1].GoalID)
