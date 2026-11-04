@@ -6,10 +6,13 @@ import (
 	"slices"
 )
 
-// The Event transaction owns support changes. Only explicit live-set additions
-// discover eligible Goals; unrelated interval, label and relationship changes
-// must not rewrite previously earned support.
-func reconcileEventGoalSupport(ctx context.Context, tx *sql.Tx, current, previous *Event) error {
+// reconcileEventGoalContributions records which Goals earn time from a completed Event
+// through its Subjects. It creates contributions on completion and adds or removes
+// contributions when its Subject selection changes, within the Event transaction.
+//
+// Contributions through unchanged or deleted Subjects are retained. Label and
+// time edits leave them untouched; summaries read the current Event duration.
+func reconcileEventGoalContributions(ctx context.Context, tx *sql.Tx, current, previous *Event) error {
 	if current.EndedAt == nil {
 		return nil
 	}
@@ -30,7 +33,7 @@ func reconcileEventGoalSupport(ctx context.Context, tx *sql.Tx, current, previou
 	}
 	for _, subjectID := range removed {
 		// NULL live references and automatically retired Subjects are absent from
-		// the previous live set, so ordinary edits cannot retract their old support.
+		// the previous live set, so ordinary edits cannot retract their earned contributions.
 		if _, err := tx.ExecContext(ctx, `DELETE FROM goal_progress WHERE user_id = ? AND event_id = ? AND subject_id = ?`, current.UserID, current.EventID, subjectID); err != nil {
 			return err
 		}

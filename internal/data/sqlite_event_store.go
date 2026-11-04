@@ -112,7 +112,7 @@ func (s *SQLiteEventStore) StartEvent(ctx context.Context, item *Event) (_ *Even
 		previous.EndedAt = &item.StartedAt
 		previous.Version++
 		previous.UpdatedAt = item.UpdatedAt
-		if err := reconcileEventGoalSupport(ctx, tx, previous, nil); err != nil {
+		if err := reconcileEventGoalContributions(ctx, tx, previous, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -194,7 +194,7 @@ func insertEvent(ctx context.Context, tx *sql.Tx, item *Event) (*Event, error) {
 	}
 	created.SubjectIDs = append([]int64{}, item.SubjectIDs...)
 	slices.Sort(created.SubjectIDs)
-	if err := reconcileEventGoalSupport(ctx, tx, created, nil); err != nil {
+	if err := reconcileEventGoalContributions(ctx, tx, created, nil); err != nil {
 		return nil, err
 	}
 	return created, nil
@@ -279,7 +279,7 @@ func (s *SQLiteEventStore) EndEvent(ctx context.Context, userID string, id, vers
 	if err != nil {
 		return nil, err
 	}
-	if err := reconcileEventGoalSupport(ctx, tx, result, nil); err != nil {
+	if err := reconcileEventGoalContributions(ctx, tx, result, nil); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -320,7 +320,7 @@ func (s *SQLiteEventStore) UpdateEvent(ctx context.Context, item *Event) (_ *Eve
 	}
 	result.SubjectIDs = append([]int64{}, item.SubjectIDs...)
 	slices.Sort(result.SubjectIDs)
-	if err := reconcileEventGoalSupport(ctx, tx, result, current); err != nil {
+	if err := reconcileEventGoalContributions(ctx, tx, result, current); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
