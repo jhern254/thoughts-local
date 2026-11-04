@@ -187,20 +187,36 @@ func TestSubjectGoalStoreWorkflow_SQLite(t *testing.T) {
 
 	})
 
-	t.Run("linking and unlinking preserve endpoints and progress provenance", func(t *testing.T) {
+	t.Run("linking and unlinking preserve endpoints and earned support", func(t *testing.T) {
 		db, _ := openMigratedSQLite(t)
 		seedSubjectGoals(t, db)
 		_, err := db.Exec(`
 		    INSERT INTO events (event_id, user_id, started_at) VALUES (1, 'owner', 100);
 		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (1, 1, 'owner');
 		    INSERT INTO thoughts (thought_id, user_id, subject_id, event_id, thought) VALUES (1, 'owner', 1, 1, 'Context');
-		    INSERT INTO goal_progress (goal_id, user_id, event_id, thought_id, time_spent_sec) VALUES (1, 'owner', 1, 1, 60);
+		    INSERT INTO goal_progress (goal_id,user_id,event_id,recorded_subject_id,subject_id) VALUES (1,'owner',1,1,1);
 		`)
 		if err != nil {
 			t.Fatal(err)
 		}
-		const snapshot = `SELECT s.updated_at,g.updated_at,g.version,e.version,t.version,(SELECT subject_id FROM event_subjects es WHERE es.event_id=e.event_id AND es.deleted_at IS NULL),t.subject_id,p.event_id,p.thought_id,p.time_spent_sec
- FROM subjects s,goals g,events e,thoughts t,goal_progress p WHERE s.subject_id=1 AND g.goal_id=1`
+		const snapshot = `
+    SELECT
+        s.updated_at,
+        g.updated_at,
+        g.version,
+        e.version,
+        t.version,
+        (SELECT subject_id FROM event_subjects es WHERE es.event_id = e.event_id AND es.deleted_at IS NULL),
+        t.subject_id,
+        p.event_id,
+        p.recorded_subject_id,
+        p.subject_id
+    FROM goal_progress p
+    JOIN events e ON e.event_id = p.event_id AND e.user_id = p.user_id
+    JOIN goals g ON g.goal_id = p.goal_id AND g.user_id = p.user_id
+    JOIN subjects s ON s.subject_id = p.subject_id AND s.user_id = p.user_id
+    JOIN thoughts t ON t.event_id = e.event_id AND t.user_id = e.user_id
+    WHERE s.subject_id = 1 AND g.goal_id = 1`
 		var before, after [10]int64
 		if err := db.QueryRow(snapshot).Scan(&before[0], &before[1], &before[2], &before[3], &before[4], &before[5], &before[6], &before[7], &before[8], &before[9]); err != nil {
 			t.Fatal(err)

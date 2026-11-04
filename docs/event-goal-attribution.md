@@ -1,80 +1,85 @@
-# Automatic Event attribution
+# Automatic Goal progress from Events
 
-Completed Events earn their full elapsed UTC seconds for every distinct eligible
-Goal reached through their live Subjects. Matching a Goal through several
-Subjects does not multiply its credit. Eligibility requires a live owner, an
-active undeleted Goal, and live Event–Subject and Subject–Goal links. Priority
-and Goal date bounds do not filter attribution. Ongoing Events earn no committed
-time. Zero-duration completions freeze eligible recipients with zero seconds.
+The Event owns time. `goal_progress` owns earned Goal support, with one row per
+Event × Goal × supporting Subject. It does not copy timestamps or durations.
+Current `events.ended_at - events.started_at` determines earned UTC seconds.
 
-## Immutable history and effective progress
+## Establishing and correcting support
 
-Three normalized tables form the ledger:
+Completing an Event through End, starting a successor, or Create Past Event
+establishes support inside the Event's SQLite transaction. Each live Event
+Subject supports every active, undeleted same-owner Goal reached through a live
+Subject–Goal link. Priority and Goal date bounds do not filter eligibility.
+Several Subjects may support the same Goal; several Goals may earn the full
+Event duration. An unassigned/Misc Event earns no Goal credit. Ongoing Events
+receive no support; zero-duration completions establish support with zero time.
 
-- `event_credit_revisions` records one credited interval and reason per Event
-  version that changes attribution.
-- `event_goal_credits` identifies the unique recipient Goals in that revision.
-- `event_goal_credit_subjects` records each recipient's contributing Subjects.
+Event corrections have deliberately narrow effects:
 
-Each revision is a complete snapshot, written atomically with the Event. An
-empty snapshot supersedes earlier positive attribution. Effective progress uses
-only the latest recorded revision for each Event, never the latest row per Goal.
-Label-only edits can advance the Event version without creating a revision.
+- Label and interval edits leave support rows and their `progress_id` identities
+  untouched. Corrected time is immediately reflected in summaries.
+- Explicit additions to the live Subject set discover currently eligible Goals
+  through those added Subjects only.
+- Explicit removals delete support through the removed Subjects only. Remaining
+  support continues earning the full Event duration.
+- Unchanged Subjects preserve earned support, including after Goal deactivation
+  or retirement of a Subject–Goal link.
 
-Ordinary corrections do not update or delete ledger rows. Duration/boundary
-corrections append the corrected interval while retaining earned recipients and
-support. Subject corrections compare the persisted live set before and after
-Update: additions discover current eligible support; removals retract only their
-support; unchanged contributing Subjects retain earned support even after Goal
-deactivation or Subject–Goal unlinking. A recipient disappears from the new
-snapshot only when all its contributing support is explicitly removed.
+Adding a Goal or linking it to a Subject does not retroactively credit completed
+Events. Existing completed Events are not backfilled. Any failed support write
+rolls back the entire Event operation; Goal versions are unchanged.
 
-Subject soft deletion automatically retires Event links but preserves attribution.
-Later label/time edits preserve earned recipients. An ordinary complete-live-set
-Update cannot express removal of support from a Subject already deleted and
-absent from that set. Neither nil nor empty slices imply such historical intent.
-A future explicit historical correction operation must append a revision; this
-PR provides no such operation or UI.
+## Deletion and historical identity
 
-Legacy completed Events are not backfilled by migration or by label/time edits.
-Only newly added Subjects can establish credit during a legacy Event correction.
-An Event completed without eligible Goals does not gain credit merely because a
-Goal is created or linked later.
+Soft-deleted Events cease contributing time while their support rows remain.
+Hard-deleting an Event or Goal removes dependent support. Deleting an owner
+cascades normally. Same-owner foreign keys prevent ownership transfers from
+silently moving earned support to another user.
 
-## Maintenance and deletion
+Soft-deleting a Subject retires its Event assignments without erasing earned
+support. Hard deletion clears the optional live `subject_id` reference, while
+`recorded_subject_id` retains the original identity. A new Subject reusing that
+numeric ID creates new support rows; it never reattaches detached support.
+Uniqueness applies to live Event–Goal–Subject support; detached rows can coexist
+with support earned through a later Subject using the same recorded ID.
 
-The app uses soft deletion. A soft-deleted Event keeps its ledger but stops
-contributing automatic time. Soft-deleted/inactive Goals keep earned history,
-which remains available through live ancestors.
+A normal complete-live-set Event update cannot retract support from a Subject
+already deleted and absent from the previous live set. Neither nil nor empty
+Subject lists imply that historical intent. Label/time edits and ordinary live
+classification edits preserve that support. An explicit historical-support
+correction operation would be a separate future feature.
 
-Database maintenance remains possible. Hard-deleting Events, Goals, or Users
-cascades to dependent ledger records. Hard-deleting a Subject instead clears its
-optional live reference: recorded Subject identity and original attribution time
-remain immutable, and earned credit continues counting. Detached support cannot
-be reattached or confused with a new Subject reusing the numeric ID. Legitimate
-key renames may update foreign-key references; credited intervals and historical
-payload remain immutable. Individual ownership transfers cannot break same-owner
-constraints. These are narrow referential-maintenance exceptions, not application
-correction workflows.
+## Lifetime summaries and parent Goals
 
-## Lifetime summaries
+`runtime.GoalProgress().GetSummary(ctx, userID, goalID)` returns
+`LifetimeEarnedSeconds`. An existing Goal with no qualifying Events returns zero;
+an unavailable or foreign-owned requested Goal returns not found.
 
-`runtime.GoalProgress().GetSummary(ctx, userID, goalID)` returns direct and
-effective automatic seconds, plus direct and effective explicit/manual seconds.
-Unavailable requested Goals return not found; existing empty Goals return zeros.
+The recursive query follows the current parent DAG, including inactive or
+soft-deleted descendants with earned support. It collects distinct Event IDs
+across the requested Goal and all reachable descendants, then sums their current
+completed, undeleted Event intervals. One Event counts once despite multiple
+Subjects, recipients, direct parent support, or diamond paths. Two independent
+Events of identical duration both count. Parent-edge changes affect summaries
+without writing parent-progress rows. Invalid intervals and integer overflow
+return errors without rounded or partial totals.
 
-The current parent DAG determines reachable descendants, including retained
-inactive/deleted descendants. Automatic totals deduplicate by Event ID across
-all recipients and paths, including a parent's own direct credit. Two independent
-Events of equal duration both count. Manual rows remain independent contributions
-and are deduplicated only by progress-record identity, never duration or optional
-Event provenance. Automatic and manual categories remain separate.
+This is a lifetime metric, with no progress UI or cadence engine. Future period
+calculations must use the requested Goal's own timezone/cadence boundaries and
+clip each unique Event interval once, rather than summing child-period totals.
 
-Future period calculations must use the requested Goal's own timezone/cadence
-boundaries and clip each unique Event's credited interval once. They must not
-sum child-period totals. This implementation provides lifetime summaries only;
-integer overflow returns an error rather than rounded or partial totals.
+## MVP tradeoff and development databases
 
-The migrations are additive and do not rewrite meaningful existing data or manual
-`goal_progress`. There is no original-data reset, automatic backfill, inherited
-credit materialization, background worker, or progress UI.
+There is one authoritative progress table, no attribution revision ledger, and
+no stored duplicate of Event time. Previous attribution assignments are
+intentionally not retained or replayable: the guarantee is correct current
+progress, not reconstruction of earlier assignments. Retained Subject identity
+is supporting provenance, not an audit log. Manual Goal-time entry is not a
+supported workflow; Create Past Event records missing activity instead.
+
+Migration 8 is amended for the final development schema; the unmerged ledger
+migrations 16–18 are removed. Existing disposable development databases must be
+recreated, including databases already at migration 15 with the former manual
+progress table. Normal `migrate up` cannot convert those amended schemas. No
+application database is automatically reset. Preserve/export any meaningful
+external data before resetting it; this PR supplies no production-data converter.

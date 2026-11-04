@@ -1,4 +1,4 @@
-// Package goalprogress reads explicit and automatic lifetime progress without
+// Package goalprogress reads automatic lifetime earned time without
 // changing Goal settings or materializing inherited parent contributions.
 package goalprogress
 

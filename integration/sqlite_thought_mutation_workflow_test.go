@@ -165,7 +165,7 @@ func TestThoughtMutationsWorkflow_SQLite(t *testing.T) {
 			_, err = db.Exec(`INSERT INTO thoughts(thought_id,user_id,subject_id,event_id,thought,observed_at,created_at,updated_at) VALUES (1,'owner',?,1,'PRIVATE-RETAINED',10,20,30);
 				INSERT INTO thought_tags(thought_id,tag_id,created_at) VALUES (1,1,40);
 				INSERT INTO thought_mindset_periods(thought_id,started_at,ended_at) VALUES (1,50,60),(1,70,NULL);
-				INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,thought_id,event_id,progress_note) VALUES (1,'owner',60,1,1,'provenance');`, subjectID)
+				INSERT INTO goal_progress (goal_id,user_id,event_id,recorded_subject_id,subject_id) VALUES (1,'owner',1,1,1);`, subjectID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -246,7 +246,7 @@ func TestThoughtMutationsWorkflow_SQLite(t *testing.T) {
 				`SELECT COUNT(*) FROM thought_tags WHERE thought_id=1 AND tag_id=1 AND created_at=40`,
 				`SELECT COUNT(*) FROM thought_mindset_periods WHERE thought_id=1 AND started_at=50 AND ended_at=60`,
 				`SELECT COUNT(*) FROM thought_mindset_periods WHERE thought_id=1 AND started_at=70 AND ended_at IS NULL`,
-				`SELECT COUNT(*) FROM goal_progress WHERE thought_id=1 AND event_id=1 AND time_spent_sec=60 AND progress_note='provenance'`,
+				`SELECT COUNT(*) FROM goal_progress WHERE goal_id=1 AND event_id=1 AND recorded_subject_id=1 AND subject_id=1`,
 			} {
 				var got int
 				if err := db.QueryRow(query).Scan(&got); err != nil {

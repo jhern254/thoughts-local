@@ -73,6 +73,8 @@ An ordinary Misc Event has no live `event_subjects` associations. Goal discovery
 for it, regardless of how many Unassigned Goals exist. Unassigned does not mean
 associated with every NULL-Subject Event. This API does not calculate or record
 automatic progress, change parent relationships, or implement a Goals screen.
+Completed Event writes separately establish [earned Goal support](event-goal-attribution.md).
+Later assignment changes do not retroactively rewrite that support.
 
 ## Stable Subject-local Goal references
 

@@ -23,10 +23,10 @@ Never sum Subject totals to calculate unique activity time. Existing day/range
 clipping and ongoing cutoffs apply independently to each live association.
 
 Goal discovery returns the deduplicated union of eligible active Goals across
-live Event Subjects. An unassigned Event has no candidates. Discovery does not record progress. Completed Event writes separately establish
-automatic credits; see [Event Goal attribution](event-goal-attribution.md).
+live Event Subjects. An unassigned Event has no candidates. Discovery does not
+record progress. Completed Event writes separately establish earned support; see [Event Goal attribution](event-goal-attribution.md).
 
-Future automatic attribution must deduplicate by Event ID at every Goal,
+Automatic lifetime summaries deduplicate by Event ID at every Goal,
 including parent Goals reached through several child paths. Matching the same
 Goal through two Subjects must not credit it twice; summing child credits must
 not multiply a parent's elapsed time.

@@ -20,7 +20,7 @@ func TestService_GetSummary(t *testing.T) {
 			name = "preserves " + cause.Error()
 		}
 		t.Run(name, func(t *testing.T) {
-			want := data.GoalProgressSummary{DirectAutomaticSeconds: 60, EffectiveAutomaticSeconds: 120, DirectManualSeconds: 5, EffectiveManualSeconds: 10}
+			want := data.GoalProgressSummary{LifetimeEarnedSeconds: 120}
 			if cause != nil {
 				want = data.GoalProgressSummary{}
 			}
