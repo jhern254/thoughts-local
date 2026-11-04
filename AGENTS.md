@@ -37,6 +37,28 @@ boundaries and control flow, without depending on implementation comments.
 * Use a small concrete example when it clarifies a domain concept, as with PCM byte order. Keep broader architectural context in a focused guide linked from the code.
 * Names and control flow explain the operations; comments and documentation supply the domain context and reasons needed to understand them. Avoid both terse code that requires reverse-engineering and comments that merely narrate obvious steps.
 
+#### Plain-language explanations
+
+Write names, comments, test descriptions, and documentation so a maintainer can
+understand the purpose without reconstructing the implementation.
+
+* Lead with what the code accomplishes and why it matters. Put caveats and
+  implementation details afterward.
+* Use familiar, explicit English. Avoid invented terminology, unexplained jargon,
+  and terse shorthand. Use established domain terms consistently.
+* Describe tests by the behavior they prove. “A parent counts a shared Event once”
+  is clearer than “Exercise the production lifetime reader.”
+* Comments should explain the domain rule or reasoning that names alone cannot
+  convey. Do not merely narrate operations.
+* Use a small concrete example when relationships or counting rules are difficult
+  to explain. For example: “Two child Goals share one 30-minute Event; their parent
+  earns 30 minutes, not 60.”
+* Be concise without sacrificing understanding. Add the sentence needed to explain
+  an important concept rather than compressing it into an ambiguous word.
+
+Before finishing, ask: **Can someone unfamiliar with this implementation explain
+its purpose after reading the name and explanation once?**
+
 ## Architecture Principles
 
 Operational logging accepts only approved typed metadata and uses fixed event messages. Never pass authored content, arbitrary objects, or raw error text into logs. Classify existing errors at the presentation boundary; services and stores return errors without logging them.
