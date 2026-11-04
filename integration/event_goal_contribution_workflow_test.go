@@ -22,7 +22,9 @@ func assertEarnedSeconds(t *testing.T, db *sql.DB, goalID, want int64) {
 	}
 }
 
-// IDs and references must survive unrelated edits, not just the final totals.
+// Compare contribution IDs and their Event, Goal and Subject references.
+// Checking only the total seconds would miss an edit that unnecessarily deleted
+// and recreated these rows.
 func readEventGoalContributions(t *testing.T, db *sql.DB) [][5]int64 {
 	t.Helper()
 	rows, err := db.Query(`SELECT progress_id,event_id,goal_id,recorded_subject_id,COALESCE(subject_id,0) FROM goal_progress ORDER BY progress_id`)
@@ -52,7 +54,9 @@ func TestEventGoalContributionWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		before := readEventGoalContributions(t, db)
-		// Any unexpected rewrite fails the actual Event transaction.
+		// Reject contribution writes while editing only an Event's label or time.
+		// Those edits should change earned time through the Event record alone,
+		// without replacing the connections that explain which Goals earned it.
 		if _, err := db.Exec(`
     CREATE TRIGGER reject_contribution_update BEFORE UPDATE ON goal_progress BEGIN SELECT RAISE(ABORT,'unexpected contribution rewrite'); END;
     CREATE TRIGGER reject_contribution_delete BEFORE DELETE ON goal_progress BEGIN SELECT RAISE(ABORT,'unexpected contribution rewrite'); END;

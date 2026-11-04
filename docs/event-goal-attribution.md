@@ -5,6 +5,34 @@ per Event × Goal × contributing Subject. It does not copy timestamps or durati
 Current `events.ended_at - events.started_at` determines earned UTC seconds.
 Multiple contribution rows for the same Event and Goal still count its time once.
 
+## Example: one work session, several Goals
+
+Suppose you spend 90 minutes building the app and assign the Event to Programming
+and Research. Practice Go belongs to both Subjects; Study AI belongs to Research.
+Both Goals sit beneath a larger parent Goal, Become a Better Engineer.
+
+- Practice Go earns 90 minutes, even though two Subjects connect it to the Event.
+- Study AI also earns 90 minutes. The session's time is not divided between Goals.
+- Become a Better Engineer earns 90 minutes from that session, not 180. It is the
+  same Event reaching the parent through two children.
+
+This is what a parent "rollup" means here: collect the Events earned by the
+parent and all Goals beneath it, then count each Event once. Include the full
+chain of children, not just immediate children. Even if the parent also earns
+that Event directly, the total from this session is still 90 minutes.
+
+If you correct the session to 60 minutes, each of these totals becomes 60 minutes.
+The calculation reads the corrected Event; there are no separate duration values
+to repair. Adding another independent 60-minute Event would increase each
+applicable total by 60 minutes, even though both Events have the same duration.
+
+A contribution row records one Subject connection between an Event and a Goal.
+It is not another block of time to add. Removing Programming from the example
+Event leaves Practice Go's Research connection, so it still earns the full time.
+Removing Research as well removes its final connection and retracts that Event's
+time from Practice Go. Deleting a Subject elsewhere in the app is different:
+that preserves time already earned, as described below.
+
 ## Establishing and correcting contributions
 
 Completing an Event through End, starting a successor, or Create Past Event
@@ -57,14 +85,17 @@ correction operation would be a separate future feature.
 `LifetimeEarnedSeconds`. An existing Goal with no qualifying Events returns zero;
 an unavailable or foreign-owned requested Goal returns not found.
 
-The recursive query follows the current parent DAG, including inactive or
-soft-deleted descendants with earned contributions. It collects distinct Event IDs
-across the requested Goal and all reachable descendants, then sums their current
-completed, undeleted Event intervals. One Event counts once despite multiple
-Subjects, recipients, direct parent contributions, or diamond paths. Two independent
-Events of identical duration both count. Parent-edge changes affect summaries
-without writing parent-progress rows. Invalid intervals and integer overflow
-return errors without rounded or partial totals.
+A parent Goal includes Events earned by Goals beneath it, including children
+that later became inactive or were soft-deleted. One child can belong to more
+than one parent, and several chains of children can lead to the same Goal.
+Those multiple paths never multiply an Event's time.
+
+The SQL query follows the current parent relationships, gathers distinct Event
+IDs, and adds their current durations. It excludes ongoing and soft-deleted
+Events. Adding or removing a parent relationship changes which Events the
+parent includes; no copied progress records need updating. Invalid intervals
+and totals too large for a signed 64-bit integer return an error rather than an
+inaccurate or partial total.
 
 This is a lifetime metric, with no progress UI or cadence engine. Future period
 calculations must use the requested Goal's own timezone/cadence boundaries and

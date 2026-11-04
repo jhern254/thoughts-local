@@ -191,7 +191,11 @@ func TestGoalParentsWorkflow_SQLite(t *testing.T) {
 	}
 }
 
-// Exercise the production lifetime reader against the full migrated hierarchy.
+// goalRollup returns the seconds earned by a Goal and the Goals beneath it.
+// If two child Goals earned time from the same 30-minute Event, their parent
+// earns 30 minutes, not 60. These tests use the application's summary query so
+// changing parent links is checked against the same totals the app reads.
+// An unavailable Goal is treated as zero here to check access by another user.
 func goalRollup(t *testing.T, db *sql.DB, userID string, goalID int64) int64 {
 	t.Helper()
 	summary, err := data.NewSQLiteGoalProgressStore(db).GetGoalProgressSummary(t.Context(), userID, goalID)

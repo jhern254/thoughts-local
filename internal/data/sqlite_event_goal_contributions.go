@@ -6,12 +6,13 @@ import (
 	"slices"
 )
 
-// reconcileEventGoalContributions records which Goals earn time from a completed Event
-// through its Subjects. It creates contributions on completion and adds or removes
-// contributions when its Subject selection changes, within the Event transaction.
+// reconcileEventGoalContributions keeps track of which Goals receive time from
+// a completed Event. The Event's Subjects determine which active Goals receive
+// new contributions. Changing those Subjects adds or removes the corresponding
+// contributions in the same database transaction that saves the Event.
 //
-// Contributions through unchanged or deleted Subjects are retained. Label and
-// time edits leave them untouched; summaries read the current Event duration.
+// Previously earned contributions through unchanged or deleted Subjects remain.
+// Label and time edits leave them alone; summaries read the Event's current time.
 func reconcileEventGoalContributions(ctx context.Context, tx *sql.Tx, current, previous *Event) error {
 	if current.EndedAt == nil {
 		return nil
@@ -32,8 +33,9 @@ func reconcileEventGoalContributions(ctx context.Context, tx *sql.Tx, current, p
 		}
 	}
 	for _, subjectID := range removedSubjectIDs {
-		// NULL live references and automatically retired Subjects are absent from
-		// the previous live set, so ordinary edits cannot retract their earned contributions.
+		// Deleting a Subject has already removed it from the Event's selectable
+		// Subjects. That differs from the user removing an assignment here:
+		// deleting the Subject must not take away previously earned Goal time.
 		if _, err := tx.ExecContext(ctx, `DELETE FROM goal_progress WHERE user_id = ? AND event_id = ? AND subject_id = ?`, current.UserID, current.EventID, subjectID); err != nil {
 			return err
 		}

@@ -1,5 +1,6 @@
-// Package goalprogress reads automatic lifetime earned time without
-// changing Goal settings or materializing inherited parent contributions.
+// Package goalprogress reports how much time a Goal has earned from completed
+// Events, including time earned by its child Goals. A shared Event counts once,
+// even when several child Goals contribute that Event to the same parent.
 package goalprogress
 
 import (

@@ -13,8 +13,9 @@ func NewSQLiteGoalProgressStore(db *sql.DB) *SQLiteGoalProgressStore {
 	return &SQLiteGoalProgressStore{db: db}
 }
 
-// GoalProgressSummary counts each completed Event once across the Goal and its
-// current descendants. Event intervals remain the sole source of earned time.
+// GoalProgressSummary reports a Goal's total earned seconds across all dates,
+// including Events credited to Goals beneath it. A shared Event counts once,
+// even when several Subjects or child Goals connect it to the requested Goal.
 type GoalProgressSummary struct{ LifetimeEarnedSeconds int64 }
 
 func (s *SQLiteGoalProgressStore) GetGoalProgressSummary(ctx context.Context, userID string, goalID int64) (GoalProgressSummary, error) {
