@@ -14,6 +14,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/goal"
 	"github.com/jhern254/go-thoughts/internal/goalassignment"
+	"github.com/jhern254/go-thoughts/internal/goalprogress"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
@@ -35,6 +36,7 @@ type runtime interface {
 	Metrics() *metrics.Service
 	Events() *event.Service
 	Goals() *goal.Service
+	GoalProgress() *goalprogress.Service
 	GoalAssignments() *goalassignment.Service
 	SubjectGoals() *subjectgoal.Service
 	TimelineView() *timeline.Service
@@ -111,7 +113,7 @@ func newTUI(app *application) *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			newModel := func(ctx context.Context) tui.Model {
 				model := tui.NewModel(ctx, app.runtime.LocalUser(), app.runtime.Subjects(), app.runtime.Thoughts(), app.runtime.Metrics(), app.runtime.Events(), app.runtime.TimelineView(), app.logger)
-				model.ConfigureGoals(app.runtime.Goals(), app.runtime.GoalAssignments(), app.runtime.SubjectGoals())
+				model.ConfigureGoals(app.runtime.Goals(), app.runtime.GoalAssignments(), app.runtime.SubjectGoals(), app.runtime.GoalProgress())
 				if preferences := app.runtime.EditorPreferences(); preferences != nil {
 					model.ConfigureEditorPreferences(preferences)
 				}

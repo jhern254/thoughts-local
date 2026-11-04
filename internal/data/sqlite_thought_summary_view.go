@@ -40,6 +40,14 @@ func (s *SQLiteThoughtStore) LatestThoughtInRange(ctx context.Context, userID st
 }
 
 func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query string, args []any, request ThoughtSummaryViewRequest, limit int) (ThoughtSummaryViewResult, error) {
+	return browseThoughtSummaries(ctx, s.db, query, args, request, limit)
+}
+
+// Both ordinary browsing and Goal lineage use the same bounded projection and
+// cursor order. A transaction keeps lineage eligibility and its page consistent.
+func browseThoughtSummaries(ctx context.Context, reader interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, query string, args []any, request ThoughtSummaryViewRequest, limit int) (ThoughtSummaryViewResult, error) {
 	comparison, order := "<", " DESC"
 	if request.Direction == ThoughtsNewer {
 		comparison, order = ">", " ASC"
@@ -54,7 +62,7 @@ func (s *SQLiteThoughtStore) browseThoughtSummaries(ctx context.Context, query s
 		fetchLimit = 1
 	} // Latest preview does not need a pagination lookahead.
 	args = append(args, fetchLimit)
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := reader.QueryContext(ctx, query, args...)
 	if err != nil {
 		return ThoughtSummaryViewResult{}, fmt.Errorf("browse thoughts: %w", TranslateSQLiteError(err))
 	}

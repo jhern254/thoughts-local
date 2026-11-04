@@ -32,6 +32,7 @@ const (
 	screenEvents screen = iota
 	screenGoals
 	screenMindsetThought
+	screenGoalLineageThought
 	screenSubjectList
 	screenSubjectCreate
 	screenSubjectFromAlias
@@ -122,8 +123,8 @@ func NewModel(ctx context.Context, user *data.User, subjects SubjectService, tho
 
 type homeOpened struct{}
 
-func (m *Model) ConfigureGoals(service goals.GoalService, assignments goals.Assignments, memberships goals.Memberships) {
-	child := goals.New(m.ctx, m.user.UserID, service, assignments, memberships, m.subjects.service)
+func (m *Model) ConfigureGoals(service goals.GoalService, assignments goals.Assignments, memberships goals.Memberships, activity goals.ActivityReader) {
+	child := goals.New(m.ctx, m.user.UserID, service, assignments, memberships, m.subjects.service, activity)
 	child.SetLogger(m.logger)
 	child.SetBorderWeight(m.borderWeight)
 	child.Resize(m.width, m.height)
@@ -251,6 +252,12 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch message := message.(type) {
+	case goals.OpenLineageThoughtMsg:
+		if m.screen != screenGoals || m.goals == nil || !m.goals.AcceptsLineageThought(message) {
+			return m, nil
+		}
+		m.screen = screenGoalLineageThought
+		return m, m.thoughts.OpenDetailWithLoader(message.Thought, message.Load)
 	case mindset.OpenThoughtMsg:
 		if m.screen != screenEvents || !m.mindsets.AcceptsOpen(message) {
 			return m, nil
@@ -258,13 +265,18 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenMindsetThought
 		return m, m.thoughts.OpenDetail(data.ThoughtSummaryView{ThoughtID: message.Thought.ThoughtID, SubjectName: message.Thought.SubjectName})
 	case thoughts.MindsetChanged:
-		var thoughtCmd, eventCmd, panelCmd tea.Cmd
+		var thoughtCmd, eventCmd, panelCmd, goalCmd tea.Cmd
 		m.thoughts, thoughtCmd = m.thoughts.Update(message)
 		m.events, eventCmd = m.events.Update(message)
 		if !m.mindsets.Day().IsZero() {
 			panelCmd = m.mindsets.Load(m.events.Day())
 		}
-		return m, tea.Batch(thoughtCmd, eventCmd, panelCmd)
+		if m.goals != nil {
+			child, cmd := m.goals.Update(message)
+			m.goals = &child
+			goalCmd = cmd
+		}
+		return m, tea.Batch(thoughtCmd, eventCmd, panelCmd, goalCmd)
 	case BrowserOptionsEnabledMsg:
 		m.browserOptionsEnabled = true
 		return m, nil
@@ -401,10 +413,14 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		child, cmd := m.goals.Update(message)
 		m.goals = &child
 		return m, cmd
-	case screenMindsetThought:
+	case screenMindsetThought, screenGoalLineageThought:
 		if key, ok := message.(tea.KeyPressMsg); ok && !m.thoughts.SavingMindset() && (key.String() == "esc" || key.String() == "q" || key.String() == "left") {
 			m.thoughts.Reset()
-			m.screen = screenEvents
+			if m.screen == screenGoalLineageThought {
+				m.screen = screenGoals
+			} else {
+				m.screen = screenEvents
+			}
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -601,7 +617,7 @@ func (m Model) viewUnderlying() tea.View {
 		view.MouseMode = tea.MouseModeCellMotion
 	}
 	switch m.screen {
-	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts, screenVoiceThought, screenMindsetThought:
+	case screenSubjectDetail, screenMiscThoughts, screenBrowseThoughts, screenVoiceThought, screenMindsetThought, screenGoalLineageThought:
 		if m.thoughts.Creating() {
 			heading := m.subjects.list.Styles.TitleBar.Render(m.subjects.list.Styles.Title.Render("Thoughts"))
 			view.Content = heading + "\n" + m.thoughts.View()
@@ -623,7 +639,7 @@ func (m Model) viewUnderlying() tea.View {
 		if m.goals != nil {
 			content = m.goals.View()
 		}
-	case screenMindsetThought:
+	case screenMindsetThought, screenGoalLineageThought:
 		content = m.thoughts.View()
 	case screenEvents:
 		content = m.events.View()
@@ -672,6 +688,9 @@ func localUserLabel(user *data.User) string {
 }
 
 func (m *Model) openThoughtDraft() tea.Cmd {
+	if m.goals != nil {
+		m.goals.Close()
+	}
 	m.events.Close()
 	m.subjects.stopRead()
 	m.screen = screenVoiceThought
@@ -691,7 +710,7 @@ func (m Model) VoiceState() thoughts.VoiceState {
 		state.CanOpenThoughtDraft = m.events.CanLeave() && !m.speechSetup.open
 	case screenSubjectList:
 		state.CanOpenThoughtDraft = !m.subjects.loading && !m.subjects.list.SettingFilter() && !m.subjects.list.IsFiltered()
-	case screenBrowseThoughts, screenMiscThoughts, screenSubjectDetail, screenMindsetThought:
+	case screenBrowseThoughts, screenMiscThoughts, screenSubjectDetail, screenMindsetThought, screenGoalLineageThought:
 		state.CanOpenThoughtDraft = m.thoughts.Browsing() || m.thoughts.ShowingDetail()
 	case screenVoiceThought:
 		state.CanOpenThoughtDraft = m.thoughts.ShowingDetail()

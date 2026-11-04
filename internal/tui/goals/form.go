@@ -91,6 +91,7 @@ func formatDuration(seconds int64) string {
 	return value
 }
 func (m *Model) startForm(create bool) {
+	m.body.SetHeight(max(1, m.height-4))
 	m.status = ""
 	for i := range m.fields {
 		m.fields[i].Blur()

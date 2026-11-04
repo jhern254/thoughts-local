@@ -14,6 +14,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/event"
 	"github.com/jhern254/go-thoughts/internal/goal"
 	"github.com/jhern254/go-thoughts/internal/goalassignment"
+	"github.com/jhern254/go-thoughts/internal/goalprogress"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/metrics"
 	"github.com/jhern254/go-thoughts/internal/subject"
@@ -447,3 +448,5 @@ func (r *runtimeStub) EditorPreferences() *editorprefs.Service { return nil }
 func (s *runtimeStub) Goals() *goal.Service                     { return s.goals }
 func (s *runtimeStub) GoalAssignments() *goalassignment.Service { return s.goalAssignments }
 func (s *runtimeStub) SubjectGoals() *subjectgoal.Service       { return s.subjectGoals }
+
+func (s *runtimeStub) GoalProgress() *goalprogress.Service { return nil }
