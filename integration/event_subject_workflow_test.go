@@ -26,7 +26,7 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 		    INSERT INTO event_subjects (event_id, subject_id, user_id) VALUES (2, 1, 'u');
 		    INSERT INTO thoughts (user_id, subject_id, event_id, thought) VALUES ('u', 1, 1, 'synthetic');
 		    INSERT INTO goals (goal_id, user_id, goal_name, target_seconds) VALUES (1, 'u', 'goal', 60);
-		    INSERT INTO goal_progress (goal_id, user_id, time_spent_sec, event_id) VALUES (1, 'u', 60, 1);
+		    INSERT INTO goal_progress (goal_id,user_id,event_id,recorded_subject_id,subject_id) VALUES (1,'u',1,1,1);
 		`)
 		if err != nil {
 			t.Fatal(err)
@@ -56,7 +56,7 @@ func TestEventSubjectWorkflow_SQLite(t *testing.T) {
 			`, 2},
 			{`SELECT updated_at FROM events WHERE event_id=2`, 4102444800},
 			{`SELECT count(*) FROM thoughts WHERE subject_id IS NULL AND event_id=1 AND version=2`, 1},
-			{`SELECT sum(time_spent_sec) FROM goal_progress WHERE event_id=1`, 60},
+			{`SELECT COUNT(*) FROM goal_progress WHERE event_id=1 AND recorded_subject_id=1 AND subject_id=1`, 1},
 		} {
 			var got int64
 			if err := db.QueryRow(check.query).Scan(&got); err != nil {

@@ -51,9 +51,20 @@ test('accessibility previews independently, cancels, saves, and restores after r
  await expect(screen(page)).not.toContainText('┏');
  await openAccessibility(page);
  await clickControl(page,'Heavier text: Off');
- await page.route('**/visual/accessibility',route=>route.fulfill({status:500,body:'Could not save.'}),{times:1});
- await clickControl(page,'Apply');
- await expect(screen(page)).toContainText('Could not load or save accessibility settings');
+ // Keep interception enabled through the recovery GET. Removing a one-shot
+ // route during recovery can stall that request in Chromium.
+ const failSave=route=>route.fulfill({status:500,body:'Could not save.'});
+ await page.route('**/visual/accessibility',failSave);
+ try {
+  const failedSave=page.waitForResponse(response=>
+   new URL(response.url()).pathname==='/visual/accessibility' &&
+   response.request().method()==='PUT' && response.status()===500);
+  await clickControl(page,'Apply');
+  await failedSave;
+  await expect(screen(page)).toContainText('Could not load or save accessibility settings');
+ } finally {
+  await page.unroute('**/visual/accessibility',failSave);
+ }
  await clickControl(page,'Back');
  await weight(page,400);
  await page.keyboard.press('Escape');

@@ -173,27 +173,25 @@ Table thought_tags {
 
 
 Table goal_progress {
-  progress_id    integer [pk]
-  goal_id        integer [not null, default: `now()`]
-  user_id        text [not null]
-  occurred_at    timestamptz [not null]
-  time_spent_sec integer  [not null]    // materialized contribution (derived or manual)
-  event_id       integer               // optional 
-  thought_id     integer               // optional 
-  progress_note  text 
-  created_at     timestamptz [not null, default: `now()`] // append-only
-
-  Note: '''
-    CHECK (time_spent_sec > 0)
-    CHECK (progress_note IS NULL OR length(progress_note) <= 1000000) // 1 MB
-  '''
+  progress_id integer [pk]
+  event_id integer [not null]
+  goal_id integer [not null]
+  user_id text [not null]
+  recorded_subject_id integer [not null]
+  subject_id integer
 
   Indexes {
-    (goal_id, occurred_at) [name: 'idx_progress_goal_time']
-    (user_id, occurred_at) [name: 'idx_progress_user_time']
-    event_id   [name: 'idx_progress_event']         // NEW (if you show event details)
-    thought_id [name: 'idx_progress_thought']       // NEW (if you show thought details)
+    (event_id, goal_id, subject_id) [unique]
+    (user_id, goal_id, event_id) [name: 'idx_goal_progress_goal']
+    (subject_id, user_id) [name: 'idx_goal_progress_subject']
   }
+  Note: '''
+    One contribution per Event × Goal × Subject; Events own all time intervals.
+    Hard Subject deletion detaches subject_id while retaining recorded identity.
+    Nullable live references permit distinct detached historical identities.
+    Summaries deduplicate Event IDs across current descendants.
+    SQL migrations are authoritative; no manual contributions or revisions.
+  '''
 }
 
 /* ===== Amend GOALS to include cadence & anchoring ===== */
@@ -257,7 +255,7 @@ Table subject_goals {
     Soft deletion of endpoints retains links; hard deletion cascades.
     This is retained relationship state, not a chronological audit log.
     SQL migration 000011 is authoritative for integer checks and constraints.
-    Linking does not enable automatic credit or create goal progress.
+    Linking does not retroactively credit completed Events; completion establishes contributions.
   '''
 }
 
@@ -297,7 +295,7 @@ Table goal_time_totals {
 
 /* ===== Subject Rollups (optional) =====
    Only needed if you want stored (not on-the-fly) subject totals.
-   Define your chosen derivation rule (e.g., from goal_progress joined via thought_id → subject_id).
+   Derive classification time from Event intervals through live event_subjects.
 */
 Table subject_time_rollups {
   user_id       text [not null]
@@ -312,11 +310,8 @@ Table subject_time_rollups {
   }
 
   Note: '''
-  Derivation choice:
-   A) Sum goal_progress.time_spent_sec for rows linked to thoughts with subject_id
-      (recommended: precise "time towards subject" when progress references thoughts).
-   B) Or roll up Event durations through live event_subjects; Subject totals overlap.
-  Pick one rule; stay consistent.
+  Derive from Event durations through live event_subjects; Subject totals overlap.
+  Goal contributions are not a source of Subject totals.
   '''
 }
 
@@ -339,7 +334,7 @@ Ref: users.user_id < tags.user_id             [delete: cascade]
 Ref: users.user_id < events.user_id           [delete: cascade]
 Ref: users.user_id < thoughts.user_id         [delete: cascade]
 Ref: users.user_id < goals.user_id            [delete: cascade]
-Ref: users.user_id < goal_progress.user_id    [delete: cascade]
+Ref: users.user_id < goal_progress.user_id [delete: cascade, update: cascade]
 
 /* Event classification; same-owner constraint is documented on events. */
 Ref: events.(event_id, user_id) < event_subjects.(event_id, user_id) [delete: cascade, update: cascade]
@@ -355,13 +350,16 @@ Ref: thoughts.thought_id < thought_tags.thought_id [delete: cascade]
 Ref: tags.tag_id         < thought_tags.tag_id     [delete: cascade]
 
 /* Goals & progress */
-Ref: goals.goal_id < goal_progress.goal_id [delete: cascade]
+Ref: goals.goal_id < goal_progress.goal_id [delete: cascade, update: cascade]
 Ref: subjects.subject_id < subject_goals.subject_id [delete: cascade, update: cascade]
 Ref: goals.goal_id < subject_goals.goal_id [delete: cascade, update: cascade]
 
-/* Optional provenance for progress rows */
-Ref: events.event_id    < goal_progress.event_id    [delete: set null]
-Ref: thoughts.thought_id < goal_progress.thought_id [delete: set null]
+/* Earned Event contribution and same-owner checks */
+Ref: events.event_id < goal_progress.event_id [delete: cascade, update: cascade]
+Ref: subjects.subject_id < goal_progress.subject_id [delete: set null, update: cascade]
+Ref: events.(event_id, user_id) < goal_progress.(event_id, user_id)
+Ref: goals.(goal_id, user_id) < goal_progress.(goal_id, user_id)
+Ref: subjects.(subject_id, user_id) < goal_progress.(subject_id, user_id)
 
 
 /* Existing ownership & FKs from MVP are assumed present. Add: */

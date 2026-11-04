@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jhern254/go-thoughts/internal/data"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -145,7 +146,10 @@ func TestGoalParentsWorkflow_SQLite(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			db := openMigratedDatabase(t)
-			if _, err := db.Exec(goalParentFixture + goalParentDiamond + "INSERT INTO goal_progress (goal_id,user_id,time_spent_sec) VALUES (4,'owner',60)"); err != nil {
+			if _, err := db.Exec(goalParentFixture + goalParentDiamond + `
+    INSERT INTO subjects (subject_id,user_id,subject_name) VALUES (1,'owner','Work');
+    INSERT INTO events (event_id,user_id,started_at,ended_at) VALUES (1,'owner',0,60);
+    INSERT INTO goal_progress (event_id,goal_id,user_id,recorded_subject_id,subject_id) VALUES (1,4,'owner',1,1);`); err != nil {
 				t.Fatal(err)
 			}
 			pattern := "000010_*.down.sql"
@@ -187,24 +191,18 @@ func TestGoalParentsWorkflow_SQLite(t *testing.T) {
 	}
 }
 
-// This query documents the future rollup contract, not a production service.
-// Deduplicate goal IDs, not time values; separate equal-duration entries count.
-func goalRollup(t *testing.T, db *sql.DB, userID string, goalID, from, until int64) int64 {
+// goalRollup returns the seconds earned by a Goal and the Goals beneath it.
+// If two child Goals earned time from the same 30-minute Event, their parent
+// earns 30 minutes, not 60. These tests use the application's summary query so
+// changing parent links is checked against the same totals the app reads.
+// An unavailable Goal is treated as zero here to check access by another user.
+func goalRollup(t *testing.T, db *sql.DB, userID string, goalID int64) int64 {
 	t.Helper()
-	var seconds int64
-	err := db.QueryRow(`WITH RECURSIVE descendants(goal_id) AS (
-        SELECT g.goal_id FROM goals g JOIN users u USING (user_id)
-        WHERE g.goal_id = ? AND g.user_id = ? AND g.deleted_at IS NULL AND u.deleted_at IS NULL
-        UNION
-        SELECT p.goal_id FROM goal_parents p JOIN descendants d ON p.parent_goal_id = d.goal_id
-        WHERE p.user_id = ?
-    )
-    SELECT coalesce(sum(p.time_spent_sec), 0) FROM goal_progress p JOIN descendants d USING (goal_id)
-    WHERE p.user_id = ? AND p.occurred_at >= ? AND p.occurred_at < ?`, goalID, userID, userID, userID, from, until).Scan(&seconds)
-	if err != nil {
+	summary, err := data.NewSQLiteGoalProgressStore(db).GetGoalProgressSummary(t.Context(), userID, goalID)
+	if err != nil && !errors.Is(err, data.ErrRecordNotFound) {
 		t.Fatal(err)
 	}
-	return seconds
+	return summary.LifetimeEarnedSeconds
 }
 
 func TestGoalRollupWorkflow_SQLite(t *testing.T) {
@@ -227,9 +225,11 @@ func TestGoalRollupWorkflow_SQLite(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := openMigratedDatabase(t)
 			if _, err := db.Exec(goalParentFixture + goalParentDiamond + `
-                INSERT INTO goal_progress (goal_id,user_id,occurred_at,time_spent_sec) VALUES
-                    (1,'owner',100,30), (4,'owner',100,60), (4,'owner',150,60),
-                    (4,'owner',99,900), (4,'owner',200,900), (6,'other',100,900);`); err != nil {
+    INSERT INTO subjects (subject_id,user_id,subject_name) VALUES (1,'owner','Work'),(2,'other','Other');
+    INSERT INTO events (event_id,user_id,started_at,ended_at) VALUES
+        (1,'owner',100,130),(2,'owner',150,210),(3,'owner',210,270),(4,'other',0,900);
+    INSERT INTO goal_progress (event_id,goal_id,user_id,recorded_subject_id,subject_id) VALUES
+        (1,1,'owner',1,1),(2,4,'owner',1,1),(3,4,'owner',1,1),(4,6,'other',2,2);`); err != nil {
 				t.Fatal(err)
 			}
 			if tc.change != "" {
@@ -237,10 +237,10 @@ func TestGoalRollupWorkflow_SQLite(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if got := goalRollup(t, db, "owner", tc.root, 100, 200); got != tc.want {
+			if got := goalRollup(t, db, "owner", tc.root); got != tc.want {
 				t.Fatalf("rolled up seconds: got %d, want %d", got, tc.want)
 			}
-			if got := goalRollup(t, db, "other", tc.root, 100, 200); got != 0 {
+			if got := goalRollup(t, db, "other", tc.root); got != 0 {
 				t.Fatalf("other users rollup: got %d, want 0", got)
 			}
 		})

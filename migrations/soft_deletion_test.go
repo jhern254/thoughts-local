@@ -13,7 +13,7 @@ INSERT INTO thoughts(thought_id,user_id,subject_id,event_id,thought) VALUES (1,'
 INSERT INTO tags(tag_id,user_id,tag_name) VALUES (1,'u','name');
 INSERT INTO thought_tags(thought_id,tag_id) VALUES (1,1);
 INSERT INTO goals(goal_id,user_id,goal_name,target_seconds) VALUES (1,'u','name',60);
-INSERT INTO goal_progress(goal_id,user_id,event_id,thought_id,time_spent_sec) VALUES (1,'u',1,1,60);`
+INSERT INTO goal_progress (goal_id,user_id,event_id,recorded_subject_id,subject_id) VALUES (1,'u',1,1,1);`
 
 func TestSoftDeletionWorkflow_SQLite(t *testing.T) {
 	for _, table := range []string{"users", "subjects", "events", "thoughts", "tags", "goals"} {
@@ -37,8 +37,16 @@ func TestSoftDeletionWorkflow_SQLite(t *testing.T) {
 			if _, err := db.Exec("UPDATE " + table + " SET deleted_at=updated_at"); err != nil {
 				t.Fatalf("got error %v, want nil", err)
 			}
-			var subjectID, eventID, thoughtID, seconds int64
-			if err := db.QueryRow(`SELECT t.subject_id,p.event_id,p.thought_id,p.time_spent_sec FROM thoughts t JOIN goal_progress p ON p.thought_id=t.thought_id JOIN thought_tags tt ON tt.thought_id=t.thought_id`).Scan(&subjectID, &eventID, &thoughtID, &seconds); err != nil {
+			var subjectID, eventID, thoughtID, recordedSubjectID int64
+			if err := db.QueryRow(`
+    SELECT
+        t.subject_id,
+        p.event_id,
+        t.thought_id,
+        p.recorded_subject_id
+    FROM thoughts t
+    JOIN goal_progress p ON p.event_id = t.event_id AND p.user_id = t.user_id
+    JOIN thought_tags tt ON tt.thought_id = t.thought_id`).Scan(&subjectID, &eventID, &thoughtID, &recordedSubjectID); err != nil {
 				t.Fatalf("got error %v, want nil", err)
 			}
 			if got, want := subjectID, int64(1); got != want {
@@ -50,8 +58,8 @@ func TestSoftDeletionWorkflow_SQLite(t *testing.T) {
 			if got, want := thoughtID, int64(1); got != want {
 				t.Fatalf("got retained thought ID %d, want %d", got, want)
 			}
-			if got, want := seconds, int64(60); got != want {
-				t.Fatalf("got progress seconds %d, want %d", got, want)
+			if got, want := recordedSubjectID, int64(1); got != want {
+				t.Fatalf("got recorded contribution Subject %d, want %d", got, want)
 			}
 			var count int
 			if err := db.QueryRow("SELECT count(*) FROM pragma_foreign_key_check").Scan(&count); err != nil {

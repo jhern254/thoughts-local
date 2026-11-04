@@ -29,7 +29,7 @@ func TestSubjectUnlinkWorkflow_SQLite(t *testing.T) {
 			INSERT INTO thought_tags(thought_id,tag_id) VALUES (1,1),(2,1);
 			INSERT INTO thought_mindset_periods(thought_id,started_at) VALUES (1,1),(2,1);
 			INSERT INTO goals(goal_id,user_id,goal_name,target_seconds) VALUES (1,'u','goal',60);
-			INSERT INTO goal_progress(goal_id,user_id,time_spent_sec,thought_id,event_id) VALUES (1,'u',60,1,1),(1,'u',30,2,1);`)
+			INSERT INTO goal_progress (goal_id,user_id,event_id,recorded_subject_id,subject_id) VALUES (1,'u',1,1,1),(1,'u',1,2,2);`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +83,7 @@ func TestSubjectUnlinkWorkflow_SQLite(t *testing.T) {
 			{"SELECT count(*) FROM subjects WHERE subject_id IN (2,3) AND deleted_at IS NULL", 2},
 			{"SELECT count(*) FROM thought_tags WHERE thought_id IN (1,2) AND tag_id=1", 2},
 			{"SELECT count(*) FROM thought_mindset_periods WHERE thought_id IN (1,2) AND started_at=1 AND ended_at IS NULL", 2},
-			{"SELECT sum(time_spent_sec) FROM goal_progress WHERE goal_id=1 AND thought_id IN (1,2) AND event_id=1", 90},
+			{"SELECT COUNT(*) FROM goal_progress WHERE goal_id=1 AND event_id=1 AND recorded_subject_id IN (1,2)", 2},
 		} {
 			var got int
 			if err := db.QueryRow(check.query).Scan(&got); err != nil {

@@ -162,7 +162,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 		    INSERT INTO thoughts (thought_id, user_id, subject_id, event_id, thought) VALUES (1, 'owner', 1, 1, 'Retain text');
 		    INSERT INTO goals (goal_id, user_id, goal_name, target_seconds) VALUES (1, 'owner', 'Practice', 60);
 		    INSERT INTO subject_goals (subject_id, goal_id, user_id, goal_number) VALUES (1, 1, 'owner', 1);
-		    INSERT INTO goal_progress (goal_id, user_id, time_spent_sec, thought_id, event_id) VALUES (1, 'owner', 60, 1, 1)
+		    INSERT INTO goal_progress (goal_id,user_id,event_id,recorded_subject_id,subject_id) VALUES (1,'owner',1,1,1)
 		`); err != nil {
 			t.Fatal(err)
 		}
@@ -209,7 +209,7 @@ func TestSubjectAliasWorkflow_SQLite(t *testing.T) {
 			`,
 			`SELECT COUNT(*) FROM goals WHERE goal_id=1 AND goal_name='Practice' AND version=1 AND updated_at=created_at`,
 			`SELECT COUNT(*) FROM subject_goals WHERE subject_id=1 AND goal_id=1`,
-			`SELECT COUNT(*) FROM goal_progress WHERE goal_id=1 AND time_spent_sec=60 AND thought_id=1 AND event_id=1`,
+			`SELECT COUNT(*) FROM goal_progress WHERE goal_id=1 AND event_id=1 AND recorded_subject_id=1 AND subject_id=1`,
 			`SELECT COUNT(*) FROM subject_aliases WHERE alias_id=1 AND deleted_at IS NOT NULL`,
 		} {
 			var got int
