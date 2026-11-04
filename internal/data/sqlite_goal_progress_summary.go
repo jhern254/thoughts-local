@@ -42,7 +42,7 @@ func (s *SQLiteGoalProgressStore) GetGoalProgressSummary(ctx context.Context, us
         SELECT c.goal_id, r.event_id, r.credited_end_at - r.credited_start_at AS seconds
         FROM latest l
         JOIN event_credit_revisions r ON r.event_id = l.event_id AND r.event_version = l.event_version
-        JOIN goal_event_credits c ON c.event_id = r.event_id AND c.event_version = r.event_version
+        JOIN event_goal_credits c ON c.event_id = r.event_id AND c.event_version = r.event_version
             AND c.user_id = r.user_id
         JOIN reachable g ON g.goal_id = c.goal_id
         JOIN events e ON e.event_id = r.event_id AND e.user_id = r.user_id

@@ -1,5 +1,5 @@
 -- Attribution snapshots are appended atomically by the Event transaction.
-CREATE TABLE goal_event_credits (
+CREATE TABLE event_goal_credits (
     event_id INTEGER NOT NULL,
     event_version INTEGER NOT NULL,
     goal_id INTEGER NOT NULL,
@@ -11,8 +11,8 @@ CREATE TABLE goal_event_credits (
 );
 
 -- Identity maintenance is allowed only after the old referenced key disappears.
-CREATE TRIGGER goal_event_credits_immutable_update
-BEFORE UPDATE ON goal_event_credits
+CREATE TRIGGER event_goal_credits_immutable_update
+BEFORE UPDATE ON event_goal_credits
 WHEN (NEW.event_version IS NOT OLD.event_version)
 OR (
     EXISTS (
@@ -40,8 +40,8 @@ BEGIN
     SELECT RAISE(ABORT, 'immutable attribution history');
 END;
 
-CREATE TRIGGER goal_event_credits_immutable_delete
-BEFORE DELETE ON goal_event_credits
+CREATE TRIGGER event_goal_credits_immutable_delete
+BEFORE DELETE ON event_goal_credits
 WHEN EXISTS (
     SELECT 1
     FROM users
@@ -66,4 +66,4 @@ BEGIN
     SELECT RAISE(ABORT, 'immutable attribution history');
 END;
 
-CREATE INDEX idx_goal_event_credits_goal ON goal_event_credits (user_id, goal_id, event_id, event_version);
+CREATE INDEX idx_event_goal_credits_goal ON event_goal_credits (user_id, goal_id, event_id, event_version);

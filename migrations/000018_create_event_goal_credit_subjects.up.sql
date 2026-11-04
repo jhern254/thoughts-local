@@ -1,5 +1,5 @@
 -- Attribution snapshots are appended atomically by the Event transaction.
-CREATE TABLE goal_event_credit_subjects (
+CREATE TABLE event_goal_credit_subjects (
     support_id INTEGER PRIMARY KEY,
     event_id INTEGER NOT NULL,
     event_version INTEGER NOT NULL,
@@ -9,14 +9,14 @@ CREATE TABLE goal_event_credit_subjects (
     subject_id INTEGER,
     attributed_at INTEGER NOT NULL CHECK (typeof(attributed_at) = 'integer'),
     UNIQUE (event_id, event_version, goal_id, subject_id),
-    FOREIGN KEY (event_id, event_version, goal_id, user_id) REFERENCES goal_event_credits (event_id, event_version, goal_id, user_id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (event_id, event_version, goal_id, user_id) REFERENCES event_goal_credits (event_id, event_version, goal_id, user_id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (subject_id) REFERENCES subjects (subject_id) ON DELETE SET NULL ON UPDATE CASCADE,
     FOREIGN KEY (subject_id, user_id) REFERENCES subjects (subject_id, user_id)
 );
 
 -- Identity maintenance is allowed only after the old referenced key disappears.
-CREATE TRIGGER goal_event_credit_subjects_immutable_update
-BEFORE UPDATE ON goal_event_credit_subjects
+CREATE TRIGGER event_goal_credit_subjects_immutable_update
+BEFORE UPDATE ON event_goal_credit_subjects
 WHEN (
     NEW.support_id IS NOT OLD.support_id
     OR NEW.event_version IS NOT OLD.event_version
@@ -32,7 +32,7 @@ OR (
     AND (
         EXISTS (
             SELECT 1
-            FROM goal_event_credits
+            FROM event_goal_credits
             WHERE event_id = OLD.event_id
                 AND event_version = OLD.event_version
                 AND goal_id = OLD.goal_id
@@ -56,8 +56,8 @@ BEGIN
     SELECT RAISE(ABORT, 'immutable attribution history');
 END;
 
-CREATE TRIGGER goal_event_credit_subjects_immutable_delete
-BEFORE DELETE ON goal_event_credit_subjects
+CREATE TRIGGER event_goal_credit_subjects_immutable_delete
+BEFORE DELETE ON event_goal_credit_subjects
 WHEN EXISTS (
     SELECT 1
     FROM users
@@ -66,7 +66,7 @@ WHEN EXISTS (
 AND (
     EXISTS (
         SELECT 1
-        FROM goal_event_credits
+        FROM event_goal_credits
         WHERE event_id = OLD.event_id
             AND event_version = OLD.event_version
             AND goal_id = OLD.goal_id

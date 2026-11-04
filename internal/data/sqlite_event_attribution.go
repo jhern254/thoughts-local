@@ -60,7 +60,7 @@ func appendEventAttribution(ctx context.Context, tx *sql.Tx, current *Event, pre
 		// removed by the ordinary complete-live-set Event update contract.
 		rows, err := tx.QueryContext(ctx, `
     SELECT goal_id, recorded_subject_id, subject_id, attributed_at
-    FROM goal_event_credit_subjects
+    FROM event_goal_credit_subjects
     WHERE user_id = ? AND event_id = ? AND event_version = ?
     ORDER BY support_id`, current.UserID, current.EventID, version.Int64)
 		if err != nil {
@@ -90,7 +90,7 @@ func appendEventAttribution(ctx context.Context, tx *sql.Tx, current *Event, pre
 			return closeErr
 		}
 		for _, s := range retained {
-			if err := insertEventCreditSupport(ctx, tx, current, s.goalID, s.recordedSubjectID, s.subjectID, s.attributedAt); err != nil {
+			if err := insertEventGoalCreditSupport(ctx, tx, current, s.goalID, s.recordedSubjectID, s.subjectID, s.attributedAt); err != nil {
 				return err
 			}
 		}
@@ -126,7 +126,7 @@ func appendEventAttribution(ctx context.Context, tx *sql.Tx, current *Event, pre
 			return closeErr
 		}
 		for _, id := range goals {
-			if err := insertEventCreditSupport(ctx, tx, current, id, subjectID, sql.NullInt64{Int64: subjectID, Valid: true}, recordedAt); err != nil {
+			if err := insertEventGoalCreditSupport(ctx, tx, current, id, subjectID, sql.NullInt64{Int64: subjectID, Valid: true}, recordedAt); err != nil {
 				return err
 			}
 		}
@@ -134,14 +134,14 @@ func appendEventAttribution(ctx context.Context, tx *sql.Tx, current *Event, pre
 	return nil
 }
 
-func insertEventCreditSupport(ctx context.Context, tx *sql.Tx, event *Event, goalID, recordedSubjectID int64, subjectID sql.NullInt64, attributedAt int64) error {
+func insertEventGoalCreditSupport(ctx context.Context, tx *sql.Tx, event *Event, goalID, recordedSubjectID int64, subjectID sql.NullInt64, attributedAt int64) error {
 	if _, err := tx.ExecContext(ctx, `
-    INSERT INTO goal_event_credits (event_id, event_version, goal_id, user_id) VALUES (?, ?, ?, ?)
+    INSERT INTO event_goal_credits (event_id, event_version, goal_id, user_id) VALUES (?, ?, ?, ?)
     ON CONFLICT (event_id, event_version, goal_id) DO NOTHING`, event.EventID, event.Version, goalID, event.UserID); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `
-    INSERT INTO goal_event_credit_subjects
+    INSERT INTO event_goal_credit_subjects
         (event_id, event_version, goal_id, user_id, recorded_subject_id, subject_id, attributed_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)`, event.EventID, event.Version, goalID, event.UserID, recordedSubjectID, subjectID, attributedAt)
 	return err

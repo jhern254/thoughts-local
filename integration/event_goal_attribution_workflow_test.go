@@ -27,7 +27,7 @@ func attributionFixture(t *testing.T) (*sql.DB, *event.Service) {
 	return db, event.NewService(data.NewSQLiteEventStore(db))
 }
 
-func TestGoalEventAttributionWorkflow_SQLite(t *testing.T) {
+func TestEventGoalAttributionWorkflow_SQLite(t *testing.T) {
 	for _, path := range []string{"historical", "end", "successor"} {
 		t.Run(path+" credits each matching Goal once", func(t *testing.T) {
 			db, service := attributionFixture(t)
@@ -50,10 +50,10 @@ func TestGoalEventAttributionWorkflow_SQLite(t *testing.T) {
 				t.Fatal(err)
 			}
 			var recipients, supports int
-			if err := db.QueryRow(`SELECT COUNT(*) FROM goal_event_credits`).Scan(&recipients); err != nil {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM event_goal_credits`).Scan(&recipients); err != nil {
 				t.Fatal(err)
 			}
-			if err := db.QueryRow(`SELECT COUNT(*) FROM goal_event_credit_subjects`).Scan(&supports); err != nil {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM event_goal_credit_subjects`).Scan(&supports); err != nil {
 				t.Fatal(err)
 			}
 			if recipients != 2 || supports != 3 {
@@ -131,7 +131,7 @@ func TestGoalProgressSummaryWorkflow_SQLite(t *testing.T) {
 				t.Fatalf("latest empty snapshot: got %+v,%v, want zero", got, err)
 			}
 		}
-		if err := db.QueryRow(`SELECT COUNT(*) FROM goal_event_credits WHERE event_version=1`).Scan(&revisions); err != nil {
+		if err := db.QueryRow(`SELECT COUNT(*) FROM event_goal_credits WHERE event_version=1`).Scan(&revisions); err != nil {
 			t.Fatal(err)
 		}
 		if revisions != 2 {
@@ -163,7 +163,7 @@ func TestGoalProgressSummaryWorkflow_SQLite(t *testing.T) {
 	})
 }
 
-func TestGoalEventRetentionWorkflow_SQLite(t *testing.T) {
+func TestEventGoalRetentionWorkflow_SQLite(t *testing.T) {
 	for _, tc := range []struct {
 		name, sql string
 		want      int64
@@ -249,7 +249,7 @@ func TestGoalEventRetentionWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		var n int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM goal_event_credit_subjects WHERE subject_id=1`).Scan(&n); err != nil {
+		if err := db.QueryRow(`SELECT COUNT(*) FROM event_goal_credit_subjects WHERE subject_id=1`).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		if n != 0 {
@@ -260,7 +260,7 @@ func TestGoalEventRetentionWorkflow_SQLite(t *testing.T) {
 
 func timePointer(seconds int64) *time.Time { at := time.Unix(seconds, 0); return &at }
 
-func TestGoalEventRollbackWorkflow_SQLite(t *testing.T) {
+func TestEventGoalRollbackWorkflow_SQLite(t *testing.T) {
 	for _, path := range []string{"historical", "end", "successor", "correction"} {
 		t.Run(path+" rolls back when attribution fails", func(t *testing.T) {
 			db, service := attributionFixture(t)
@@ -312,7 +312,7 @@ func TestGoalEventRollbackWorkflow_SQLite(t *testing.T) {
 	}
 }
 
-func TestGoalEventBoundariesWorkflow_SQLite(t *testing.T) {
+func TestEventGoalBoundariesWorkflow_SQLite(t *testing.T) {
 	t.Run("rejects unavailable summary roots and canceled writes without partial results", func(t *testing.T) {
 		db, service := attributionFixture(t)
 		store := data.NewSQLiteGoalProgressStore(db)
@@ -355,7 +355,7 @@ func TestGoalEventBoundariesWorkflow_SQLite(t *testing.T) {
     INSERT INTO subject_goals (subject_id,goal_id,user_id,goal_number) VALUES (1,1,'owner',1)`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`UPDATE goal_event_credit_subjects SET subject_id=1`); err == nil {
+		if _, err := db.Exec(`UPDATE event_goal_credit_subjects SET subject_id=1`); err == nil {
 			t.Fatal("detached support reattached")
 		}
 		item, err = service.Get(t.Context(), "owner", item.EventID)
@@ -388,10 +388,10 @@ func TestGoalEventBoundariesWorkflow_SQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		var recipients, supports int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM goal_event_credits WHERE event_id=?`, item.EventID).Scan(&recipients); err != nil {
+		if err := db.QueryRow(`SELECT COUNT(*) FROM event_goal_credits WHERE event_id=?`, item.EventID).Scan(&recipients); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.QueryRow(`SELECT COUNT(*) FROM goal_event_credit_subjects WHERE goal_id=1`).Scan(&supports); err != nil {
+		if err := db.QueryRow(`SELECT COUNT(*) FROM event_goal_credit_subjects WHERE goal_id=1`).Scan(&supports); err != nil {
 			t.Fatal(err)
 		}
 		if recipients != 2 || supports != 3 {
@@ -400,7 +400,7 @@ func TestGoalEventBoundariesWorkflow_SQLite(t *testing.T) {
 	})
 }
 
-func TestGoalEventEligibilityWorkflow_SQLite(t *testing.T) {
+func TestEventGoalEligibilityWorkflow_SQLite(t *testing.T) {
 	for _, tc := range []struct {
 		name, sql string
 		subjects  []int64
@@ -421,7 +421,7 @@ func TestGoalEventEligibilityWorkflow_SQLite(t *testing.T) {
 				t.Fatal(err)
 			}
 			var count int
-			if err := db.QueryRow(`SELECT COUNT(*) FROM goal_event_credits`).Scan(&count); err != nil {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM event_goal_credits`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 0 {
@@ -463,7 +463,7 @@ func TestGoalEventEligibilityWorkflow_SQLite(t *testing.T) {
 	})
 }
 
-func TestGoalEventTransactionBoundaries_SQLite(t *testing.T) {
+func TestEventGoalTransactionBoundaries_SQLite(t *testing.T) {
 	t.Run("writer contention cannot partially establish attribution", func(t *testing.T) {
 		db, _ := attributionFixture(t)
 		var sequence int

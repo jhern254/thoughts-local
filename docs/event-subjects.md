@@ -24,7 +24,7 @@ clipping and ongoing cutoffs apply independently to each live association.
 
 Goal discovery returns the deduplicated union of eligible active Goals across
 live Event Subjects. An unassigned Event has no candidates. Discovery does not record progress. Completed Event writes separately establish
-automatic credits; see [Goal Event attribution](goal-event-attribution.md).
+automatic credits; see [Event Goal attribution](event-goal-attribution.md).
 
 Future automatic attribution must deduplicate by Event ID at every Goal,
 including parent Goals reached through several child paths. Matching the same

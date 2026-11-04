@@ -13,8 +13,8 @@ Three normalized tables form the ledger:
 
 - `event_credit_revisions` records one credited interval and reason per Event
   version that changes attribution.
-- `goal_event_credits` identifies the unique recipient Goals in that revision.
-- `goal_event_credit_subjects` records each recipient's contributing Subjects.
+- `event_goal_credits` identifies the unique recipient Goals in that revision.
+- `event_goal_credit_subjects` records each recipient's contributing Subjects.
 
 Each revision is a complete snapshot, written atomically with the Event. An
 empty snapshot supersedes earlier positive attribution. Effective progress uses
