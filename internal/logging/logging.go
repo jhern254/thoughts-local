@@ -60,6 +60,8 @@ const (
 	SubjectTime
 	GoalList
 	GoalGet
+	GoalActivityList
+	GoalActivityThoughtsList
 	GoalCreate
 	GoalUpdate
 	GoalSubjectsList
@@ -78,6 +80,10 @@ func (operation Operation) name() string {
 	switch operation {
 	case GoalList:
 		return "goal_list"
+	case GoalActivityList:
+		return "goal_activity_list"
+	case GoalActivityThoughtsList:
+		return "goal_activity_thoughts_list"
 	case GoalGet:
 		return "goal_get"
 	case GoalCreate:

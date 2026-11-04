@@ -141,5 +141,21 @@ SELECT subject_id, goal_id, user_id,
 FROM memberships;
 -- Goal 47 retains only a deleted Subject; Goal 48 has no links. Both show Misc.
 
+-- Synthetic earned history for Activity History browsing. This fixture creates
+-- contributions explicitly; the application never backfills old Events on read.
+INSERT INTO goal_progress (event_id, goal_id, user_id, recorded_subject_id, subject_id)
+SELECT
+    e.event_id,
+    sg.goal_id,
+    e.user_id,
+    es.subject_id,
+    es.subject_id
+FROM events e
+JOIN event_subjects es ON es.event_id = e.event_id AND es.user_id = e.user_id AND es.deleted_at IS NULL
+JOIN subjects s ON s.subject_id = es.subject_id AND s.user_id = es.user_id AND s.deleted_at IS NULL
+JOIN subject_goals sg ON sg.subject_id = es.subject_id AND sg.user_id = es.user_id AND sg.deleted_at IS NULL
+JOIN goals g ON g.goal_id = sg.goal_id AND g.user_id = sg.user_id AND g.deleted_at IS NULL
+WHERE e.user_id = 'demo' AND e.ended_at IS NOT NULL AND e.deleted_at IS NULL AND g.goal_is_active = 1;
+
 DROP TABLE demo_clock;
 COMMIT;

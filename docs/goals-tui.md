@@ -29,6 +29,15 @@ shows an error and retry action, never a fabricated Misc assignment.
 The list is loaded in one cancellable command: the existing Goal list call,
 followed by live membership reads. There is no membership cache or bulk API.
 
+## Activity History
+
+Details includes a paginated list of earned Events, newest first. Enter expands
+one Event to show Subject-matched Thought previews; selecting a preview opens
+the existing Thought Details screen, including its Mindset action. Back restores
+the selected preview. Tab switches metadata/history focus, and Escape collapses
+an Event before returning to the Goals list. See [Goal Activity Lineage](goal-activity-lineage.md)
+for matching, paging, deletion, and ownership rules.
+
 ## Create and edit
 
 Up/Down moves between Name, Hours, Minutes, optional start/end dates,
@@ -72,7 +81,7 @@ with multiple Subjects, property updates, Subject replacement, and return Home.
 Browser acceptance uses the existing harness. Native terminal captures and browser
 screenshots are transient artifacts outside the source tree.
 
-This interface does not record progress or manage parents. Priority and Status
+This interface reads earned activity but does not write progress or manage parents. Priority and Status
 are changed through Create/Edit; the list’s `p` shortcut only filters. Very long Details and forms use Bubbles viewport scrolling;
 filtering and pagination use Bubbles lists. No schema changes are needed.
 

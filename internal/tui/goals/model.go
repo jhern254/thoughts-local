@@ -19,6 +19,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/tui/listfilter"
+	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
 type GoalService interface {
@@ -59,7 +60,13 @@ type result struct {
 	err       error
 }
 
-func Owns(msg tea.Msg) bool { _, ok := msg.(result); return ok }
+func Owns(msg tea.Msg) bool {
+	switch msg.(type) {
+	case result, activityResult:
+		return true
+	}
+	return false
+}
 
 type goalRow struct {
 	numbers  map[int64]int64
@@ -112,6 +119,8 @@ type Model struct {
 	assignments          Assignments
 	memberships          Memberships
 	subjects             Subjects
+	activityReader       ActivityReader
+	activity             activityState
 	screen               view
 	list                 list.Model
 	picker               list.Model
@@ -159,22 +168,23 @@ type Model struct {
 	subjectMenuFilter listfilter.Scope
 }
 
-func New(ctx context.Context, userID string, service GoalService, assignments Assignments, memberships Memberships, subjects Subjects) Model {
+func New(ctx context.Context, userID string, service GoalService, assignments Assignments, memberships Memberships, subjects Subjects, activityReader ActivityReader) Model {
 	delegate := goalListDelegate(true)
 	m := Model{
-		now:         time.Now,
-		logger:      logging.Nop(),
-		ctx:         ctx,
-		userID:      userID,
-		goals:       service,
-		assignments: assignments,
-		memberships: memberships,
-		subjects:    subjects,
-		list:        list.New(nil, delegate, 80, 18),
-		picker:      list.New(nil, appearance.SubjectListDelegate(true), 80, 18),
-		body:        viewport.New(),
-		width:       80,
-		height:      24,
+		now:            time.Now,
+		logger:         logging.Nop(),
+		ctx:            ctx,
+		userID:         userID,
+		goals:          service,
+		assignments:    assignments,
+		memberships:    memberships,
+		subjects:       subjects,
+		activityReader: activityReader,
+		list:           list.New(nil, delegate, 80, 18),
+		picker:         list.New(nil, appearance.SubjectListDelegate(true), 80, 18),
+		body:           viewport.New(),
+		width:          80,
+		height:         24,
 	}
 
 	m.list.Title = "Goals"
@@ -205,10 +215,12 @@ func New(ctx context.Context, userID string, service GoalService, assignments As
 		m.fields[i] = textinput.New()
 		m.fields[i].CharLimit = 0
 	}
+	m.resetActivity()
 	m.Resize(m.width, m.height)
 	return m
 }
 func (m *Model) Close() {
+	m.cancelActivityRead()
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -253,6 +265,7 @@ func (m *Model) Resize(width, height int) {
 	for i := range m.fields {
 		m.fields[i].SetWidth(max(1, width-4))
 	}
+	m.resizeDetail()
 	m.refreshBody()
 }
 func (m *Model) Open() tea.Cmd { m.open = true; m.screen = listView; return m.loadList() }
@@ -276,6 +289,7 @@ func (m *Model) loadList() tea.Cmd {
 }
 func (m *Model) loadDetail(id int64) tea.Cmd {
 	m.requestedGoalID = id
+	m.resetActivity()
 	if m.screen == detailView {
 		m.selected = nil
 		m.live = nil
@@ -361,6 +375,12 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	if !m.open {
 		return m, nil
 	}
+	if reply, ok := msg.(activityResult); ok {
+		return m, m.receiveActivity(reply)
+	}
+	if change, ok := msg.(thoughts.MindsetChanged); ok {
+		return m, m.applyActivityMindset(change)
+	}
 	if reply, ok := msg.(result); ok {
 		if reply.owner != m.owner {
 			return m, nil
@@ -413,6 +433,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			if m.screen == editView {
 				m.populateForm()
 			}
+			if m.screen == detailView {
+				m.resizeDetail()
+				return m, m.loadActivityEvents(data.GoalEventPageRequest{})
+			}
 		}
 		return m, nil
 	}
@@ -441,6 +465,12 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if ok && key.String() == "esc" {
+		if m.screen == detailView && m.activity.expandedEventID != 0 {
+			return m, m.collapseActivity()
+		}
+		if m.screen == detailView {
+			m.cancelActivityRead()
+		}
 		if m.screen == listView && m.list.FilterState() != list.Unfiltered {
 			m.list.ResetFilter()
 			m.listFocus = goalListControl
@@ -518,18 +548,18 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		if ok && m.selected != nil {
 			switch key.String() {
 			case "e":
+				m.cancelActivityRead()
 				m.startForm(false)
 				return m, m.fields[0].Focus()
 			case "s":
+				m.cancelActivityRead()
 				m.pickerReturn = detailView
 				m.pickerBefore = cloneSelection(m.selectedIDs)
 				m.screen = subjectsView
 				return m, m.loadPicker()
 			}
 		}
-		var cmd tea.Cmd
-		m.body, cmd = m.body.Update(msg)
-		return m, cmd
+		return m, m.updateActivity(msg)
 	case createView, editView:
 		return m, m.updateForm(msg)
 	case subjectsView:
@@ -681,16 +711,17 @@ func (m Model) View() string {
 		}
 		return appearance.SubjectListView(m.picker, m.width, m.height, m.borderWeight, "Subjects for "+goalName, summary, status, actions, "↑/↓/wheel: move · Space: toggle · /: search")
 	case detailView:
-		content = m.detailContent()
-		help = "e: Edit Goal · s: Manage Subjects · Esc: Back"
+		m.body.SetContent(ansi.Hardwrap(m.detailContent(), m.width, true))
+		content = m.activityView()
+		help = "Enter: open · Tab: panels · e: Edit Goal · s: Manage Subjects · Esc: Back"
 		if m.width < 60 {
-			help = "e: edit · s: Subjects · Esc: back"
+			help = "Enter · Tab: panels · e:edit s:Subjects · Esc"
 		}
 	default:
 		content = m.formContent()
 		help = "↑/↓: field · ←/→: adjust · Ctrl+S: save · Esc: cancel"
 	}
-	if m.screen != listView && m.screen != subjectsView {
+	if m.screen != listView && m.screen != subjectsView && m.screen != detailView {
 		m.body.SetContent(ansi.Hardwrap(content, m.width, true))
 		content = m.body.View()
 	}

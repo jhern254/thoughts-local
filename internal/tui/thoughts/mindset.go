@@ -2,6 +2,7 @@ package thoughts
 
 import (
 	"bytes"
+	"context"
 	"image/color"
 	"io"
 	"strings"
@@ -37,6 +38,19 @@ func (m Model) SavingMindset() bool { return m.mindsetSaving }
 
 func (m *Model) OpenDetail(item data.ThoughtSummaryView) tea.Cmd {
 	m.Reset()
+	m.directThoughtID = &item.ThoughtID
+	if item.SubjectName != nil {
+		m.selectedSubjectName = *item.SubjectName
+	}
+	return m.getThought(item.ThoughtID)
+}
+
+// OpenDetailWithLoader uses the normal Thought Details view and Mindset action.
+// Its first read and reload use the caller's qualified reader, so a Thought that
+// no longer belongs to that view cannot be reopened through an unrestricted Get.
+func (m *Model) OpenDetailWithLoader(item data.ThoughtSummaryView, loader func(context.Context) (*data.Thought, error)) tea.Cmd {
+	m.Reset()
+	m.detailLoader = loader
 	m.directThoughtID = &item.ThoughtID
 	if item.SubjectName != nil {
 		m.selectedSubjectName = *item.SubjectName

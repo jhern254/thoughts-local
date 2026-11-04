@@ -20,13 +20,13 @@ test('Goals workflow creates a target and returns to Events without reconnecting
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goals-${test.info().project.name}-normal.png`});
  await page.keyboard.press('e');await expect(screen(page)).toContainText('Edit Goal');await page.keyboard.press('Escape');
  // Returning from Edit reloads Details; its actions stay locked until that read finishes.
- await expect(screen(page)).toContainText('Created ');
+ await expect(screen(page)).toContainText('ACTIVITY HISTORY');
  await expect(screen(page)).toContainText(name);await expect(screen(page)).not.toContainText('Loading');
  await expect(screen(page)).toContainText('1h 0m / week · high · Inactive');
  await page.keyboard.press('s');await expect(screen(page)).toContainText('Select Subjects');
  await page.keyboard.press('/');await page.keyboard.type('no-subject-matches-this-query');await expect(screen(page)).toContainText('No matches');
  await page.keyboard.press('Escape');await expect(screen(page)).not.toContainText('No matches');
- await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Created ');await expect(screen(page)).not.toContainText('Loading');
+ await page.keyboard.press('Escape');await expect(screen(page)).toContainText('ACTIVITY HISTORY');await expect(screen(page)).not.toContainText('Loading');
  await page.setViewportSize({width:700,height:450});
  await expect.poll(async()=> (await page.locator('.xterm-screen').boundingBox()).width).toBeLessThan(700);
  await expect(screen(page)).toContainText(name);
@@ -103,5 +103,46 @@ test('Goal panels navigate vertically and held Left stops before leaving the Goa
  await expect(screen(page)).toContainText('p: priority');
  await page.keyboard.up('ArrowLeft');await page.keyboard.press('ArrowLeft');
  await expect(screen(page)).toContainText('Events');
+ expect(sockets).toBe(connections);
+});
+
+
+test('Goal Activity History opens matching Thoughts and shared Mindset Details without reconnecting', async ({page}, testInfo) => {
+ let sockets=0;page.on('websocket',()=>sockets++);
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await expect(screen(page)).toContainText('Tab/Shift+Tab: panels');
+ await page.locator('.xterm-helper-textarea').focus();
+ for(const key of ['Tab','ArrowLeft','ArrowLeft','Enter'])await page.keyboard.press(key);
+ await expect(screen(page)).not.toContainText('Loading');
+ await expect(screen(page)).toContainText('Explore earned activity');
+ await page.keyboard.press('Home');await page.keyboard.press('Enter');
+ await expect(screen(page)).toContainText('ACTIVITY HISTORY');
+ await expect(screen(page)).toContainText('Implement Goal lineage');
+ await expect(screen(page)).not.toContainText('Loading');
+ const connections=sockets;
+ await page.keyboard.press('Enter');
+ await expect(screen(page)).toContainText('Lineage: one Event');
+ await expect(screen(page)).not.toContainText('Excluded');
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-${testInfo.project.name}-normal.png`});
+ await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
+ await expect(screen(page)).toContainText('m: mindset');
+ await expect(screen(page)).toContainText('Lineage: one Event can reach several Goals.');
+ await page.keyboard.press('m');
+ await expect.poll(async()=>await screen(page).innerText()).toMatch(/M.*Thought/s);
+ await page.keyboard.press('Escape');
+ await expect(screen(page)).toContainText('ACTIVITY HISTORY');
+ await expect(screen(page)).toContainText('M · Lineage: one Event');
+ await page.setViewportSize({width:480,height:420});
+ await expect(screen(page)).toContainText('ACTIVITY HISTORY');
+ await expect(screen(page)).toContainText('Lineage: one Event');
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-${testInfo.project.name}-narrow.png`});
+ await page.keyboard.press('Enter');await expect(screen(page)).toContainText('m: mindset');
+ // Restore the shared synthetic Thought so the next browser project starts
+ // from the same state, while also checking the action at narrow width.
+ await page.keyboard.press('m');
+ await expect.poll(async()=>await screen(page).innerText()).not.toMatch(/M.*Thought/s);
+ await page.keyboard.press('Escape');await page.keyboard.press('Escape');
+ await expect(screen(page)).not.toContainText('Lineage: one Event');
+ await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Priority:');
  expect(sockets).toBe(connections);
 });

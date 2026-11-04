@@ -34,7 +34,7 @@ func Classify(operation logging.Operation, err error) (logging.FailureCategory, 
 	switch {
 	case (operation == logging.GoalCreate || operation == logging.GoalUpdate || operation == logging.GoalSubjectsReplace) && (errors.As(err, &goalValidation) || errors.As(err, &assignmentValidation) || errors.Is(err, data.ErrVersionConflict) || errors.Is(err, data.ErrRecordNotFound) || errors.Is(err, data.ErrDuplicateRecord)):
 		return logging.UnexpectedFailure, false
-	case (operation == logging.GoalGet || operation == logging.GoalSubjectsList) && errors.Is(err, data.ErrRecordNotFound):
+	case (operation == logging.GoalGet || operation == logging.GoalSubjectsList || operation == logging.GoalActivityList || operation == logging.GoalActivityThoughtsList) && errors.Is(err, data.ErrRecordNotFound):
 		return logging.UnexpectedFailure, false
 	case errors.Is(err, data.ErrDatabaseBusy):
 		return logging.DatabaseBusy, true
