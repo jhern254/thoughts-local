@@ -77,7 +77,7 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 		})
 	}
 
-	t.Run("runtime manages links and discovers current goals for a completed event without recording progress", func(t *testing.T) {
+	t.Run("runtime discovers current Goals without rewriting earned Event support", func(t *testing.T) {
 		db, dsn := openMigratedSQLite(t)
 		runtime, err := application.Open(t.Context(), dsn)
 		if err != nil {
@@ -132,6 +132,10 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		earnedSupport := eventSupportRows(t, db)
+		if len(earnedSupport) != 2 {
+			t.Fatalf("completed Event support rows: got %v, want two", earnedSupport)
+		}
 		for _, enabled := range []bool{false, true} {
 			got, err := runtime.GoalDiscovery().DiscoverForEvent(t.Context(), owner, item.EventID, enabled)
 			want := goaldiscovery.Result{PriorityGoals: []data.Goal{*high}, RecommendedGoals: []data.Goal{}}
@@ -161,12 +165,8 @@ func TestGoalDiscoveryWorkflow_SQLite(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(unchanged, item) {
 			t.Fatalf("event after discovery: got %+v, %v; want %+v, nil", unchanged, err, item)
 		}
-		var count int
-		if err := db.QueryRow("SELECT count(*) FROM goal_progress").Scan(&count); err != nil {
-			t.Fatal(err)
-		}
-		if count != 0 {
-			t.Fatalf("progress rows: got %d, want 0", count)
+		if after := eventSupportRows(t, db); !reflect.DeepEqual(after, earnedSupport) {
+			t.Fatalf("earned support after discovery and relationship changes: got %v, want %v", after, earnedSupport)
 		}
 		for _, request := range []struct {
 			user  string

@@ -3,11 +3,13 @@
 package integration_test
 
 import (
+	"reflect"
+	"testing"
+
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/goal"
 	"github.com/jhern254/go-thoughts/internal/goaldiscovery"
 	"github.com/jhern254/go-thoughts/internal/subjectgoal"
-	"testing"
 )
 
 func TestMultiSubjectEventDiscovery_SQLite(t *testing.T) {
@@ -38,6 +40,10 @@ func TestMultiSubjectEventDiscovery_SQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		earnedSupport := eventSupportRows(t, db)
+		if len(earnedSupport) != 3 {
+			t.Fatalf("completed Event support: got %v, want three support rows", earnedSupport)
+		}
 		discovery := goaldiscovery.NewService(events, linkStore, goaldiscovery.AllCandidatesRecommender{})
 		result, err := discovery.DiscoverForEvent(t.Context(), "u", item.EventID, true)
 		if err != nil {
@@ -55,11 +61,14 @@ func TestMultiSubjectEventDiscovery_SQLite(t *testing.T) {
 			t.Fatalf("Misc candidates got %+v,%v; want empty", result, err)
 		}
 		var count int
-		if err := db.QueryRow(`SELECT count(*) FROM goal_progress`).Scan(&count); err != nil {
+		if err := db.QueryRow(`SELECT COUNT(*) FROM goal_progress WHERE event_id = ?`, misc.EventID).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 0 {
-			t.Fatalf("progress records got %d, want zero", count)
+			t.Fatalf("Misc Event support: got %d, want zero", count)
+		}
+		if after := eventSupportRows(t, db); !reflect.DeepEqual(after, earnedSupport) {
+			t.Fatalf("earned support after discovery and Misc creation: got %v, want %v", after, earnedSupport)
 		}
 	})
 }
