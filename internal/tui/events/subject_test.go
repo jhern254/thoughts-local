@@ -71,9 +71,9 @@ func TestModel_SubjectPicker(t *testing.T) {
 			t.Fatalf("incorrect filtered view: %s", view)
 		}
 		m, _ = m.Update(eventKey("down"))
-		m, _ = m.Update(eventKey("space"))
+		m, _ = m.Update(eventKey("s"))
 		m, _ = m.Update(eventKey("down"))
-		m, _ = m.Update(eventKey("space"))
+		m, _ = m.Update(eventKey("s"))
 		if !m.form.subjects.selected[1] || !m.form.subjects.selected[2] {
 			t.Fatal("multi-selection lost a check")
 		}
@@ -170,7 +170,7 @@ func TestModel_SubjectPicker(t *testing.T) {
 		m, _ = m.Update(eventKey("tab"))
 		m, _ = m.Update(eventKey("enter"))
 		m, _ = m.Update(eventKey("down"))
-		m, _ = m.Update(eventKey("space"))
+		m, _ = m.Update(eventKey("s"))
 		m, _ = m.Update(eventKey("enter"))
 		m, _ = m.Update(eventKey("enter"))
 		m.form.subjects.row = 0
@@ -232,4 +232,35 @@ func TestModel_EventFormResize(t *testing.T) {
 			t.Fatal("resize changed input or cursor")
 		}
 	})
+}
+
+func TestModel_SubjectPickerSpacesAndSelection(t *testing.T) {
+	m, _, _ := fixture(t)
+	m.subjectReader = &subjectReaderStub{items: []data.Subject{{SubjectID: 1, SubjectName: "Go study"}}}
+	m, cmd := m.Update(eventKey("n"))
+	m, _ = m.Update(cmd().(tea.BatchMsg)[1]())
+	m, _ = m.Update(eventKey("tab"))
+	m, _ = m.Update(eventKey("enter"))
+	for _, key := range []tea.KeyPressMsg{eventKey("G"), eventKey("o"), {Code: tea.KeySpace, Text: " "}} {
+		m, cmd = m.Update(key)
+		if m.form.suspended {
+			t.Fatal("typing a space opened Subject creation")
+		}
+	}
+	if got := m.form.fields[1].Value(); got != "Go " {
+		t.Fatalf("query = %q, want trailing space", got)
+	}
+	m, _ = m.Update(eventKey("down"))
+	m, _ = m.Update(eventKey("s"))
+	if !m.form.subjects.selected[1] {
+		t.Fatal("s did not select the Subject")
+	}
+	m, _ = m.Update(eventKey("/"))
+	m, _ = m.Update(eventKey("s"))
+	if got := m.form.fields[1].Value(); got != "Go s" {
+		t.Fatalf("search query = %q, want Go s", got)
+	}
+	if !m.form.subjects.selected[1] {
+		t.Fatal("typing s in search toggled selection")
+	}
 }
