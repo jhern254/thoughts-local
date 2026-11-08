@@ -148,7 +148,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 				m.form.subjects.searching = true
 				return m.form.fields[1].Focus()
 			}
-		case "space":
+		case "s":
 			if m.form.subjects.open && !m.form.subjects.searching {
 				return m.activateSubject()
 			}
@@ -260,7 +260,7 @@ func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
 }
 func (m Model) formView() string {
 	if m.form.subjects.open {
-		return ansi.Wrap("Select Subjects\n\n"+m.subjectView()+"\n\n↑/↓: move · Space: toggle/create · /: search\nEnter: confirm · Ctrl+S: save Event · Esc: cancel selection", m.width, "")
+		return ansi.Wrap("Select Subjects\n\n"+m.subjectView()+"\n\n↑/↓: move · s: toggle/create · /: search\nEnter: confirm · Ctrl+S: save Event · Esc: cancel selection", m.width, "")
 	}
 	title := "Start event"
 	body := "Activity\n" + m.form.fields[0].View() + "\n" + m.subjectView() + "\nStart time"
