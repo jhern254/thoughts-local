@@ -26,9 +26,9 @@ test('Event multiselect retains filtered selections and cancels picker edits wit
   await startPicker(page, activity);
   const connected = connections;
   await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('Space');
+  await page.keyboard.press('s');
   await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('Space');
+  await page.keyboard.press('s');
   await expect(screen(page)).toContainText('2 selected');
   const names = (await screen(page).innerText()).split('\n').filter(line => line.includes('[x] ')).map(line => line.split('[x] ')[1].trim());
   expect(names).toHaveLength(2);
@@ -45,9 +45,9 @@ test('Event multiselect retains filtered selections and cancels picker edits wit
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Control+k');
   await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('Space');
+  await page.keyboard.press('s');
   await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('Space');
+  await page.keyboard.press('s');
   await page.keyboard.press('Enter');
   await expect(screen(page)).toContainText('Start event');
   await expect(screen(page)).toContainText('2 selected');
@@ -74,7 +74,7 @@ test('creating a Subject preserves existing Event selections and draft', async (
   const subject = `Event Subject ${Date.now()}`;
   await startPicker(page, activity);
   await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('Space');
+  await page.keyboard.press('s');
   await page.keyboard.press('/');
   await page.keyboard.type(subject);
   await page.keyboard.press('Enter');
