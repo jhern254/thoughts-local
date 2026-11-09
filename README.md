@@ -1,4 +1,4 @@
-# Building AI Chat app in Go Lang, Python, SQLite 
+# Personal AI Chat app 
 
 ## Database migrations
 
