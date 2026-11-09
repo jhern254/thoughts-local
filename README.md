@@ -1,4 +1,4 @@
-# Personal AI Chat app 
+# Personal Local AI Chat app 
 
 ## Database migrations
 
