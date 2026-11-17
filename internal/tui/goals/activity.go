@@ -474,7 +474,7 @@ func (m Model) activityView() string {
 	}
 	body = ansi.Truncate(status, m.width, "…") + "\n" + body
 	divider := m.sectionDivider(m.activity.focused)
-	return m.body.View() + "\n" + divider + "\nACTIVITY HISTORY\n" + body
+	return m.body.View() + "\n" + divider + "\n" + m.list.Styles.Title.Render("Events") + "\n" + body
 }
 func (m *Model) applyActivityMindset(change thoughts.MindsetChanged) tea.Cmd {
 	for i := range m.activity.thoughts.Items {

@@ -1,6 +1,7 @@
 package goals
 
 import (
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"fmt"
 	"strings"
@@ -23,8 +24,9 @@ func TestModel_DetailSections(t *testing.T) {
 				if got := rows[m.body.Height()]; got != divider {
 					t.Fatalf("details divider: got %q, want %q", got, divider)
 				}
-				if got := rows[m.body.Height()+1]; got != "ACTIVITY HISTORY" {
-					t.Fatalf("history heading: got %q, want unchanged position", got)
+				rawRows := strings.Split(m.View(), "\n")
+				if got, want := rawRows[m.body.Height()+1], list.DefaultStyles(true).Title.Render("Events"); got != want {
+					t.Fatalf("Events header block: got %q, want %q at the history heading", got, want)
 				}
 				if len(rows) > size[1] {
 					t.Fatalf("screen height: got %d, want at most %d", len(rows), size[1])

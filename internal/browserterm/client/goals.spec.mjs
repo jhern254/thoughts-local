@@ -1,5 +1,6 @@
 import {test, expect} from '@playwright/test';
 const screen = page => page.locator('.xterm-rows');
+const earnedEventsHeader = page => screen(page).locator(':scope > div').filter({hasText:/^\s*Events\s*$/});
 const dividerColors = page => screen(page).locator(':scope > div').filter({hasText:/^[─━]+$/}).last()
  .locator('span').evaluateAll(spans=>spans.map(span=>getComputedStyle(span).color));
 test('Goals workflow creates a target and returns to Events without reconnecting', async ({page}) => {
@@ -22,13 +23,13 @@ test('Goals workflow creates a target and returns to Events without reconnecting
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goals-${test.info().project.name}-normal.png`});
  await page.keyboard.press('e');await expect(screen(page)).toContainText('Edit Goal');await page.keyboard.press('Escape');
  // Returning from Edit reloads Details; its actions stay locked until that read finishes.
- await expect(screen(page)).toContainText('ACTIVITY HISTORY');
+ await expect(earnedEventsHeader(page)).toHaveCount(1);
  await expect(screen(page)).toContainText(name);await expect(screen(page)).not.toContainText('Loading');
  await expect(screen(page)).toContainText('1h 0m / week · high · Inactive');
  await page.keyboard.press('s');await expect(screen(page)).toContainText('Select Subjects');
  await page.keyboard.press('/');await page.keyboard.type('no-subject-matches-this-query');await expect(screen(page)).toContainText('No matches');
  await page.keyboard.press('Escape');await expect(screen(page)).not.toContainText('No matches');
- await page.keyboard.press('Escape');await expect(screen(page)).toContainText('ACTIVITY HISTORY');await expect(screen(page)).not.toContainText('Loading');
+ await page.keyboard.press('Escape');await expect(earnedEventsHeader(page)).toHaveCount(1);await expect(screen(page)).not.toContainText('Loading');
  await page.setViewportSize({width:700,height:450});
  await expect.poll(async()=> (await page.locator('.xterm-screen').boundingBox()).width).toBeLessThan(700);
  await expect(screen(page)).toContainText(name);
@@ -127,7 +128,7 @@ test('Goal Activity History opens matching Thoughts and shared Mindset Details w
  await expect(screen(page)).not.toContainText('Loading');
  await expect(screen(page)).toContainText('Explore earned activity');
  await page.keyboard.press('Home');await page.keyboard.press('Enter');
- await expect(screen(page)).toContainText('ACTIVITY HISTORY');
+ await expect(earnedEventsHeader(page)).toHaveCount(1);
  await expect(screen(page)).toContainText('Implement Goal lineage');
  await expect(screen(page)).not.toContainText('Loading');
  const connections=sockets;
@@ -158,10 +159,10 @@ test('Goal Activity History opens matching Thoughts and shared Mindset Details w
  await page.keyboard.press('m');
  await expect.poll(async()=>await screen(page).innerText()).toMatch(/M.*Thought/s);
  await page.keyboard.press('Escape');
- await expect(screen(page)).toContainText('ACTIVITY HISTORY');
+ await expect(earnedEventsHeader(page)).toHaveCount(1);
  await expect(screen(page)).toContainText('M · Lineage: one Event');
  await page.setViewportSize({width:480,height:420});
- await expect(screen(page)).toContainText('ACTIVITY HISTORY');
+ await expect(earnedEventsHeader(page)).toHaveCount(1);
  await expect(screen(page)).toContainText('Lineage: one Event');
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-${testInfo.project.name}-narrow.png`});
  await page.keyboard.press('Enter');await expect(screen(page)).toContainText('m: mindset');

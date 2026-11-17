@@ -199,7 +199,7 @@ func (m Model) listControlLayout() controlLayout {
 		}
 		line += text
 	}
-	line = m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render("Goals")
+	line = m.list.Styles.Title.Render("Goals")
 	if m.width < 60 {
 		flush()
 	} else {

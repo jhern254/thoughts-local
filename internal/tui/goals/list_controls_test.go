@@ -416,14 +416,16 @@ func TestModel_SubjectFilterDropdown(t *testing.T) {
 }
 
 func TestModel_ListFocusColors(t *testing.T) {
-	t.Run("the static Goals header keeps its style when focus changes", func(t *testing.T) {
+	t.Run("the static Goals header keeps standard block padding when focus changes", func(t *testing.T) {
 		m, _ := testModel(t)
-		m.list.Styles.Title = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230"))
-		heading := m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render("Goals")
-		for _, focus := range []listControl{goalListControl, statusControl, subjectControl, priorityControl} {
-			m.listFocus = focus
-			if !strings.HasPrefix(m.listControlLayout().rows[0], heading) {
-				t.Fatalf("static heading changed style for focus %d", focus)
+		heading := list.DefaultStyles(true).Title.Render("Goals")
+		for _, width := range []int{100, 48} {
+			m.Resize(width, 30)
+			for _, focus := range []listControl{goalListControl, statusControl, subjectControl, priorityControl} {
+				m.listFocus = focus
+				if !strings.HasPrefix(m.listControlLayout().rows[0], heading) {
+					t.Fatalf("Goals header at width %d and focus %d lost standard padding or style", width, focus)
+				}
 			}
 		}
 	})

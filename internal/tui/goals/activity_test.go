@@ -50,7 +50,7 @@ func activityModel(t *testing.T) (Model, *services) {
 func TestModel_ActivityHistory(t *testing.T) {
 	t.Run("expands an earned Event and opens a matching Thought through the shared detail loader", func(t *testing.T) {
 		m, _ := activityModel(t)
-		if !strings.Contains(m.View(), "ACTIVITY HISTORY") || !strings.Contains(m.View(), "Implement lineage") {
+		if !strings.Contains(m.View(), m.list.Styles.Title.Render("Events")) || !strings.Contains(m.View(), "Implement lineage") {
 			t.Fatalf("missing history: %s", m.View())
 		}
 		m, cmd := press(m, "enter")
@@ -101,7 +101,7 @@ func TestModel_ActivityHistory(t *testing.T) {
 	t.Run("metadata and history fit narrow layouts and remain keyboard reachable", func(t *testing.T) {
 		m, _ := activityModel(t)
 		m.Resize(48, 18)
-		if !strings.Contains(m.View(), "ACTIVITY HISTORY") || !strings.Contains(m.View(), "Implement lineage") {
+		if !strings.Contains(m.View(), m.list.Styles.Title.Render("Events")) || !strings.Contains(m.View(), "Implement lineage") {
 			t.Fatalf("narrow history: %s", m.View())
 		}
 		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -128,7 +128,7 @@ func TestModel_ActivityLayoutAndOwnership(t *testing.T) {
 				if ansi.StringWidth(row) > size[0] {
 					t.Fatalf("row %d width got %d, want at most %d", i, ansi.StringWidth(row), size[0])
 				}
-				if strings.Contains(row, "ACTIVITY HISTORY") {
+				if strings.Contains(row, m.list.Styles.Title.Render("Events")) {
 					header = i
 				}
 				if strings.Contains(row, "Implement lineage") {

@@ -12,6 +12,9 @@ through either child, recorded within the Event's current time interval.
 
 ## Browsing
 
+The history section uses the standard **Events** header block, and the Goals
+list uses the same padded block style as the other entity screens.
+
 History opens at the newest earned Events. Use arrows or `j/k` to move,
 Enter to expand an Event, and Enter on a Thought preview to open the existing
 Thought Details screen. That screen retains scrolling, reload, and `m` to change

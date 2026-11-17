@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/application"
 	"github.com/jhern254/go-thoughts/internal/goal"
 	"github.com/jhern254/go-thoughts/internal/logging"
@@ -73,13 +74,13 @@ func TestGoalActivityLineageTUIWorkflow_SQLite(t *testing.T) {
 		for _, code := range []rune{tea.KeyTab, tea.KeyLeft, tea.KeyLeft, tea.KeyEnter, tea.KeyEnter} {
 			key(code)
 		}
-		if !strings.Contains(m.View().Content, "ACTIVITY HISTORY") || !strings.Contains(m.View().Content, "Implement history") {
+		if !strings.Contains(ansi.Strip(m.View().Content), "\n Events \n") || !strings.Contains(m.View().Content, "Implement history") {
 			t.Fatalf("history: %s", m.View().Content)
 		}
 		key(tea.KeyEnter)
 		key(tea.KeyDown)
 		key(tea.KeyEnter)
-		if !strings.Contains(m.View().Content, "m: mindset") || strings.Contains(m.View().Content, "ACTIVITY HISTORY") {
+		if !strings.Contains(m.View().Content, "m: mindset") || strings.Contains(ansi.Strip(m.View().Content), "\n Events \n") {
 			t.Fatalf("shared Thought Details: %s", m.View().Content)
 		}
 		key('m')
@@ -88,7 +89,7 @@ func TestGoalActivityLineageTUIWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("Mindset persisted: got %+v,%v, want active", current, err)
 		}
 		key(tea.KeyEscape)
-		if !strings.Contains(m.View().Content, "ACTIVITY HISTORY") || !strings.Contains(m.View().Content, "M · Events own") {
+		if !strings.Contains(ansi.Strip(m.View().Content), "\n Events \n") || !strings.Contains(m.View().Content, "M · Events own") {
 			t.Fatalf("return to selected preview: %s", m.View().Content)
 		}
 		key(tea.KeyEnter)
