@@ -174,3 +174,32 @@ test('Goal Activity History opens matching Thoughts and shared Mindset Details w
  await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Priority:');
  expect(sockets).toBe(connections);
 });
+
+
+test('Goal Activity History scrolls beyond ten pages and returns without loading rows', async ({page}, testInfo) => {
+ await page.setViewportSize({width:1000,height:700});
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await expect(screen(page)).toContainText('Tab/Shift+Tab: panels');
+ await page.locator('.xterm-helper-textarea').focus();
+ for(const key of ['Tab','ArrowLeft','ArrowLeft','Enter'])await page.keyboard.press(key);
+ await expect(screen(page)).toContainText('Explore earned activity');
+ for(const key of ['Home','ArrowDown','Enter'])await page.keyboard.press(key);
+ await expect(screen(page)).toContainText('Browse long history');
+ await expect(screen(page)).toContainText('History entry 125');
+ const dots=screen(page).locator(':scope > div').filter({hasText:/^\s*•{2,10}\s*$/}).last();
+ const dotColors=()=>dots.evaluate(row=>[...row.querySelectorAll('span')].flatMap(span=>[...span.textContent].filter(c=>c==='•').map(()=>getComputedStyle(span).color)));
+ await expect(dots).toHaveText(/^\s*•{10}\s*$/);
+ const initialColors=await dotColors();const activeColor=initialColors[0];
+ for(let i=0;i<9;i++)await page.keyboard.press('ArrowRight');
+ await expect.poll(async()=>(await dotColors()).indexOf(activeColor)).toBe(9);
+ const tenthPage=await screen(page).innerText();
+ await page.keyboard.press('ArrowRight');
+ await expect(screen(page)).not.toContainText('Loading');
+ await expect.poll(async()=>(await dotColors()).indexOf(activeColor)).toBe(0);
+ await expect(screen(page)).not.toContainText('Older Events');
+ await expect(screen(page)).not.toContainText('Newer Events');
+ await page.keyboard.press('ArrowLeft');
+ await expect.poll(async()=>(await dotColors()).indexOf(activeColor)).toBe(9);
+ await expect.poll(async()=>await screen(page).innerText()).toBe(tenthPage);
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-history-ten-pages-${testInfo.project.name}.png`});
+});

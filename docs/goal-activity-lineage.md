@@ -12,7 +12,7 @@ through either child, recorded within the Event's current time interval.
 
 ## Browsing
 
-History starts with the newest 25 earned Events. Use arrows or `j/k` to move,
+History opens at the newest earned Events. Use arrows or `j/k` to move,
 Enter to expand an Event, and Enter on a Thought preview to open the existing
 Thought Details screen. That screen retains scrolling, reload, and `m` to change
 Mindset. Back returns to the same selected preview and history page; its Mindset
@@ -37,8 +37,13 @@ muted selection while history is focused. Headers and Created/Updated timestamps
 are not selectable; the Goals and Subjects headings retain their block styles.
 
 Only one Event is expanded at a time. Its Thoughts are newest first, in pages of
-50 bounded summaries. Select **Older/Newer Events** or **Older/Newer Thoughts**
-when available. Escape collapses the expansion first, then returns to the Goals
+50 bounded summaries. **Older/Newer Thoughts** loads another Thought batch.
+Event paging is automatic: arrows, Page Up/Down, and the mouse wheel continue
+through adjacent Event windows without selectable loading rows. Each window
+loads up to ten screenfuls of Event summaries, capped at 250 Events. The dots
+show at most ten pages at a time; continuing forward resets to the first dot,
+and returning backward selects the last page of the newer window. Expansion
+and resizing can change the number of display pages without loading more data. Escape collapses the expansion first, then returns to the Goals
 list. `e` and `s` retain the existing independent property and Subject editors.
 `r` refreshes history from the newest page; after a failed read it retries that
 page. An expanded Event's `r` reloads its current Thought page and interval.
@@ -72,7 +77,8 @@ Thoughts from a newly created Subject that reuses that number.
 `runtime.GoalProgress()` provides three read operations:
 
 - `ListEarnedEvents`: a `GoalEventPageRequest` with an optional start-time/Event-ID
-  cursor and Older/Newer direction returns bounded Event projections.
+  cursor, Older/Newer direction, and optional limit returns bounded Event
+  projections. The default is 25; larger display windows are capped at 250.
 - `ListEventLineageThoughts`: the Event's current projection and a bounded
   `ThoughtSummaryViewRequest` page, using the existing observation-time,
   creation-time, and Thought-ID cursor ordering.

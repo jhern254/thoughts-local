@@ -181,29 +181,41 @@ func TestModel_ActivityLayoutAndOwnership(t *testing.T) {
 }
 
 func TestModel_ActivityPages(t *testing.T) {
-	t.Run("Older and Newer Events use page cursors and discard old expansions", func(t *testing.T) {
-		m, s := activityModel(t)
-		s.eventsMore = true
-		cmd := m.loadActivityEvents(data.GoalEventPageRequest{})
-		m, _ = m.Update(cmd())
-		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
-		m, cmd = press(m, "enter")
-		s.earnedEvents = []data.GoalEventLineage{{EventID: 9, Activity: "Older work", StartedAt: time.Unix(50, 0), EndedAt: time.Unix(100, 0), ElapsedSeconds: 50}}
-		s.eventsMore = false
-		m, _ = m.Update(cmd())
-		request := s.eventRequests[len(s.eventRequests)-1]
-		if request.Cursor == nil || request.Cursor.EventID != 10 || request.Direction != data.EarnedEventsOlder {
-			t.Fatalf("older request: %+v", request)
-		}
-		if m.activity.expandedEventID != 0 || !strings.Contains(m.View(), "Newer Events") {
-			t.Fatal("page retained expansion or lost return action")
-		}
-		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyHome})
-		m, cmd = press(m, "enter")
-		cmd()
-		request = s.eventRequests[len(s.eventRequests)-1]
-		if request.Cursor == nil || request.Cursor.EventID != 9 || request.Direction != data.EarnedEventsNewer {
-			t.Fatalf("newer request: %+v", request)
+	t.Run("scrolling and paging continue through older and newer Event windows", func(t *testing.T) {
+		for _, key := range []tea.KeyPressMsg{{Code: tea.KeyRight}, {Code: tea.KeyDown}, {Code: tea.KeyPgDown}} {
+			t.Run(key.String(), func(t *testing.T) {
+				m, s := activityModel(t)
+				s.eventsMore = true
+				m, _ = m.Update(m.loadActivityEvents(data.GoalEventPageRequest{})())
+				m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+				if strings.Contains(m.View(), "Older Events") || strings.Contains(m.View(), "Newer Events") {
+					t.Fatal("database paging actions remain in the activity list")
+				}
+				m, cmd := m.Update(key)
+				if cmd == nil {
+					t.Fatal("moving beyond the last Event did not load the next window")
+				}
+				s.earnedEvents = []data.GoalEventLineage{{EventID: 9, Activity: "Older work", StartedAt: time.Unix(50, 0), EndedAt: time.Unix(100, 0), ElapsedSeconds: 50}}
+				s.eventsMore = false
+				m, _ = m.Update(cmd())
+				request := s.eventRequests[len(s.eventRequests)-1]
+				if request.Cursor == nil || request.Cursor.EventID != 10 || request.Direction != data.EarnedEventsOlder {
+					t.Fatalf("older request: %+v", request)
+				}
+				m, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+				if cmd == nil {
+					t.Fatal("Left from the first older page did not load newer Events")
+				}
+				s.earnedEvents = []data.GoalEventLineage{{EventID: 10, Activity: "Implement lineage", StartedAt: time.Unix(100, 0), EndedAt: time.Unix(200, 0)}}
+				m, _ = m.Update(cmd())
+				request = s.eventRequests[len(s.eventRequests)-1]
+				if request.Cursor == nil || request.Cursor.EventID != 9 || request.Direction != data.EarnedEventsNewer {
+					t.Fatalf("newer request: %+v", request)
+				}
+				if got := m.activity.list.SelectedItem().(activityRow).event.EventID; got != 10 {
+					t.Fatalf("returned Event: got %d, want 10", got)
+				}
+			})
 		}
 	})
 	t.Run("Thought paging reuses the Event and cursor without retaining previous bodies", func(t *testing.T) {

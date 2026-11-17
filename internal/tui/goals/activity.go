@@ -10,7 +10,6 @@ import (
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
-	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
@@ -31,8 +30,10 @@ type activityState struct {
 	list    list.Model
 	focused bool
 	// Zero selects Goal settings; later positions select one Subject (or Misc).
-	detailIndex                  int
-	events                       data.GoalEventPage
+	detailIndex int
+	events      data.GoalEventPage
+	// Preserve the highlighted row when Left/Right crosses a loaded window.
+	eventPageRow                 int
 	eventRequest                 data.GoalEventPageRequest
 	eventsOlder, eventsNewer     bool
 	expandedEventID              int64
@@ -60,8 +61,6 @@ type activityRowKind uint8
 const (
 	activityEvent activityRowKind = iota
 	activityThought
-	activityEventsOlder
-	activityEventsNewer
 	activityThoughtsOlder
 	activityThoughtsNewer
 )
@@ -92,10 +91,6 @@ func (r activityRow) Title() string {
 			badge = "M · "
 		}
 		return "  " + badge + strings.Join(strings.Fields(r.thought.Preview), " ")
-	case activityEventsOlder:
-		return "Older Events…"
-	case activityEventsNewer:
-		return "Newer Events…"
 	case activityThoughtsOlder:
 		return "  Older Thoughts…"
 	default:
@@ -145,8 +140,15 @@ func (m *Model) beginActivityRead() context.Context {
 	return ctx
 }
 func (m *Model) loadActivityEvents(request data.GoalEventPageRequest) tea.Cmd {
+	if request.Limit == 0 {
+		delegate := activityDelegate(true)
+		// Reserve the paginator row even before the first results arrive.
+		perPage := max(1, (m.activity.list.Height()-1)/(delegate.Height()+delegate.Spacing()))
+		request.Limit = min(data.MaxGoalEventPageSize, perPage*activityPageDots)
+	}
 	ctx := m.beginActivityRead()
 	m.activity.eventRequest = request
+	m.activity.eventPageRow = 0
 	m.activity.expandedEventID = 0
 	m.activity.thoughts = data.ThoughtSummaryViewResult{}
 	m.refreshActivityRows()
@@ -192,7 +194,6 @@ func (m *Model) receiveActivity(reply activityResult) tea.Cmd {
 		request := m.activity.eventRequest
 		m.activity.eventsOlder = reply.events.More && request.Direction == data.EarnedEventsOlder || request.Cursor != nil && request.Direction == data.EarnedEventsNewer
 		m.activity.eventsNewer = reply.events.More && request.Direction == data.EarnedEventsNewer || request.Cursor != nil && request.Direction == data.EarnedEventsOlder
-		m.activity.list.Select(0)
 	} else {
 		for i := range m.activity.events.Events {
 			if m.activity.events.Events[i].EventID == reply.eventID {
@@ -204,14 +205,21 @@ func (m *Model) receiveActivity(reply activityResult) tea.Cmd {
 		m.activity.thoughtsOlder = reply.thoughtPage.Thoughts.More && request.Direction == data.ThoughtsOlder || request.Cursor != nil && request.Direction == data.ThoughtsNewer
 		m.activity.thoughtsNewer = reply.thoughtPage.Thoughts.More && request.Direction == data.ThoughtsNewer || request.Cursor != nil && request.Direction == data.ThoughtsOlder
 	}
-	return m.refreshActivityRows()
+	cmd := m.refreshActivityRows()
+	if reply.eventID == 0 {
+		pager := m.activity.list.Paginator
+		page := 0
+		if m.activity.eventRequest.Cursor != nil && m.activity.eventRequest.Direction == data.EarnedEventsNewer {
+			page = max(0, pager.TotalPages-1)
+		}
+		start, end := page*pager.PerPage, min((page+1)*pager.PerPage, len(m.activity.list.Items()))
+		m.activity.list.Select(start + min(m.activity.eventPageRow, max(0, end-start-1)))
+	}
+	return cmd
 }
 func (m *Model) refreshActivityRows() tea.Cmd {
 	selected, _ := m.activity.list.SelectedItem().(activityRow)
 	rows := make([]list.Item, 0, len(m.activity.events.Events)+len(m.activity.thoughts.Items)+4)
-	if m.activity.eventsNewer {
-		rows = append(rows, activityRow{kind: activityEventsNewer})
-	}
 	for _, item := range m.activity.events.Events {
 		expanded := item.EventID == m.activity.expandedEventID
 		rows = append(rows, activityRow{kind: activityEvent, event: item, expanded: expanded})
@@ -226,9 +234,6 @@ func (m *Model) refreshActivityRows() tea.Cmd {
 				rows = append(rows, activityRow{kind: activityThoughtsOlder})
 			}
 		}
-	}
-	if m.activity.eventsOlder {
-		rows = append(rows, activityRow{kind: activityEventsOlder})
 	}
 	cmd := m.activity.list.SetItems(rows)
 	for i, row := range rows {
@@ -301,7 +306,7 @@ func (m *Model) updateActivity(msg tea.Msg) tea.Cmd {
 			m.body, cmd = m.body.Update(msg)
 		} else {
 			m.activity.focused = true
-			m.activity.list, cmd = m.activity.list.Update(appearance.ListScrollInput(msg))
+			cmd = m.updateActivityList(msg)
 		}
 		return cmd
 	}
@@ -383,18 +388,6 @@ func (m *Model) updateActivity(msg tea.Msg) tea.Cmd {
 				if !m.activity.loading && m.activity.errorMessage == "" {
 					return m.openLineageThought(row)
 				}
-			case activityEventsOlder, activityEventsNewer:
-				if len(m.activity.events.Events) == 0 {
-					// Concurrent deletion can empty a page. Restart history
-					// instead of trapping navigation without a cursor row.
-					return m.loadActivityEvents(data.GoalEventPageRequest{})
-				}
-				direction, index := data.EarnedEventsOlder, len(m.activity.events.Events)-1
-				if row.kind == activityEventsNewer {
-					direction, index = data.EarnedEventsNewer, 0
-				}
-				cursor := m.activity.events.Events[index].Cursor()
-				return m.loadActivityEvents(data.GoalEventPageRequest{Cursor: &cursor, Direction: direction})
 			case activityThoughtsOlder, activityThoughtsNewer:
 				if len(m.activity.thoughts.Items) == 0 {
 					return m.loadActivityThoughts(m.activity.expandedEventID, data.ThoughtSummaryViewRequest{})
@@ -410,7 +403,7 @@ func (m *Model) updateActivity(msg tea.Msg) tea.Cmd {
 	}
 	var cmd tea.Cmd
 	if m.activity.focused {
-		m.activity.list, cmd = m.activity.list.Update(appearance.ListScrollInput(msg))
+		cmd = m.updateActivityList(msg)
 	} else {
 		m.body, cmd = m.body.Update(msg)
 	}
@@ -431,6 +424,13 @@ func (m Model) activityView() string {
 	}
 	activityList := m.activity.list
 	activityList.SetDelegate(activityDelegate(m.activity.focused))
+	// Keep Bubbles' real page index for row selection; reset only the displayed
+	// dots when expansion or resizing creates more than ten display pages.
+	dots := activityList.Paginator
+	windowStart := dots.Page / activityPageDots * activityPageDots
+	dots.Page -= windowStart
+	dots.TotalPages = min(activityPageDots, dots.TotalPages-windowStart)
+	activityList.Styles.PaginationStyle = activityList.Styles.PaginationStyle.Transform(func(string) string { return dots.View() })
 	body := activityList.View()
 	status := ""
 	if m.activity.loading {

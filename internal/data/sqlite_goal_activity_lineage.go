@@ -53,6 +53,11 @@ func (s *SQLiteGoalProgressStore) ListEarnedEvents(ctx context.Context, userID s
 	if err := requireLineageGoal(ctx, tx, userID, goalID); err != nil {
 		return GoalEventPage{}, err
 	}
+	limit := request.Limit
+	if limit <= 0 {
+		limit = GoalEventPageSize
+	}
+	limit = min(limit, MaxGoalEventPageSize)
 	query := goalLineageCTE + earnedEventSelect
 	args := []any{userID, goalID, userID, userID, userID}
 	comparison, order := "<", " DESC"
@@ -64,13 +69,13 @@ func (s *SQLiteGoalProgressStore) ListEarnedEvents(ctx context.Context, userID s
 		args = append(args, cursor.StartedAt.Unix(), cursor.EventID)
 	}
 	query += " ORDER BY e.started_at" + order + ", e.event_id" + order + " LIMIT ?"
-	args = append(args, GoalEventPageSize+1)
+	args = append(args, limit+1)
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return GoalEventPage{}, fmt.Errorf("list earned Events: %w", TranslateSQLiteError(err))
 	}
 	defer rows.Close()
-	page := GoalEventPage{Events: make([]GoalEventLineage, 0, GoalEventPageSize+1)}
+	page := GoalEventPage{Events: make([]GoalEventLineage, 0, limit+1)}
 	for rows.Next() {
 		item, err := scanEarnedEvent(rows)
 		if err != nil {
@@ -81,9 +86,9 @@ func (s *SQLiteGoalProgressStore) ListEarnedEvents(ctx context.Context, userID s
 	if err := rows.Err(); err != nil {
 		return GoalEventPage{}, err
 	}
-	page.More = len(page.Events) > GoalEventPageSize
+	page.More = len(page.Events) > limit
 	if page.More {
-		page.Events = page.Events[:GoalEventPageSize]
+		page.Events = page.Events[:limit]
 	}
 	if request.Direction == EarnedEventsNewer {
 		slices.Reverse(page.Events)

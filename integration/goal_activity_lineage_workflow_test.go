@@ -243,6 +243,31 @@ func TestGoalActivityLineagePaginationWorkflow_SQLite(t *testing.T) {
 			t.Fatalf("newer Events: got %+v,%v, want nearest newer IDs ending in 2", page, err)
 		}
 	})
+	t.Run("accepts display-sized Event windows while enforcing the maximum read size", func(t *testing.T) {
+		db, events := attributionFixture(t)
+		for i := 0; i < data.MaxGoalEventPageSize+1; i++ {
+			if _, err := events.CreatePast(t.Context(), "owner", "Work", time.Unix(100, 0), time.Unix(100, 0), []int64{1}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		store := data.NewSQLiteGoalProgressStore(db)
+		for _, tc := range []struct{ limit, want int }{{0, data.GoalEventPageSize}, {7, 7}, {80, 80}, {int(^uint(0) >> 1), data.MaxGoalEventPageSize}} {
+			for _, direction := range []data.GoalEventDirection{data.EarnedEventsOlder, data.EarnedEventsNewer} {
+				page, err := store.ListEarnedEvents(t.Context(), "owner", 1, data.GoalEventPageRequest{Limit: tc.limit, Direction: direction})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(page.Events) != tc.want || !page.More {
+					t.Fatalf("limit %d direction %d: got %d Events, more=%v, want %d and more", tc.limit, direction, len(page.Events), page.More, tc.want)
+				}
+				for i := 1; i < len(page.Events); i++ {
+					if page.Events[i-1].EventID <= page.Events[i].EventID {
+						t.Fatal("display window lost stable newest-first ordering")
+					}
+				}
+			}
+		}
+	})
 	t.Run("pages tied Thought timestamps once despite several contribution paths", func(t *testing.T) {
 		db, events := attributionFixture(t)
 		item, err := events.CreatePast(t.Context(), "owner", "Work", time.Unix(100, 0), time.Unix(200, 0), []int64{1, 2})
