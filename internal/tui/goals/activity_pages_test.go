@@ -28,7 +28,7 @@ func TestModel_ContinuousActivityPages(t *testing.T) {
 		cmd := m.loadActivityEvents(data.GoalEventPageRequest{})
 		count := m.activity.eventRequest.Limit
 		s.earnedEvents = historyEvents(count, 1000)
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		for window := 0; window < 3; window++ {
 			if got := m.activity.list.Paginator.TotalPages; got != 10 {
 				t.Fatalf("pages in window: got %d, want 10", got)
@@ -47,7 +47,7 @@ func TestModel_ContinuousActivityPages(t *testing.T) {
 				t.Fatal("tenth page did not continue to older Events")
 			}
 			s.earnedEvents = historyEvents(count, 1000-int64((window+1)*count))
-			m, _ = m.Update(cmd())
+			m, _ = m.Update(activityReadReply(cmd))
 			if len(m.activity.events.Events) != count || m.activity.list.Paginator.Page != 0 {
 				t.Fatal("next window accumulated Events or failed to reset to the first dot")
 			}
@@ -57,7 +57,7 @@ func TestModel_ContinuousActivityPages(t *testing.T) {
 			t.Fatal("first dot did not continue to newer Events")
 		}
 		s.earnedEvents = historyEvents(count, 1000-int64(2*count))
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		if m.activity.list.Paginator.Page != 9 || m.activity.list.Index() != count-m.activity.list.Paginator.PerPage {
 			t.Fatal("backward travel did not preserve the highlighted row on the tenth page")
 		}
@@ -65,7 +65,7 @@ func TestModel_ContinuousActivityPages(t *testing.T) {
 	t.Run("a failed window preserves Events allows retry and rejects a cancelled reply", func(t *testing.T) {
 		m, s := activityModel(t)
 		s.eventsMore = true
-		m, _ = m.Update(m.loadActivityEvents(data.GoalEventPageRequest{})())
+		m, _ = m.Update(activityReadReply(m.loadActivityEvents(data.GoalEventPageRequest{})))
 		m, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 		if cmd == nil {
 			t.Fatal("next window did not start")
@@ -75,13 +75,13 @@ func TestModel_ContinuousActivityPages(t *testing.T) {
 			t.Fatal("repeated paging started a duplicate read")
 		}
 		s.activityErr = errors.New("private read failure")
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		if m.activity.list.SelectedItem().(activityRow).event.EventID != 10 || !strings.Contains(m.View(), "R: retry") {
 			t.Fatal("failed paging lost Events or retry guidance")
 		}
 		s.activityErr = nil
 		m, cmd = press(m, "r")
-		reply := cmd()
+		reply := activityReadReply(cmd)
 		m.Close()
 		m, _ = m.Update(reply)
 		if m.open || m.activity.owner != nil {
@@ -91,20 +91,20 @@ func TestModel_ContinuousActivityPages(t *testing.T) {
 	t.Run("the mouse wheel crosses an Event window and an empty reply can recover", func(t *testing.T) {
 		m, s := activityModel(t)
 		s.eventsMore = true
-		m, _ = m.Update(m.loadActivityEvents(data.GoalEventPageRequest{})())
+		m, _ = m.Update(activityReadReply(m.loadActivityEvents(data.GoalEventPageRequest{})))
 		m, cmd := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown, Y: m.body.Height() + activityHeaderRows})
 		if cmd == nil {
 			t.Fatal("wheel did not continue through history")
 		}
 		s.earnedEvents = nil
 		s.eventsMore = false
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		m, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 		if cmd == nil {
 			t.Fatal("empty window trapped navigation")
 		}
 		s.earnedEvents = historyEvents(1, 10)
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		request := s.eventRequests[len(s.eventRequests)-1]
 		if request.Cursor != nil || m.activity.list.SelectedItem().(activityRow).event.EventID != 10 {
 			t.Fatal("empty window did not recover the newest remaining Event")
@@ -113,13 +113,13 @@ func TestModel_ContinuousActivityPages(t *testing.T) {
 	t.Run("dots stay in groups of ten when expansion or resizing adds display pages", func(t *testing.T) {
 		m, s := activityModel(t)
 		s.earnedEvents = historyEvents(80, 1000)
-		m, _ = m.Update(m.loadActivityEvents(data.GoalEventPageRequest{})())
+		m, _ = m.Update(activityReadReply(m.loadActivityEvents(data.GoalEventPageRequest{})))
 		s.lineageThoughts = make([]data.ThoughtSummaryView, 50)
 		for i := range s.lineageThoughts {
 			s.lineageThoughts[i] = data.ThoughtSummaryView{ThoughtID: int64(i + 1), Preview: "A related idea"}
 		}
 		m, cmd := press(m, "enter")
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		if m.activity.list.Paginator.TotalPages <= 10 {
 			t.Fatal("fixture did not expand beyond ten pages")
 		}

@@ -44,7 +44,7 @@ func activityModel(t *testing.T) (Model, *services) {
 	if cmd == nil {
 		t.Fatal("Details did not load Activity History")
 	}
-	m, _ = m.Update(cmd())
+	m, _ = m.Update(activityReadReply(cmd))
 	return m, s
 }
 func TestModel_ActivityHistory(t *testing.T) {
@@ -57,7 +57,7 @@ func TestModel_ActivityHistory(t *testing.T) {
 		if cmd == nil {
 			t.Fatal("expand returned no read")
 		}
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		if !strings.Contains(m.View(), "Events own time") {
 			t.Fatalf("missing Thought: %s", m.View())
 		}
@@ -66,7 +66,7 @@ func TestModel_ActivityHistory(t *testing.T) {
 		if cmd == nil {
 			t.Fatal("Thought selection did not open detail")
 		}
-		if _, ok := cmd().(OpenLineageThoughtMsg); !ok {
+		if _, ok := activityReadReply(cmd).(OpenLineageThoughtMsg); !ok {
 			t.Fatal("did not request shared Thought Details")
 		}
 	})
@@ -74,13 +74,13 @@ func TestModel_ActivityHistory(t *testing.T) {
 		m, s := activityModel(t)
 		s.activityErr = errors.New("private failure")
 		m, cmd := press(m, "enter")
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		if !strings.Contains(m.View(), "retry") || strings.Contains(m.View(), "private failure") {
 			t.Fatalf("unsafe or missing error: %s", m.View())
 		}
 		s.activityErr = nil
 		m, cmd = press(m, "r")
-		reply := cmd()
+		reply := activityReadReply(cmd)
 		m, _ = press(m, "esc")
 		m, _ = m.Update(reply)
 		if m.activity.expandedEventID != 0 || strings.Contains(m.View(), "Events own time") {
@@ -90,7 +90,7 @@ func TestModel_ActivityHistory(t *testing.T) {
 	t.Run("changing Goals rejects old history and closing cancels its context", func(t *testing.T) {
 		m, _ := activityModel(t)
 		old := m.loadActivityEvents(data.GoalEventPageRequest{})
-		reply := old()
+		reply := activityReadReply(old)
 		m.loadDetail(99)
 		m, _ = m.Update(reply)
 		if len(m.activity.events.Events) != 0 {
@@ -117,7 +117,7 @@ func TestModel_ActivityLayoutAndOwnership(t *testing.T) {
 			m, _ := activityModel(t)
 			m.Resize(size[0], size[1])
 			m, cmd := press(m, "enter")
-			m, _ = m.Update(cmd())
+			m, _ = m.Update(activityReadReply(cmd))
 			rows := strings.Split(m.View(), "\n")
 			if len(rows) > size[1] {
 				t.Fatalf("rendered rows: got %d, want at most %d: %q", len(rows), size[1], ansi.Strip(m.View()))
@@ -149,7 +149,7 @@ func TestModel_ActivityLayoutAndOwnership(t *testing.T) {
 			m, _ := activityModel(t)
 			m.Resize(width, 30)
 			m, cmd := press(m, "enter")
-			m, _ = m.Update(cmd())
+			m, _ = m.Update(activityReadReply(cmd))
 			for _, key := range []string{"", "down", "tab"} {
 				if key != "" {
 					m, _ = press(m, key)
@@ -178,7 +178,7 @@ func TestModel_ActivityLayoutAndOwnership(t *testing.T) {
 	t.Run("old expansion and queued Thought navigation cannot publish after collapse or another Event", func(t *testing.T) {
 		m, s := activityModel(t)
 		m, cmd := press(m, "enter")
-		late := cmd()
+		late := activityReadReply(cmd)
 		if ctx := s.activityContexts[len(s.activityContexts)-1]; ctx.Err() != nil {
 			t.Fatal("active read already canceled")
 		}
@@ -191,16 +191,16 @@ func TestModel_ActivityLayoutAndOwnership(t *testing.T) {
 			t.Fatal("late expansion reopened Event")
 		}
 		m, cmd = press(m, "enter")
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		m, _ = press(m, "down")
 		m, cmd = press(m, "enter")
-		message := cmd().(OpenLineageThoughtMsg)
+		message := activityReadReply(cmd).(OpenLineageThoughtMsg)
 		if !m.AcceptsLineageThought(message) {
 			t.Fatal("current Thought navigation rejected")
 		}
 		m, _ = press(m, "esc")
 		m, cmd = press(m, "enter")
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		if m.AcceptsLineageThought(message) {
 			t.Fatal("new expansion accepted old Thought navigation")
 		}
@@ -217,7 +217,7 @@ func TestModel_ActivityPages(t *testing.T) {
 			t.Run(key.String(), func(t *testing.T) {
 				m, s := activityModel(t)
 				s.eventsMore = true
-				m, _ = m.Update(m.loadActivityEvents(data.GoalEventPageRequest{})())
+				m, _ = m.Update(activityReadReply(m.loadActivityEvents(data.GoalEventPageRequest{})))
 				m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
 				if strings.Contains(m.View(), "Older Events") || strings.Contains(m.View(), "Newer Events") {
 					t.Fatal("database paging actions remain in the activity list")
@@ -228,7 +228,7 @@ func TestModel_ActivityPages(t *testing.T) {
 				}
 				s.earnedEvents = []data.GoalEventLineage{{EventID: 9, Activity: "Older work", StartedAt: time.Unix(50, 0), EndedAt: time.Unix(100, 0), ElapsedSeconds: 50}}
 				s.eventsMore = false
-				m, _ = m.Update(cmd())
+				m, _ = m.Update(activityReadReply(cmd))
 				request := s.eventRequests[len(s.eventRequests)-1]
 				if request.Cursor == nil || request.Cursor.EventID != 10 || request.Direction != data.EarnedEventsOlder {
 					t.Fatalf("older request: %+v", request)
@@ -238,7 +238,7 @@ func TestModel_ActivityPages(t *testing.T) {
 					t.Fatal("Left from the first older page did not load newer Events")
 				}
 				s.earnedEvents = []data.GoalEventLineage{{EventID: 10, Activity: "Implement lineage", StartedAt: time.Unix(100, 0), EndedAt: time.Unix(200, 0)}}
-				m, _ = m.Update(cmd())
+				m, _ = m.Update(activityReadReply(cmd))
 				request = s.eventRequests[len(s.eventRequests)-1]
 				if request.Cursor == nil || request.Cursor.EventID != 9 || request.Direction != data.EarnedEventsNewer {
 					t.Fatalf("newer request: %+v", request)
@@ -253,12 +253,12 @@ func TestModel_ActivityPages(t *testing.T) {
 		m, s := activityModel(t)
 		s.thoughtsMore = true
 		m, cmd := press(m, "enter")
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
 		m, cmd = press(m, "enter")
 		s.lineageThoughts = []data.ThoughtSummaryView{{ThoughtID: 19, Preview: "Older idea", ObservedAt: time.Unix(140, 0)}}
 		s.thoughtsMore = false
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		request := s.thoughtRequests[len(s.thoughtRequests)-1]
 		if request.Cursor == nil || request.Cursor.ThoughtID != 20 || request.Direction != data.ThoughtsOlder {
 			t.Fatalf("older Thoughts request: %+v", request)
@@ -276,7 +276,7 @@ func TestModel_ActivityPages(t *testing.T) {
 		if cmd == nil {
 			t.Fatal("Event click did not start expansion")
 		}
-		m, _ = m.Update(cmd())
+		m, _ = m.Update(activityReadReply(cmd))
 		if m.activity.expandedEventID != 10 {
 			t.Fatal("Event click selected wrong Event")
 		}
@@ -323,10 +323,10 @@ func TestModel_ActivityTimeFormatting(t *testing.T) {
 			service.earnedEvents[0].EndedAt = tc.at.Add(time.Hour)
 			service.lineageThoughts[0].ObservedAt = tc.at
 			cmd := m.loadDetail(42)
-			m, cmd = m.Update(cmd())
-			m, _ = m.Update(cmd())
+			m, cmd = m.Update(activityReadReply(cmd))
+			m, _ = m.Update(activityReadReply(cmd))
 			m, cmd = press(m, "enter")
-			m, _ = m.Update(cmd())
+			m, _ = m.Update(activityReadReply(cmd))
 			rendered := ansi.Strip(m.View())
 			for _, want := range []string{"▾ " + tc.date + " · " + tc.clock + " · Implement lineage", "Programming · " + tc.clock} {
 				if !strings.Contains(rendered, want) {

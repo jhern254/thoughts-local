@@ -3,6 +3,7 @@ package goals
 import (
 	"context"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -42,11 +43,15 @@ type activityState struct {
 	thoughtsOlder, thoughtsNewer bool
 	// One history read owns this token and context. Collapsing, paging, changing
 	// Goals, or leaving Details invalidates replies from the previous read.
-	owner        *byte
-	cancel       context.CancelFunc
-	loading      bool
-	errorMessage string
+	owner          *byte
+	cancel         context.CancelFunc
+	loading        bool
+	showLoading    bool
+	cancelFeedback context.CancelFunc
+	errorMessage   string
 }
+
+type activityFeedbackMsg struct{ owner *byte }
 
 type activityResult struct {
 	owner       *byte
@@ -122,7 +127,15 @@ func (m *Model) resetActivity() {
 	m.activity.list.SetShowPagination(true)
 	m.resizeDetail()
 }
+func (m *Model) cancelActivityFeedback() {
+	if m.activity.cancelFeedback != nil {
+		m.activity.cancelFeedback()
+	}
+	m.activity.cancelFeedback = nil
+	m.activity.showLoading = false
+}
 func (m *Model) cancelActivityRead() {
+	m.cancelActivityFeedback()
 	if m.activity.cancel != nil {
 		m.activity.cancel()
 	}
@@ -130,14 +143,28 @@ func (m *Model) cancelActivityRead() {
 	m.activity.owner = nil
 	m.activity.loading = false
 }
-func (m *Model) beginActivityRead() context.Context {
+func (m *Model) beginActivityRead() (context.Context, tea.Cmd) {
 	m.cancelActivityRead()
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.activity.cancel = cancel
 	m.activity.owner = new(byte)
 	m.activity.loading = true
 	m.activity.errorMessage = ""
-	return ctx
+	// Quick reads should not flash a loading label. Only feedback waits;
+	// completion cancels this timer without retiring the accepted read's owner.
+	feedbackCtx, cancelFeedback := context.WithCancel(ctx)
+	m.activity.cancelFeedback = cancelFeedback
+	owner := m.activity.owner
+	return ctx, func() tea.Msg {
+		timer := time.NewTimer(150 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-feedbackCtx.Done():
+			return nil
+		case <-timer.C:
+			return activityFeedbackMsg{owner: owner}
+		}
+	}
 }
 func (m *Model) loadActivityEvents(request data.GoalEventPageRequest) tea.Cmd {
 	if request.Limit == 0 {
@@ -146,20 +173,20 @@ func (m *Model) loadActivityEvents(request data.GoalEventPageRequest) tea.Cmd {
 		perPage := max(1, (m.activity.list.Height()-1)/(delegate.Height()+delegate.Spacing()))
 		request.Limit = min(data.MaxGoalEventPageSize, perPage*activityPageDots)
 	}
-	ctx := m.beginActivityRead()
+	ctx, feedback := m.beginActivityRead()
 	m.activity.eventRequest = request
 	m.activity.eventPageRow = 0
 	m.activity.expandedEventID = 0
 	m.activity.thoughts = data.ThoughtSummaryViewResult{}
 	m.refreshActivityRows()
 	owner, reader, user, id := m.activity.owner, m.activityReader, m.userID, m.requestedGoalID
-	return func() tea.Msg {
+	return tea.Batch(func() tea.Msg {
 		page, err := reader.ListEarnedEvents(ctx, user, id, request)
 		return activityResult{owner: owner, events: page, err: err}
-	}
+	}, feedback)
 }
 func (m *Model) loadActivityThoughts(eventID int64, request data.ThoughtSummaryViewRequest) tea.Cmd {
-	ctx := m.beginActivityRead()
+	ctx, feedback := m.beginActivityRead()
 	if m.activity.expandedEventID != eventID {
 		m.activity.thoughts = data.ThoughtSummaryViewResult{}
 		m.activity.thoughtsOlder, m.activity.thoughtsNewer = false, false
@@ -168,16 +195,17 @@ func (m *Model) loadActivityThoughts(eventID int64, request data.ThoughtSummaryV
 	m.activity.thoughtRequest = request
 	m.refreshActivityRows()
 	owner, reader, user, id := m.activity.owner, m.activityReader, m.userID, m.requestedGoalID
-	return func() tea.Msg {
+	return tea.Batch(func() tea.Msg {
 		page, err := reader.ListEventLineageThoughts(ctx, user, id, eventID, request)
 		return activityResult{owner: owner, eventID: eventID, thoughtPage: page, err: err}
-	}
+	}, feedback)
 }
 func (m *Model) receiveActivity(reply activityResult) tea.Cmd {
 	if m.screen != detailView || reply.owner == nil || reply.owner != m.activity.owner {
 		return nil
 	}
 	m.activity.loading = false
+	m.cancelActivityFeedback()
 	if reply.err != nil {
 		operation := logging.GoalActivityList
 		if reply.eventID != 0 {
@@ -433,14 +461,16 @@ func (m Model) activityView() string {
 	activityList.Styles.PaginationStyle = activityList.Styles.PaginationStyle.Transform(func(string) string { return dots.View() })
 	body := activityList.View()
 	status := ""
-	if m.activity.loading {
-		status = "Loading activity…"
-	} else if m.activity.errorMessage != "" {
+	if len(m.activity.events.Events) == 0 {
+		body = strings.Repeat("\n", max(0, m.activity.list.Height()-1))
+	}
+	switch {
+	case m.activity.errorMessage != "":
 		status = m.activity.errorMessage
-	} else if len(m.activity.events.Events) == 0 {
+	case m.activity.loading && m.activity.showLoading:
+		status = "Loading activity…"
+	case !m.activity.loading && len(m.activity.events.Events) == 0:
 		status = "No earned Events yet."
-	} else if m.activity.expandedEventID != 0 && len(m.activity.thoughts.Items) == 0 {
-		status = "No matching Thoughts in this Event."
 	}
 	body = ansi.Truncate(status, m.width, "…") + "\n" + body
 	divider := m.sectionDivider(m.activity.focused)

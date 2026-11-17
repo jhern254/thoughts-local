@@ -52,6 +52,12 @@ release and press again to go back. Escape remains available from any page.
 `r` refreshes history from the newest page; after a failed read it retries that
 page. An expanded Event's `r` reloads its current Thought page and interval.
 
+Loading feedback appears only if a read is still pending after 150 ms, matching
+Events. Reads start immediately and completed results appear immediately. The
+reserved status row stays in place, and existing Events remain visible while
+paging. Errors show retry guidance immediately. An expanded Event with no
+matching Thoughts stays visible without an additional empty-Thought message.
+
 ## Which Thoughts belong here?
 
 The database requires both:

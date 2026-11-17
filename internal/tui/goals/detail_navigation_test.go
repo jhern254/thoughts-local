@@ -23,7 +23,7 @@ func TestModel_DetailBackNavigation(t *testing.T) {
 				if readContext.Err() == nil {
 					t.Fatal("back did not cancel the abandoned history read")
 				}
-				m, _ = m.Update(cmd())
+				m, _ = m.Update(activityReadReply(cmd))
 				selected, ok := m.list.SelectedItem().(goalRow)
 				if !ok || selected.item.GoalID != 42 {
 					t.Fatal("return did not preserve the selected Goal")
@@ -34,7 +34,7 @@ func TestModel_DetailBackNavigation(t *testing.T) {
 	t.Run("Left pages backward and held repeats stop at the newest page", func(t *testing.T) {
 		m, s := activityModel(t)
 		s.earnedEvents = historyEvents(40, 1000)
-		m, _ = m.Update(m.loadActivityEvents(data.GoalEventPageRequest{})())
+		m, _ = m.Update(activityReadReply(m.loadActivityEvents(data.GoalEventPageRequest{})))
 		m.activity.list.Select(39)
 		for m.activity.list.Paginator.Page > 0 {
 			page := m.activity.list.Paginator.Page
@@ -55,7 +55,7 @@ func TestModel_DetailBackNavigation(t *testing.T) {
 	t.Run("Left collapses an expansion before returning and rejects its late reply", func(t *testing.T) {
 		m, _ := activityModel(t)
 		m, cmd := press(m, "enter")
-		reply := cmd()
+		reply := activityReadReply(cmd)
 		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 		if m.screen != detailView || m.activity.expandedEventID != 0 {
 			t.Fatal("first Left did not collapse the expansion")

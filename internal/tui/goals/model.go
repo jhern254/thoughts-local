@@ -62,7 +62,7 @@ type result struct {
 
 func Owns(msg tea.Msg) bool {
 	switch msg.(type) {
-	case result, activityResult:
+	case result, activityResult, activityFeedbackMsg:
 		return true
 	}
 	return false
@@ -376,6 +376,12 @@ func (m *Model) refreshBody() {
 
 func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	if !m.open {
+		return m, nil
+	}
+	if reply, ok := msg.(activityFeedbackMsg); ok {
+		if m.screen == detailView && reply.owner != nil && reply.owner == m.activity.owner && m.activity.loading {
+			m.activity.showLoading = true
+		}
 		return m, nil
 	}
 	if reply, ok := msg.(activityResult); ok {
