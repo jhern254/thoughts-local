@@ -23,7 +23,7 @@ type ActivityReader interface {
 	GetEventLineageThought(context.Context, string, int64, int64, int64) (*data.Thought, error)
 }
 
-// Details puts one blank row, the history heading, and its status row before
+// Details puts its divider, the history heading, and its status row before
 // the list. Mouse coordinates and height allocation must use the same offset.
 const activityHeaderRows = 3
 
@@ -401,7 +401,8 @@ func (m Model) activityView() string {
 		status = "No matching Thoughts in this Event."
 	}
 	body = ansi.Truncate(status, m.width, "…") + "\n" + body
-	return m.body.View() + "\n\nACTIVITY HISTORY\n" + body
+	divider := strings.Repeat(appearance.Border(m.borderWeight).Top, m.width)
+	return m.body.View() + "\n" + divider + "\nACTIVITY HISTORY\n" + body
 }
 func (m *Model) applyActivityMindset(change thoughts.MindsetChanged) tea.Cmd {
 	for i := range m.activity.thoughts.Items {

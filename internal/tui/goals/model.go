@@ -743,7 +743,18 @@ func (m Model) detailContent() string {
 		return ""
 	}
 	item := m.selected
-	return item.GoalName + "\n\n" + goalSummary(*item) + "\n\nSubjects\n" + strings.Join(numberedSubjectNames(m.live, m.goalNumbers), "\n") + fmt.Sprintf("\n\nCreated %s\nUpdated %s", item.CreatedAt.Format("Jan 2, 2006"), item.UpdatedAt.Format("Jan 2, 2006"))
+	settings := m.detailContentGroup(goalSummary(*item))
+	subjects := m.list.Styles.Title.Render("Subjects") + "\n" +
+		m.detailContentGroup(strings.Join(numberedSubjectNames(m.live, m.goalNumbers), "\n"))
+	return item.GoalName + "\n\n" + settings + "\n\n" + subjects +
+		fmt.Sprintf("\n\nCreated %s\nUpdated %s", item.CreatedAt.Format("Jan 2, 2006"), item.UpdatedAt.Format("Jan 2, 2006"))
+}
+
+func (m Model) detailContentGroup(content string) string {
+	style := goalListDelegate(!m.activity.focused).Styles.SelectedTitle
+	// Wrap inside the selection rail so long Subject names stay within the viewport.
+	width := max(1, m.width-style.GetHorizontalFrameSize())
+	return style.Render(ansi.Hardwrap(content, width, true))
 }
 
 func (m Model) IsOpen() bool { return m.open }

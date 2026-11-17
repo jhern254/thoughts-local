@@ -27,6 +27,12 @@ metadata occupies at most one-third of the available Details body; it remains
 scrollable for Goals with many Subjects. Mouse-wheel input scrolls the section
 under the pointer. Clicking a history row selects and opens it.
 
+A shared-style divider separates metadata from history and follows the border
+weight preference. Focusing metadata highlights the Goal settings and dates as
+one group, and the Subject names as another. Those groups become muted when
+history is focused. The Goal name and Created/Updated timestamps stay plain;
+the Subjects heading retains the standard block style in either section.
+
 Only one Event is expanded at a time. Its Thoughts are newest first, in pages of
 50 bounded summaries. Select **Older/Newer Events** or **Older/Newer Thoughts**
 when available. Escape collapses the expansion first, then returns to the Goals

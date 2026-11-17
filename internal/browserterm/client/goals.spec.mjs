@@ -124,6 +124,12 @@ test('Goal Activity History opens matching Thoughts and shared Mindset Details w
  await expect(screen(page)).toContainText('Lineage: one Event');
  await expect(screen(page)).not.toContainText('Excluded');
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-${testInfo.project.name}-normal.png`});
+ const settingsColors=()=>screen(page).locator(':scope > div').filter({hasText:'1h 0m / week · high · Active'}).evaluate(row=>[...row.querySelectorAll('span')].filter(span=>span.textContent.includes('1h')).map(span=>getComputedStyle(span).color));
+ await page.keyboard.press('Tab');
+ await expect.poll(settingsColors).toContain('rgb(238, 111, 248)');
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-details-focus-${testInfo.project.name}.png`});
+ await page.keyboard.press('Tab');
+ await expect.poll(settingsColors).toContain('rgb(183, 168, 205)');
  await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('m: mindset');
  await expect(screen(page)).toContainText('Lineage: one Event can reach several Goals.');
