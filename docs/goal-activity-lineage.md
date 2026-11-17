@@ -43,8 +43,12 @@ through adjacent Event windows without selectable loading rows. Each window
 loads up to ten screenfuls of Event summaries, capped at 250 Events. The dots
 show at most ten pages at a time; continuing forward resets to the first dot,
 and returning backward selects the last page of the newer window. Expansion
-and resizing can change the number of display pages without loading more data. Escape collapses the expansion first, then returns to the Goals
-list. `e` and `s` retain the existing independent property and Subject editors.
+and resizing can change the number of display pages without loading more data.
+Left (or `h`) pages toward newer Events. At the newest page, a fresh Left acts
+like Escape: collapse an expanded Event first, then return to the Goals list.
+With metadata focused, Left also acts as Back. Held Left stops at this boundary;
+release and press again to go back. Escape remains available from any page.
+`e` and `s` retain the existing independent property and Subject editors.
 `r` refreshes history from the newest page; after a failed read it retries that
 page. An expanded Event's `r` reloads its current Thought page and interval.
 

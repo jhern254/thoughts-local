@@ -467,7 +467,17 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	if m.saving {
 		return m, nil
 	}
-	if ok && key.String() == "esc" {
+	back := ok && key.String() == "esc"
+	if ok && m.screen == detailView && (key.String() == "left" || key.String() == "h") {
+		atHistoryStart := m.activity.list.Paginator.OnFirstPage() && !m.activity.eventsNewer
+		if !m.activity.focused || atHistoryStart {
+			if key.IsRepeat {
+				return m, nil
+			}
+			back = true
+		}
+	}
+	if back {
 		if m.screen == detailView && m.activity.expandedEventID != 0 {
 			return m, m.collapseActivity()
 		}
@@ -716,14 +726,14 @@ func (m Model) View() string {
 	case detailView:
 		m.body.SetContent(ansi.Hardwrap(m.detailContent(), m.width, true))
 		content = m.activityView()
-		help = "Enter: open · Tab: panels · e: Edit Goal · s: Manage Subjects · Esc: Back"
+		help = "Enter: open · Tab: panels · e: Edit Goal · s: Manage Subjects · ←/Esc: Back"
 		if m.width < 60 {
-			help = "Enter · Tab: panels · e:edit s:Subjects · Esc"
+			help = "Enter · Tab · e:edit s:Subjects · ←/Esc:back"
 		}
 		if !m.activity.focused {
-			help = "↑/↓: details · Tab: history · e: Edit Goal · s: Manage Subjects · Esc: Back"
+			help = "↑/↓: details · Tab: history · e: Edit Goal · s: Manage Subjects · ←/Esc: Back"
 			if m.width < 60 {
-				help = "↑/↓: details · Tab · e:edit s:Subjects · Esc"
+				help = "↑/↓: details · Tab · e:edit s:Subjects · ←/Esc:back"
 			}
 		}
 	default:

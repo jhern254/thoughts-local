@@ -100,7 +100,7 @@ func TestGoalActivityLineageTUIWorkflow_SQLite(t *testing.T) {
 		if strings.Contains(m.View().Content, "Events own the authoritative") {
 			t.Fatal("Escape did not collapse selected Event")
 		}
-		key(tea.KeyEscape)
+		key(tea.KeyLeft)
 		if !strings.Contains(m.View().Content, "Priority:") {
 			t.Fatalf("return to Goals list: %s", m.View().Content)
 		}

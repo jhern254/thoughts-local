@@ -171,7 +171,7 @@ test('Goal Activity History opens matching Thoughts and shared Mindset Details w
  await expect.poll(async()=>await screen(page).innerText()).not.toMatch(/M.*Thought/s);
  await page.keyboard.press('Escape');await page.keyboard.press('Escape');
  await expect(screen(page)).not.toContainText('Lineage: one Event');
- await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Priority:');
+ await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
  expect(sockets).toBe(connections);
 });
 
