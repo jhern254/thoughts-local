@@ -443,7 +443,7 @@ func (m Model) activityView() string {
 		status = "No matching Thoughts in this Event."
 	}
 	body = ansi.Truncate(status, m.width, "…") + "\n" + body
-	divider := strings.Repeat(appearance.Border(m.borderWeight).Top, m.width)
+	divider := m.sectionDivider(m.activity.focused)
 	return m.body.View() + "\n" + divider + "\nACTIVITY HISTORY\n" + body
 }
 func (m *Model) applyActivityMindset(change thoughts.MindsetChanged) tea.Cmd {

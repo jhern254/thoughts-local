@@ -28,7 +28,7 @@ scrollable for Goals with many Subjects. Mouse-wheel input scrolls the section
 under the pointer. Clicking a history row selects and opens it.
 
 A shared-style divider separates metadata from history and follows the border
-weight preference. A Goals block appears above the Goal name. Within metadata,
+weight preference. It turns purple while Activity History is focused. A Goals block appears above the Goal name. Within metadata,
 Up/Down or j/k selects the Goal settings/dates group or one Subject at a time;
 only that selection gets the bright highlight. The wheel and mouse can also
 select Subjects, and wrapped selections scroll into view. Home/End reaches the

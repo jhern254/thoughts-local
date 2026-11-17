@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 )
 
 type listControl uint8
@@ -227,7 +226,7 @@ func (m Model) listControlLayout() controlLayout {
 		layout.rows = append(layout.rows, strings.Split(m.subjectMenu.View(), "\n")...)
 		return layout
 	}
-	layout.rows = append(layout.rows, strings.Repeat(appearance.Border(m.borderWeight).Top, m.width))
+	layout.rows = append(layout.rows, m.sectionDivider(m.listFocus == goalListControl || m.listFocus == priorityControl))
 	line = "Priority: "
 	for i, label := range []string{"All", "High", "Normal", "Low"} {
 		add("["+label+"] ", priorityControl, i, m.priorityFilter == i)

@@ -1,5 +1,7 @@
 import {test, expect} from '@playwright/test';
 const screen = page => page.locator('.xterm-rows');
+const dividerColors = page => screen(page).locator(':scope > div').filter({hasText:/^[─━]+$/}).last()
+ .locator('span').evaluateAll(spans=>spans.map(span=>getComputedStyle(span).color));
 test('Goals workflow creates a target and returns to Events without reconnecting', async ({page}) => {
  let sockets=0;page.on('websocket',()=>sockets++);
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
@@ -85,7 +87,10 @@ test('Goal panels navigate vertically and held Left stops before leaving the Goa
  // Admission may retry while the preceding test's session retires. Once the
  // Goals list is usable, navigation must preserve this established connection.
  const connections=sockets;
- await page.keyboard.press('Tab');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');
+ await expect.poll(()=>dividerColors(page)).toContain('rgb(95, 95, 215)');
+ await page.keyboard.press('Tab');
+ await expect.poll(()=>dividerColors(page)).not.toContain('rgb(95, 95, 215)');
+ await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');
  await expect(screen(page)).toContainText('/ Search...');
  await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
  await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
@@ -126,8 +131,10 @@ test('Goal Activity History opens matching Thoughts and shared Mindset Details w
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-${testInfo.project.name}-normal.png`});
  const detailColors=text=>screen(page).locator(':scope > div').filter({hasText:text}).evaluate((row,text)=>[...row.querySelectorAll('span')].filter(span=>span.textContent.includes(text)).map(span=>getComputedStyle(span).color),text);
  const settingsColors=()=>detailColors('1h 0m / week · high · Active');
+ await expect.poll(()=>dividerColors(page)).toContain('rgb(95, 95, 215)');
  await page.keyboard.press('Tab');
  await expect.poll(settingsColors).toContain('rgb(238, 111, 248)');
+ await expect.poll(()=>dividerColors(page)).not.toContain('rgb(95, 95, 215)');
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-details-focus-${testInfo.project.name}.png`});
  await page.keyboard.press('ArrowDown');
  await expect.poll(()=>detailColors('Lineage Programming 1')).toContain('rgb(238, 111, 248)');
@@ -138,6 +145,7 @@ test('Goal Activity History opens matching Thoughts and shared Mindset Details w
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-subject-focus-${testInfo.project.name}.png`});
  await page.keyboard.press('Tab');
  await expect.poll(()=>detailColors('Lineage Research 1')).toContain('rgb(183, 168, 205)');
+ await expect.poll(()=>dividerColors(page)).toContain('rgb(95, 95, 215)');
  await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('m: mindset');
  await expect(screen(page)).toContainText('Lineage: one Event can reach several Goals.');
