@@ -18,6 +18,10 @@ Thought Details screen. That screen retains scrolling, reload, and `m` to change
 Mindset. Back returns to the same selected preview and history page; its Mindset
 badge reflects the change.
 
+Activity History shows Event and Thought times as `HH:MM AM/PM` in the same
+Pacific display timezone as Events. Event rows retain their date; seconds remain
+stored but are omitted from these history labels.
+
 Tab/Shift+Tab switches between the Goal metadata viewport and history. The
 metadata occupies at most one-third of the available Details body; it remains
 scrollable for Goals with many Subjects. Mouse-wheel input scrolls the section

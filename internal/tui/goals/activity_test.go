@@ -260,3 +260,36 @@ func TestModel_ActivityReturnToForm(t *testing.T) {
 		}
 	})
 }
+
+func TestModel_ActivityTimeFormatting(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		at          time.Time
+		date, clock string
+	}{
+		{"afternoon uses twelve-hour minutes", time.Date(2026, 11, 17, 0, 7, 23, 0, time.UTC), "Nov 16", "04:07 PM"},
+		{"midnight uses twelve AM", time.Date(2026, 11, 16, 8, 0, 59, 0, time.UTC), "Nov 16", "12:00 AM"},
+		{"noon uses twelve PM", time.Date(2026, 11, 16, 20, 0, 59, 0, time.UTC), "Nov 16", "12:00 PM"},
+		{"morning hours have two digits", time.Date(2026, 11, 16, 17, 5, 7, 0, time.UTC), "Nov 16", "09:05 AM"},
+		{"summer dates follow Pacific daylight saving time", time.Date(2026, 7, 2, 4, 7, 23, 0, time.UTC), "Jul 1", "09:07 PM"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, service := activityModel(t)
+			m.Resize(100, 35)
+			service.earnedEvents[0].StartedAt = tc.at
+			service.earnedEvents[0].EndedAt = tc.at.Add(time.Hour)
+			service.lineageThoughts[0].ObservedAt = tc.at
+			cmd := m.loadDetail(42)
+			m, cmd = m.Update(cmd())
+			m, _ = m.Update(cmd())
+			m, cmd = press(m, "enter")
+			m, _ = m.Update(cmd())
+			rendered := ansi.Strip(m.View())
+			for _, want := range []string{"▾ " + tc.date + " · " + tc.clock + " · Implement lineage", "Programming · " + tc.clock} {
+				if !strings.Contains(rendered, want) {
+					t.Fatalf("Activity History: got %q, want %q", rendered, want)
+				}
+			}
+		})
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"github.com/jhern254/go-thoughts/internal/failure"
 	"github.com/jhern254/go-thoughts/internal/logging"
 	"github.com/jhern254/go-thoughts/internal/tui/appearance"
+	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
 	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
 )
 
@@ -82,7 +83,7 @@ func (r activityRow) Title() string {
 		if activity == "" {
 			activity = "Event"
 		}
-		return mark + r.event.StartedAt.Local().Format("Jan 2 · 15:04") + " · " + activity
+		return mark + displaytime.Format(r.event.StartedAt, "Jan 2 · 03:04 PM") + " · " + activity
 	case activityThought:
 		badge := ""
 		if r.thought.IsMindset {
@@ -108,7 +109,7 @@ func (r activityRow) Description() string {
 		if r.thought.SubjectName != nil {
 			subject = *r.thought.SubjectName
 		}
-		return "  " + subject + " · " + r.thought.ObservedAt.Local().Format("15:04:05")
+		return "  " + subject + " · " + displaytime.Format(r.thought.ObservedAt, "03:04 PM")
 	}
 	return ""
 }
