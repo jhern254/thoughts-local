@@ -28,7 +28,9 @@ stored but are omitted from these history labels.
 Tab/Shift+Tab switches between the Goal metadata viewport and history. The
 metadata occupies at most one-third of the available Details body; it remains
 scrollable for Goals with many Subjects. Mouse-wheel input scrolls the section
-under the pointer. Clicking a history row selects and opens it.
+under the pointer. Clicking a history row selects and opens it. A Goal with no
+earned Events starts with its metadata focused. Populated history starts in
+Events, and Tab still switches between the two sections.
 
 A shared-style divider separates metadata from history and follows the border
 weight preference. It turns purple while Activity History is focused. A Goals block appears above the Goal name. Within metadata,

@@ -10,6 +10,7 @@ test('Goals workflow creates a target and returns to Events without reconnecting
  await page.locator('.xterm-helper-textarea').focus();
  await page.keyboard.press('Tab');await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('Goals');await expect(screen(page)).not.toContainText('Loading');
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goals-list-header-${test.info().project.name}.png`});
  await page.keyboard.press('n');await expect(screen(page)).toContainText('Create Goal');
  const name=`Goal browser ${Date.now()}`;await page.keyboard.type(name);
  await page.keyboard.press('ArrowDown');await page.keyboard.type('1');
@@ -19,6 +20,8 @@ test('Goals workflow creates a target and returns to Events without reconnecting
  await page.keyboard.press('Control+s');
  await expect(screen(page)).toContainText(name);await expect(screen(page)).toContainText('Manage Subjects');await expect(screen(page)).toContainText('Misc');
  await expect(screen(page)).toContainText('1h 0m / week · high · Inactive');
+ await expect(screen(page)).toContainText('No earned Events yet.');
+ await expect(screen(page)).toContainText('↑/↓: details');
  const connections=sockets;
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goals-${test.info().project.name}-normal.png`});
  await page.keyboard.press('e');await expect(screen(page)).toContainText('Edit Goal');await page.keyboard.press('Escape');

@@ -222,6 +222,12 @@ func (m *Model) receiveActivity(reply activityResult) tea.Cmd {
 		request := m.activity.eventRequest
 		m.activity.eventsOlder = reply.events.More && request.Direction == data.EarnedEventsOlder || request.Cursor != nil && request.Direction == data.EarnedEventsNewer
 		m.activity.eventsNewer = reply.events.More && request.Direction == data.EarnedEventsNewer || request.Cursor != nil && request.Direction == data.EarnedEventsOlder
+		// An empty initial read has nothing to browse. Cursor reads can be
+		// temporarily empty after deletion, so retain their recovery navigation.
+		if len(reply.events.Events) == 0 && request.Cursor == nil {
+			m.activity.focused = false
+			m.anchorDetailFocus()
+		}
 	} else {
 		for i := range m.activity.events.Events {
 			if m.activity.events.Events[i].EventID == reply.eventID {

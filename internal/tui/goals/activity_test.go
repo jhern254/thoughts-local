@@ -336,3 +336,53 @@ func TestModel_ActivityTimeFormatting(t *testing.T) {
 		})
 	}
 }
+
+func TestModel_EmptyActivityFocus(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		events         []data.GoalEventLineage
+		readErr        error
+		historyFocused bool
+	}{
+		{name: "empty history starts in Goal details", historyFocused: false},
+		{name: "populated history starts in Events", events: historyEvents(1, 10), historyFocused: true},
+		{name: "failed history keeps its retry focus", readErr: errors.New("private read failure"), historyFocused: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, s := activityModel(t)
+			s.earnedEvents = tc.events
+			s.activityErr = tc.readErr
+			m, cmd := m.Update(m.loadDetail(42)())
+			m, _ = m.Update(activityReadReply(cmd))
+			if m.activity.focused != tc.historyFocused {
+				t.Fatalf("history focused: got %v, want %v", m.activity.focused, tc.historyFocused)
+			}
+			if !tc.historyFocused {
+				if !strings.Contains(m.View(), "No earned Events yet.") || !strings.Contains(m.detailContent(), goalListDelegate(true).Styles.SelectedTitle.Render(goalSummary(*m.selected))) {
+					t.Fatal("empty history did not highlight Goal details")
+				}
+				m, _ = press(m, "tab")
+				if !m.activity.focused {
+					t.Fatal("Tab did not reach the empty Events section")
+				}
+				m, _ = press(m, "tab")
+				if m.activity.focused {
+					t.Fatal("Tab did not return to Goal details")
+				}
+			}
+		})
+	}
+	t.Run("a late empty reply cannot take focus from another Goal", func(t *testing.T) {
+		m, s := activityModel(t)
+		s.earnedEvents = nil
+		late := activityReadReply(m.loadActivityEvents(data.GoalEventPageRequest{}))
+		s.item.GoalID = 99
+		s.earnedEvents = historyEvents(1, 20)
+		m, cmd := m.Update(m.loadDetail(99)())
+		m, _ = m.Update(activityReadReply(cmd))
+		m, _ = m.Update(late)
+		if !m.activity.focused || m.selected.GoalID != 99 || len(m.activity.events.Events) != 1 {
+			t.Fatal("late empty history changed the new Goal or its focus")
+		}
+	})
+}
