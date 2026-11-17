@@ -139,18 +139,19 @@ func readEarnedEvent(ctx context.Context, tx *sql.Tx, userID string, goalID, eve
 	return item, err
 }
 
-// Match only the surviving Subject reference. recorded_subject_id is historical
-// identification and must never attach Thoughts from a new Subject reusing it.
-// EXISTS keeps a Thought unique even when several descendants earned it.
+// Build the Event's contributing Subject set once, then match each Thought's
+// Subject without repeatedly scanning contributions. Only surviving, undeleted
+// Subjects qualify: recorded_subject_id must not match a new Subject that reused
+// a hard-deleted Subject's ID.
 const lineageThoughtCondition = `
-    AND EXISTS (
-        SELECT 1
+    AND t.subject_id IN (
+        SELECT p.subject_id
         FROM goal_progress p
         JOIN reachable_goals r ON r.goal_id = p.goal_id
         JOIN subjects contributing_subject ON contributing_subject.subject_id = p.subject_id
             AND contributing_subject.user_id = p.user_id
             AND contributing_subject.deleted_at IS NULL
-        WHERE p.user_id = t.user_id AND p.event_id = ? AND p.subject_id = t.subject_id
+        WHERE p.user_id = ? AND p.event_id = ?
     )`
 
 func (s *SQLiteGoalProgressStore) ListEventLineageThoughts(ctx context.Context, userID string, goalID, eventID int64, request ThoughtSummaryViewRequest) (GoalEventThoughtPage, error) {
@@ -165,7 +166,7 @@ func (s *SQLiteGoalProgressStore) ListEventLineageThoughts(ctx context.Context, 
 	}
 	query := goalLineageCTE + eventThoughtSummarySelect + `
         AND t.observed_at >= ? AND t.observed_at < ?` + lineageThoughtCondition
-	args := []any{userID, goalID, userID, userID, item.StartedAt.Unix(), item.EndedAt.Unix(), eventID}
+	args := []any{userID, goalID, userID, userID, item.StartedAt.Unix(), item.EndedAt.Unix(), userID, eventID}
 	thoughts, err := browseThoughtSummaries(ctx, tx, query, args, request, ThoughtSummaryViewBatchSize)
 	if err != nil {
 		return GoalEventThoughtPage{}, err
@@ -194,7 +195,7 @@ func (s *SQLiteGoalProgressStore) GetEventLineageThought(ctx context.Context, us
     FROM thoughts t
     WHERE t.user_id = ? AND t.thought_id = ? AND t.deleted_at IS NULL
         AND t.observed_at >= ? AND t.observed_at < ?`+lineageThoughtCondition,
-		userID, goalID, userID, userID, thoughtID, item.StartedAt.Unix(), item.EndedAt.Unix(), eventID).Scan(&matched)
+		userID, goalID, userID, userID, thoughtID, item.StartedAt.Unix(), item.EndedAt.Unix(), userID, eventID).Scan(&matched)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrRecordNotFound
 	}

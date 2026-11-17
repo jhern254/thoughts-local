@@ -61,6 +61,54 @@ func TestGoalActivityLineageWorkflow_SQLite(t *testing.T) {
 			}
 		}
 	})
+	t.Run("a parent matches each contributing Subject once across diamond paths", func(t *testing.T) {
+		db, events := attributionFixture(t)
+		if _, err := db.Exec(`
+            UPDATE subject_goals SET deleted_at = 1 WHERE goal_id = 1 AND subject_id = 2;
+            INSERT INTO goals (goal_id,user_id,goal_name,target_seconds) VALUES
+                (4,'owner','Parent A',60),(5,'owner','Parent B',60),(6,'owner','Root',60);
+            INSERT INTO goal_parents (goal_id,parent_goal_id,user_id) VALUES
+                (1,4,'owner'),(1,5,'owner'),(2,5,'owner'),(4,6,'owner'),(5,6,'owner');
+            INSERT INTO subjects (subject_id,user_id,subject_name) VALUES (4,'owner','Unrelated');
+            INSERT INTO thoughts (thought_id,user_id,subject_id,thought,observed_at) VALUES
+                (1,'owner',1,'Programming',100),(2,'owner',2,'Research',150),
+                (3,'owner',NULL,'Misc',150),(4,'owner',4,'Unrelated',150);
+        `); err != nil {
+			t.Fatal(err)
+		}
+		event, err := events.CreatePast(t.Context(), "owner", "Shared work", time.Unix(100, 0), time.Unix(200, 0), []int64{1, 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		store := data.NewSQLiteGoalProgressStore(db)
+		for _, step := range []struct {
+			change string
+			ids    []int64
+		}{
+			{"", []int64{2, 1}},
+			{"DELETE FROM goal_parents WHERE goal_id = 5 AND parent_goal_id = 6", []int64{1}},
+		} {
+			if step.change != "" {
+				if _, err := db.Exec(step.change); err != nil {
+					t.Fatal(err)
+				}
+			}
+			page, err := store.ListEventLineageThoughts(t.Context(), "owner", 6, event.EventID, data.ThoughtSummaryViewRequest{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids := make([]int64, 0, len(page.Thoughts.Items))
+			for _, thought := range page.Thoughts.Items {
+				ids = append(ids, thought.ThoughtID)
+				if _, err := store.GetEventLineageThought(t.Context(), "owner", 6, event.EventID, thought.ThoughtID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !reflect.DeepEqual(ids, step.ids) {
+				t.Fatalf("parent Thoughts: got %v, want %v", ids, step.ids)
+			}
+		}
+	})
 	t.Run("distinguishes unavailable Goals and Events from valid empty history", func(t *testing.T) {
 		db, _ := attributionFixture(t)
 		store := data.NewSQLiteGoalProgressStore(db)
