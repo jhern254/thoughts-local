@@ -109,11 +109,13 @@ availability checks and page reads consistent. Event projections contain at most
 reader. Full Thought bodies are fetched only on selection. No queries run during
 rendering, and only the current Event page and expanded Thought page are retained.
 
-The Event query first collects distinct earned Event IDs. Query-plan checks on
-the synthetic stress database (721 Events, 20,000 Thoughts, 13,958 contribution
-rows) showed that checking membership separately for each Event repeatedly
-scanned contributions for empty Goals. Collecting earned IDs first avoided that
-work using existing indexes; this feature adds no index or migration.
+The Event query first restricts contributions to the requested Goal and its
+reachable descendants, then matches Events against those IDs with `IN`.
+This uses the existing `(user_id, goal_id, event_id)` index instead of scanning
+every contribution for the user before filtering Goals. The ID membership is
+computed once, so older/newer cursor paging does not repeatedly join and scan
+it for each Event. Matching IDs also keeps an Event unique across Subjects and
+parent paths. This feature adds no index or migration.
 
 Pages reflect current data rather than a long-lived snapshot. Equal timestamps
 use ID tie-breakers, but concurrent edits can move records across cursor bounds;
@@ -137,3 +139,20 @@ Behavior is covered by migrated SQLite tests, focused TUI tests, a root-TUI/
 SQLite workflow, and the existing browser acceptance harness. Local browser
 verification uses sandboxed Brave; hosted acceptance supplies Chromium and Firefox
 coverage. Native and browser layouts are inspected at normal and narrow sizes.
+
+## Reproducing performance measurements
+
+Use a disposable migrated database loaded with `scripts/demo_stress.sql`.
+Compile the opt-in benchmarks separately, then run without other builds or tests:
+
+```sh
+go test -c -tags=integration -o /tmp/goal-activity-bench.test ./internal/tui/goals
+THOUGHTS_STRESS_DSN=file:/tmp/your-stress-demo.db /tmp/goal-activity-bench.test \
+  -test.run '^$' -test.bench '^BenchmarkGoalActivity' -test.benchtime=30x -test.count=3
+```
+
+The read benchmarks cover initial, older, newer, maximum-sized, and empty Event windows,
+and Thought expansion. Presentation benchmarks measure rendering, local movement,
+and expansion at 100×35 and 48×24 terminal cells. The benchmark completes data
+commands directly; loading-feedback timing is tested separately. Database setup,
+fixture selection, and compilation are outside the timed loops.

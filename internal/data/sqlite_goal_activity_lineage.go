@@ -26,23 +26,23 @@ const goalLineageCTE = `
         WHERE p.user_id = ?
     )`
 
-// Gather this Goal's earned Event IDs before reading Events. A correlated
-// membership check would repeatedly scan contributions for an empty history.
-const earnedEventSelect = `, earned_events(event_id) AS (
-        SELECT DISTINCT p.event_id
-        FROM goal_progress p
-        JOIN reachable_goals r ON r.goal_id = p.goal_id
-        WHERE p.user_id = ?
-    )
+// Each earned Event appears once, even through several Subjects or descendants.
+// Build the earned ID membership once: joining it can repeatedly scan those IDs
+// for each Event when cursor paging uses the Event time index.
+const earnedEventSelect = `
     SELECT
         e.event_id,
         substr(COALESCE(e.activity_type, ''), 1, 81),
         e.started_at,
         e.ended_at,
         e.ended_at - e.started_at
-    FROM earned_events earned
-    JOIN events e ON e.event_id = earned.event_id
-    WHERE e.user_id = ? AND e.deleted_at IS NULL AND e.ended_at IS NOT NULL`
+    FROM events e
+    WHERE e.user_id = ? AND e.deleted_at IS NULL AND e.ended_at IS NOT NULL
+        AND e.event_id IN (
+            SELECT p.event_id
+            FROM goal_progress p
+            WHERE p.user_id = ? AND p.goal_id IN (SELECT goal_id FROM reachable_goals)
+        )`
 
 func (s *SQLiteGoalProgressStore) ListEarnedEvents(ctx context.Context, userID string, goalID int64, request GoalEventPageRequest) (GoalEventPage, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
