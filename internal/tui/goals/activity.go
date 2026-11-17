@@ -28,8 +28,10 @@ type ActivityReader interface {
 const activityHeaderRows = 3
 
 type activityState struct {
-	list                         list.Model
-	focused                      bool
+	list    list.Model
+	focused bool
+	// Zero selects Goal settings; later positions select one Subject (or Misc).
+	detailIndex                  int
 	events                       data.GoalEventPage
 	eventRequest                 data.GoalEventPageRequest
 	eventsOlder, eventsNewer     bool
@@ -287,6 +289,15 @@ func (m *Model) updateActivity(msg tea.Msg) tea.Cmd {
 		var cmd tea.Cmd
 		if wheel.Y < m.body.Height() {
 			m.activity.focused = false
+			step := 0
+			if wheel.Button == tea.MouseWheelDown {
+				step = 1
+			} else if wheel.Button == tea.MouseWheelUp {
+				step = -1
+			}
+			if step != 0 && m.moveDetailFocus(step) {
+				return nil
+			}
 			m.body, cmd = m.body.Update(msg)
 		} else {
 			m.activity.focused = true
@@ -297,6 +308,7 @@ func (m *Model) updateActivity(msg tea.Msg) tea.Cmd {
 	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
 		if click.Y < m.body.Height() {
 			m.activity.focused = false
+			m.selectDetailAtRow(click.Y + m.body.YOffset())
 			return nil
 		}
 		m.activity.focused = true
@@ -310,9 +322,39 @@ func (m *Model) updateActivity(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok {
+		if !m.activity.focused {
+			switch key.String() {
+			case "up", "k", "down", "j":
+				step := 1
+				if key.String() == "up" || key.String() == "k" {
+					step = -1
+				}
+				if m.moveDetailFocus(step) {
+					return nil
+				}
+				var cmd tea.Cmd
+				m.body, cmd = m.body.Update(msg)
+				return cmd
+			case "home":
+				m.activity.detailIndex = 0
+				m.body.GotoTop()
+				return nil
+			case "end":
+				_, targets := m.detailContentLayout()
+				if len(targets) > 0 {
+					m.activity.detailIndex = len(targets) - 1
+					m.anchorDetailFocus()
+					m.body.GotoBottom()
+				}
+				return nil
+			}
+		}
 		switch key.String() {
 		case "tab", "shift+tab":
 			m.activity.focused = !m.activity.focused
+			if !m.activity.focused {
+				m.anchorDetailFocus()
+			}
 			return nil
 		case "r", "R":
 			if m.activity.expandedEventID != 0 {

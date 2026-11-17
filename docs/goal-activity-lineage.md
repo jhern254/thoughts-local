@@ -28,10 +28,13 @@ scrollable for Goals with many Subjects. Mouse-wheel input scrolls the section
 under the pointer. Clicking a history row selects and opens it.
 
 A shared-style divider separates metadata from history and follows the border
-weight preference. Focusing metadata highlights the Goal settings and dates as
-one group, and the Subject names as another. Those groups become muted when
-history is focused. The Goal name and Created/Updated timestamps stay plain;
-the Subjects heading retains the standard block style in either section.
+weight preference. A Goals block appears above the Goal name. Within metadata,
+Up/Down or j/k selects the Goal settings/dates group or one Subject at a time;
+only that selection gets the bright highlight. The wheel and mouse can also
+select Subjects, and wrapped selections scroll into view. Home/End reaches the
+first/last item. Tab remembers the selected item when switching panels, with a
+muted selection while history is focused. Headers and Created/Updated timestamps
+are not selectable; the Goals and Subjects headings retain their block styles.
 
 Only one Event is expanded at a time. Its Thoughts are newest first, in pages of
 50 bounded summaries. Select **Older/Newer Events** or **Older/Newer Thoughts**

@@ -267,6 +267,9 @@ func (m *Model) Resize(width, height int) {
 	}
 	m.resizeDetail()
 	m.refreshBody()
+	if m.screen == detailView && !m.activity.focused {
+		m.anchorDetailFocus()
+	}
 }
 func (m *Model) Open() tea.Cmd { m.open = true; m.screen = listView; return m.loadList() }
 func (m *Model) loadList() tea.Cmd {
@@ -717,6 +720,12 @@ func (m Model) View() string {
 		if m.width < 60 {
 			help = "Enter · Tab: panels · e:edit s:Subjects · Esc"
 		}
+		if !m.activity.focused {
+			help = "↑/↓: details · Tab: history · e: Edit Goal · s: Manage Subjects · Esc: Back"
+			if m.width < 60 {
+				help = "↑/↓: details · Tab · e:edit s:Subjects · Esc"
+			}
+		}
 	default:
 		content = m.formContent()
 		help = "↑/↓: field · ←/→: adjust · Ctrl+S: save · Esc: cancel"
@@ -736,25 +745,6 @@ func (m Model) View() string {
 		status = "No matches."
 	}
 	return content + "\n" + ansi.Truncate(status, m.width, "…") + "\n" + ansi.Truncate(help, m.width, "…")
-}
-
-func (m Model) detailContent() string {
-	if m.selected == nil {
-		return ""
-	}
-	item := m.selected
-	settings := m.detailContentGroup(goalSummary(*item))
-	subjects := m.list.Styles.Title.Render("Subjects") + "\n" +
-		m.detailContentGroup(strings.Join(numberedSubjectNames(m.live, m.goalNumbers), "\n"))
-	return item.GoalName + "\n\n" + settings + "\n\n" + subjects +
-		fmt.Sprintf("\n\nCreated %s\nUpdated %s", item.CreatedAt.Format("Jan 2, 2006"), item.UpdatedAt.Format("Jan 2, 2006"))
-}
-
-func (m Model) detailContentGroup(content string) string {
-	style := goalListDelegate(!m.activity.focused).Styles.SelectedTitle
-	// Wrap inside the selection rail so long Subject names stay within the viewport.
-	width := max(1, m.width-style.GetHorizontalFrameSize())
-	return style.Render(ansi.Hardwrap(content, width, true))
 }
 
 func (m Model) IsOpen() bool { return m.open }
