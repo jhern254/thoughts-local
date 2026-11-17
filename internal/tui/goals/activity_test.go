@@ -144,6 +144,37 @@ func TestModel_ActivityLayoutAndOwnership(t *testing.T) {
 			}
 		})
 	}
+	t.Run("Thought previews and their metadata stay indented when focus changes", func(t *testing.T) {
+		for _, width := range []int{100, 48} {
+			m, _ := activityModel(t)
+			m.Resize(width, 30)
+			m, cmd := press(m, "enter")
+			m, _ = m.Update(cmd())
+			for _, key := range []string{"", "down", "tab"} {
+				if key != "" {
+					m, _ = press(m, key)
+				}
+				eventColumn, thoughtColumn, metadataColumn := -1, -1, -1
+				for _, row := range strings.Split(ansi.Strip(m.View()), "\n") {
+					if i := strings.Index(row, "▾ "); i >= 0 {
+						eventColumn = ansi.StringWidth(row[:i])
+					}
+					if i := strings.Index(row, "Events own time"); i >= 0 {
+						thoughtColumn = ansi.StringWidth(row[:i])
+					}
+					if i := strings.Index(row, "Programming ·"); i >= 0 {
+						metadataColumn = ansi.StringWidth(row[:i])
+					}
+					if ansi.StringWidth(row) > width {
+						t.Fatalf("row overflows %d columns: %q", width, row)
+					}
+				}
+				if eventColumn < 0 || thoughtColumn != eventColumn+4 || metadataColumn != thoughtColumn {
+					t.Fatalf("width %d after %q: Event column %d, Thought %d, metadata %d; want Thought and metadata four cells beyond Event", width, key, eventColumn, thoughtColumn, metadataColumn)
+				}
+			}
+		}
+	})
 	t.Run("old expansion and queued Thought navigation cannot publish after collapse or another Event", func(t *testing.T) {
 		m, s := activityModel(t)
 		m, cmd := press(m, "enter")

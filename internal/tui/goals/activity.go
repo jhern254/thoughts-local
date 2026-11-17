@@ -90,11 +90,11 @@ func (r activityRow) Title() string {
 		if r.thought.IsMindset {
 			badge = "M · "
 		}
-		return "  " + badge + strings.Join(strings.Fields(r.thought.Preview), " ")
+		return "    " + badge + strings.Join(strings.Fields(r.thought.Preview), " ")
 	case activityThoughtsOlder:
-		return "  Older Thoughts…"
+		return "    Older Thoughts…"
 	default:
-		return "  Newer Thoughts…"
+		return "    Newer Thoughts…"
 	}
 }
 func (r activityRow) Description() string {
@@ -106,7 +106,7 @@ func (r activityRow) Description() string {
 		if r.thought.SubjectName != nil {
 			subject = *r.thought.SubjectName
 		}
-		return "  " + subject + " · " + displaytime.Format(r.thought.ObservedAt, "03:04 PM")
+		return "    " + subject + " · " + displaytime.Format(r.thought.ObservedAt, "03:04 PM")
 	}
 	return ""
 }
