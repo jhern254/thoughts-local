@@ -8,11 +8,21 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jhern254/go-thoughts/internal/data"
 	"github.com/jhern254/go-thoughts/internal/goal"
 )
 
 type services struct {
+	earnedEvents     []data.GoalEventLineage
+	lineageThoughts  []data.ThoughtSummaryView
+	activityErr      error
+	eventsMore       bool
+	thoughtsMore     bool
+	eventRequests    []data.GoalEventPageRequest
+	thoughtRequests  []data.ThoughtSummaryViewRequest
+	activityContexts []context.Context
+
 	item                       data.Goal
 	subjects                   []data.Subject
 	err                        error
@@ -74,7 +84,7 @@ func (s *services) ListLiveSubjectsForGoal(context.Context, string, int64) ([]da
 func testModel(t *testing.T) (Model, *services) {
 	t.Helper()
 	s := &services{item: data.Goal{GoalID: 42, GoalName: "Practice Go", TargetSeconds: 5400, Version: 7, TZ: "America/Los_Angeles", WeekStart: "sun", Cadence: "weekly", Priority: "high"}}
-	return New(t.Context(), "owner", s, s, s, subjectService{s}), s
+	return New(t.Context(), "owner", s, s, s, subjectService{s}, s), s
 }
 func press(m Model, key string) (Model, tea.Cmd) {
 	switch key {
@@ -246,7 +256,8 @@ func TestModel_DetailScroll(t *testing.T) {
 		}
 		reply := m.loadDetail(s.item.GoalID)()
 		m, _ = m.Update(reply)
-		if !strings.HasPrefix(m.View(), s.item.GoalName) {
+		rows := strings.Split(ansi.Strip(m.View()), "\n")
+		if strings.TrimSpace(rows[0]) != "Goals" || strings.TrimSpace(rows[1]) != s.item.GoalName {
 			t.Fatalf("Details heading hidden by previous scroll: %s", m.View())
 		}
 	})

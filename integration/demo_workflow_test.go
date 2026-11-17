@@ -43,6 +43,10 @@ func TestDemoWorkflow_SQLite(t *testing.T) {
 		if got, want := [6]int{events, ongoing, thoughts, misc, current, invalid}, [6]int{721, 1, 20000, 4000, 200, 0}; got != want {
 			t.Fatalf("got events/ongoing/thoughts/Misc/current/invalid %v, want %v", got, want)
 		}
+		history, err := data.NewSQLiteGoalProgressStore(db).ListEarnedEvents(t.Context(), "demo", 1, data.GoalEventPageRequest{})
+		if err != nil || len(history.Events) != data.GoalEventPageSize || !history.More {
+			t.Fatalf("stress earned history: got %+v,%v, want a full page and older Events", history, err)
+		}
 		var integrity string
 		if err := db.QueryRow("PRAGMA integrity_check").Scan(&integrity); err != nil {
 			t.Fatal(err)

@@ -1,0 +1,499 @@
+package goals
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/jhern254/go-thoughts/internal/data"
+	"github.com/jhern254/go-thoughts/internal/failure"
+	"github.com/jhern254/go-thoughts/internal/logging"
+	"github.com/jhern254/go-thoughts/internal/tui/displaytime"
+	"github.com/jhern254/go-thoughts/internal/tui/thoughts"
+)
+
+// ActivityReader supplies earned history; attribution and Subject matching stay
+// behind the Goal progress application boundary, outside the presentation layer.
+type ActivityReader interface {
+	ListEarnedEvents(context.Context, string, int64, data.GoalEventPageRequest) (data.GoalEventPage, error)
+	ListEventLineageThoughts(context.Context, string, int64, int64, data.ThoughtSummaryViewRequest) (data.GoalEventThoughtPage, error)
+	GetEventLineageThought(context.Context, string, int64, int64, int64) (*data.Thought, error)
+}
+
+// Details puts its divider, the history heading, and its status row before
+// the list. Mouse coordinates and height allocation must use the same offset.
+const activityHeaderRows = 3
+
+type activityState struct {
+	list    list.Model
+	focused bool
+	// Zero selects Goal settings; later positions select one Subject (or Misc).
+	detailIndex int
+	events      data.GoalEventPage
+	// Preserve the highlighted row when Left/Right crosses a loaded window.
+	eventPageRow                 int
+	eventRequest                 data.GoalEventPageRequest
+	eventsOlder, eventsNewer     bool
+	expandedEventID              int64
+	thoughts                     data.ThoughtSummaryViewResult
+	thoughtRequest               data.ThoughtSummaryViewRequest
+	thoughtsOlder, thoughtsNewer bool
+	// One history read owns this token and context. Collapsing, paging, changing
+	// Goals, or leaving Details invalidates replies from the previous read.
+	owner          *byte
+	cancel         context.CancelFunc
+	loading        bool
+	showLoading    bool
+	cancelFeedback context.CancelFunc
+	errorMessage   string
+}
+
+type activityFeedbackMsg struct{ owner *byte }
+
+type activityResult struct {
+	owner       *byte
+	eventID     int64
+	events      data.GoalEventPage
+	thoughtPage data.GoalEventThoughtPage
+	err         error
+}
+
+type activityRowKind uint8
+
+const (
+	activityEvent activityRowKind = iota
+	activityThought
+	activityThoughtsOlder
+	activityThoughtsNewer
+)
+
+type activityRow struct {
+	kind     activityRowKind
+	event    data.GoalEventLineage
+	thought  data.ThoughtSummaryView
+	expanded bool
+}
+
+func (r activityRow) FilterValue() string { return r.Title() }
+func (r activityRow) Title() string {
+	switch r.kind {
+	case activityEvent:
+		mark := "▸ "
+		if r.expanded {
+			mark = "▾ "
+		}
+		activity := strings.Join(strings.Fields(r.event.Activity), " ")
+		if activity == "" {
+			activity = "Event"
+		}
+		return mark + displaytime.Format(r.event.StartedAt, "Jan 2 · 03:04 PM") + " · " + activity
+	case activityThought:
+		badge := ""
+		if r.thought.IsMindset {
+			badge = "M · "
+		}
+		return "    " + badge + strings.Join(strings.Fields(r.thought.Preview), " ")
+	case activityThoughtsOlder:
+		return "    Older Thoughts…"
+	default:
+		return "    Newer Thoughts…"
+	}
+}
+func (r activityRow) Description() string {
+	if r.kind == activityEvent {
+		return "  " + formatDuration(r.event.ElapsedSeconds)
+	}
+	if r.kind == activityThought {
+		subject := ""
+		if r.thought.SubjectName != nil {
+			subject = *r.thought.SubjectName
+		}
+		return "    " + subject + " · " + displaytime.Format(r.thought.ObservedAt, "03:04 PM")
+	}
+	return ""
+}
+func (m *Model) resetActivity() {
+	m.cancelActivityRead()
+	delegate := activityDelegate(true)
+	m.activity = activityState{list: list.New(nil, delegate, m.width, 6), focused: true}
+	m.activity.list.DisableQuitKeybindings()
+	m.activity.list.SetFilteringEnabled(false)
+	m.activity.list.SetShowTitle(false)
+	m.activity.list.SetShowStatusBar(false)
+	m.activity.list.SetShowHelp(false)
+	m.activity.list.SetShowPagination(true)
+	m.resizeDetail()
+}
+func (m *Model) cancelActivityFeedback() {
+	if m.activity.cancelFeedback != nil {
+		m.activity.cancelFeedback()
+	}
+	m.activity.cancelFeedback = nil
+	m.activity.showLoading = false
+}
+func (m *Model) cancelActivityRead() {
+	m.cancelActivityFeedback()
+	if m.activity.cancel != nil {
+		m.activity.cancel()
+	}
+	m.activity.cancel = nil
+	m.activity.owner = nil
+	m.activity.loading = false
+}
+func (m *Model) beginActivityRead() (context.Context, tea.Cmd) {
+	m.cancelActivityRead()
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.activity.cancel = cancel
+	m.activity.owner = new(byte)
+	m.activity.loading = true
+	m.activity.errorMessage = ""
+	// Quick reads should not flash a loading label. Only feedback waits;
+	// completion cancels this timer without retiring the accepted read's owner.
+	feedbackCtx, cancelFeedback := context.WithCancel(ctx)
+	m.activity.cancelFeedback = cancelFeedback
+	owner := m.activity.owner
+	return ctx, func() tea.Msg {
+		timer := time.NewTimer(150 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-feedbackCtx.Done():
+			return nil
+		case <-timer.C:
+			return activityFeedbackMsg{owner: owner}
+		}
+	}
+}
+func (m *Model) loadActivityEvents(request data.GoalEventPageRequest) tea.Cmd {
+	if request.Limit == 0 {
+		delegate := activityDelegate(true)
+		// Reserve the paginator row even before the first results arrive.
+		perPage := max(1, (m.activity.list.Height()-1)/(delegate.Height()+delegate.Spacing()))
+		request.Limit = min(data.MaxGoalEventPageSize, perPage*activityPageDots)
+	}
+	ctx, feedback := m.beginActivityRead()
+	m.activity.eventRequest = request
+	m.activity.eventPageRow = 0
+	m.activity.expandedEventID = 0
+	m.activity.thoughts = data.ThoughtSummaryViewResult{}
+	m.refreshActivityRows()
+	owner, reader, user, id := m.activity.owner, m.activityReader, m.userID, m.requestedGoalID
+	return tea.Batch(func() tea.Msg {
+		page, err := reader.ListEarnedEvents(ctx, user, id, request)
+		return activityResult{owner: owner, events: page, err: err}
+	}, feedback)
+}
+func (m *Model) loadActivityThoughts(eventID int64, request data.ThoughtSummaryViewRequest) tea.Cmd {
+	ctx, feedback := m.beginActivityRead()
+	if m.activity.expandedEventID != eventID {
+		m.activity.thoughts = data.ThoughtSummaryViewResult{}
+		m.activity.thoughtsOlder, m.activity.thoughtsNewer = false, false
+	}
+	m.activity.expandedEventID = eventID
+	m.activity.thoughtRequest = request
+	m.refreshActivityRows()
+	owner, reader, user, id := m.activity.owner, m.activityReader, m.userID, m.requestedGoalID
+	return tea.Batch(func() tea.Msg {
+		page, err := reader.ListEventLineageThoughts(ctx, user, id, eventID, request)
+		return activityResult{owner: owner, eventID: eventID, thoughtPage: page, err: err}
+	}, feedback)
+}
+func (m *Model) receiveActivity(reply activityResult) tea.Cmd {
+	if m.screen != detailView || reply.owner == nil || reply.owner != m.activity.owner {
+		return nil
+	}
+	m.activity.loading = false
+	m.cancelActivityFeedback()
+	if reply.err != nil {
+		operation := logging.GoalActivityList
+		if reply.eventID != 0 {
+			operation = logging.GoalActivityThoughtsList
+		}
+		if category, emit := failure.Classify(operation, reply.err); emit {
+			m.logger.Failure(operation, category)
+		}
+		m.activity.errorMessage = "Could not load activity. R: retry."
+		return nil
+	}
+	if reply.eventID == 0 {
+		m.activity.events = reply.events
+		request := m.activity.eventRequest
+		m.activity.eventsOlder = reply.events.More && request.Direction == data.EarnedEventsOlder || request.Cursor != nil && request.Direction == data.EarnedEventsNewer
+		m.activity.eventsNewer = reply.events.More && request.Direction == data.EarnedEventsNewer || request.Cursor != nil && request.Direction == data.EarnedEventsOlder
+		// An empty initial read has nothing to browse. Cursor reads can be
+		// temporarily empty after deletion, so retain their recovery navigation.
+		if len(reply.events.Events) == 0 && request.Cursor == nil {
+			m.activity.focused = false
+			m.anchorDetailFocus()
+		}
+	} else {
+		for i := range m.activity.events.Events {
+			if m.activity.events.Events[i].EventID == reply.eventID {
+				m.activity.events.Events[i] = reply.thoughtPage.Event
+			}
+		}
+		m.activity.thoughts = reply.thoughtPage.Thoughts
+		request := m.activity.thoughtRequest
+		m.activity.thoughtsOlder = reply.thoughtPage.Thoughts.More && request.Direction == data.ThoughtsOlder || request.Cursor != nil && request.Direction == data.ThoughtsNewer
+		m.activity.thoughtsNewer = reply.thoughtPage.Thoughts.More && request.Direction == data.ThoughtsNewer || request.Cursor != nil && request.Direction == data.ThoughtsOlder
+	}
+	cmd := m.refreshActivityRows()
+	if reply.eventID == 0 {
+		pager := m.activity.list.Paginator
+		page := 0
+		if m.activity.eventRequest.Cursor != nil && m.activity.eventRequest.Direction == data.EarnedEventsNewer {
+			page = max(0, pager.TotalPages-1)
+		}
+		start, end := page*pager.PerPage, min((page+1)*pager.PerPage, len(m.activity.list.Items()))
+		m.activity.list.Select(start + min(m.activity.eventPageRow, max(0, end-start-1)))
+	}
+	return cmd
+}
+func (m *Model) refreshActivityRows() tea.Cmd {
+	selected, _ := m.activity.list.SelectedItem().(activityRow)
+	rows := make([]list.Item, 0, len(m.activity.events.Events)+len(m.activity.thoughts.Items)+4)
+	for _, item := range m.activity.events.Events {
+		expanded := item.EventID == m.activity.expandedEventID
+		rows = append(rows, activityRow{kind: activityEvent, event: item, expanded: expanded})
+		if expanded {
+			if m.activity.thoughtsNewer {
+				rows = append(rows, activityRow{kind: activityThoughtsNewer})
+			}
+			for _, thought := range m.activity.thoughts.Items {
+				rows = append(rows, activityRow{kind: activityThought, event: item, thought: thought})
+			}
+			if m.activity.thoughtsOlder {
+				rows = append(rows, activityRow{kind: activityThoughtsOlder})
+			}
+		}
+	}
+	cmd := m.activity.list.SetItems(rows)
+	for i, row := range rows {
+		r := row.(activityRow)
+		if r.kind == selected.kind && r.event.EventID == selected.event.EventID && r.thought.ThoughtID == selected.thought.ThoughtID {
+			m.activity.list.Select(i)
+			break
+		}
+	}
+	return cmd
+}
+func (m *Model) collapseActivity() tea.Cmd {
+	eventID := m.activity.expandedEventID
+	m.cancelActivityRead()
+	m.activity.expandedEventID = 0
+	m.activity.errorMessage = ""
+	m.activity.thoughts = data.ThoughtSummaryViewResult{}
+	cmd := m.refreshActivityRows()
+	for i, row := range m.activity.list.Items() {
+		if r := row.(activityRow); r.kind == activityEvent && r.event.EventID == eventID {
+			m.activity.list.Select(i)
+			break
+		}
+	}
+	return cmd
+}
+
+// OpenLineageThoughtMsg asks the root to use the existing Thought Details screen.
+// The loader keeps both its first read and reload inside this Goal's lineage.
+type OpenLineageThoughtMsg struct {
+	owner           *byte
+	GoalID, EventID int64
+	Thought         data.ThoughtSummaryView
+	Load            func(context.Context) (*data.Thought, error)
+}
+
+func (m Model) AcceptsLineageThought(msg OpenLineageThoughtMsg) bool {
+	if !m.open || m.screen != detailView || m.selected == nil || msg.owner == nil {
+		return false
+	}
+	return msg.owner == m.activity.owner && msg.GoalID == m.selected.GoalID && msg.EventID == m.activity.expandedEventID
+}
+func (m Model) openLineageThought(row activityRow) tea.Cmd {
+	reader, user, goalID, eventID, thoughtID := m.activityReader, m.userID, m.requestedGoalID, row.event.EventID, row.thought.ThoughtID
+	message := OpenLineageThoughtMsg{
+		owner:   m.activity.owner,
+		GoalID:  goalID,
+		EventID: eventID,
+		Thought: row.thought,
+		Load: func(ctx context.Context) (*data.Thought, error) {
+			return reader.GetEventLineageThought(ctx, user, goalID, eventID, thoughtID)
+		},
+	}
+	return func() tea.Msg { return message }
+}
+func (m *Model) updateActivity(msg tea.Msg) tea.Cmd {
+	if wheel, ok := msg.(tea.MouseWheelMsg); ok {
+		var cmd tea.Cmd
+		if wheel.Y < m.body.Height() {
+			m.activity.focused = false
+			step := 0
+			if wheel.Button == tea.MouseWheelDown {
+				step = 1
+			} else if wheel.Button == tea.MouseWheelUp {
+				step = -1
+			}
+			if step != 0 && m.moveDetailFocus(step) {
+				return nil
+			}
+			m.body, cmd = m.body.Update(msg)
+		} else {
+			m.activity.focused = true
+			cmd = m.updateActivityList(msg)
+		}
+		return cmd
+	}
+	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+		if click.Y < m.body.Height() {
+			m.activity.focused = false
+			m.selectDetailAtRow(click.Y + m.body.YOffset())
+			return nil
+		}
+		m.activity.focused = true
+		delegate := activityDelegate(true)
+		row := (click.Y - m.body.Height() - activityHeaderRows) / (delegate.Height() + delegate.Spacing())
+		start, end := m.activity.list.Paginator.GetSliceBounds(len(m.activity.list.Items()))
+		if click.Y >= m.body.Height()+activityHeaderRows && start+row < end {
+			m.activity.list.Select(start + row)
+			return m.updateActivity(tea.KeyPressMsg{Code: tea.KeyEnter})
+		}
+		return nil
+	}
+	if key, ok := msg.(tea.KeyPressMsg); ok {
+		if !m.activity.focused {
+			switch key.String() {
+			case "up", "k", "down", "j":
+				step := 1
+				if key.String() == "up" || key.String() == "k" {
+					step = -1
+				}
+				if m.moveDetailFocus(step) {
+					return nil
+				}
+				var cmd tea.Cmd
+				m.body, cmd = m.body.Update(msg)
+				return cmd
+			case "home":
+				m.activity.detailIndex = 0
+				m.body.GotoTop()
+				return nil
+			case "end":
+				_, targets := m.detailContentLayout()
+				if len(targets) > 0 {
+					m.activity.detailIndex = len(targets) - 1
+					m.anchorDetailFocus()
+					m.body.GotoBottom()
+				}
+				return nil
+			}
+		}
+		switch key.String() {
+		case "tab", "shift+tab":
+			m.activity.focused = !m.activity.focused
+			if !m.activity.focused {
+				m.anchorDetailFocus()
+			}
+			return nil
+		case "r", "R":
+			if m.activity.expandedEventID != 0 {
+				return m.loadActivityThoughts(m.activity.expandedEventID, m.activity.thoughtRequest)
+			}
+			if m.activity.errorMessage != "" {
+				return m.loadActivityEvents(m.activity.eventRequest)
+			}
+			return m.loadActivityEvents(data.GoalEventPageRequest{})
+		case "enter":
+			if !m.activity.focused {
+				return nil
+			}
+			row, ok := m.activity.list.SelectedItem().(activityRow)
+			if !ok {
+				return nil
+			}
+			switch row.kind {
+			case activityEvent:
+				if m.activity.expandedEventID == row.event.EventID {
+					return m.collapseActivity()
+				}
+				m.activity.thoughts = data.ThoughtSummaryViewResult{}
+				return m.loadActivityThoughts(row.event.EventID, data.ThoughtSummaryViewRequest{})
+			case activityThought:
+				if !m.activity.loading && m.activity.errorMessage == "" {
+					return m.openLineageThought(row)
+				}
+			case activityThoughtsOlder, activityThoughtsNewer:
+				if len(m.activity.thoughts.Items) == 0 {
+					return m.loadActivityThoughts(m.activity.expandedEventID, data.ThoughtSummaryViewRequest{})
+				}
+				direction, index := data.ThoughtsOlder, len(m.activity.thoughts.Items)-1
+				if row.kind == activityThoughtsNewer {
+					direction, index = data.ThoughtsNewer, 0
+				}
+				cursor := m.activity.thoughts.Items[index].Cursor()
+				return m.loadActivityThoughts(m.activity.expandedEventID, data.ThoughtSummaryViewRequest{Cursor: &cursor, Direction: direction})
+			}
+		}
+	}
+	var cmd tea.Cmd
+	if m.activity.focused {
+		cmd = m.updateActivityList(msg)
+	} else {
+		m.body, cmd = m.body.Update(msg)
+	}
+	return cmd
+}
+func (m *Model) resizeDetail() {
+	if m.screen != detailView {
+		return
+	}
+	available := max(3, m.height-3) // Footer status/help plus a spare terminal row.
+	metadataHeight := max(1, available/3)
+	m.body.SetHeight(metadataHeight)
+	m.activity.list.SetSize(m.width, max(1, available-metadataHeight-activityHeaderRows-1))
+}
+func (m Model) activityView() string {
+	if m.selected == nil {
+		return m.body.View()
+	}
+	activityList := m.activity.list
+	activityList.SetDelegate(activityDelegate(m.activity.focused))
+	// Keep Bubbles' real page index for row selection; reset only the displayed
+	// dots when expansion or resizing creates more than ten display pages.
+	dots := activityList.Paginator
+	windowStart := dots.Page / activityPageDots * activityPageDots
+	dots.Page -= windowStart
+	dots.TotalPages = min(activityPageDots, dots.TotalPages-windowStart)
+	activityList.Styles.PaginationStyle = activityList.Styles.PaginationStyle.Transform(func(string) string { return dots.View() })
+	body := activityList.View()
+	status := ""
+	if len(m.activity.events.Events) == 0 {
+		body = strings.Repeat("\n", max(0, m.activity.list.Height()-1))
+	}
+	switch {
+	case m.activity.errorMessage != "":
+		status = m.activity.errorMessage
+	case m.activity.loading && m.activity.showLoading:
+		status = "Loading activity…"
+	case !m.activity.loading && len(m.activity.events.Events) == 0:
+		status = "No earned Events yet."
+	}
+	body = ansi.Truncate(status, m.width, "…") + "\n" + body
+	divider := m.sectionDivider(m.activity.focused)
+	return m.body.View() + "\n" + divider + "\n" + m.list.Styles.Title.Render("Events") + "\n" + body
+}
+func (m *Model) applyActivityMindset(change thoughts.MindsetChanged) tea.Cmd {
+	for i := range m.activity.thoughts.Items {
+		if m.activity.thoughts.Items[i].ThoughtID == change.ThoughtID {
+			m.activity.thoughts.Items[i].IsMindset = change.Active
+		}
+	}
+	return m.refreshActivityRows()
+}
+
+func activityDelegate(focused bool) list.DefaultDelegate {
+	delegate := goalListDelegate(focused)
+	delegate.SetHeight(2)
+	delegate.SetSpacing(1)
+	return delegate
+}

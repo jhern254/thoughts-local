@@ -73,6 +73,7 @@ type Model struct {
 	viewport            viewport.Model
 	voice               voiceDraft
 	directThoughtID     *int64
+	detailLoader        func(context.Context) (*data.Thought, error)
 	selected            *data.Thought
 	selectedSubjectName string
 
@@ -212,6 +213,7 @@ func (m *Model) Reset() {
 	m.subjectID = nil
 	m.selected = nil
 	m.directThoughtID = nil
+	m.detailLoader = nil
 	m.selectedSubjectName = ""
 	m.screen = browse
 	m.loading = false
@@ -292,11 +294,22 @@ func (m *Model) getThought(id int64) tea.Cmd {
 	m.err = nil
 	owner := m.owner
 	request, ctx, userID, service := m.request, m.beginRead(m.ctx), m.userID, m.service
+	loader := m.detailLoader
+	if loader != nil {
+		m.selected = nil
+		m.screen = browse
+	}
 	return func() tea.Msg {
 		if ctx.Err() != nil {
 			return nil
 		}
-		item, err := service.Get(ctx, userID, id)
+		var item *data.Thought
+		var err error
+		if loader != nil {
+			item, err = loader(ctx)
+		} else {
+			item, err = service.Get(ctx, userID, id)
+		}
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -600,7 +613,11 @@ func (m Model) View() string {
 		if m.selected.IsMindset {
 			badge = MindsetBadge() + " "
 		}
-		return badge + fmt.Sprintf("Thought %d • %s\n%s%s\n←/Q/Esc: back • ↑/↓: scroll • PgUp/PgDn: page • r: reload • m: mindset", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View())
+		help := "←/Q/Esc: back • ↑/↓: scroll • PgUp/PgDn: page • r: reload • m: mindset"
+		if m.viewport.Width() < 75 {
+			help = "←/Esc: back · r: reload · m: mindset"
+		}
+		return badge + fmt.Sprintf("Thought %d • %s\n%s%s\n%s", m.selected.ThoughtID, displaytime.Format(m.selected.ObservedAt, "Jan 2, 2006 3:04:05 PM MST"), status, m.viewport.View(), help)
 	default:
 		if m.browsingThoughtsView {
 			return m.renderBrowseThoughtsView(status)

@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/jhern254/go-thoughts/internal/tui/appearance"
 )
 
 type listControl uint8
@@ -200,7 +199,7 @@ func (m Model) listControlLayout() controlLayout {
 		}
 		line += text
 	}
-	line = m.list.Styles.Title.Padding(0).Margin(0).Underline(false).Render("Goals")
+	line = m.list.Styles.Title.Render("Goals")
 	if m.width < 60 {
 		flush()
 	} else {
@@ -227,7 +226,7 @@ func (m Model) listControlLayout() controlLayout {
 		layout.rows = append(layout.rows, strings.Split(m.subjectMenu.View(), "\n")...)
 		return layout
 	}
-	layout.rows = append(layout.rows, strings.Repeat(appearance.Border(m.borderWeight).Top, m.width))
+	layout.rows = append(layout.rows, m.sectionDivider(m.listFocus == goalListControl || m.listFocus == priorityControl))
 	line = "Priority: "
 	for i, label := range []string{"All", "High", "Normal", "Low"} {
 		add("["+label+"] ", priorityControl, i, m.priorityFilter == i)
@@ -266,14 +265,11 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 		return false, nil
 	}
 	if key.String() == "tab" || key.String() == "shift+tab" {
-		step := 1
-		if key.String() == "shift+tab" {
-			step = -1
-		}
-		if m.listFocus == priorityControl {
+		if m.listFocus == goalListControl || m.listFocus == priorityControl {
+			m.listFocus = statusControl
+		} else {
 			m.listFocus = goalListControl
 		}
-		m.listFocus = listControl((int(m.listFocus) + step + 3) % 3)
 
 		return true, nil
 	}

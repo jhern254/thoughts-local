@@ -1,5 +1,8 @@
 import {test, expect} from '@playwright/test';
 const screen = page => page.locator('.xterm-rows');
+const earnedEventsHeader = page => screen(page).locator(':scope > div').filter({hasText:/^\s*Events\s*$/});
+const dividerColors = page => screen(page).locator(':scope > div').filter({hasText:/^[─━]+$/}).last()
+ .locator('span').evaluateAll(spans=>spans.map(span=>getComputedStyle(span).color));
 test('Goals workflow creates a target and returns to Events without reconnecting', async ({page}) => {
  let sockets=0;page.on('websocket',()=>sockets++);
  await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
@@ -7,6 +10,7 @@ test('Goals workflow creates a target and returns to Events without reconnecting
  await page.locator('.xterm-helper-textarea').focus();
  await page.keyboard.press('Tab');await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');await page.keyboard.press('Enter');
  await expect(screen(page)).toContainText('Goals');await expect(screen(page)).not.toContainText('Loading');
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goals-list-header-${test.info().project.name}.png`});
  await page.keyboard.press('n');await expect(screen(page)).toContainText('Create Goal');
  const name=`Goal browser ${Date.now()}`;await page.keyboard.type(name);
  await page.keyboard.press('ArrowDown');await page.keyboard.type('1');
@@ -16,17 +20,19 @@ test('Goals workflow creates a target and returns to Events without reconnecting
  await page.keyboard.press('Control+s');
  await expect(screen(page)).toContainText(name);await expect(screen(page)).toContainText('Manage Subjects');await expect(screen(page)).toContainText('Misc');
  await expect(screen(page)).toContainText('1h 0m / week · high · Inactive');
+ await expect(screen(page)).toContainText('No earned Events yet.');
+ await expect(screen(page)).toContainText('↑/↓: details');
  const connections=sockets;
  await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goals-${test.info().project.name}-normal.png`});
  await page.keyboard.press('e');await expect(screen(page)).toContainText('Edit Goal');await page.keyboard.press('Escape');
  // Returning from Edit reloads Details; its actions stay locked until that read finishes.
- await expect(screen(page)).toContainText('Created ');
+ await expect(earnedEventsHeader(page)).toHaveCount(1);
  await expect(screen(page)).toContainText(name);await expect(screen(page)).not.toContainText('Loading');
  await expect(screen(page)).toContainText('1h 0m / week · high · Inactive');
  await page.keyboard.press('s');await expect(screen(page)).toContainText('Select Subjects');
  await page.keyboard.press('/');await page.keyboard.type('no-subject-matches-this-query');await expect(screen(page)).toContainText('No matches');
  await page.keyboard.press('Escape');await expect(screen(page)).not.toContainText('No matches');
- await page.keyboard.press('Escape');await expect(screen(page)).toContainText('Created ');await expect(screen(page)).not.toContainText('Loading');
+ await page.keyboard.press('Escape');await expect(earnedEventsHeader(page)).toHaveCount(1);await expect(screen(page)).not.toContainText('Loading');
  await page.setViewportSize({width:700,height:450});
  await expect.poll(async()=> (await page.locator('.xterm-screen').boundingBox()).width).toBeLessThan(700);
  await expect(screen(page)).toContainText(name);
@@ -85,7 +91,16 @@ test('Goal panels navigate vertically and held Left stops before leaving the Goa
  // Admission may retry while the preceding test's session retires. Once the
  // Goals list is usable, navigation must preserve this established connection.
  const connections=sockets;
- await page.keyboard.press('Tab');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');
+ await expect.poll(()=>dividerColors(page)).toContain('rgb(95, 95, 215)');
+ await page.keyboard.press('Tab');
+ await expect.poll(()=>dividerColors(page)).not.toContain('rgb(95, 95, 215)');
+ await page.keyboard.press('Tab');
+ await expect(screen(page)).toContainText('p: priority');
+ await expect.poll(()=>dividerColors(page)).toContain('rgb(95, 95, 215)');
+ await page.keyboard.press('Shift+Tab');await expect(screen(page)).toContainText('h/l: status');
+ await page.keyboard.press('Shift+Tab');await expect(screen(page)).toContainText('p: priority');
+ await page.keyboard.press('Tab');await expect(screen(page)).toContainText('h/l: status');
+ await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');
  await expect(screen(page)).toContainText('/ Search...');
  await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
  await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
@@ -104,4 +119,91 @@ test('Goal panels navigate vertically and held Left stops before leaving the Goa
  await page.keyboard.up('ArrowLeft');await page.keyboard.press('ArrowLeft');
  await expect(screen(page)).toContainText('Events');
  expect(sockets).toBe(connections);
+});
+
+
+test('Goal Activity History opens matching Thoughts and shared Mindset Details without reconnecting', async ({page}, testInfo) => {
+ let sockets=0;page.on('websocket',()=>sockets++);
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await expect(screen(page)).toContainText('Tab/Shift+Tab: panels');
+ await page.locator('.xterm-helper-textarea').focus();
+ for(const key of ['Tab','ArrowLeft','ArrowLeft','Enter'])await page.keyboard.press(key);
+ await expect(screen(page)).not.toContainText('Loading');
+ await expect(screen(page)).toContainText('Explore earned activity');
+ await page.keyboard.press('Home');await page.keyboard.press('Enter');
+ await expect(earnedEventsHeader(page)).toHaveCount(1);
+ await expect(screen(page)).toContainText('Implement Goal lineage');
+ await expect(screen(page)).not.toContainText('Loading');
+ const connections=sockets;
+ await page.keyboard.press('Enter');
+ await expect(screen(page)).toContainText('Lineage: one Event');
+ await expect(screen(page)).not.toContainText('Excluded');
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-${testInfo.project.name}-normal.png`});
+ const detailColors=text=>screen(page).locator(':scope > div').filter({hasText:text}).evaluate((row,text)=>[...row.querySelectorAll('span')].filter(span=>span.textContent.includes(text)).map(span=>getComputedStyle(span).color),text);
+ const settingsColors=()=>detailColors('1h 0m / week · high · Active');
+ await expect.poll(()=>dividerColors(page)).toContain('rgb(95, 95, 215)');
+ await page.keyboard.press('Tab');
+ await expect.poll(settingsColors).toContain('rgb(238, 111, 248)');
+ await expect.poll(()=>dividerColors(page)).not.toContain('rgb(95, 95, 215)');
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-details-focus-${testInfo.project.name}.png`});
+ await page.keyboard.press('ArrowDown');
+ await expect.poll(()=>detailColors('Lineage Programming 1')).toContain('rgb(238, 111, 248)');
+ await expect.poll(settingsColors).toContain('rgb(221, 221, 221)');
+ await page.keyboard.press('ArrowDown');
+ await expect.poll(()=>detailColors('Lineage Research 1')).toContain('rgb(238, 111, 248)');
+ await expect.poll(()=>detailColors('Lineage Programming 1')).toContain('rgb(221, 221, 221)');
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-subject-focus-${testInfo.project.name}.png`});
+ await page.keyboard.press('Tab');
+ await expect.poll(()=>detailColors('Lineage Research 1')).toContain('rgb(183, 168, 205)');
+ await expect.poll(()=>dividerColors(page)).toContain('rgb(95, 95, 215)');
+ await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
+ await expect(screen(page)).toContainText('m: mindset');
+ await expect(screen(page)).toContainText('Lineage: one Event can reach several Goals.');
+ await page.keyboard.press('m');
+ await expect.poll(async()=>await screen(page).innerText()).toMatch(/M.*Thought/s);
+ await page.keyboard.press('Escape');
+ await expect(earnedEventsHeader(page)).toHaveCount(1);
+ await expect(screen(page)).toContainText('M · Lineage: one Event');
+ await page.setViewportSize({width:480,height:420});
+ await expect(earnedEventsHeader(page)).toHaveCount(1);
+ await expect(screen(page)).toContainText('Lineage: one Event');
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-lineage-${testInfo.project.name}-narrow.png`});
+ await page.keyboard.press('Enter');await expect(screen(page)).toContainText('m: mindset');
+ // Restore the shared synthetic Thought so the next browser project starts
+ // from the same state, while also checking the action at narrow width.
+ await page.keyboard.press('m');
+ await expect.poll(async()=>await screen(page).innerText()).not.toMatch(/M.*Thought/s);
+ await page.keyboard.press('Escape');await page.keyboard.press('Escape');
+ await expect(screen(page)).not.toContainText('Lineage: one Event');
+ await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');
+ expect(sockets).toBe(connections);
+});
+
+
+test('Goal Activity History scrolls beyond ten pages and returns without loading rows', async ({page}, testInfo) => {
+ await page.setViewportSize({width:1000,height:700});
+ await page.goto('/');await expect(page.locator('#status')).toHaveText('Connected');
+ await expect(screen(page)).toContainText('Tab/Shift+Tab: panels');
+ await page.locator('.xterm-helper-textarea').focus();
+ for(const key of ['Tab','ArrowLeft','ArrowLeft','Enter'])await page.keyboard.press(key);
+ await expect(screen(page)).toContainText('Explore earned activity');
+ for(const key of ['Home','ArrowDown','Enter'])await page.keyboard.press(key);
+ await expect(screen(page)).toContainText('Browse long history');
+ await expect(screen(page)).toContainText('History entry 125');
+ const dots=screen(page).locator(':scope > div').filter({hasText:/^\s*•{2,10}\s*$/}).last();
+ const dotColors=()=>dots.evaluate(row=>[...row.querySelectorAll('span')].flatMap(span=>[...span.textContent].filter(c=>c==='•').map(()=>getComputedStyle(span).color)));
+ await expect(dots).toHaveText(/^\s*•{10}\s*$/);
+ const initialColors=await dotColors();const activeColor=initialColors[0];
+ for(let i=0;i<9;i++)await page.keyboard.press('ArrowRight');
+ await expect.poll(async()=>(await dotColors()).indexOf(activeColor)).toBe(9);
+ const tenthPage=await screen(page).innerText();
+ await page.keyboard.press('ArrowRight');
+ await expect(screen(page)).not.toContainText('Loading');
+ await expect.poll(async()=>(await dotColors()).indexOf(activeColor)).toBe(0);
+ await expect(screen(page)).not.toContainText('Older Events');
+ await expect(screen(page)).not.toContainText('Newer Events');
+ await page.keyboard.press('ArrowLeft');
+ await expect.poll(async()=>(await dotColors()).indexOf(activeColor)).toBe(9);
+ await expect.poll(async()=>await screen(page).innerText()).toBe(tenthPage);
+ await page.screenshot({path:`${process.env.THOUGHTS_BROWSER_ARTIFACTS}/goal-history-ten-pages-${testInfo.project.name}.png`});
 });
