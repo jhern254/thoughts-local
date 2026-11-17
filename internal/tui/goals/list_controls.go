@@ -265,14 +265,11 @@ func (m *Model) updateListControls(msg tea.Msg) (bool, tea.Cmd) {
 		return false, nil
 	}
 	if key.String() == "tab" || key.String() == "shift+tab" {
-		step := 1
-		if key.String() == "shift+tab" {
-			step = -1
-		}
-		if m.listFocus == priorityControl {
+		if m.listFocus == goalListControl || m.listFocus == priorityControl {
+			m.listFocus = statusControl
+		} else {
 			m.listFocus = goalListControl
 		}
-		m.listFocus = listControl((int(m.listFocus) + step + 3) % 3)
 
 		return true, nil
 	}

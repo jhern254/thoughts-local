@@ -90,6 +90,12 @@ test('Goal panels navigate vertically and held Left stops before leaving the Goa
  await expect.poll(()=>dividerColors(page)).toContain('rgb(95, 95, 215)');
  await page.keyboard.press('Tab');
  await expect.poll(()=>dividerColors(page)).not.toContain('rgb(95, 95, 215)');
+ await page.keyboard.press('Tab');
+ await expect(screen(page)).toContainText('p: priority');
+ await expect.poll(()=>dividerColors(page)).toContain('rgb(95, 95, 215)');
+ await page.keyboard.press('Shift+Tab');await expect(screen(page)).toContainText('h/l: status');
+ await page.keyboard.press('Shift+Tab');await expect(screen(page)).toContainText('p: priority');
+ await page.keyboard.press('Tab');await expect(screen(page)).toContainText('h/l: status');
  await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');
  await expect(screen(page)).toContainText('/ Search...');
  await page.keyboard.press('ArrowLeft');await expect(screen(page)).toContainText('Priority:');

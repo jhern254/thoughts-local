@@ -10,9 +10,9 @@ for Details. `n` opens creation. Goals initially show Active with All priorities
 `f` cycles status and `p` cycles priority while the Goals list owns focus.
 Priority filters remember their last selected Goal.
 
-Tab moves between the Goals panel, status buttons, and Subject filter. Down from
-status focuses Subject; Up returns to status. Up from the first Goal focuses
-Priority, and Down returns to the Goal list. Right on Subject opens its searchable
+Tab and Shift+Tab switch between the top filters and the Goals panel; Subject
+is not a separate Tab stop. Down from status focuses Subject; Up returns to
+status. Up from the first Goal focuses Priority, and Down returns to the Goal list. Right on Subject opens its searchable
 picker. Left/Right page within it; a fresh Left on the first page closes the
 picker without leaving Goals. Held Left stops at that boundary. Esc also closes
 it. On the main Goals list, Left pages backward and a fresh Left on the

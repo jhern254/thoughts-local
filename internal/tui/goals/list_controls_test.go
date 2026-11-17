@@ -35,7 +35,7 @@ func TestModel_ListControls(t *testing.T) {
 				t.Fatalf("removed New Goal button remains at width %d", width)
 			}
 		}
-		for _, want := range []listControl{statusControl, subjectControl, goalListControl} {
+		for _, want := range []listControl{statusControl, goalListControl, statusControl, goalListControl} {
 			m, _ = press(m, "tab")
 			if m.listFocus != want {
 				t.Fatalf("Tab focus got %d, want %d", m.listFocus, want)
@@ -44,6 +44,31 @@ func TestModel_ListControls(t *testing.T) {
 		m, _ = press(m, "n")
 		if m.screen != createView || m.saving {
 			t.Fatal("n did not open an unsaved Goal creation form")
+		}
+	})
+
+	t.Run("Tab switches panels without changing the selected Goal or filters", func(t *testing.T) {
+		for _, key := range []tea.KeyPressMsg{{Code: tea.KeyTab}, {Code: tea.KeyTab, Mod: tea.ModShift}} {
+			for _, focus := range []listControl{goalListControl, priorityControl, statusControl, subjectControl} {
+				m := setup(t)
+				m.list.Select(1)
+				m.listFocus = focus
+				selectedID := m.list.SelectedItem().(goalRow).item.GoalID
+				m, cmd := m.Update(key)
+				want := goalListControl
+				if focus == goalListControl || focus == priorityControl {
+					want = statusControl
+				}
+				if m.listFocus != want {
+					t.Fatalf("%s from %d: got focus %d, want %d", key.String(), focus, m.listFocus, want)
+				}
+				if cmd != nil {
+					t.Fatal("switching panels started asynchronous work")
+				}
+				if m.list.SelectedItem().(goalRow).item.GoalID != selectedID || m.visibility != 0 || m.subjectFilter != 0 || m.priorityFilter != 0 {
+					t.Fatal("switching panels changed the Goal selection or filters")
+				}
+			}
 		}
 	})
 
@@ -60,7 +85,7 @@ func TestModel_ListControls(t *testing.T) {
 		if m.visibility != 1 || len(m.list.Items()) != 2 {
 			t.Fatal("Active did not filter Goals")
 		}
-		m, _ = press(m, "tab") // Subject
+		m, _ = press(m, "down") // Subject
 		m = selectSubjectFilter(m, 1)
 		if len(m.list.Items()) != 1 || m.list.Items()[0].(goalRow).item.GoalID != 1 {
 			t.Fatal("Unassigned matched a literal Misc Subject")
@@ -486,7 +511,7 @@ func TestModel_SubjectDropdownTabPanels(t *testing.T) {
 		want listControl
 	}{
 		{tea.KeyPressMsg{Code: tea.KeyTab}, goalListControl},
-		{tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}, statusControl},
+		{tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}, goalListControl},
 	} {
 		m, _ := testModel(t)
 		m.open = true

@@ -92,9 +92,6 @@ func (m *Model) updateSubjectMenu(msg tea.Msg) tea.Cmd {
 		case "tab", "shift+tab":
 			m.closeSubjectMenu()
 			m.listFocus = goalListControl
-			if key.String() == "shift+tab" {
-				m.listFocus = statusControl
-			}
 			return nil
 		case "down", "up":
 			if key.String() == "down" {
